@@ -15,6 +15,9 @@ Honest data:
     stable `code` (ENGINE_CODES): consumers (lineup what-if, the league compatibility diagnostic) key on it, never on
     the readable `rule` text.
 
+One fact comes from the league file rather than the row: whether its own projection runs are re-scored from the
+reference scoring (skill_runs_rescored), which the caller passes in; the payload builder itself stays pure.
+
 No league ids, member ids or credentials are returned: only the settings the page shows.
 """
 
@@ -700,7 +703,13 @@ def _reasons(entries: list[dict], sleeper_unsupported: list[str]) -> str:
     return "; ".join(seen)
 
 
-def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock: dict, settings: dict) -> list[dict]:
+RESCORED_DETAIL = ("Fantasy Intel's own projections are approximated for this league: they were made in another "
+                   "scoring and re-scored with each player's recent box-score mix, not projected under this league's "
+                   "rules.")
+
+
+def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock: dict, settings: dict,
+                   ours_rescored: bool | None = None) -> list[dict]:
     rows: list[dict] = []
     name = PROVIDERS[provider]
     sl_unsupported = [str(k) for k in settings.get("scoring_unsupported") or []] if provider == "sleeper" else []
@@ -742,12 +751,18 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
         ours = "Ours projections (QB, RB, WR, TE)"
     else:
         ours = "Projections (Ours, QB, RB, WR, TE)"
-    rows.append({"code": "skill_projections", "rule": ours, "status": HANDLED if skill.supported else UNSUPPORTED,
-                 "detail": ("Fantasy Intel's own projections are scored with this league's rules."
-                            + (" The TE reception bonus is applied." if skill.position_weights.get("TE") else "")
-                            if skill.supported else
-                            "Fantasy Intel's own projections abstain: the league scores "
-                            f"{_reasons(skill.unsupported, sl_unsupported)}, which the model does not implement.")})
+    # A supported scoring is HANDLED only when the league's runs are projected in it; a run derived from the reference
+    # scoring by app/analytics/rescore.py (its rows flagged rescore.RESCORED_FLAG) is an approximation (PARTIAL).
+    te_note = " The TE reception bonus is applied." if skill.position_weights.get("TE") else ""
+    if not skill.supported:
+        status, detail = UNSUPPORTED, ("Fantasy Intel's own projections abstain: the league scores "
+                                       f"{_reasons(skill.unsupported, sl_unsupported)}, which the model does not "
+                                       "implement.")
+    elif ours_rescored:
+        status, detail = PARTIAL, RESCORED_DETAIL + te_note
+    else:
+        status, detail = HANDLED, "Fantasy Intel's own projections are scored with this league's rules." + te_note
+    rows.append({"code": "skill_projections", "rule": ours, "status": status, "detail": detail})
     rows.append({"code": "kicker_projections", "rule": "Kicker projections",
                  "status": HANDLED if kicker.supported else UNSUPPORTED,
                  "detail": "Field goals and extra points are scored with this league's distance rules."
@@ -799,12 +814,29 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
 
 # ---- the response -------------------------------------------------------------------------------------------------
 
+def skill_runs_rescored(con, lg: dict) -> bool | None:
+    """Whether the league's skill projection runs (independent_projection_runs under its scoring fingerprint) were
+    derived by re-scoring the reference scoring's runs (app/analytics/rescore.py records `evaluation.rescored_from`).
+    None when the file holds no such run. A read of the league file, never a provider call."""
+    from ..db.connection import table_exists
+
+    items = _json(lg.get("scoring_items"))
+    skill = resolve_skill_scoring([i for i in items if isinstance(i, dict)] if isinstance(items, list) else None)
+    if not skill.supported or not table_exists(con, "independent_projection_runs"):
+        return None
+    row = con.execute("""SELECT count(*), count(*) FILTER (WHERE CAST(evaluation AS VARCHAR) LIKE '%"rescored_from"%')
+                         FROM independent_projection_runs WHERE season = ? AND scoring_fingerprint = ?""",
+                      [lg.get("season"), skill.fingerprint]).fetchone()
+    return None if not row or not row[0] else bool(row[1])
+
+
 def provider_of(settings: dict) -> str:
     return "sleeper" if settings.get("provider") == "sleeper" else "espn"
 
 
-def build_league_rules(lg: dict) -> dict:
-    """The rules page payload from one `leagues` row (all columns)."""
+def build_league_rules(lg: dict, *, ours_rescored: bool | None = None) -> dict:
+    """The rules page payload from one `leagues` row (all columns). `ours_rescored`: whether the league's own skill
+    projection runs are re-scored from the reference scoring (skill_runs_rescored), which makes the Ours row partial."""
     settings = _json(lg.get("settings_raw"))
     settings = settings if isinstance(settings, dict) else {}
     items = _json(lg.get("scoring_items"))
@@ -844,6 +876,6 @@ def build_league_rules(lg: dict) -> dict:
         "waivers": waivers,
         "trades": trades_section(lg, settings, provider),
         "playoffs": playoffs_section(lg, settings, provider),
-        "engine_support": engine_support(provider, roster, scoring, items, lock, settings),
+        "engine_support": engine_support(provider, roster, scoring, items, lock, settings, ours_rescored),
         "unmapped": unmapped,
     }

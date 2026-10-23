@@ -123,31 +123,85 @@ def test_tied_and_sparse_superflex_lineups_are_deterministic_and_unique(league):
 
 # ---- G1: an empty recommended slot is never a measured total ------------------------------------------------------------
 
+def every_player(row_id: str) -> list[int]:
+    return [p.pid for p in cf.league_players(cf.MATRIX[row_id])]
+
+
+@pytest.mark.parametrize("row", ["M1", "M2", "M3"])
 @pytest.mark.parametrize("week", [cf.CURRENT, cf.CURRENT + 1])
-def test_a_league_without_projections_gets_no_total_and_an_honest_source_label(league, week):
-    """M3 (Sleeper: no provider projections, no stored Ours run): nothing can be recommended, so no total is complete
-    and the source is not named after a provider whose numbers do not exist."""
-    con = league("M3")
+def test_a_league_without_projections_gets_no_total_and_an_honest_source_label(league, row, week):
+    """An ordinary league (M1) and FX-17 on ESPN (M2) with every projection missing, and FX-17 on Sleeper (M3: no
+    provider projections and no stored Ours run). Nothing can be recommended: every total is unknown (None), never a
+    measured 0.0 or a complete total, and the source is not named after projections that do not exist."""
+    con = league(row, missing=every_player(row) if cf.MATRIX[row].provider == "espn" else ())
     out = load_start_sit_evaluation(con, team_id=1, week=week, now=NOW)
     s = out["summary"]
-    assert all(r["player_id"] is None for r in out["recommended_lineup"])
+    assert all(r["player_id"] is None and r["projected_points"] is None for r in out["recommended_lineup"])
     assert s["recommended_projected_total"] is None and s["unconstrained_total"] is None
+    assert s["actual_projected_total"] is None and s["projected_gain"] is None
     assert s["projection_complete"] is False and s["missing_projections"]
     assert out["projection_source"] == NO_PROJECTIONS
 
 
-def test_a_starter_slot_only_an_unprojected_player_can_fill_makes_the_recommendation_incomplete(league):
-    """M2 with every kicker unprojected: the K slot stays empty because the number is missing, not because no kicker is
-    rostered, so the recommended total is unknown (its known part is still reported)."""
-    kickers = [p.pid for p in cf.league_players(cf.MATRIX["M2"]) if p.position == "K"]
-    con = league("M2", missing=kickers)
+@pytest.mark.parametrize("row", ["M1", "M2"])
+def test_a_starter_slot_only_an_unprojected_player_can_fill_makes_the_recommendation_incomplete(league, row):
+    """Every kicker unprojected, everyone else projected: the K slot stays empty because the number is missing, not
+    because no kicker is rostered, so the recommended total is unknown (its known part is still reported)."""
+    kickers = [p.pid for p in cf.league_players(cf.MATRIX[row]) if p.position == "K"]
+    con = league(row, missing=kickers)
     out = load_start_sit_evaluation(con, team_id=1, week=cf.CURRENT + 1, now=NOW)
     s = out["summary"]
     k = next(r for r in out["recommended_lineup"] if r["slot"] == "K")
-    assert k["player_id"] is None
-    assert s["recommended_projected_total"] is None and s["known_recommended_total"] > 0
+    assert k["player_id"] is None and k["projected_points"] is None
+    filled = [r["projected_points"] for r in out["recommended_lineup"] if r["player_id"] is not None]
+    assert len(filled) == len(out["recommended_lineup"]) - 1
+    assert s["recommended_projected_total"] is None and s["unconstrained_total"] is None
+    assert s["projection_complete"] is False
+    assert s["known_recommended_total"] == round(sum(filled), 2) > 0
     assert set(kickers) & {m["player_id"] for m in s["missing_projections"]}
     assert out["projection_source"] == "ESPN"
+
+
+def test_an_unavailable_source_label_survives_the_sleeper_wording(league):
+    """S8: a Sleeper league's responses have ESPN wording rewritten (a bare "ESPN" source label becomes "Ours"); a week
+    without any projection must stay "Unavailable", never "Ours" over missing numbers."""
+    from app.api.provider_copy import rewrite
+
+    out = rewrite(load_start_sit_evaluation(league("M3"), team_id=1, now=NOW))
+    assert out["projection_source"] == NO_PROJECTIONS
+    assert out["projection_source_detail"]["available"] is False
+
+
+# ---- S1: Ours re-scored from the reference scoring is partial ------------------------------------------------------------
+
+def _run(con, run_id: str, fingerprint: str, evaluation: dict) -> None:
+    con.execute("INSERT INTO independent_projection_runs (run_id, season, week, model_version, scoring_fingerprint, "
+                "evaluation) VALUES (?, ?, ?, 'ifp-2.2.0', ?, ?)",
+                [run_id, cf.SEASON, cf.CURRENT, fingerprint, json.dumps(evaluation)])
+
+
+def test_ours_re_scored_from_the_reference_scoring_is_partial_not_league_scored(league):
+    from app.analytics.league_rules import RESCORED_DETAIL, skill_runs_rescored
+    from app.analytics.league_scoring import resolve_skill_scoring
+
+    con = league("M3")
+    lg = latest_league(con)
+    fp = resolve_skill_scoring(json.loads(lg["scoring_items"])).fingerprint
+    ours = lambda **kw: {r["code"]: r for r in build_league_rules(lg, **kw)["engine_support"]}["skill_projections"]  # noqa: E731
+
+    assert skill_runs_rescored(con, lg) is None and ours()["status"] == "handled"       # no run: nothing to qualify
+    _run(con, "native", fp, {"mae": 1.0})
+    _run(con, "other-scoring", "0" * 16, {"rescored_from": {"run_id": "x"}})           # another league's scoring
+    assert skill_runs_rescored(con, lg) is False
+    _run(con, "derived", fp, {"rescored_from": {"run_id": "ref-1", "scoring_fingerprint": "f" * 16}})
+    assert skill_runs_rescored(con, lg) is True
+    row = ours(ours_rescored=True)
+    assert row["status"] == "partial" and row["detail"].startswith(RESCORED_DETAIL)
+    assert ours(ours_rescored=False)["status"] == "handled"
+
+    out = diagnostic(con)
+    ev = next(e for e in tool(out, "rankings")["scoring"]["evidence"] if e["code"] == "skill_projections")
+    assert ev == {"code": "skill_projections", "status": "partial", "value": {"follow_up": "#254"}}
 
 
 # ---- the diagnostic ----------------------------------------------------------------------------------------------------

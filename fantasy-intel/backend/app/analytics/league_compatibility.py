@@ -97,7 +97,7 @@ def _plural(n: int, word: str) -> str:
 def load_facts(con, lg: dict) -> dict:
     """The few league-file facts the diagnostic needs beyond the `leagues` row (one league per file)."""
     from . import projection_source as ps
-    from .league_rules import provider_of
+    from .league_rules import provider_of, skill_runs_rescored
 
     season, league_id = lg.get("season"), lg.get("league_id")
     week, final = lg.get("current_week"), lg.get("final_scoring_period")
@@ -142,7 +142,7 @@ def load_facts(con, lg: dict) -> dict:
         "provider": provider, "week": week, "teams": len(teams),
         "teams_with_roster": len({r["team_id"] for r in rows}),
         "players_missing": sum(1 for r in rows if r["known_id"] is None),
-        "projection_source": shown, "independent": independent,
+        "projection_source": shown, "independent": independent, "ours_rescored": skill_runs_rescored(con, lg),
         "coverage": coverage, "free_agents_projected": fa_projected,
     }
 
@@ -254,6 +254,10 @@ class _League:
                     continue
                 if row["status"] == HANDLED:
                     out.append(finding(code, HANDLED, row["detail"], provider_boundary=boundary))
+                elif row["status"] == PARTIAL:      # re-scored from the reference scoring (league_rules, rescore.py)
+                    out.append(finding(code, PARTIAL, row["detail"],
+                                       missing_input=f"{FAMILY_TEXT[code]} projections made in this league's scoring",
+                                       provider_boundary=boundary, value={"follow_up": "#254"}))
                 else:
                     out.append(finding(code, UNSUPPORTED, row["detail"],
                                        missing_input=f"{FAMILY_TEXT[code]} projections in this league's scoring",
@@ -372,7 +376,7 @@ class _League:
 
 def build_compatibility(lg: dict, facts: dict) -> dict:
     """The diagnostic payload from one `leagues` row (all columns) and its league-file facts (load_facts)."""
-    rules = build_league_rules(lg)
+    rules = build_league_rules(lg, ours_rescored=facts.get("ours_rescored"))
     L = _League(rules, facts)
     league_roster = L.unfilled_finding("league") + L.missing_players_finding(False)
     return {

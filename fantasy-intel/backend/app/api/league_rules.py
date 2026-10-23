@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from ..analytics.league_compatibility import build_compatibility, load_facts
-from ..analytics.league_rules import NOT_SYNCED, build_league_rules
+from ..analytics.league_rules import NOT_SYNCED, build_league_rules, skill_runs_rescored
 from ..analytics.legacy_league import latest_league
 from .deps import db
 
@@ -22,9 +22,10 @@ def league_rules():
     rule says whether the analysis engines apply it."""
     with db() as con:
         lg = latest_league(con)
-    if lg is None:
-        raise HTTPException(503, NOT_SYNCED)
-    return build_league_rules(lg)
+        if lg is None:
+            raise HTTPException(503, NOT_SYNCED)
+        rescored = skill_runs_rescored(con, lg)
+    return build_league_rules(lg, ours_rescored=rescored)
 
 
 @router.get("/league-compatibility")

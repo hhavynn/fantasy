@@ -352,6 +352,16 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
   for the week, the source label is `"Unavailable"` (`start_sit.NO_PROJECTIONS`) instead of a provider name. Tests are
   in `test_start_sit.py` and `test_league_compatibility.py`.
 
+- **S1 label (no algorithm change).** `league_rules.skill_runs_rescored(con, lg)` checks whether the league's own skill
+  runs carry `evaluation.rescored_from`, which `rescore.py` writes for a ratio re-score of reference-scoring runs. When
+  they do, the `skill_projections` row is `partial` and says the projections are approximated by re-scoring. The
+  diagnostic's matching finding carries `{"follow_up": "#254"}`. `rescore.py` is unchanged.
+- **S8.** Start/Sit no longer labels a week without numbers "Ours". The `"Unavailable"` label survives the Sleeper
+  wording rewrite (test). The team_lineups-based tools (`team_lineups.source_label`, used by trades, add/drop, team value,
+  power rankings and K/D/ST streaming) still name "Ours" for a league whose default source is Ours even when no Ours run
+  exists. Their totals are then known-only, and the diagnostic reports `projection_source: "none"` for them. Changing
+  that label belongs to the owners of those engines and is listed as a follow-up.
+
 ### 8.2 Implemented contract (differences from the section 4 draft)
 
 - `Entry` is `{status, reason, missing_input, provider_boundary, action, evidence}`. `evidence` lists every finding as
@@ -379,6 +389,9 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
 | S2: waiver values are full-PPR usage percentiles | `player_value_basis`, scoring `partial` with refs `ppr` / `te_premium` | #254 |
 
 Other follow-ups:
+
+- `team_lineups.source_label` should say there are no projections when the league's default source (Ours) has no
+  verified run (S8 outside Start/Sit; it also reaches the add/drop and trade engines, which other agents own).
 
 - G11 and G12 (dual eligibility, blank ESPN slot 22) are not yet reported by the diagnostic.
 - The action center card shows "no projections for this week" for the new `"Unavailable"` label
