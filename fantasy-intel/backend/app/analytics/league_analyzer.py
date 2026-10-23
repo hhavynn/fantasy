@@ -31,7 +31,7 @@ from __future__ import annotations
 from statistics import median
 from types import MappingProxyType
 
-from .lineup import FLEX_ELIGIBILITY, separable, slots_left_out, unsupported_of
+from .lineup import separable, slot_positions, slots_left_out, unsupported_of
 from .playoff_race import NotSynced, RaceData
 from .power_rankings import build_power_rankings, replacement_options, scale
 from .team_lineups import (
@@ -102,7 +102,7 @@ def groups_of(slots: list[str]) -> list[str]:
 
 
 def eligible_positions(group: str) -> tuple[str, ...]:
-    return FLEX_ELIGIBILITY.get(group, (group,))
+    return slot_positions(group)
 
 
 def reach(slots: list[str]) -> dict[str, frozenset[str]]:

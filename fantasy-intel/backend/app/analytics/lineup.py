@@ -14,6 +14,7 @@ A FLEX is one slot: 2 RB + 2 WR + 1 FLEX = exactly five RB/WR/TE starters.
 from __future__ import annotations
 
 from itertools import combinations
+from types import MappingProxyType
 
 FIXED_SLOTS = ("QB", "RB", "WR", "TE", "K", "D/ST")
 FLEX_ELIGIBILITY: dict[str, tuple[str, ...]] = {
@@ -89,14 +90,57 @@ def lineup_slots(roster_slots: dict[str, int]) -> LineupSlots:
     slots = LineupSlots()
     for s in FIXED_SLOTS:
         slots += [s] * int((roster_slots or {}).get(s, 0))
-    for s in sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])):
+    for s in FLEX_SLOTS:
         slots += [s] * int((roster_slots or {}).get(s, 0))
     slots.unsupported = unsupported_slots(roster_slots)
     return slots
 
 
-def eligible(slot: str, position: str | None) -> bool:
-    return position in FLEX_ELIGIBILITY.get(slot, (slot,))
+# Slot legality (issue #253 G11). Every engine asks these, never FLEX_ELIGIBILITY itself
+# (tests/test_lineup_eligibility.py audits the source), so dual eligibility changes in one place.
+FLEX_SLOTS: tuple[str, ...] = tuple(sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])))  # narrowest first
+# Stored eligible_slots ids (ESPN's lineupSlotId space; the Sleeper writer stores the same) that name a position.
+# Flex, bench and IR ids name slots, not positions, so they never widen eligibility.
+POSITION_SLOT_IDS = MappingProxyType({0: "QB", 2: "RB", 4: "WR", 6: "TE", 16: "D/ST", 17: "K"})
+# Off until the all-slot solver lands: assign_lineup fills fixed slots greedily by primary position, which is only
+# optimal while every player has one position. Until then every player is primary-only, exactly as before.
+DUAL_ELIGIBILITY = False
+
+
+def is_flex(slot: str) -> bool:
+    return slot in FLEX_ELIGIBILITY
+
+
+def slot_positions(slot: str) -> tuple[str, ...]:
+    """The positions a starting slot takes: a flex slot's list, else the slot's own position."""
+    return FLEX_ELIGIBILITY.get(slot, (slot,))
+
+
+def _field(player, name: str):
+    return player.get(name) if isinstance(player, dict) else getattr(player, name, None)
+
+
+def positions_of(player) -> frozenset[str]:
+    """Every position the provider says a player (a dict or an object with `position`) may fill: the primary position
+    plus each position whose own slot id is in his stored `eligible_slots`. Missing or malformed evidence is the primary
+    position only: eligibility widens on provider evidence, never on a guess."""
+    primary = _field(player, "position")
+    out = {primary} if primary else set()
+    slots = _field(player, "eligible_slots")
+    if isinstance(slots, (list, tuple)):
+        out |= {POSITION_SLOT_IDS[s] for s in slots if type(s) is int and s in POSITION_SLOT_IDS}
+    return frozenset(out)
+
+
+def eligible(slot: str, player) -> bool:
+    """May `player` start in `slot`? `player` is a position string (None = unknown, never eligible) or a player (a dict
+    or an object with `position`, optionally `eligible_slots`)."""
+    allowed = slot_positions(slot)
+    if player is None or isinstance(player, str):
+        return player in allowed
+    if DUAL_ELIGIBILITY:
+        return not positions_of(player).isdisjoint(allowed)
+    return _field(player, "position") in allowed
 
 
 def _slot_row(slot: str, pick: dict | None) -> dict:

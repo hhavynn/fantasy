@@ -39,7 +39,7 @@ from __future__ import annotations
 from collections import Counter
 from statistics import median
 
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY
+from .lineup import FIXED_SLOTS, is_flex
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
 from .team_lineups import RosterPlayer, Window, lineup_relevant, project_team, projection, r, slot_filled
 
@@ -91,7 +91,7 @@ def league_reference(lineups: dict[int, dict], slots: list[str], weeks: list[int
     A position is in `starters` when it has a fixed slot (at least 1) or at least one flex seat."""
     teams = len(lineups)
     fixed = {pos: n * teams for pos, n in _fixed_counts(slots).items()}
-    flex_slots = sum(1 for s in slots if s in FLEX_ELIGIBILITY) * teams
+    flex_slots = sum(1 for s in slots if is_flex(s)) * teams
     by_week: dict[int, dict[str, int]] = {}
     flex_starts: Counter = Counter()
     incomplete = 0

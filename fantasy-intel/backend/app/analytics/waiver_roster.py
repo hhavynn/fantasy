@@ -5,7 +5,7 @@ import json
 from collections import Counter
 
 from ..espn.constants import BLANK_SLOT_LABEL, DEFAULT_POSITION_MAP, IR_SLOT
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_total
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, lineup_total, slot_positions
 from .reserve_slots import ESPN_IR_STATUSES, TAXI, active_capacity, ir_rules, ir_slot_eligible, is_reserved, is_taxi
 from .team_lineups import STREAMER_IDS
 
@@ -27,7 +27,7 @@ def roster_constraints(league: dict) -> dict:
     # ESPN's blank-labelled slot (id 22) is a recognised non-starter (issue #253 G12: the rules page counts it as bench),
     # but whether it holds a roster spot is unverified, so a league that starts any keeps its capacity unknown: an add is
     # never called legal on the strength of a slot nobody has confirmed.
-    supported = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | {"BE", "IR", TAXI, BLANK_SLOT_LABEL}
+    supported = set(FIXED_SLOTS) | set(FLEX_SLOTS) | {"BE", "IR", TAXI, BLANK_SLOT_LABEL}
     valid = bool(slots) and not any(k not in supported and v for k, v in slots.items())
     valid = valid and all(isinstance(v, int) and v >= 0 for v in slots.values())
     blank_slots = valid and bool(slots.get(BLANK_SLOT_LABEL))
@@ -59,7 +59,7 @@ def competing_positions(slots: list[str], positions) -> set[str]:
         cur = frontier.pop()
         for s in set(slots):
             if eligible(s, cur):
-                for q in FLEX_ELIGIBILITY.get(s, (s,)):
+                for q in slot_positions(s):
                     if q not in comp:
                         comp.add(q)
                         frontier.append(q)

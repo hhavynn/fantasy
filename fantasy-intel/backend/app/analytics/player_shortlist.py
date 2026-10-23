@@ -24,7 +24,7 @@ from . import forward_ours
 from . import player_compare as pc
 from .legacy_league import latest_league
 from .league_rules import provider_of
-from .lineup import FLEX_ELIGIBILITY, eligible, lineup_slots
+from .lineup import eligible, lineup_slots, slot_positions
 from .projections import league_window, load_schedule
 from .start_sit import NO_PROJECTIONS
 
@@ -83,7 +83,7 @@ def league_slots(roster_slots) -> tuple[list[dict], list[str]]:
         if out and out[-1]["slot"] == s:
             out[-1]["count"] += 1
         else:
-            out.append({"slot": s, "count": 1, "positions": list(FLEX_ELIGIBILITY.get(s, (s,)))})
+            out.append({"slot": s, "count": 1, "positions": list(slot_positions(s))})
     return out, list(slots.unsupported)
 
 

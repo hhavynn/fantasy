@@ -14,7 +14,7 @@ from statistics import mean
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_gain, lineup_slots, lineup_total
+from .lineup import FIXED_SLOTS, assign_lineup, eligible, is_flex, lineup_gain, lineup_slots, lineup_total
 from .player_scores import percentile_scores, percentile_scores_100
 from .reserve_slots import is_reserved, is_taxi
 from .waiver_roster import competing_positions, plan_roster_move, player_names, unknown_value_players
@@ -318,7 +318,7 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     upgrade = clamp(lg["gain"] / 3.0) if lg["gain"] is not None else None
     # The value scale is a within-position percentile: where a FLEX or OP slot takes this position, the lineup choice
     # compares percentiles across positions, not points. Stated, not corrected (a points basis is #254's).
-    cross_position = any(s in FLEX_ELIGIBILITY and eligible(s, pos) for s in my_state["slots"])
+    cross_position = any(is_flex(s) and eligible(s, pos) for s in my_state["slots"])
     ctx = decision_context or {}
     cand.update(projections=ctx.get("projections", {}).get(c["espn_player_id"], {}),
                 bye_weeks=ctx.get("candidate_byes", []), rising=cv.trend_label == "UP")

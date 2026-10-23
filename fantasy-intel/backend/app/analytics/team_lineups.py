@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, separable, unsupported_of
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, separable, slot_positions, unsupported_of
 
 PROJECTION_SOURCE = "ESPN"
 NO_PROJECTIONS = "Unavailable"      # as start_sit.NO_PROJECTIONS
@@ -478,7 +478,7 @@ def market_groups(slots: list[str]) -> list[tuple[str, tuple[str, ...]]]:
     type it actually has (FLEX = RB/WR/TE, RB/WR, WR/TE, OP) with its real eligibility."""
     present = set(slots)
     out = [(s, (s,)) for s in FIXED_SLOTS if s in present]
-    out += [(s, FLEX_ELIGIBILITY[s]) for s in FLEX_ELIGIBILITY if s in present]
+    out += [(s, slot_positions(s)) for s in FLEX_SLOTS if s in present]
     return out
 
 
@@ -534,7 +534,7 @@ def replacement_positions(position: str | None, slots: list[str]) -> set[str]:
     """Positions that can fill at least one starting slot this position can fill (an RB can be
     replaced by an RB, or by a WR/TE through FLEX; a QB by a QB, or OP-eligible players)."""
     own = {s for s in set(slots) if eligible(s, position)}
-    return {pos for s in own for pos in FLEX_ELIGIBILITY.get(s, (s,))}
+    return {pos for s in own for pos in slot_positions(s)}
 
 
 def best_fa_addition(players: list[RosterPlayer], free_agents: list[RosterPlayer], slots: list[str],
