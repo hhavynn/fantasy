@@ -7,7 +7,8 @@ import {
   Glossary, Method, Notice, PageHeader, ProvenanceBadge, Section, Tabs,
 } from "@/components/ui";
 import { currentLeague } from "@/lib/league-scope.server";
-import { ShortlistProvider, WaiverShortlist } from "./Shortlist";
+import { ShortlistProvider } from "./Shortlist";
+import { WaiverShortlist } from "./ClaimPlanner";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, projectionName, providerName } from "@/lib/labels";
@@ -165,7 +166,8 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
 
       <WaiverShortlist players={[...players, ...(band.ok ? band.data.players : [])].map((player) => ({
         id: player.espn_player_id, name: player.full_name, position: player.position, team: player.pro_team,
-      }))} />
+      }))} team={perspective?.team_id ?? null} teamName={perspective?.name ?? null} provider={pv}
+        leagueName={league?.name ?? null} />
 
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
@@ -245,7 +247,13 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
           </p>
           <p>
             Competition is a coarse bucket from managers&apos; past adds and positional needs. It does not predict bids. Candidate coverage is the locally stored {pv} pool, up to 60 players per position
-            chosen from four lanes (forward projection, depth-chart role, historical value{ownership ? ", ownership" : ""}); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster, not a combined claim queue.
+            chosen from four lanes (forward projection, depth-chart role, historical value{ownership ? ", ownership" : ""}); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster.
+          </p>
+          <p>
+            The claim plan is the shortlist in your claim order, saved only on this device for this league and team. Each claim is checked with the
+            add/drop simulator above against the current roster; claims that share a drop or an open roster spot are flagged on the later claim, and
+            bids are checked only against the FAAB budget and spend {pv} supplies. No bid is suggested. A claim shows Checks pass only when every rule it
+            depends on is in the synced data and the league data is current. Nothing is submitted to {pv}.
           </p>
         </div>
         <p>
