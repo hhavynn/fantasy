@@ -4,7 +4,7 @@ import { leagueRouteHref, proxyDecision, scopeApiPath } from "./league-scope.ts"
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
   FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
-  rankItems, scoreItem, searchPath, searchSrc, wrapIndex, type PaletteItem,
+  rankItems, scoreItem, searchPath, searchResponse, searchSrc, wrapIndex, type PaletteItem,
 } from "./palette.ts";
 
 const pages = pageItems(NAV_GROUPS);
@@ -189,4 +189,34 @@ test("searchPath forwards only a trimmed, capped query", () => {
   assert.equal(searchPath(new URLSearchParams("q=%20josh%20&limit=100&team_id=3")), "/api/players?q=josh&limit=8");
   const long = searchPath(new URLSearchParams({ q: "x".repeat(200) }))!;
   assert.equal(new URL(long, "http://x").searchParams.get("q"), "x".repeat(80));
+});
+
+test("searchPath caps by code points, so an emoji at the cap never splits into a lone surrogate", () => {
+  const q = "a".repeat(79) + "😀" + "b";
+  // The old .slice(0, 80) cut the emoji in half and encodeURIComponent threw (URIError: a 500 from the route).
+  assert.throws(() => encodeURIComponent(q.slice(0, 80)), URIError);
+  const path = searchPath(new URLSearchParams({ q }))!;
+  assert.equal(new URL(path, "http://x").searchParams.get("q"), "a".repeat(79) + "😀");
+  assert.doesNotThrow(() => searchPath(new URLSearchParams({ q: "😀".repeat(200) })));
+});
+
+test("search responses are never shared-cacheable: results, empty query and backend failure", async () => {
+  const ok = searchResponse({ ok: true, error: null, data: [
+    { espn_player_id: 201, full_name: "Echo RB", position: "RB", pro_team: "KC", fantasy_team: "Team 1" },
+    { espn_player_id: 7, full_name: null, position: "WR", pro_team: null, fantasy_team: null },
+  ] });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await ok.json(), { players: [{ id: 201, name: "Echo RB", position: "RB", team: "KC", owner: "Team 1" }] });
+
+  const empty = searchResponse(null);
+  assert.equal(empty.status, 200);
+  assert.equal(empty.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await empty.json(), { players: [] });
+
+  // A league the visitor cannot see answers 404 upstream: the same 502 as any other failure, so nothing is revealed.
+  const failed = searchResponse({ ok: false, data: null, error: "Not Found", kind: "http", status: 404 });
+  assert.equal(failed.status, 502);
+  assert.equal(failed.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await failed.json(), { players: [], error: "http" });
 });
