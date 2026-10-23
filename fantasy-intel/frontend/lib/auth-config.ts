@@ -19,10 +19,37 @@ export function authConfig(env: Record<string, string | undefined>): AuthConfig 
   return { url, key, signupsOpen: env.SIGNUPS_OPEN === "1" };
 }
 
-/** Where to go after signing in: an in-app path only (never another origin), else the leagues page. */
+const NEXT_FALLBACK = "/leagues";
+const DUMMY_ORIGIN = "http://site.invalid";
+
+/**
+ * Where to go after signing in: an in-app path only (never another origin), else the leagues page. Returned in the
+ * URL parser's normalized form, the form a browser or `new URL()` would resolve, so what is checked is what is used.
+ * URL parsers drop tabs and newlines, read `\` as `/` and resolve dot segments, so `/\t/evil.example`,
+ * `/\evil.example` and `/.//evil.example` (also `%2e`-encoded) would all become `//evil.example`, another host: any
+ * control character or backslash and any `.` or `..` segment are refused, and so is a result starting with `//`.
+ */
 export function safeNext(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/leagues";
-  return value;
+  if (!value || value.length > 2048 || !value.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(value)) {
+    return NEXT_FALLBACK;
+  }
+  for (const segment of value.split(/[?#]/)[0].split("/")) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      return NEXT_FALLBACK;                    // a malformed escape
+    }
+    if (decoded === "." || decoded === "..") return NEXT_FALLBACK;
+  }
+  let url: URL;
+  try {
+    url = new URL(value, DUMMY_ORIGIN);
+  } catch {
+    return NEXT_FALLBACK;
+  }
+  const normalized = url.pathname + url.search + url.hash;
+  return url.origin === DUMMY_ORIGIN && !normalized.startsWith("//") ? normalized : NEXT_FALLBACK;
 }
 
 /** Supabase's session cookies are named sb-<project ref>-auth-token (possibly chunked: …-auth-token.0, .1). */
