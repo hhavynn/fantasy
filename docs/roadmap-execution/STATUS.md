@@ -290,17 +290,18 @@ Baseline from GitHub timestamps, PRs #230–#252 (22 merged): open→merge mean 
 5.4 h span (first to last merge). Per-PR split of waiting on CI vs review vs merge was not recorded before D-13.
 From now on, log per merged PR: opened, CI green on final head, review done, merged; plus reruns and parallel-caused
 conflicts.
+From #261 on: opened and merged times come from GitHub; the CI column is the head's last completed check (approximate where noted); the review column records outcomes only, since review completion times were not captured.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
 | #273 | 10:19 | 11:07 (831e821; shards 4/8 app-wide guards + skeleton race) | approve 6 LOW + Codex P2 | 11:08 (49 min) | 2 | 0 |
-| #271 | 09:01 | 09:47 (97a26a1) | 09:20 MEDIUM+3 LOW → self-check 09:45 | 09:50 (49 min) | 2 | 0 |
-| #268 | 08:02 | 09:36 (aedc728) | 08:30 REQUEST CHANGES (F1 HIGH) → 08:55 N1 MEDIUM → self-check 09:15 | 09:37 (95 min) | 4 | 0 |
-| #266 | 07:09 | 08:18 (62440cd; e2e skeleton race + shard-4 guard list) | 07:20 MEDIUM+4 LOW + Codex P1/2×P2 → re-checks 07:55 (N1/N2) | 08:18 (69 min) | 4 | 1 (main.py vs #264) |
-| #267 | 07:25 | 08:16 (1e3674e; shard 3 ran 43 min) | 07:29 approve 4 LOW → 3 fixed | 08:16 (51 min) | 2 | 0 |
-| #265 | 06:48 | 07:12 (463fa05) | 06:55 approve 4 LOW + Codex P2 → re-check approve 07:09 | 07:13 (25 min) | 2 | 0 |
-| #264 | 06:26 | 07:14 (cc431ae) | 06:38 MEDIUM+2 LOW + Codex P2 → re-checks 06:55, 07:00 | 07:15 (49 min) | 4 | 1 (main.py/golden.py vs #263) |
-| #263 | 06:12 | 06:39 (2e70562) | 06:20 5 LOW + Codex 3×P2 → re-check approve 06:38 | 06:40 (28 min) | 2 | 0 |
-| #262 | 06:08 | 06:36 (0d75df5; e2e budget fix) | 06:19 approve, 3 LOW | 06:36 (28 min) | 3 | 0 |
+| #271 | 09:01 | 09:47 (97a26a1) | MEDIUM+3 LOW → self-check | 09:48 (47 min) | 2 | 0 |
+| #268 | 08:02 | 09:36 (aedc728) | REQUEST CHANGES (F1 HIGH) → N1 MEDIUM → self-check | 09:37 (95 min) | 4 | 0 |
+| #266 | 07:09 | 08:18 (62440cd; e2e skeleton race + shard-4 guard list) | MEDIUM+4 LOW + Codex P1/2×P2 → re-checks (N1/N2) | 08:18 (69 min) | 4 | 1 (main.py vs #264) |
+| #267 | 07:24 | 08:16 (1e3674e; shard 3 ran 43 min) | approve 4 LOW → 3 fixed | 08:16 (52 min) | 2 | 0 |
+| #265 | 06:48 | 07:12 (463fa05) | approve 4 LOW + Codex P2 → re-check approve | 07:13 (25 min) | 2 | 0 |
+| #264 | 06:26 | 07:14 (cc431ae) | MEDIUM+2 LOW + Codex P2 → re-checks , | 07:14 (48 min) | 4 | 1 (main.py/golden.py vs #263) |
+| #263 | 06:12 | 06:39 (2e70562) | 5 LOW + Codex 3×P2 → re-check approve | 06:40 (28 min) | 2 | 0 |
+| #262 | 06:08 | 06:36 (0d75df5; e2e budget fix) | approve, 3 LOW | 06:36 (28 min) | 3 | 0 |
 | #261 | 05:50 | 06:17 (0d64966) | approve (before final CI) | 06:17 (27 min) | 2 | 0 |
 | #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
 | #256 | 04:25 | 05:12 (99c96de, 3rd full CI) | 04:46 MEDIUM → re-check 05:00 → G1 remainder | 05:13 (48 min) | 3 | 0 |
