@@ -29,7 +29,11 @@ test("with no injured or returning starter the tree names nobody and says why", 
   await expect(tree(page).getByText(/groups are ordered by recent snap share, and no depth-chart hypothesis is made/)).toBeVisible();
   // No route provider supplied values, so none is named.
   await expect(tree(page).getByText(/Route participation: unavailable\./)).toBeVisible();
-  await expect(tree(page).locator("details")).toHaveCount(0);
+  await expect(tree(page).locator("details[data-team]")).toHaveCount(0);
+  // The thresholds behind every naming rule are stated in the method, not only in the code.
+  await tree(page).getByText("How the opportunity tree is decided").click();
+  await expect(tree(page).getByText(/at least 2 games on each side and a change of at least 3 carries \+ targets/)).toBeVisible();
+  await expect(tree(page).getByText(/at least 25% and 2 per game/)).toBeVisible();
   await expect(tree(page).getByRole("link", { name: "Check claim" })).toHaveCount(0);
   const text = (await tree(page).innerText()).toLowerCase();
   for (const word of ["probability", "confirmed starter", "fantasypros", "no claim needed"]) expect(text, word).not.toContain(word);
