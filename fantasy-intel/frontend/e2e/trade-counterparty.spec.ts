@@ -29,10 +29,10 @@ test("a small sample shows its denominator and withholds the breakdown", async (
   const s = section(page);
   await expect(s).toContainText("1 executed trade of 1 in the league");
   await expect(s).toContainText("A breakdown needs at least 3 trades");
-  const sizes = s.locator("[data-pattern=trade_size]");
-  await expect(sizes).toContainText("Denominator: 1 (trades with a recorded player leg for this team)");
-  await expect(sizes).toContainText("Withheld: 1 of the required 3 trades");
-  await expect(s.locator("[data-pattern=partners]")).toContainText("Withheld");
+  await expect(s).toContainText("Every breakdown is withheld: each needs at least 3 trades in its denominator.");
+  await expect(s.locator("[data-pattern=trade_size]")).toHaveText(
+    "Trade sizes (players sent-for-received): 1 (trades with a recorded player leg for this team)");
+  await expect(s.locator("[data-pattern=partners]")).toHaveText("Trade partners: 1 (trades with a recorded partner team)");
   await expect(s.getByRole("table")).toHaveCount(0);           // nothing broken down below the threshold
   // the trades behind the counts stay attributable
   await s.getByText("The 1 trade behind these patterns").click();

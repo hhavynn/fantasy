@@ -38,8 +38,10 @@
 .patternMeta { color: var(--ink-muted); font-size: 12px; margin: 3px 0 6px; max-width: 70ch; }
 .withheld { color: var(--ink-muted); font-size: 13px; margin: 6px 0 0; }
 .pattern .table th:first-child, .pattern .table td:first-child { padding-left: 0; }
+.pattern .table tbody th { text-transform: none; letter-spacing: normal; font-size: 12px; }
 .seasons { color: var(--ink-muted); font-size: 13px; margin: 6px 0 0; padding-left: 20px; }
 .discovery { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .links li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .links span { color: var(--ink-muted); font-size: 12px; }
+.withheldAll { margin-top: 8px; }

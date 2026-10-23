@@ -224,7 +224,14 @@ export async function CounterpartyPatterns({ report: r, roster }: { report: Coun
             {(s.multi_team_trades ?? 0) > 0 && <> · {s.multi_team_trades} with three or more teams</>}
             {(s.trades_with_unlisted_assets ?? 0) > 0 && <> · {s.trades_with_unlisted_assets} also moved draft picks or FAAB, which are not counted</>}
           </p>
-          <div className={styles.patterns}>{r.patterns.map((p) => <PatternBlock key={p.key} p={p} />)}</div>
+          {r.patterns.every((p) => p.suppressed) ? (
+            <div className={styles.withheldAll}>
+              <p className={styles.withheld}>Every breakdown is withheld: each needs at least {r.min_trades} trades in its denominator. The denominators:</p>
+              <ul className={styles.seasons}>{r.patterns.map((p) => (
+                <li key={p.key} data-pattern={p.key}>{p.title}: {p.denominator} ({p.denominator_label}){p.unknown > 0 && p.unknown_label ? `; ${p.unknown} ${p.unknown_label}` : ""}</li>
+              ))}</ul>
+            </div>
+          ) : <div className={styles.patterns}>{r.patterns.map((p) => <PatternBlock key={p.key} p={p} />)}</div>}
         </>
       )}
 
