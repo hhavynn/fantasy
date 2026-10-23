@@ -78,6 +78,12 @@ def projection_source_label(source: str, independent_available: bool, projection
     return "ESPN"
 
 
+def shown_origin(origin: dict, pid: int | None, value: float | None) -> str | None:
+    """A row's `projection_origin`: the source of the number it shows, None when it shows none (#254, as matchup.py
+    does). A player whose projection is missing has no source, so the page never badges a missing value "ESPN"."""
+    return origin.get(pid) if pid is not None and value is not None else None
+
+
 @dataclass(frozen=True)
 class PlayerLock:
     team: str | None
@@ -994,7 +1000,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": row.get("projected_points"),
-            "projection_origin": origin.get(pid) if pid is not None else None,
+            "projection_origin": shown_origin(origin, pid, row.get("projected_points")),
             "is_flex": row.get("is_flex", False),
             "is_currently_starting": pid in actual_starter_pids,
             "current_slot": p.get("lineup_slot") if pid in actual_starter_pids else ("BE" if p else None),
@@ -1028,7 +1034,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "is_flex": slot_inst.is_flex if slot_inst else False,
             "is_currently_starting": True,
             "current_slot": p.get("lineup_slot"),
@@ -1083,7 +1089,8 @@ def load_start_sit_evaluation(
                     "position": p.get("position"),
                     "pro_team": p.get("pro_team"),
                     "projection": projections.get(p.get("espn_player_id")),
-                    "projection_origin": origin.get(p.get("espn_player_id")),
+                    "projection_origin": shown_origin(origin, p.get("espn_player_id"),
+                                                      projections.get(p.get("espn_player_id"))),
                     "lock_status": (locks.get(p.get("pro_team")) or PlayerLock(team=p.get("pro_team"), status=LOCK_UNKNOWN)).status,
                 }
                 for p in d.start_players
@@ -1119,7 +1126,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,
@@ -1139,7 +1146,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,

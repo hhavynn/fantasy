@@ -310,6 +310,44 @@ def test_start_sit_uses_the_selected_source(league, ours):  # noqa: F811
             assert r["projection_origin"] == "ours"
 
 
+def test_start_sit_never_tags_a_missing_projection_with_a_source(league, monkeypatch):  # noqa: F811
+    """#254: a player the models abstain on and ESPN never projected shows no number, so no origin (no "ESPN" badge
+    on the page), as matchup does; a player with a number keeps his."""
+    from app.analytics.start_sit import shown_origin
+    assert shown_origin({7: "espn"}, 7, None) is None and shown_origin({7: "espn"}, 7, 0.0) == "espn"
+    assert shown_origin({7: "espn"}, None, 3.0) is None
+    _, con, _ = league
+    espn = load_start_sit_evaluation(con)
+    target = next(r["player_id"] for r in espn["recommended_lineup"] + espn["current_bench"]
+                  if r["player_id"] is not None and r["projected_points"] is not None)
+    real = ps.weekly
+
+    def fake(con, season, week, source):
+        w = real(con, season, week, "espn")
+        if source == "espn":
+            return w
+        values = {**w["values"], target: None}     # one of this team's players: no model number, no ESPN number
+        return {**w, "source": "independent", "values": values, "origin": {pid: "espn" for pid in values},
+                "run": {"run_id": "r", "model_version": ps.MODEL_VERSION, "created_at": "t"},
+                "model_status": {"QB": "validated"}, "counts": {"ours": 0, "ours_zero": 0, "espn": len(values)}}
+    monkeypatch.setattr(ps, "weekly", fake)
+    mine = load_start_sit_evaluation(con, source="independent")
+
+    def tagged(node):                       # every row that carries an origin, wherever the response puts it
+        if isinstance(node, dict):
+            if "projection_origin" in node:
+                yield node
+            for v in node.values():
+                yield from tagged(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from tagged(v)
+    rows = [(r, r["projected_points"] if "projected_points" in r else r["projection"]) for r in tagged(mine)]
+    assert any(r.get("player_id", r.get("id")) == target and v is None for r, v in rows)    # shown, without a number
+    for r, v in rows:
+        assert r["projection_origin"] == (None if v is None else "espn")
+
+
 def test_matchup_recomputes_lineups_from_the_selected_source(league, serve, ours):  # noqa: F811
     client = serve(league)
     espn = client.get("/api/matchup").json()
