@@ -99,7 +99,7 @@ def test_reconciliation_against_espn(con):
     con.execute("INSERT INTO nfl_weekly_stats VALUES ('K-1', 2026, 1, 'REG', 2, 0, 1, '41;51', NULL, '30', 2, 2, 0, 0, 0)")
     con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position) VALUES (1, 'K', 'K')")
     con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_confidence) VALUES (1, 'K-1', 'high')")
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, 1, 1, 10.0, 8.0, now())")
+    con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, 1, 1, 10.0, 8.0, now())")
     s = resolve_kicker_scoring(LEAGUE)
     rep = reconcile_with_espn(con, 2026, s, LEAGUE)
     assert rep["status"] == "verified" and rep["n"] == 1 and rep["exact"] == 1

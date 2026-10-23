@@ -48,11 +48,18 @@ from dataclasses import dataclass, replace
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, separable, unsupported_of
 
 PROJECTION_SOURCE = "ESPN"
+NO_PROJECTIONS = "Unavailable"      # as start_sit.NO_PROJECTIONS
 
 
-def source_label(source: str | None) -> str:
+def source_label(source: str | None, projections: Projections | None = None) -> str:
     """The projection source a response names: ESPN's stored projections, or Ours (Fantasy Intel's own model) for a
-    league without provider projections (multi-league Phase 4b; projection_source.default_source)."""
+    league without provider projections (multi-league Phase 4b; projection_source.default_source). With the state's
+    `projections`, an Ours state that holds no number at all (no verified run, or every row abstains) is named
+    NO_PROJECTIONS, never Ours (#254 L2, #253 S8). Under the league's default source an Ours state holds no provider
+    number either: a league defaults to Ours only when its provider publishes no projections."""
+    if source == "independent" and projections is not None and not any(
+            v is not None for by_week in projections.values() for v in by_week.values()):
+        return NO_PROJECTIONS
     return "Ours" if source == "independent" else PROJECTION_SOURCE
 FA_STATUSES = ("FREEAGENT", "WAIVERS")
 NDIGITS = 2

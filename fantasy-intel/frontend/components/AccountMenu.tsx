@@ -3,12 +3,22 @@ import { signOut } from "@/app/login/actions";
 import { authConfig } from "@/lib/auth-config";
 import { currentUser } from "@/lib/supabase/server";
 
-/** "Sign in" or the signed-in email with "Sign out"; nothing when sign-in is off. */
+/**
+ * Signed out: "Sign in", and "Sign up" beside it while this site offers sign-up (SIGNUPS_OPEN=1; the sign-up page
+ * itself also asks the API, so a mismatch shows "not open yet" there rather than here, without a backend call on
+ * every page). Signed in: the account menu with "Sign out". Nothing when sign-in is off.
+ */
 export async function AccountMenu() {
-  if (!authConfig(process.env)) return null;
+  const config = authConfig(process.env);
+  if (!config) return null;
   const user = await currentUser();
   if (!user) {
-    return <Link href="/login" prefetch={false} className="account-link">Sign in</Link>;
+    return (
+      <div className="account-entry">
+        <Link href="/login" prefetch={false} className="account-link">Sign in</Link>
+        {config.signupsOpen ? <Link href="/signup" prefetch={false} className="account-signup">Sign up</Link> : null}
+      </div>
+    );
   }
   return (
     <details className="account-menu">

@@ -35,7 +35,7 @@ def add_player(con, pid, name, pos, team, gsis, *, proj=True, injury=None):
                 "VALUES (?, ?, 'espn_id:nfl_players', 'high')", [pid, gsis])
     if proj:
         for w in range(CURRENT, 18):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
                         [SEASON, pid, w, 5.0 + pid])
 
 

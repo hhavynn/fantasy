@@ -139,7 +139,7 @@ def database(con, w: dict | None = None, *, items=None) -> dict:
         con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) VALUES (?, ?, ?, ?)",
                     [pid, g, "espn_id:nfl_players", conf])
         for wk in (4, 5):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, ?, NULL, ?, '2026-09-01 12:00:00')",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, ?, NULL, ?, '2026-09-01 12:00:00')",
                         [pid, wk, 7.0 + pid % 3])
     return w
 

@@ -129,6 +129,15 @@ def list_providers(registry: ProviderRegistry = Depends(provider_registry),
     return {"providers": [c.as_dict() for c in registry.all_capabilities()]}
 
 
+@router.get("/signups")
+def signup_status(_principal: Principal = Depends(current_principal)):
+    """Whether this deployment accepts new accounts: SIGNUPS_ENABLED, the gate fi.ensure_app_user enforces. Public
+    and read-only, about the deployment and never about an address. The web app's Create account page asks before it
+    sends an account-creating email link, so a web-only SIGNUPS_OPEN never leaves a Supabase user this API would
+    refuse (issue #270). Not cached: flipping the setting takes effect on the next request."""
+    return _json({"open": get_settings().signups_enabled})
+
+
 @router.get("/me")
 def me(tx=REQUEST_TX):
     from ..control_plane import mutations

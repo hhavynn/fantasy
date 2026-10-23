@@ -1,0 +1,37 @@
+/* Sign in and Sign up (app/login, app/signup): one narrow column, the email-link form and the way to the other page. */
+.page { display: grid; gap: var(--section-gap); max-width: 560px; min-width: 0; }
+.form { display: grid; gap: 12px; min-width: 0; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.field input { width: 100%; min-width: 0; }
+.field input[aria-invalid="true"] { border-color: var(--negative); }
+.hint { margin: 0; font-size: 12px; line-height: 17px; color: var(--ink-faint); }
+.hint a { text-decoration: underline; text-underline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button { max-width: 100%; height: auto; min-height: 34px; white-space: normal; }
+.sent { display: grid; gap: 10px; outline: none; }
+.sent p { margin: 0; }
+.textButton {
+  height: auto; padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.steps li::marker { color: var(--accent); font-weight: 700; }
+/* The way to the other page: a full-width row with a button-styled link, never only a footnote. */
+.switch {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised);
+}
+.switch p { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; min-width: 0; }
+.switchLink {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.switchLink:hover { background: var(--accent-soft); text-decoration: none; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; }
+@media (max-width: 720px) {
+  .actions button, .switchLink { width: 100%; min-height: var(--tap); justify-content: center; }
+  .textButton { min-height: var(--tap); }
+  .links a { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
+.switch p a { text-decoration: underline; text-underline-offset: 2px; }
