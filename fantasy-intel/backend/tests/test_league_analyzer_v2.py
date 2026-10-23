@@ -34,6 +34,12 @@ def test_private_league_matrix_is_hidden_from_everyone_but_members(pg, served, c
         bad_path = f"{base}?{bad}"
         assert (client.get(bad_path).status_code, client.get(bad_path).json()) == NOT_FOUND
         assert client.get(bad_path, headers=bearer(U2)).json() == NOT_FOUND[1]
+        for who in ({}, bearer(U2)):                     # anonymous and stranger: nothing beyond the plain 404
+            assert "x-fi-error-code" not in client.get(bad_path, headers=who).headers
+    for query, status, code in (("team_id=99", 404, "unknown_team"), ("team_id=2&vs=99", 404, "unknown_vs"),
+                                ("team_id=98&vs=99", 404, "unknown_teams"), ("team_id=2&vs=2", 422, "same_team")):
+        res = client.get(f"{base}?{query}", headers=bearer(U1))
+        assert (res.status_code, res.headers.get("x-fi-error-code")) == (status, code), query
     assert client.get(f"{base}?horizon=season", headers=bearer(U1)).status_code == 422
     assert client.get(f"{base}?vs=abc", headers=bearer(U1)).status_code == 422
     assert client.get(f"{base}?team_id=99", headers=bearer(U1)).status_code == 404     # not a team of this league
@@ -50,3 +56,4 @@ def test_public_league_matrix_answers_anonymous_visitors_without_a_team(pg, serv
     # a shared compare link opened without a team: the dashboard's needsTeam() answer (pick a team), not "unknown team"
     shared = client.get(f"/v2/leagues/{pub.league_id}/api/league-analyzer?vs=1")
     assert shared.status_code == 404 and "No team is marked as yours" in shared.json()["detail"]
+    assert shared.headers["x-fi-error-code"] == "no_own_team"

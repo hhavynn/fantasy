@@ -320,3 +320,32 @@ def test_an_unknown_position_has_no_bench_edge(race):
     assert rb["a"]["bench"]["edge"] is None and rb["a"]["bench"]["best_bench"] is None
     assert "this team's RB is unknown" in rb["a"]["bench"]["reason"]
     assert rb["b"]["bench"]["edge"] is not None
+
+
+@pytest.mark.parametrize("team_id, vs, mine, code", [
+    (99, None, True, "unknown_team"),          # unknown focus team
+    (2, 99, True, "unknown_vs"),               # a valid focus and an unknown compared team: only `vs` is wrong
+    (None, 99, True, "unknown_vs"),
+    (98, 99, True, "unknown_teams"),           # both unknown
+    (None, 2, False, "no_own_team"),           # a visitor without a team opens a compare link
+])
+def test_each_team_error_has_its_own_code(race, team_id, vs, mine, code):
+    data = race if mine else replace(race, teams=[{**t, "is_mine": False} for t in race.teams])
+    with pytest.raises(la.TeamNotFound) as err:
+        la.check_teams(data, team_id, vs)
+    assert err.value.code == code
+
+
+@pytest.mark.parametrize("query, status, code", [
+    ("team_id=99", 404, "unknown_team"),
+    ("team_id=2&vs=99", 404, "unknown_vs"),
+    ("team_id=98&vs=99", 404, "unknown_teams"),
+    ("team_id=2&vs=2", 422, "same_team"),
+    ("vs=1", 422, "same_team"),                # the default focus is team 1
+])
+def test_api_errors_carry_a_machine_readable_code(monkeypatch, race, query, status, code):
+    client = _client(monkeypatch, race)
+    res = client.get(f"/api/league-analyzer?{query}")
+    assert (res.status_code, res.headers.get("x-fi-error-code")) == (status, code)
+    assert isinstance(res.json()["detail"], str)              # the readable sentence keeps its shape
+    assert client.get("/api/league-analyzer?team_id=2").headers.get("x-fi-error-code") is None

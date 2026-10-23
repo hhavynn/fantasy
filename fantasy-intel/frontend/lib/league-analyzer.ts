@@ -203,3 +203,33 @@ export function leadsText(c: Pick<LaCompare, "a" | "b" | "leads">, plural: (n: n
   if (c.leads.even) parts.push(`even at ${c.leads.even}`);
   return parts.join(", ");
 }
+
+// ---------- Error and empty states ----------
+
+/** Every way the analyzer can fail to show a matrix, decided from the API's X-FI-Error-Code (never from its wording). */
+export type LaErrorState =
+  | { kind: "unknown_team"; team: number | null }            // the focus team is not in this league
+  | { kind: "unknown_vs"; vs: number | null }                // the focus is fine; only the compared team is wrong
+  | { kind: "unknown_teams"; team: number | null; vs: number | null }
+  | { kind: "same_team" }                                    // the same team on both sides (422)
+  | { kind: "no_own_team" }                                  // a compare link opened by a visitor without a team
+  | { kind: "not_synced" }
+  | { kind: "backend" };                                     // anything else (offline, schema, an unexpected status)
+
+const CODES = new Set(["unknown_team", "unknown_vs", "unknown_teams", "same_team", "no_own_team", "not_synced"]);
+
+/** The page's state for a failed analyzer call, from the route's code and the team ids the URL asked for. A failure
+ *  without a known code (offline, an older backend, a 404 from the league itself) is a backend problem, never a guess
+ *  from the message text. */
+export function errorState(res: { status?: number; code?: string; kind?: string }, team: number | null, view: Pick<LaView, "vs">): LaErrorState {
+  const code = res.code && CODES.has(res.code) ? res.code : null;
+  switch (code) {
+    case "unknown_team": return { kind: "unknown_team", team };
+    case "unknown_vs": return { kind: "unknown_vs", vs: view.vs };
+    case "unknown_teams": return { kind: "unknown_teams", team, vs: view.vs };
+    case "same_team": return { kind: "same_team" };
+    case "no_own_team": return { kind: "no_own_team" };
+    case "not_synced": return { kind: "not_synced" };
+    default: return { kind: "backend" };
+  }
+}

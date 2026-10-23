@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..analytics.league_analyzer import (
     SameTeam,
+    TeamNotFound,
     build_league_analyzer,
     check_teams,
     load_compatibility,
@@ -23,6 +24,7 @@ from ..analytics.team_value import NotFound, load_team_value_inputs
 from .deps import db
 
 router = APIRouter(prefix="/api", tags=["league analyzer"])
+ERROR_HEADER = "X-FI-Error-Code"
 
 
 @router.get("/league-analyzer")
@@ -40,9 +42,13 @@ def league_analyzer(team_id: int | None = None, vs: int | None = None, horizon: 
             compat = load_compatibility(con)
             return build_league_analyzer(race, extras, team_id=focus, vs=other, horizon=horizon,
                                          kdst_streaming=kdst_streaming, side=side, compatibility=compat)
+        # Every answer of this route says which case it is in X-FI-Error-Code; `detail` stays the readable sentence. These
+        # run inside league_scope, so a caller who may not see the league only ever gets its plain 404.
         except NotSynced as err:
-            raise HTTPException(503, str(err))
+            raise HTTPException(503, str(err), headers={ERROR_HEADER: "not_synced"})
+        except TeamNotFound as err:
+            raise HTTPException(404, str(err), headers={ERROR_HEADER: err.code})
         except NotFound as err:
-            raise HTTPException(404, str(err))
+            raise HTTPException(404, str(err), headers={ERROR_HEADER: "not_found"})
         except SameTeam as err:
-            raise HTTPException(422, str(err))
+            raise HTTPException(422, str(err), headers={ERROR_HEADER: err.code})

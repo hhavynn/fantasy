@@ -1,17 +1,18 @@
 import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
-import { ChooseTeam, needsTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { ChooseTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, Method, Notice, PageHeader, Section, Verdict, VerdictFigure } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
 import { when } from "@/lib/format";
 import { projectionsPhrase } from "@/lib/labels";
 import {
-  apiPath, knownView, ordinal, PATH, rankText, readView, signedText, viewHref, type LaTeam, type LeagueAnalyzer,
+  apiPath, errorState, knownView, ordinal, PATH, rankText, readView, signedText, viewHref, type LaErrorState, type LaTeam,
+  type LaView, type LeagueAnalyzer,
 } from "@/lib/league-analyzer";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { plural } from "@/lib/plural";
-import { isUnknownTeam, readTeamSelection, selectedTeamId } from "@/lib/team-perspective";
+import { readTeamSelection, selectedTeamId, type TeamSelection } from "@/lib/team-perspective";
 import { ComparePicker, CompareView, Controls, Matrix } from "./parts";
 import styles from "./analyzer.module.css";
 
@@ -33,38 +34,7 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
   const asked = readView(sp);
   const [res, league] = await Promise.all([api<LeagueAnalyzer>(apiPath(selectedTeamId(sel), asked)), currentLeague()]);
   if (!res.ok) {
-    // A shared compare link opened by a visitor without a team (anonymous, public league): ask for one, never call the
-    // compared team unknown.
-    if (needsTeam(res)) {
-      return <div className="stack">{header()}<ChooseTeam path={PATH} sp={sp} what="how it compares with another team" /></div>;
-    }
-    if (isUnknownTeam(res, sel) || (res.status === 404 && /team/i.test(res.error ?? ""))) {
-      return <div className="stack">{header()}<UnknownTeam path={PATH} sel={sel} detail={res.error} /></div>;
-    }
-    if (res.status === 422 && asked.vs !== null) {
-      return (
-        <div className="stack">
-          {header()}
-          <Notice tone="caution" title="Pick two different teams">
-            {res.error} <Link href={viewHref(selectedTeamId(sel), asked, { vs: null })}>Show the league matrix</Link>.
-          </Notice>
-        </div>
-      );
-    }
-    const notSynced = res.status === 503 && res.kind === "http" && !/no database yet/i.test(res.error);
-    return (
-      <div className="stack">
-        {header()}
-        {notSynced ? (
-          <Section>
-            <EmptyState title="Your league isn't synced yet" action={<Link href="/data">Check data status</Link>}>
-              <p>The analyzer needs the league&apos;s rosters, projections and matchups. Run a sync, then reload this page.</p>
-              <p className="faint">{res.error}</p>
-            </EmptyState>
-          </Section>
-        ) : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
-      </div>
-    );
+    return <div className="stack">{header()}<AnalyzerError res={res} state={errorState(res, selectedTeamId(sel), asked)} sel={sel} sp={sp} asked={asked} /></div>;
   }
   const d = res.data;
   // a position filter this league does not have (a stale or another league's link) is dropped, never half-applied
@@ -111,6 +81,52 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
       )}
     </div>
   );
+}
+
+type SP = Record<string, string | string[] | undefined>;
+type Failed = Extract<ApiResult<LeagueAnalyzer>, { ok: false }>;
+
+/** Each failure state from the route's error code (lib/league-analyzer.ts errorState), never from its wording. */
+function AnalyzerError({ res, state, sel, sp, asked }: { res: Failed; state: LaErrorState; sel: TeamSelection; sp: SP; asked: LaView }) {
+  const team = selectedTeamId(sel);
+  const label = (id: number | null) => (id === null ? "That team" : `Team ${id}`);
+  switch (state.kind) {
+    case "unknown_team":
+      return <UnknownTeam path={PATH} sel={sel} />;
+    case "unknown_vs":
+      // the focus is valid: keep it, and offer to drop only the comparison
+      return (
+        <Notice tone="caution" title={`${label(state.vs)} isn't a team in this league`}>
+          The comparison link may be from another season or another league.{" "}
+          <Link href={viewHref(team, asked, { vs: null })}>Show the matrix without a comparison</Link>.
+        </Notice>
+      );
+    case "unknown_teams":
+      return (
+        <Notice tone="caution" title={`Teams ${state.team ?? "?"} and ${state.vs ?? "?"} aren't teams in this league`}>
+          The link may be from another season or another league. <Link href={PATH}>Show the default team</Link>.
+        </Notice>
+      );
+    case "same_team":
+      return (
+        <Notice tone="caution" title="Pick two different teams">
+          A team can&apos;t be compared with itself. <Link href={viewHref(team, asked, { vs: null })}>Show the league matrix</Link>.
+        </Notice>
+      );
+    case "no_own_team":
+      return <ChooseTeam path={PATH} sp={sp} what="how it compares with another team" />;
+    case "not_synced":
+      return (
+        <Section>
+          <EmptyState title="Your league isn't synced yet" action={<Link href="/data">Check data status</Link>}>
+            <p>The analyzer needs the league&apos;s rosters, projections and matchups. Run a sync, then reload this page.</p>
+            <p className="faint">{res.error}</p>
+          </EmptyState>
+        </Section>
+      );
+    default:
+      return <BackendProblem error={res.error} kind={res.kind} status={res.status} />;
+  }
 }
 
 /** The answer first: the focus team's strongest and thinnest positions, and its power rank. */

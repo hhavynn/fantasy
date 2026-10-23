@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  apiPath, knownView, leadsText, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
+  apiPath, errorState, knownView, leadsText, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
   viewHref, visibleGroups, type LaCell, type LaGroup, type LaTeam,
 } from "./league-analyzer.ts";
 import { plural } from "./plural.ts";
@@ -81,4 +81,23 @@ test("a position filter this league does not have is cleared, so the title, chip
   assert.equal(viewHref(2, knownView(stale, groups)), "/league-analyzer?team=2&vs=3");
   const rb = readView({ pos: "RB" });
   assert.equal(knownView(rb, groups), rb);
+});
+
+test("every failure state comes from the route's error code, never from its wording", () => {
+  const view = readView({ vs: "99" });
+  const cases: [{ status?: number; code?: string; kind?: string }, number | null, ReturnType<typeof errorState>][] = [
+    [{ status: 404, code: "unknown_team" }, 99, { kind: "unknown_team", team: 99 }],
+    // a valid focus and an unknown compared team: the error names the compared team and the focus is kept
+    [{ status: 404, code: "unknown_vs" }, 2, { kind: "unknown_vs", vs: 99 }],
+    [{ status: 404, code: "unknown_teams" }, 98, { kind: "unknown_teams", team: 98, vs: 99 }],
+    [{ status: 422, code: "same_team" }, 2, { kind: "same_team" }],
+    [{ status: 404, code: "no_own_team" }, null, { kind: "no_own_team" }],
+    [{ status: 503, code: "not_synced" }, null, { kind: "not_synced" }],
+    // no code: the league's own 404 (private or unknown league), first sync, offline, an older backend
+    [{ status: 404 }, 2, { kind: "backend" }],
+    [{ status: 409 }, null, { kind: "backend" }],
+    [{ kind: "offline" }, null, { kind: "backend" }],
+    [{ status: 404, code: "something_new" }, 2, { kind: "backend" }],
+  ];
+  for (const [res, team, want] of cases) assert.deepEqual(errorState(res, team, view), want, JSON.stringify(res));
 });

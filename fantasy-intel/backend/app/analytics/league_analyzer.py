@@ -76,8 +76,22 @@ METHOD = (
 )
 
 
+# Machine-readable error codes (the API sends them as the X-FI-Error-Code header; `detail` stays the readable sentence).
+UNKNOWN_TEAM, UNKNOWN_VS, UNKNOWN_TEAMS, NO_OWN_TEAM, SAME_TEAM = (
+    "unknown_team", "unknown_vs", "unknown_teams", "no_own_team", "same_team")
+
+
+class TeamNotFound(NotFound):
+    """A requested team is not one of this league's teams, or compare mode has no focus team. `code` says which."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 class SameTeam(ValueError):
     """Compare mode needs two different teams."""
+    code = SAME_TEAM
 
 
 # ------------------------------------------------------------------ helpers --
@@ -117,12 +131,17 @@ def check_teams(race: RaceData, team_id: int | None, vs: int | None) -> tuple[in
     """(focus, compare) after validation: an id that is not a team of this league is NotFound; the same team twice is
     SameTeam. The focus defaults to the team marked as yours (None for a visitor without one)."""
     meta = {t["team_id"] for t in race.teams}
-    for tid in (team_id, vs):
-        if tid is not None and tid not in meta:
-            raise NotFound(f"Unknown team {tid}")
+    bad_focus = team_id is not None and team_id not in meta
+    bad_vs = vs is not None and vs not in meta
+    if bad_focus and bad_vs:
+        raise TeamNotFound(UNKNOWN_TEAMS, f"Unknown teams {team_id} and {vs}")
+    if bad_focus:
+        raise TeamNotFound(UNKNOWN_TEAM, f"Unknown team {team_id}")
+    if bad_vs:
+        raise TeamNotFound(UNKNOWN_VS, f"Unknown team {vs} to compare with")
     focus = team_id if team_id is not None else next((t["team_id"] for t in race.teams if t["is_mine"]), None)
     if vs is not None and focus is None:
-        raise NotFound("No team is marked as yours (is_mine); pass team_id to compare two teams.")
+        raise TeamNotFound(NO_OWN_TEAM, "No team is marked as yours (is_mine); pass team_id to compare two teams.")
     if vs is not None and vs == focus:
         raise SameTeam("Pick two different teams to compare.")
     return focus, vs
