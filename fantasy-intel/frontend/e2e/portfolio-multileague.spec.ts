@@ -60,7 +60,7 @@ for (const width of [1440, 375, 320]) {
 test("search and sort are URL-backed and keep the page's own state", async ({ page, context }) => {
   await signIn(context);
   await open(page, "/leagues/portfolio?sort=name&dir=asc");
-  const names = page.locator("#players tbody tr td:first-child span:first-child");
+  const names = page.locator("#players tbody tr td:first-child > span:first-child");
   await expect(names.first()).toBeVisible();
   const all = await names.allTextContents();
   expect(all, "sorted by name").toEqual([...all].sort((a, b) => a.localeCompare(b)));
