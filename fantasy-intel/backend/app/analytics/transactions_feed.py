@@ -65,6 +65,10 @@ class UnknownManager(Exception):
     pass
 
 
+class UnknownSeason(Exception):
+    pass
+
+
 class StaleCursor(Exception):
     pass
 
@@ -427,11 +431,21 @@ def after_move(event_week: int | None, team_id: int | None, player_id: int | Non
 
 # ------------------------------------------------------------------ loading --
 
-def _load(con) -> dict:
+def _load(con, season: int | None = None) -> dict:
+    """The latest synced league season, or `season` when given: the owner's single-league file keeps every season it
+    synced (upserts by season); a multi-league file holds one season, so only that one is listed."""
     lg = latest_league(con, ["league_id", "season", "name", "current_week", "is_faab"])
     if not lg:
         raise NotSynced("League not synced yet. Run the league sync first.")
-    return {"league": lg, **load_season_rows(con, lg["league_id"], lg["season"])}
+    seasons = [r["season"] for r in fetch_dicts(con, "SELECT DISTINCT season FROM leagues WHERE league_id = ? "
+                                                     "ORDER BY season DESC", [lg["league_id"]])]
+    if season is not None and season != lg["season"]:
+        if season not in seasons:
+            raise UnknownSeason(f"No {season} season of this league is synced.")
+        # (league_id, season) is the leagues table's key (espn/sync upserts on it): one row, no "latest" pick
+        lg = fetch_dicts(con, "SELECT league_id, season, name, current_week, is_faab FROM leagues "
+                              "WHERE league_id = ? AND season = ?", [lg["league_id"], season])[0]
+    return {"league": lg, "seasons": seasons, **load_season_rows(con, lg["league_id"], lg["season"])}
 
 
 def load_season_rows(con, lid: int, season: int) -> dict:
@@ -491,8 +505,8 @@ def _snapshots(con, lg: dict, player_ids: set[int]) -> tuple[set, dict]:
 def build_transactions_feed(con, *, manager: int | None = None, kind: str | None = None,
                             position: str | None = None, week: int | None = None, sort: str = "date",
                             direction: str = "desc", cursor: str | None = None,
-                            limit: int = DEFAULT_LIMIT) -> dict:
-    data = _load(con)
+                            limit: int = DEFAULT_LIMIT, season: int | None = None) -> dict:
+    data = _load(con, season)
     lg, teams = data["league"], data["teams"]
     team_ids = {t["team_id"] for t in teams}
     if manager is not None and manager not in team_ids:
@@ -527,9 +541,10 @@ def build_transactions_feed(con, *, manager: int | None = None, kind: str | None
     present_positions = {positions.get(leg.player_id) for e in events for leg in e["legs"]} - {None}
     return {
         "league": {k: lg.get(k) for k in ("league_id", "season", "name", "current_week", "is_faab")},
-        "query": {"manager": manager, "type": kind, "position": position, "week": week, "sort": sort,
-                  "dir": direction, "cursor": cursor, "limit": limit},
+        "query": {"season": season, "manager": manager, "type": kind, "position": position, "week": week,
+                  "sort": sort, "dir": direction, "cursor": cursor, "limit": limit},
         "options": {
+            "seasons": data["seasons"],
             "managers": [{"team_id": t["team_id"], "name": t["name"], "abbrev": t["abbrev"]} for t in teams],
             "types": [k for k in KINDS if any(e["kind"] == k for e in events)],
             "positions": [p for p in POSITION_ORDER if p in present_positions]

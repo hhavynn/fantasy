@@ -22,6 +22,7 @@ const CORE: Core[] = [
   { name: "Rankings", path: "/rankings" },
   { name: "Player profile", path: "/players?id=201" },
   { name: "Weekly recap", path: "/weekly-recap" },
+  { name: "Transactions", path: "/transactions?type=trade" },
   { name: "Playoff race", path: "/playoff-race" },
   { name: "Manager", path: "/managers/1" },
   { name: "League analyzer", path: "/league-analyzer?vs=1", verdict: true },

@@ -33,7 +33,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
         <PageHeader eyebrow="League" title="Transactions" />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
         {(res.status === 400 || res.status === 404) && (
-          <p><Link href={txHref(q, { manager: null, cursor: null })}>Show the newest moves</Link></p>
+          <p><Link href={txHref(q, { season: null, manager: null, cursor: null })}>Show the newest moves</Link></p>
         )}
       </div>
     );
@@ -138,6 +138,16 @@ function Filters({ d, q }: { d: TransactionsFeed; q: TxQuery }) {
             <Chip key={p} href={txHref(q, { pos: p })} active={q.pos === p}>{p}</Chip>
           ))}
         </nav>
+        {(o.seasons?.length ?? 0) > 1 && (
+          <nav className="filters" aria-label="Season">
+            <span className={styles.chipLabel}>Season</span>
+            {o.seasons!.map((y) => (
+              // Each chip names its season: the backend's default is the most recently synced season, which need not
+              // be the highest year, so the active chip is the season the feed actually returned.
+              <Chip key={y} href={txHref(q, { season: y, week: null })} active={d.league.season === y}>{y}</Chip>
+            ))}
+          </nav>
+        )}
         {o.weeks.length > 0 && (
           <nav className="filters" aria-label="Week">
             <span className={styles.chipLabel}>Week</span>

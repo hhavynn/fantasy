@@ -306,6 +306,9 @@
     "WR",
     "TE"
    ],
+   "seasons": [
+    2026
+   ],
    "types": [
     "trade",
     "waiver",
@@ -332,6 +335,7 @@
    "limit": 50,
    "manager": null,
    "position": null,
+   "season": null,
    "sort": "date",
    "type": null,
    "week": null

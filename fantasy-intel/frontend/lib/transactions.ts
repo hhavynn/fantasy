@@ -49,7 +49,8 @@ export type TxEvent = {
 };
 export type TransactionsFeed = {
   league: { league_id: number; season: number; name: string | null; current_week: number | null; is_faab: boolean | null };
-  options: { managers: TxTeam[]; types: TxKind[]; positions: string[]; weeks: number[] };
+  /** `seasons`: every season this league file synced, newest first (absent from older backends). */
+  options: { managers: TxTeam[]; types: TxKind[]; positions: string[]; weeks: number[]; seasons?: number[] };
   summary: { total: number; matching: number; by_type: Partial<Record<TxKind, number>>; undated: number; unplaced_week: number };
   page: { limit: number; offset: number; returned: number; total: number; next_cursor: string | null; has_prev: boolean; prev_cursor: string | null };
   events: TxEvent[];
@@ -57,6 +58,8 @@ export type TransactionsFeed = {
 };
 
 export type TxQuery = {
+  /** A stored season other than the latest; null = the latest (the backend's default). */
+  season: number | null;
   manager: number | null;
   type: TxKind | null;
   pos: TxPosition | null;
@@ -83,8 +86,10 @@ export function parseTxQuery(sp: SP): TxQuery {
   const dirRaw = first(sp.dir);
   const dir: SortDir = dirRaw === "asc" || dirRaw === "desc" ? dirRaw : sort === "date" ? "desc" : "asc";
   const week = posInt(first(sp.week), 30);
+  const season = posInt(first(sp.season), 2100);
   const cursor = first(sp.cursor)?.trim();
   return {
+    season: season !== null && season >= 1999 ? season : null,
     manager: posInt(first(sp.manager), 999_999),
     type: oneOf(first(sp.type), KINDS),
     pos: oneOf(first(sp.pos), POSITIONS),
@@ -98,6 +103,7 @@ export function parseTxQuery(sp: SP): TxQuery {
 /** The backend path for a query. */
 export function backendPath(q: TxQuery, limit = PAGE_SIZE): string {
   const p = new URLSearchParams();
+  if (q.season !== null) p.set("season", String(q.season));
   if (q.manager !== null) p.set("manager", String(q.manager));
   if (q.type) p.set("type", q.type);
   if (q.pos) p.set("position", q.pos);
@@ -111,9 +117,10 @@ export function backendPath(q: TxQuery, limit = PAGE_SIZE): string {
 /** Page link for `q` with `patch` applied. Changing a filter or the sort starts again from the first page; defaults
  *  are left out so links stay short. */
 export function txHref(q: TxQuery, patch: Partial<TxQuery> = {}): string {
-  const filterChanged = (["manager", "type", "pos", "week", "sort", "dir"] as const).some((k) => k in patch && patch[k] !== q[k]);
+  const filterChanged = (["season", "manager", "type", "pos", "week", "sort", "dir"] as const).some((k) => k in patch && patch[k] !== q[k]);
   const n: TxQuery = { ...q, ...patch, cursor: "cursor" in patch ? patch.cursor ?? null : filterChanged ? null : q.cursor };
   const p = new URLSearchParams();
+  if (n.season !== null) p.set("season", String(n.season));
   if (n.manager !== null) p.set("manager", String(n.manager));
   if (n.type) p.set("type", n.type);
   if (n.pos) p.set("pos", n.pos);
@@ -127,6 +134,7 @@ export function txHref(q: TxQuery, patch: Partial<TxQuery> = {}): string {
 /** The search params SortableTh should carry: every filter, but no cursor (a new order starts at the top). */
 export function sortParams(q: TxQuery): SP {
   const out: SP = {};
+  if (q.season !== null) out.season = String(q.season);
   if (q.manager !== null) out.manager = String(q.manager);
   if (q.type) out.type = q.type;
   if (q.pos) out.pos = q.pos;
@@ -135,12 +143,13 @@ export function sortParams(q: TxQuery): SP {
 }
 
 export function hasFilters(q: TxQuery): boolean {
-  return q.manager !== null || q.type !== null || q.pos !== null || q.week !== null;
+  return q.season !== null || q.manager !== null || q.type !== null || q.pos !== null || q.week !== null;
 }
 
 /** "Team 3 · Trades · RB · Week 5", or "All moves" — the phone filter-box summary. */
 export function filterSummary(q: TxQuery, managers: readonly TxTeam[]): string {
   const parts: string[] = [];
+  if (q.season !== null) parts.push(`${q.season} season`);
   if (q.manager !== null) parts.push(managers.find((m) => m.team_id === q.manager)?.name ?? `Team ${q.manager}`);
   if (q.type) parts.push(KIND_LABEL[q.type]);
   if (q.pos) parts.push(q.pos);

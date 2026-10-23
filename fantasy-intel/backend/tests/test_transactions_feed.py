@@ -392,5 +392,94 @@ def test_the_api_validates_and_answers(espn, tmp_path, monkeypatch):
     assert ok.status_code == 200 and ok.json()["page"]["returned"] == 2
     assert client.get("/api/transactions?manager=99").status_code == 404
     assert client.get("/api/transactions?cursor=tx:nope").status_code == 400
-    for bad in ("type=pick", "position=DL", "week=0", "limit=500", "sort=team", "dir=up"):
+    assert client.get("/api/transactions?season=2019").status_code == 404        # a season this league never synced
+    assert client.get("/api/transactions?season=2026").json()["query"]["season"] == 2026
+    for bad in ("type=pick", "position=DL", "week=0", "limit=500", "sort=team", "dir=up", "season=abc", "season=1900"):
         assert client.get(f"/api/transactions?{bad}").status_code == 422, bad
+
+
+# ------------------------------------------------------------ #193 follow-ups --
+
+def _copy_tx(con, src: str, new: str, **sql):
+    """Store a copy of transaction `src` (and its items) as `new`; `sql` maps transaction columns to SQL literals (test
+    constants, never input). Items are keyed by transaction id only."""
+    repl = ", ".join([f"'{new}' AS transaction_id", *(f"{v} AS {k}" for k, v in sql.items())])
+    con.execute(f"INSERT INTO transactions SELECT * REPLACE ({repl}) FROM transactions WHERE transaction_id = ?", [src])
+    con.execute(f"INSERT INTO transaction_items SELECT * REPLACE ('{new}' AS transaction_id) FROM transaction_items "
+                f"WHERE transaction_id = ?", [src])
+
+
+def test_an_earlier_synced_season_is_readable_and_never_mixed_into_the_latest(espn):
+    """A league file keeps every season it synced (upserts keyed by season): the feed reads the latest by default and
+    any stored season on request, never both at once, and a season that is not stored is refused, not guessed."""
+    espn.execute("INSERT INTO leagues SELECT * REPLACE (2025 AS season, synced_at - INTERVAL 300 DAY AS synced_at) "
+                 "FROM leagues")
+    espn.execute("INSERT INTO fantasy_teams SELECT * REPLACE (2025 AS season) FROM fantasy_teams")
+    _copy_tx(espn, "fa-1", "fa-2025", season="2025")
+    latest = tf.build_transactions_feed(espn)
+    assert latest["league"]["season"] == 2026 and latest["options"]["seasons"] == [2026, 2025]
+    assert "tx:fa-2025" not in {e["event_id"] for e in latest["events"]}
+    old = tf.build_transactions_feed(espn, season=2025)
+    assert old["league"]["season"] == 2025 and old["query"]["season"] == 2025
+    assert [e["event_id"] for e in old["events"]] == ["tx:fa-2025"]
+    assert tf.build_transactions_feed(espn, season=2026)["page"]["total"] == latest["page"]["total"]
+    with pytest.raises(tf.UnknownSeason):
+        tf.build_transactions_feed(espn, season=2019)
+
+
+def test_a_move_by_an_unknown_or_missing_team_is_kept_without_inventing_one(espn):
+    """A stored move whose team is not one of the league's (or is missing) still appears, with no team named: nothing
+    is attributed to a team the league does not have."""
+    _copy_tx(espn, "fa-1", "fa-foreign", team_id="9")
+    espn.execute("UPDATE transaction_items SET to_team_id = 9 WHERE transaction_id = 'fa-foreign'")
+    _copy_tx(espn, "fa-1", "fa-noteam", team_id="NULL")
+    espn.execute("UPDATE transaction_items SET to_team_id = NULL WHERE transaction_id = 'fa-noteam'")
+    events = {e["event_id"]: e for e in tf.build_transactions_feed(espn, limit=100)["events"]}
+    for eid in ("tx:fa-foreign", "tx:fa-noteam"):
+        e = events[eid]
+        assert e["teams"] == [] or all(t is None for t in e["teams"]), eid
+        assert all(leg["to_team"] is None for leg in e["legs"]), eid
+    # filtering by a real manager never pulls them in
+    for manager in (1, 2, 3, 4):
+        ids = {e["event_id"] for e in tf.build_transactions_feed(espn, manager=manager, limit=100)["events"]}
+        assert not ids & {"tx:fa-foreign", "tx:fa-noteam"}, manager
+
+
+def test_a_waiver_batch_at_one_time_has_a_fixed_order_and_pages_one_by_one(espn):
+    """Claims processed at the same instant have a fixed order (event id; oldest-first is its exact reverse), so paging
+    one at a time returns each exactly once."""
+    for n in (1, 2, 3):
+        _copy_tx(espn, "w-1", f"wb-{n}")
+    batch = ["tx:wb-1", "tx:wb-2", "tx:wb-3", "tx:w-1"]
+    newest = [e["event_id"] for e in tf.build_transactions_feed(espn, limit=100)["events"] if e["event_id"] in batch]
+    oldest = [e["event_id"] for e in tf.build_transactions_feed(espn, direction="asc", limit=100)["events"]
+              if e["event_id"] in batch]
+    assert sorted(newest) == sorted(batch) and len(newest) == 4
+    assert newest == sorted(batch) and oldest == newest[::-1]     # ties by event id; oldest-first is the exact reverse
+    seen, cursor = [], None
+    while True:
+        feed = tf.build_transactions_feed(espn, cursor=cursor, limit=1)
+        seen += [e["event_id"] for e in feed["events"]]
+        cursor = feed["page"]["next_cursor"]
+        if cursor is None:
+            break
+    assert len(seen) == len(set(seen)) == tf.build_transactions_feed(espn)["page"]["total"]
+    assert [x for x in seen if x in batch] == newest
+
+
+def test_a_cursor_from_before_new_moves_arrived_never_repeats_or_skips_silently(espn):
+    """Page 1 is read, then a newer move is stored: page 2 from the old cursor continues after that event without
+    repeating it (a newer move sorts first under newest-first, so it is on page 1 of a fresh read, not a repeat)."""
+    first = tf.build_transactions_feed(espn, limit=2)
+    page1 = [e["event_id"] for e in first["events"]]
+    _copy_tx(espn, "fa-1", "fa-new", process_date="TIMESTAMP '2030-01-01 00:00:00'")
+    second = tf.build_transactions_feed(espn, cursor=first["page"]["next_cursor"], limit=100)
+    page2 = [e["event_id"] for e in second["events"]]
+    assert not set(page1) & set(page2)
+    assert "tx:fa-new" not in page2
+    assert tf.build_transactions_feed(espn, limit=1)["events"][0]["event_id"] == "tx:fa-new"
+    # a cursor naming a move that is no longer stored is refused, never answered from a guessed position
+    espn.execute("DELETE FROM transaction_items WHERE transaction_id = 'fa-1'")
+    espn.execute("DELETE FROM transactions WHERE transaction_id = 'fa-1'")
+    with pytest.raises(tf.StaleCursor):
+        tf.build_transactions_feed(espn, cursor="tx:fa-1")

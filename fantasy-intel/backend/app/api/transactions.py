@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.transactions_feed import (DEFAULT_LIMIT, MAX_LIMIT, NotSynced, StaleCursor, UnknownManager,
-                                           build_transactions_feed)
+                                           UnknownSeason, build_transactions_feed)
 from .deps import db
 
 router = APIRouter(prefix="/api", tags=["transactions"])
@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api", tags=["transactions"])
 
 @router.get("/transactions")
 def transactions(
+    season: int | None = Query(None, ge=1999, le=2100, description="A season this league synced (default: the latest)"),
     manager: int | None = Query(None, ge=0, description="Only moves involving this fantasy team"),
     type: Literal["trade", "waiver", "free_agent", "drop", "commissioner"] | None = Query(None),  # noqa: A002
     position: Literal["QB", "RB", "WR", "TE", "K", "D/ST"] | None = Query(None),
@@ -29,10 +30,10 @@ def transactions(
     with db() as con:
         try:
             return build_transactions_feed(con, manager=manager, kind=type, position=position, week=week, sort=sort,
-                                           direction=dir, cursor=cursor, limit=limit)
+                                           direction=dir, cursor=cursor, limit=limit, season=season)
         except NotSynced as err:
             raise HTTPException(503, str(err))
-        except UnknownManager as err:
+        except (UnknownManager, UnknownSeason) as err:
             raise HTTPException(404, str(err))
         except StaleCursor as err:
             raise HTTPException(400, str(err))
