@@ -28,8 +28,8 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
-| #166 action center | 2 | PR OPEN | PR #241 (32e6168) | 1 MEDIUM + 3 LOW fixed (async route, per-user single-flight, admission 503, non-blocking pins); reviewer re-check running |
-| #171 what-if lineup | 2 | PR OPEN | PR #242 (d275d1d) | phone tap fixed (real-tap e2e); security review: no HIGH/MEDIUM, 1 pre-existing LOW → #243 |
+| #166 action center | 2 | PR OPEN | PR #241 (32e6168, CI green) | original 4 findings resolved; re-check found 3 new LOW (cancel cleanup, per-user admission + short wait, cache deterministic errors) → being fixed |
+| #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
@@ -126,6 +126,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #242 | d275d1d | q/a/s + 28 + 17 league_scope + what-if e2e 8 + ux-gates start-sit | green | D-10 security review clean |
 | #239 | b2cfe8e | lint/tc/unit 652/build + nav/ux-gates specs | green | tablet networkidle timeout local-only; passed in CI |
 | #240 | a29829d | race repro 1300→0, pg suites 22 | green | Codex stalled, no findings |
 | #238 | 1d1cf41 | a 632 + 369 trade/golden/audits | green | |
