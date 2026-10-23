@@ -188,6 +188,16 @@ QUICK_EXCLUDED_TESTS: dict[str, str] = {
 }
 QUICK_MAX_FILES = 3
 QUICK_BUDGET_S = 60.0
+_PYTEST_PROGRESS = re.compile(r"^[.sxXFE]+\s*(\[\s*\d+%\])?\s*$")
+
+
+def _pytest_reported_failure(stdout: str) -> bool:
+    """Did pytest's -q output (possibly cut off by a timeout) already report a failed or erroring test?"""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if line.startswith(("FAILED ", "ERROR ")) or (_PYTEST_PROGRESS.match(line) and ("F" in line or "E" in line)):
+            return True
+    return False
 
 
 def select_quick_tests(backend_tests: list[str]) -> tuple[list[str], list[str]]:
@@ -990,8 +1000,10 @@ class VerificationRunner:
                 if selected_quick:
                     title = f"Quick Backend ({len(selected_quick)} of {len(backend_tests)} affected files)"
                     res = self.run_backend_tests(selected_quick, title=title, timeout=QUICK_BUDGET_S)
-                    if res is not None and res.status == "FAIL" and res.summary.startswith("TIMEOUT"):
-                        # Running out of quick's budget is not a test failure: `affected` is the gate for these files.
+                    if (res is not None and res.status == "FAIL" and res.summary.startswith("TIMEOUT")
+                            and not _pytest_reported_failure(res.stdout)):
+                        # Running out of quick's budget with no failure seen so far is not a test failure: `affected`
+                        # is the gate for these files. A failure printed before the timeout keeps the step FAIL.
                         res.status = "UNVERIFIED"
                         res.summary = (f"Exceeded quick's {QUICK_BUDGET_S:.0f}s budget (not a test failure); "
                                        "run 'affected' for these files")

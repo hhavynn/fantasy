@@ -565,3 +565,30 @@ def test_quick_still_fails_on_a_real_test_failure(monkeypatch):
 
     monkeypatch.setattr(runner, "run_command", fake_run)
     assert runner.execute() == 1
+
+
+def test_quick_keeps_fail_when_a_failure_was_printed_before_the_timeout(monkeypatch):
+    runner = VerificationRunner(mode="quick")
+    monkeypatch.setattr(runner, "get_changed_files", lambda: (["fantasy-intel/backend/tests/test_trades.py"], []))
+
+    def fake_run(name, cmd, cwd=None, target="", timeout=300.0):
+        timed_out = name.startswith("Quick Backend")
+        res = StepResult(name, target, "FAIL" if timed_out else "PASS", 0.1,
+                         f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed",
+                         stdout="....F...                                     [ 40%]\n...." if timed_out else "")
+        runner.results.append(res)
+        return res
+
+    monkeypatch.setattr(runner, "run_command", fake_run)
+    assert runner.execute() == 1
+    quick = next(r for r in runner.results if r.name.startswith("Quick Backend"))
+    assert quick.status == "FAIL" and quick.summary.startswith("TIMEOUT")
+
+
+def test_pytest_reported_failure_reads_progress_and_summary_lines():
+    import agent_check
+    assert agent_check._pytest_reported_failure("..F.  [ 10%]")
+    assert agent_check._pytest_reported_failure("....E")
+    assert agent_check._pytest_reported_failure("FAILED tests/test_x.py::test_y - AssertionError")
+    assert not agent_check._pytest_reported_failure("........  [ 50%]\n....s.")
+    assert not agent_check._pytest_reported_failure("")
