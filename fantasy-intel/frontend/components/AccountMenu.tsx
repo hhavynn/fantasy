@@ -2,6 +2,7 @@ import Link from "@/components/LeagueLink";
 import { signOut } from "@/app/login/actions";
 import { authConfig } from "@/lib/auth-config";
 import { currentUser } from "@/lib/supabase/server";
+import { SignOutButton } from "./SignOutButton";
 
 /**
  * Signed out: "Sign in", and "Sign up" beside it while this site offers sign-up (SIGNUPS_OPEN=1; the sign-up page
@@ -29,7 +30,8 @@ export async function AccountMenu() {
         <Link role="menuitem" href="/account" prefetch={false}>Account settings</Link>
         <Link role="menuitem" href="/terms" prefetch={false}>Terms</Link>
         <Link role="menuitem" href="/privacy" prefetch={false}>Privacy</Link>
-        <form action={signOut}><button type="submit" role="menuitem" className="account-signout">Sign out</button></form>
+        {/* The button clears this app's per-league browser data before the sign-out action runs (lib/local-data.ts). */}
+        <form action={signOut}><SignOutButton /></form>
       </div>
     </details>
   );
