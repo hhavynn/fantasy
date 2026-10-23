@@ -272,16 +272,22 @@ class TradeSearch:
         out.append((shape, opp, sends, receives, me, self._ub(them_after(), them_base)))
 
     # ---- stage B
-    def _side(self, team: int, sends: tuple, receives: tuple) -> dict:
-        """Exact canonical comparison for one side (the rules of trades.side_lineups + compare)."""
+    def _side(self, team: int, sends: tuple, receives: tuple, spent: list[int] | None = None) -> dict:
+        """Exact canonical comparison for one side (the rules of trades.side_lineups + compare). The lineup totals it
+        takes (this side plus each forced-drop set solved) are added to `work` and, when given, appended to `spent`: the
+        caller's own count, which a concurrent call on the same (cached) search never touches."""
         st, T = self.state, self.T
+        spent = [] if spent is None else spent
         self.work += 1
+        spent.append(1)
         roster = st.rosters[team]
         pre = [p for p in roster if p.espn_player_id not in sends] + \
               [replace(self.players[x], on_ir=False, on_taxi=False) for x in receives]
         drops: list[int] = []
         if not legal_roster(pre, st, roster):
-            combo = self._forced_drops(pre, roster, set(receives), team, sends, receives)
+            combo, solves = self._forced_drops(pre, roster, set(receives), team, sends, receives)
+            self.work += solves
+            spent.append(solves)
             drops = [p.espn_player_id for p in combo]
             out = {id(p) for p in combo}           # the very objects of `pre`
             pre = [p for p in pre if id(p) not in out]
@@ -298,18 +304,17 @@ class TradeSearch:
         return self._compare(self.base[team], self.base_complete[team], after, done_a, drops)
 
     def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int], team: int,
-                      sends: tuple, receives: tuple) -> tuple:
+                      sends: tuple, receives: tuple) -> tuple[tuple, int]:
         """trades.resolve_roster's choice (the same shared trades.choose_forced_drops) on the same
         bit-identical totals. Every candidate set only removes players from `after`, so the totals are
         LineupTotals.removal_total's: a week a removal leaves alone (typically bench players who never start) keeps the
-        full roster's value instead of a new solve, exactly."""
+        full roster's value instead of a new solve, exactly. Returns (the drops, the lineup totals the search solved)."""
         rt = self.T.removal_total(_active(after), start=self.T.profile_change(self.roster_base[team], sends, receives))
 
         def total(players):
             return rt(_active(players))
         res = choose_forced_drops(after, before, self.state, incoming, total, self.T.negative, rt.dropping, rt.bound)
-        self.work += res["solves"]
-        return (res["best"].get(False) or res["best"][True])[1]
+        return (res["best"].get(False) or res["best"][True])[1], res["solves"]
 
     def _compare(self, before, done_b, after, done_a, drops) -> dict:
         d = [a - b for a, b in zip(after, before)]
@@ -399,18 +404,23 @@ class TradeSearch:
 
     # ---- larger shapes: bounded beam expansion (heuristic coverage, exact rows)
     def _pair(self, shape: str, opp: int, sends: tuple, receives: tuple):
-        """Exact both-side comparison of any package (cached); (mine, theirs, status). The work it took (lineup totals,
-        `work`) is kept with it, so a cached package is charged to a work budget exactly as when it was first solved."""
+        """Exact both-side comparison of any package (cached); (mine, theirs, status). The work it took (lineup totals)
+        is kept with it, so a cached package is charged to a work budget exactly as when it was first solved. That work is
+        counted by this call alone (`spent`), not as a difference of the shared `work` counter: the API serves one cached
+        search to concurrent requests, whose work would otherwise be charged to this package and cut a beam short at a
+        point that depends on timing. Its cost is stored before the package, so a reader that finds the package also
+        finds its cost (two calls racing on one package compute the same result and the same cost)."""
         key = _key(shape, opp, sends, receives)
         if key not in self.pairs:
-            w0 = self.work
+            spent: list[int] = []
             try:
-                self.pairs[key] = (self._side(self.anchor, sends, receives), self._side(opp, receives, sends), "evaluated")
+                out = (self._side(self.anchor, sends, receives, spent), self._side(opp, receives, sends, spent), "evaluated")
             except EvaluationUnavailable:
-                self.pairs[key] = (None, None, "excluded_evaluation_unavailable")
+                out = (None, None, "excluded_evaluation_unavailable")
             except TradeError:
-                self.pairs[key] = (None, None, "excluded_invalid_roster")
-            self.pair_work[key] = self.work - w0
+                out = (None, None, "excluded_invalid_roster")
+            self.pair_work[key] = sum(spent)
+            self.pairs[key] = out
         return self.pairs[key]
 
     def beam(self, target: TradeTarget | None = None) -> dict:

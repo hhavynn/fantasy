@@ -204,7 +204,10 @@ Then a disclosed safety net, for the heuristic beam only (V3, `v3_trade_intellig
 work budget of 15,000 lineup totals per opponent. Standard leagues stay well below it, so their results are unchanged
 (the E2E goldens and the synthetic M1/M8 leagues compare identical); FX-17 reaches it for every opponent and says so
 in `coverage.heuristic.work_budget` and its note ("evaluated 657 of the 803 packages it generated"). The exact search
-(stages A-C) is never cut by it: its top list stays proven.
+(stages A-C) is never cut by it: its top list stays proven. A package's cost is counted by the call that solves it
+(`TradeSearch._pair`), never as the growth of a counter the search shares: the API serves one cached search to
+concurrent requests, and charging their work to a package would stop a beam at a point that depends on timing
+(`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`).
 
 Measured on the 4-core container (one request, fresh process, before = f805d5e; two runs where given):
 

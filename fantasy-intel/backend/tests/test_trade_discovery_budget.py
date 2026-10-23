@@ -208,6 +208,38 @@ def test_a_beam_cut_short_by_its_budget_says_so_and_is_deterministic(monkeypatch
     assert warm.beam()["work_budget"] == b["work_budget"]
 
 
+def test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam(monkeypatch):
+    """The API serves one cached TradeSearch to concurrent requests (FastAPI runs them in a thread pool). A package's
+    cost must be its own work, not the shared counter's growth while it ran (which includes the other requests'
+    work), or a beam stops at a point that depends on timing (the class of bug Codex found on #279). Every beam built
+    on a shared search while exact searches run beside it equals the same beam built alone."""
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setattr(td, "BEAM_WORK_PER_OPPONENT", 40)
+    st = _small_state()
+    targets = [None, td.TradeTarget(position="WR"), td.TradeTarget(position="RB"), td.TradeTarget(position="TE")]
+
+    def seen(b):
+        return [r["key"] for r in b["rows"]], b["evaluated"], b.get("work_budget")
+    want = [seen(td.TradeSearch(st, 1, ALL).beam(t)) for t in targets]
+    assert all(w[2] for w in want)                       # the budget binds in every one of them
+    jobs = [("beam", i) for i in range(len(targets))] + [("top", s) for s in ("my_gain", "combined", "min_side")]
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)                           # switch threads often, so the calls really interleave
+    try:
+        for _ in range(3):
+            shared = td.TradeSearch(st, 1, ALL)
+
+            def run(job):
+                kind, x = job
+                return seen(shared.beam(targets[x])) if kind == "beam" else shared.top(x, limit=10)
+            with ThreadPoolExecutor(8) as pool:
+                got = list(pool.map(run, jobs))
+            assert got[:len(targets)] == want
+    finally:
+        sys.setswitchinterval(interval)
+
+
 # ---- FX-17 end to end -----------------------------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
