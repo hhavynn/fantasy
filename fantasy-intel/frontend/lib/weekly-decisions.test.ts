@@ -143,7 +143,7 @@ test("each decision carries its own source's provenance and snapshot; none is in
   assert.equal(by["sell-signal"].source, "Overview");
   // an older backend without provenance: the evidence is empty (shown as unknown age), not made up
   const bare = hubOf(sources({ startSit: startSit([swap("a", 2)]) }), CLASSIC, {});
-  assert.deepEqual(bare.primary?.evidence, { source: "Start/Sit", signals: [], snapshotVersion: null, status: null });
+  assert.deepEqual(bare.primary?.evidence, { source: "Start/Sit", signals: [], snapshotVersion: null, status: null, stale: false });
 });
 
 test("sell signals are one informational trade item while trades are open, and none after the deadline", () => {
@@ -295,11 +295,16 @@ test("an out starter whose only swap is locked is one locked decision, never the
   }));
   assert.equal(both.primary?.id, "swap-open");
   assert.match(both.primary!.reason, /^P2 is out\. /);
-  const unverified = hubAt(sources({
-    roster: [starter(2, { on_bye: true })], startSit: startSit([swap("u", 4, { actionability: "UNCERTAIN" })]),
-  }));
-  assert.equal(unverified.primary, null);
-  assert.deepEqual(unverified.groups.flatMap((g) => g.decisions).map((d) => [d.id, d.status]), [["swap-u", "unavailable"]]);
+  // a locked fold keeps the swap's caution tone: it is not something to do
+  assert.equal(all[0].tone, "caution");
+  // an unverifiable or IR-blocked swap does not absorb him: benching a starter who is out stays the next step
+  for (const actionability of ["UNCERTAIN", "IR_BLOCKED"]) {
+    const unverified = hubAt(sources({
+      roster: [starter(2, { on_bye: true })], startSit: startSit([swap("u", 4, { actionability })]),
+    }));
+    assert.equal(unverified.primary?.id, "bye-2");
+    assert.deepEqual(unverified.groups.flatMap((g) => g.decisions).map((d) => [d.id, d.status]), [["swap-u", "unavailable"]]);
+  }
 });
 
 test("Start/Sit all_locked: no lineup alert is the actionable next step; non-lineup decisions are untouched", () => {
@@ -319,6 +324,18 @@ test("Start/Sit all_locked: no lineup alert is the actionable next step; non-lin
   // nothing else on the roster: no actionable next step at all
   const only = hubAt(sources({ roster: [starter(2, { availability: { status: "OUT", sources: [] } })], startSit: startSit([], "all_locked") }));
   assert.equal(only.primary, null);
+  // the engine reports incomplete_data before all_locked: the lock counts still lock the lineup alerts
+  const out = [starter(2, { availability: { status: "OUT", sources: [] } })];
+  const counted = (over: Partial<StartSitInput["summary"]>) => hubAt(sources({ roster: out, startSit: {
+    ...startSit([], "incomplete_data"), summary: { starters_count: 9, status: "incomplete_data", bench_count: 6, ir_count: 1, ...over } } }));
+  const allLocked = counted({ locked_players_count: 16 });
+  assert.equal(allLocked.primary, null);
+  assert.deepEqual(allLocked.partial.map((p) => p.source), ["Start/Sit"]);
+  assert.equal(counted({ locked_players_count: 15 }).primary?.id, "out-2");
+  // held starters (lineup_coverage) are locked but in no count: no lock is inferred from the counts then
+  assert.equal(counted({ locked_players_count: 16, lineup_coverage: { status: "partial" } }).primary?.id, "out-2");
+  // an older backend without the counts infers nothing
+  assert.equal(counted({}).primary?.id, "out-2");
 });
 
 test("Start/Sit incomplete_data is never \"Lineup is set\": the hub is partial and says why", () => {
@@ -331,7 +348,9 @@ test("Start/Sit incomplete_data is never \"Lineup is set\": the hub is partial a
   assert.match(v.body, /no projection.*not an all-clear/);
   // the same week with complete data is the all-clear, and a failed source still outranks a partial one
   assert.equal(hubVerdict(hubAt(sources({ startSit: startSit([], "optimal") })))?.headline, "Lineup is set");
-  assert.equal(hubVerdict(hubAt(sources({ startSit: startSit([], "incomplete_data"), waivers: null })))?.headline, "Nothing to act on in what loaded");
+  const both = hubVerdict(hubAt(sources({ startSit: startSit([], "incomplete_data"), waivers: null })))!;
+  assert.equal(both.headline, "Nothing to act on in what loaded");
+  assert.match(both.body, /Couldn't check Waivers.*no projection/);
 });
 
 test("stale evidence never holds the next step over current evidence, and says so when nothing current is left", () => {
@@ -353,4 +372,10 @@ test("stale evidence never holds the next step over current evidence, and says s
   assert.equal(hubAt(src, SIGNALS, later).primary?.evidence.status, "stale");
   const unknown: HubSignals = { ...SIGNALS, startSit: SIGNALS.startSit!.map((x) => ({ ...x, captured_at: null })) };
   assert.equal(hubAt(src, unknown).primary?.id, "swap-a");
+  // a superseded signal still demotes when another signal of the same payload is of unknown age (a worse status)
+  const mixed: HubSignals = { ...SIGNALS, startSit: superseded.startSit!.map((x) => (x.signal === "projections" ? { ...x, captured_at: null } : x)) };
+  const m = hubAt(src, mixed);
+  assert.equal(m.primary?.id, "waiver-9");
+  const mixedSwap = m.groups.flatMap((g) => g.decisions).find((d) => d.id === "swap-a")!;
+  assert.deepEqual([mixedSwap.evidence.status, mixedSwap.evidence.stale], ["unknown", true]);
 });

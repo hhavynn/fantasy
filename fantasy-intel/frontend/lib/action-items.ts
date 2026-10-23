@@ -60,7 +60,16 @@ export type MatchupInput = {
 
 export type StartSitInput = {
   scoring_period: number;
-  summary: { starters_count: number; status?: string };
+  summary: {
+    starters_count: number;
+    status?: string;
+    /** Rostered players whose game has kicked off, and the roster's other parts (older backends omit them). */
+    locked_players_count?: number;
+    bench_count?: number;
+    ir_count?: number;
+    /** Present when the league starts slots no engine fills; those held starters are in no count above. */
+    lineup_coverage?: unknown;
+  };
   decisions: {
     id: string;
     action: string;
@@ -152,6 +161,19 @@ function pickupHref(slot: string): string {
 type Base = Omit<ActionItem, "statusReason" | "players" | "position" | "signals"> &
   Partial<Pick<ActionItem, "statusReason" | "players" | "position" | "signals">>;
 const item = (b: Base): ActionItem => ({ statusReason: null, players: [], position: null, signals: null, ...b });
+
+/**
+ * Whether Start/Sit says every rostered player's game has kicked off. `all_locked` is its status for that, but the
+ * engine reports `incomplete_data` first, so the counts are read too: every starter, bench and IR player locked. That is
+ * only exact without held starters (`lineup_coverage` absent), whose locks the counts include but no count lists.
+ */
+export function everyGameLocked(summary: StartSitInput["summary"]): boolean {
+  if (summary.status === "all_locked") return true;
+  const { locked_players_count: locked, bench_count: bench, ir_count: ir } = summary;
+  if (summary.lineup_coverage != null || locked == null || bench == null || ir == null) return false;
+  const total = summary.starters_count + bench + ir;
+  return total > 0 && locked === total;
+}
 
 /** The trade deadline as a time, or null when there is none or it does not parse. */
 function deadlineTime(league: LeagueInput | null | undefined): number | null {
@@ -357,10 +379,10 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
   // Start/Sit's summary status is the engine's own word on the week: with every game locked no lineup alert can be
   // acted on, a questionable starter included (they move to `blocked`, with the reason), and incomplete projections
   // make an empty list partial rather than an all-clear.
-  const summary = src.startSit?.summary.status;
-  const lockedLineup = summary === "all_locked"
+  const summary = src.startSit?.summary;
+  const lockedLineup = summary && everyGameLocked(summary)
     ? items.filter((i) => i.category === "lineup" || i.category === "injury") : [];
-  const partial = summary === "incomplete_data"
+  const partial = summary?.status === "incomplete_data"
     ? [{ source: "Start/Sit", reason: "Some players have no projection, so Start/Sit claims no gain for this lineup." }] : [];
   return {
     items: items.filter((i) => !lockedLineup.includes(i)),

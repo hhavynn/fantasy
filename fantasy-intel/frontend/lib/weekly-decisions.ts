@@ -42,6 +42,8 @@ export type DecisionEvidence = {
   snapshotVersion: string | null;
   /** The worst derived status of those signals when the hub was built (`provenanceStatus`); null without signals. */
   status: ProvenanceStatus | null;
+  /** Whether any of those signals is stale (superseded or past its refresh window), whatever the worst status is. */
+  stale: boolean;
 };
 
 export type WeeklyDecision = {
@@ -112,17 +114,19 @@ export function decisionHref(href: string, ctx: DecisionContext): string {
 /**
  * Folds items that describe the same decision into the one that resolves it:
  * - a starter who is out, doubtful, on IR or on bye and whom an actionable swap benches: the swap carries the reason;
- *   with no actionable swap for him, a locked or unverifiable one does, keeping its status (the engine's own move
- *   for him cannot be made now, so the alert never stands apart as something to act on);
+ *   with no actionable swap for him, a locked one does, keeping its status and tone (a game in the engine's own move
+ *   for him has kicked off, so the alert never stands apart as something to act on). An unverifiable or IR-blocked
+ *   swap does not: benching a starter who is out stays right whatever the projections say;
  * - questionable starters an actionable swap benches leave the questionable roll-up (dropped when none is left);
  * - an actionable empty lineup slot with an actionable pickup at that position: the pickup says the slot is empty;
  * - the same id twice (the first is kept).
  */
 export function suppressDuplicates(items: readonly ActionItem[]): ActionItem[] {
-  const allSwaps = items.filter((i) => i.source === "startSit" && i.id.startsWith("swap-"));
-  const swaps = allSwaps.filter((i) => i.status === "actionable");
+  const startSitSwaps = items.filter((i) => i.source === "startSit" && i.id.startsWith("swap-"));
+  const swaps = startSitSwaps.filter((i) => i.status === "actionable");
+  const lockedSwaps = startSitSwaps.filter((i) => i.status === "locked");
   const covers = (id: number) => (s: ActionItem) => s.players.some((p) => p.id === id);
-  const swapFor = (id: number) => swaps.find(covers(id)) ?? allSwaps.find(covers(id));
+  const swapFor = (id: number) => swaps.find(covers(id)) ?? lockedSwaps.find(covers(id));
   const benched = new Set(swaps.flatMap((s) => s.players.map((p) => p.id)));
   const folded = new Map<string, ActionItem[]>();       // swap id -> the alerts it resolves
   const emptyFilled = new Map<string, string>();        // pickup id -> the empty slot it is at
@@ -149,7 +153,8 @@ export function suppressDuplicates(items: readonly ActionItem[]): ActionItem[] {
     seen.add(it.id);
     const alerts = folded.get(it.id);
     if (alerts) {
-      return [{ ...it, tone: "negative" as const, urgency: "high" as const, reason: `${alerts.map((a) => `${a.title}.`).join(" ")} ${it.reason}` }];
+      const reason = `${alerts.map((a) => `${a.title}.`).join(" ")} ${it.reason}`;
+      return [it.status === "actionable" ? { ...it, tone: "negative" as const, urgency: "high" as const, reason } : { ...it, reason }];
     }
     const slot = emptyFilled.get(it.id);
     if (slot) return [{ ...it, urgency: "high" as const, reason: `Your ${slot} slot is empty. ${it.reason}` }];
@@ -170,7 +175,7 @@ function evidenceFor(it: ActionItem, signals: HubSignals, now: number): Decision
   const version = picked.find((s) => s.signal === "league")?.snapshot_version ?? picked.find((s) => s.snapshot_version)?.snapshot_version ?? null;
   const statuses = picked.map((s) => provenanceStatus(s, now));
   const status = STATUS_ORDER.find((st) => statuses.includes(st)) ?? null;
-  return { source: SOURCE_LABEL[it.source], signals: picked, snapshotVersion: version, status };
+  return { source: SOURCE_LABEL[it.source], signals: picked, snapshotVersion: version, status, stale: statuses.includes("stale") };
 }
 
 function toDecision(it: ActionItem, ctx: DecisionContext, signals: HubSignals, now: number): WeeklyDecision {
@@ -207,7 +212,7 @@ export function buildWeeklyHub(
   // Superseded or out-of-date evidence never outranks current evidence for the one next step; when every actionable
   // decision rests on stale data the first one stays, and the page says its evidence is stale (`staleNote`).
   const actionable = decisions.filter((d) => d.status === "actionable");
-  const primary = actionable.find((d) => d.evidence.status !== "stale") ?? actionable[0] ?? null;
+  const primary = actionable.find((d) => !d.evidence.stale) ?? actionable[0] ?? null;
   const rest = decisions.filter((d) => d !== primary);
   const room = Math.max(0, limit - (primary ? 1 : 0));
   const shown = rest.slice(0, room);
@@ -233,12 +238,12 @@ export function buildWeeklyHub(
     return [{ key, count, label: `${count} more ${plural(count, m.noun[0], m.noun[1])}`, href: decisionHref(m.href, ctx) }];
   });
 
-  return { primary, groups, more, unavailable: list.unavailable, partial: list.partial ?? [], context: ctx, signals: allSignals(signals) };
+  return { primary, groups, more, unavailable: list.unavailable, partial: list.partial, context: ctx, signals: allSignals(signals) };
 }
 
 /** The line the next step adds when its evidence is stale; null otherwise. */
 export function staleNote(d: WeeklyDecision): string | null {
-  return d.evidence.status === "stale"
+  return d.evidence.stale
     ? `The ${d.evidence.source} data behind this is stale (superseded or past its refresh window); check it there before acting.`
     : null;
 }
@@ -257,13 +262,14 @@ export function hubVerdict(hub: WeeklyHub): HubVerdict | null {
     return { tone: "negative", headline: "Before-kickoff checks unavailable", showSignals: false,
       body: `None of the sources behind the decisions loaded (${joinNames(unavailable)}), so nothing is recommended.` };
   }
+  const incomplete = partial.map((p) => p.reason).join(" ");
   if (unavailable.length > 0) {
     return { tone: "caution", headline: "Nothing to act on in what loaded", showSignals: true,
-      body: `Couldn't check ${joinNames(unavailable)}, so this is not an all-clear.` };
+      body: `Couldn't check ${joinNames(unavailable)}, so this is not an all-clear.${incomplete ? ` ${incomplete}` : ""}` };
   }
   if (partial.length > 0) {
     return { tone: "caution", headline: "Nothing to act on in what is known", showSignals: true,
-      body: `${partial.map((p) => p.reason).join(" ")} This is not an all-clear.` };
+      body: `${incomplete} This is not an all-clear.` };
   }
   if (groups.length > 0) {
     return { tone: "info", headline: "No moves flagged before kickoff", showSignals: true,
