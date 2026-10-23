@@ -35,6 +35,24 @@ test("league URLs rewrite to the page with the league in a header", () => {
   assert.deepEqual(proxyDecision({ enabled: true, pathname: "/l/lg_bad/waivers", search: "" }), { kind: "next" });
 });
 
+test("a league URL drops ?league=clear from the rewrite, so the page's own links stay in the league", () => {
+  const OTHER = "lg_" + "b".repeat(20);
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}/start-sit`, search: "?team=3&league=clear&week=7", cookie: OTHER }),
+    { kind: "rewrite", path: "/start-sit?team=3&week=7", league: LG });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}/rankings`, search: "?league=clear" }),
+    { kind: "rewrite", path: "/rankings", league: LG });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}`, search: "?league=clear" }), { kind: "rewrite", path: "/", league: LG });
+  // Repeated, the param is dropped whichever value comes first.
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}/data`, search: "?league=x&league=clear" }),
+    { kind: "rewrite", path: "/data", league: LG });
+  // Without league=clear the query passes through byte for byte (no re-encoding).
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}/players`, search: "?q=a%20b&league=x" }),
+    { kind: "rewrite", path: "/players?q=a%20b&league=x", league: LG });
+  // The rewritten page's links built from its params are scoped again.
+  const rewritten = (proxyDecision({ enabled: true, pathname: `/l/${LG}/start-sit`, search: "?team=3&league=clear" }) as { path: string }).path;
+  assert.equal(withLeague(rewritten, LG), `/l/${LG}/start-sit?team=3`);
+});
+
 test("old URLs go to the last-viewed league, and ?league=clear returns to the classic site", () => {
   assert.deepEqual(proxyDecision({ enabled: true, pathname: "/trades", search: "?a=1", cookie: LG }),
     { kind: "redirect", location: `/l/${LG}/trades?a=1` });

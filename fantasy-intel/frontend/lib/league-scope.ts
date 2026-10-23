@@ -1,7 +1,8 @@
 // League scope for the multi-league site (Phase 2): `/l/<lg_id>/<page>` serves the existing page for that league.
 // Pure functions only (no Next imports) so node --test covers them; proxy.ts and lib/api.ts apply them.
 //
-//   /l/<lg>/<page>?q   -> rewrite to /<page>?q, header x-fi-league: <lg>, cookie fi_league=<lg> (last viewed)
+//   /l/<lg>/<page>?q   -> rewrite to /<page>?q, header x-fi-league: <lg>, cookie fi_league=<lg> (last viewed);
+//                         a `league=clear` in q is dropped from the rewrite (it means something only on unscoped URLs)
 //   /<page>?q + cookie -> redirect to /l/<cookie>/<page>?q   ("old URLs go to the viewer's last-viewed league")
 //   /<page>?league=clear -> clear the cookie, serve the classic (unscoped) site
 // Everything else (assets, Next internals, the /leagues connections page, sign-in, invites, terms and privacy) passes
@@ -92,6 +93,20 @@ function unscoped(path: string): boolean {
     || /\.[A-Za-z0-9]{2,5}$/.test(path);
 }
 
+/**
+ * The query a league page is rewritten with. `?league=clear` means "back to the classic site" only on an unscoped URL;
+ * on `/l/<lg>/<page>` it is dropped, because page link builders (perspectiveHref and others) copy the page's params into
+ * their hrefs, and `withLeague` leaves a `league=clear` href unscoped: those links would leave the league carrying its
+ * team id. Any other query is kept exactly as sent.
+ */
+function scopedSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  if (!params.getAll(CLEAR_PARAM).includes("clear")) return search;
+  params.delete(CLEAR_PARAM);
+  const rest = params.toString();
+  return rest ? `?${rest}` : "";
+}
+
 export type ProxyDecision =
   | { kind: "next" }
   | { kind: "rewrite"; path: string; league: string }
@@ -107,7 +122,7 @@ export function proxyDecision(args: {
   const { enabled, pathname, search, cookie, classic = true } = args;
   if (!enabled) return { kind: "next" };
   const { league, path } = splitLeaguePath(pathname);
-  if (league) return { kind: "rewrite", path: `${path}${search}`, league };
+  if (league) return { kind: "rewrite", path: `${path}${scopedSearch(search)}`, league };
   if (pathname.startsWith("/l/") || pathname === "/l") return { kind: "next" };   // malformed id: the normal 404
   if (unscoped(pathname)) return { kind: "next" };
   const params = new URLSearchParams(search);
