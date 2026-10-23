@@ -381,8 +381,9 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
 Other follow-ups:
 
 - G11 and G12 (dual eligibility, blank ESPN slot 22) are not yet reported by the diagnostic.
-- `fantasy-intel/frontend/lib/action-center.ts` maps any Start/Sit source other than `"Independent model"` to ESPN
-  wording. It should treat the new `"Unavailable"` label as "no projections" when the action center is next touched.
+- The action center card shows "no projections for this week" for the new `"Unavailable"` label
+  (`frontend/lib/action-center.ts` `projectionsNote`), shipped in this PR. `sectionContext` still maps any other label
+  to `espn` in the decision context, which no wording reads today (`lib/weekly-decisions.ts` only types it).
 - The frontend `EngineRule` type can gain the optional `code` when the UI entry for the diagnostic is built (no UI in
   this PR).
 - UI entry point and E2E acceptance items for #253 remain open.

@@ -166,6 +166,16 @@ export function sectionHub(s: CenterSection): { hub: WeeklyHub; list: ActionList
   return { hub, list };
 }
 
+/** Start/Sit's projection source label when the week has no projection at all (backend start_sit.NO_PROJECTIONS). */
+export const NO_PROJECTIONS = "Unavailable";
+
+/** The card's projection note: whose projections Start/Sit used, or that the week has none. A league without numbers
+ * never reads as using a provider's projections. Null when Start/Sit did not answer. */
+export function projectionsNote(label: string | null | undefined): string | null {
+  if (!label) return null;
+  return label === NO_PROJECTIONS ? "no projections for this week" : `${label} projections`;
+}
+
 export function sectionContext(s: CenterSection): DecisionContext {
   return {
     league: s.league.id,
@@ -211,6 +221,7 @@ export type CenterCard = {
   lockUnknown: number;
   week: number | null;
   teamName: string | null;
+  /** "ESPN projections", "no projections for this week" (projectionsNote); null when Start/Sit did not answer. */
   projections: string | null;
   signals: SignalProvenance[];
   versions: CenterSection["versions"];
@@ -271,7 +282,7 @@ export function buildCard(s: CenterSection): CenterCard {
     lockUnknown: s.lock?.starters.unknown ?? 0,
     week: s.week,
     teamName: s.team?.name ?? null,
-    projections: s.startSit?.projection_source ?? null,
+    projections: projectionsNote(s.startSit?.projection_source),
     signals: hub?.signals ?? [],
     versions: s.versions,
     committedAt: s.league.committedAt,
