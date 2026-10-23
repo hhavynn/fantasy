@@ -94,7 +94,7 @@ def build(con, *, report=True, espn_retrieval=True, players_synced=NOW - timedel
     for (pid, w), att in ATTEMPTS.items():
         con.execute("INSERT INTO nfl_weekly_stats VALUES (?, ?, ?, 'REG', 'QB', ?)", [G[pid], SEASON, w, att])
     for pid, pts in ESPN_PROJ.items():
-        con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, '2026-10-23 10:00:00')",
+        con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, '2026-10-23 10:00:00')",
                     [SEASON, pid, CURRENT, pts])
     con.execute("""CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, gameday VARCHAR,
                    gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)""")

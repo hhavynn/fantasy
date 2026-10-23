@@ -557,7 +557,7 @@ def build_kdst_streaming(con, team_id: int | None = None, weeks: int = DEFAULT_W
         "team": next(t for t in teams if t["team_id"] == team_id), "teams": teams,
         "query": {"team_id": team_id, "weeks": weeks, "max_moves": max_moves, "move_cost": float(move_cost)},
         "provider": provider,
-        "projection_source": source_label(state.projection_source),
+        "projection_source": source_label(state.projection_source, state.projections),
         "window": {"espn_current_week": int(lg["current_week"]), "first_actionable_week": state.start_week,
                    "weeks": horizon, "remaining_weeks": state.start_week is not None,
                    "uncertain": reason.get("uncertain"), "warning": reason.get("warning"),

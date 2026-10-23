@@ -272,7 +272,7 @@ def test_v5_database_migrates_to_v6_preserving_raw_data(tmp_path):
     con.execute("DROP TABLE team_week_lineup_projections")
     con.execute("DROP TABLE team_ros_lineup_projections")
     con.execute("UPDATE schema_meta SET value = '5' WHERE key = 'schema_version'")
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, 1, 7, NULL, 6.0, NULL)")
+    con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, 1, 7, NULL, 6.0, NULL)")
     con.execute("INSERT INTO espn_projection_history VALUES ('2026-10-01', 2026, 1, 7, 6.0, NULL)")
     con.execute("INSERT INTO player_ros_projections (season, espn_player_id) VALUES (2026, 1)")
     con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id) VALUES (1, 2026, 6, 1, 1)")
@@ -350,7 +350,7 @@ def test_scores_signals_sustainability_and_context_unchanged_by_lineup_engine(nf
         con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, "
                     "lineup_slot_id) VALUES (1, ?, 4, ?, ?, 20)", [NFL_SEASON, team, pid])
         for w in (4, 5, 6):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, NULL)",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, NULL)",
                         [NFL_SEASON, pid, w, 10.0 + pid % 7])
     assert build_team_lineup_projections(con, NFL_SEASON)["teams"] == 2
     res = evaluate_trade(load_league_state(con, NFL_SEASON), 1, 2, [301], [302])
@@ -555,7 +555,7 @@ def test_v6_database_rebuilds_independent_projection_tables_with_participation_c
     con.execute("CREATE TABLE independent_player_projections (season INTEGER, week INTEGER, espn_player_id BIGINT)")
     con.execute("ALTER TABLE independent_projection_runs DROP COLUMN participation_version")
     con.execute("UPDATE schema_meta SET value = '6' WHERE key = 'schema_version'")
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, 1, 7, NULL, 6.0, NULL)")
+    con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, 1, 7, NULL, 6.0, NULL)")
     init_db(con)
     assert {"p_play", "expected_points", "participation"} <= set(table_columns(con, "independent_player_projections"))
     assert "participation_version" in table_columns(con, "independent_projection_runs")

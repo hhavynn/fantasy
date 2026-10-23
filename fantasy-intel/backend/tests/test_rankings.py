@@ -166,7 +166,7 @@ def build(con, *, extra=0, reg_season_matchups=LAST_REG, runs=True, teams=True, 
             if pid == 901:
                 v = 9.0
             if v is not None:
-                con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
+                con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
                             [SEASON, pid, week, v])
     for pid, s in SCORES.items():
         add_scores(con, pid, s, PLAYERS[pid][1])
@@ -194,7 +194,7 @@ def build(con, *, extra=0, reg_season_matchups=LAST_REG, runs=True, teams=True, 
                                   xfp=5.0 + i % 7, ppr=4.0 + i % 5, games=5), pos)
         add_usage(con, pid, pos, "KC", [3.0 + (i + k) % 6 for k in range(4)])
         for week in range(CURRENT, FINAL + 1):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
                         [SEASON, pid, week, 6.0 + (i % 11) + 0.5 * (week - CURRENT)])
         extra_ours[pid] = 4.0 + (i % 13)
     if runs:

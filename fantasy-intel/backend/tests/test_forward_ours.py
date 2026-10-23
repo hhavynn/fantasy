@@ -39,7 +39,7 @@ def populate(con, *, run_weeks=range(CURRENT, LAST_REG + 1), horizon_col=True, s
         con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team) VALUES (?, ?, ?, ?)",
                     [pid, name, pos, team])
         for w in range(CURRENT, FINAL + 1):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, '2026-10-14 00:00:00')",
                         [SEASON, pid, w, 5.0 + pid])
     con.execute("""CREATE TABLE IF NOT EXISTS nfl_schedules (season INT, week INT, game_type VARCHAR, game_id VARCHAR,
                    home_team VARCHAR, away_team VARCHAR, spread_line DOUBLE, total_line DOUBLE)""")

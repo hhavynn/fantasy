@@ -267,6 +267,15 @@ def search_players(q: str = "", limit: int = Query(30, le=100)):
         return out
 
 
+def league_points_sources(points: list[dict]) -> list[dict]:
+    """A player's league-point rows, each naming its own source (`actual_source`, #254 S3) only when they do not all
+    come from the provider: a Sleeper player with weeks off a roster mixes Sleeper's points with Fantasy Intel's
+    box-score scoring. Rows that are all the provider's (every ESPN league) keep their exact shape."""
+    if all(r.get("actual_source") in (None, "provider") for r in points):
+        return [{k: v for k, v in r.items() if k != "actual_source"} for r in points]
+    return points
+
+
 @router.get("/players/{espn_player_id}")
 def player_detail(espn_player_id: int):
     with db() as con:
@@ -284,8 +293,11 @@ def player_detail(espn_player_id: int):
                     [season, p["gsis_id"]]) if p["gsis_id"] else None
         weekly = rows(con, "SELECT * FROM player_week_usage WHERE season=? AND gsis_id=? ORDER BY week",
                       [season, p["gsis_id"]]) if p["gsis_id"] else []
-        league_pts = rows(con, """SELECT scoring_period, actual_points, projected_points FROM espn_player_weekly_points
-                                  WHERE season=? AND espn_player_id=? ORDER BY scoring_period""", [season, espn_player_id])
+        source_col = (", actual_source" if "actual_source" in table_columns(con, "espn_player_weekly_points")
+                      else "")
+        league_pts = league_points_sources(rows(con, f"""SELECT scoring_period, actual_points, projected_points{source_col}
+                                  FROM espn_player_weekly_points WHERE season=? AND espn_player_id=?
+                                  ORDER BY scoring_period""", [season, espn_player_id]))
         injuries = rows(con, f"""SELECT * FROM nfl_injuries WHERE season=? AND gsis_id=?
                                  ORDER BY {injury_order_sql(con)}""", [season, p["gsis_id"]]) \
             if p["gsis_id"] and table_exists(con, "nfl_injuries") else []
@@ -688,7 +700,7 @@ def lineup_projections():
                 "teams_note": None if window.weeks else
                 "No remaining fantasy scoring periods: these are the stored rows from the last actionable window.",
                 "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections,
-                                                         projection_source=source_label(state.projection_source))
+                                                         projection_source=source_label(state.projection_source, state.projections))
                 if window.weeks else None,
                 # slots no engine fills: every stored total is partial (team_lineups.project_week, #253 G3)
                 **({"unsupported_slots": list(unsupported_of(state.slots))} if unsupported_of(state.slots) else {}),

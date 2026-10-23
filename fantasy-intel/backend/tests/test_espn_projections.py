@@ -502,7 +502,7 @@ def test_market_signals_scores_and_context_identical_before_and_after_projection
         con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, availability_status) "
                     "VALUES (?, ?, 'WR', 'KC', 'ONTEAM')", [pid, g])
         for w in (1, 2, 3):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, ?, NULL, NULL)",
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, ?, NULL, NULL)",
                         [NFL_SEASON, pid, w, 10.0 + w])
     before = _snapshot(nfl)
     assert before[1] and any(s["market_signal"] for s in before[1].values())
@@ -512,7 +512,7 @@ def test_market_signals_scores_and_context_identical_before_and_after_projection
     con.execute("UPDATE espn_player_weekly_points SET projected_points = 99.0")
     for pid in ids.values():
         for w in range(4, 18):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, ?, NULL)", [NFL_SEASON, pid, w, 0.0])
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, ?, NULL)", [NFL_SEASON, pid, w, 0.0])
     assert build_ros_projections(con, NFL_SEASON)["players"] == 3
     after = _snapshot(nfl)
     assert after == before   # usage, opportunity/production/value scores, market signal, sustainability, context
@@ -542,7 +542,7 @@ def test_v4_database_migrates_create_only(tmp_path):
     con.execute("DROP TABLE espn_projection_history")
     con.execute("DROP TABLE player_ros_projections")
     con.execute("UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'")
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, 1, 1, 5.0, 6.0, NULL)")
+    con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, 1, 1, 5.0, 6.0, NULL)")
     con.execute("INSERT INTO external_player_map (provider, source_player_key, gsis_id) VALUES ('p', 'k', 'G1')")
     con.execute("INSERT INTO external_player_week_usage_revisions (import_id) VALUES ('imp-1')")
     con.execute("INSERT INTO player_ownership_history VALUES ('2026-10-01', 1, 50, 10, 1)")

@@ -271,7 +271,7 @@ def test_load_values_reads_100_fields_and_the_espn_fallback_mirrors_legacy(con):
                 "VALUES (2026, 'g1', 'WR', 'xfp', 7.0, 6.9, 7.1, 69.4, 71.2, 70.3, 'ratings-100.v1')")
     for pid, pts in ((2, 4.0), (3, 9.0), (4, 9.0)):                            # no usage score: ESPN-points fallback
         for week in (1, 2):
-            con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, ?, ?, NULL, NULL)", [pid, week, pts])
+            con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, ?, ?, NULL, NULL)", [pid, week, pts])
     vals = load_values(con, 2026, 5)
     v1 = vals[1]
     assert (v1.opportunity_100, v1.production_100, v1.value_100) == (69.4, 71.2, 70.3)

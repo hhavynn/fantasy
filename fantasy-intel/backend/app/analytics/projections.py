@@ -142,12 +142,15 @@ def _projections(con, window: LeagueWindow, pid: int | None = None, source: str 
     if source != "espn":    # a league without provider projections: Ours (multi-league Phase 4b)
         from . import forward_ours   # lazy, as below: this module stays free of the opt-in switch at import
         out = {}
-        for p, by_week in forward_ours.ps.league_projections(con, window.season, range(window.current,
-                                                                                     window.final + 1), source).items():
+        detail: dict = {}
+        weeks = range(window.current, window.final + 1)
+        for p, by_week in forward_ours.ps.league_projections(con, window.season, weeks, source, detail).items():
             if pid is not None and p != pid:
                 continue
             stamps = [st for _, st in by_week.values() if st]
-            out[p] = {"weeks": {w: v for w, (v, _) in by_week.items()}, "synced_at": max(stamps) if stamps else None}
+            out[p] = {"weeks": {w: v for w, (v, _) in by_week.items()}, "synced_at": max(stamps) if stamps else None,
+                      # the source of each number shown (#254 L2): the models' or the provider's fallback
+                      "label": forward_ours.ps.served_label(detail.get(w, {}).get(p, ("espn",))[0] for w in by_week)}
         return out
     sql = """SELECT espn_player_id, scoring_period, projected_points, synced_at FROM espn_player_weekly_points
              WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL"""
@@ -185,8 +188,9 @@ def build_ros_projections(con, season: int, source: str | None = None) -> dict:
     for pid in sorted(ids):
         p = proj.get(pid, {"weeks": {}, "synced_at": None})
         team = teams.get(pid, (None, None))[0]
+        # under Ours a row names the source of its own numbers, and no source when it has none (#254 L2)
         s = summarize(window, forward_weeks(window, team, p["weeks"], games, covered),
-                      "Ours" if source == "independent" else PROJECTION_SOURCE)
+                      p.get("label", "Unavailable") if source == "independent" else PROJECTION_SOURCE)
         rows.append({"season": season, "espn_player_id": pid, **s,
                      "projection_synced_at": p["synced_at"], "computed_at": now})
     replace_where(con, "player_ros_projections", rows, "season = ?", [season])

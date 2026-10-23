@@ -5,6 +5,7 @@ import type { ApiResult } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { withLeague } from "@/lib/league-scope";
 import { Missing } from "@/lib/format";
+import { projectionsPhrase } from "@/lib/labels";
 import {
   ELIGIBILITY_TONE, ELIGIBILITY_WORD, POSITION_NAME, currentAdvice, opponentText, planSummary, positionPageLink,
   weekAction, weekAnchor, weekPoints, type KdstStreaming, type StreamPositionPlan, type StreamStart, type StreamWeek,
@@ -149,7 +150,7 @@ export function StreamingPlanSection({ res, league, carry }: { res: ApiResult<Kd
     <Section
       id="kdst-streaming"
       title="K and D/ST streaming plan"
-      subtitle={<>{d.team.name} · free agents only · {d.projection_source} projections · weeks {w.weeks[0] ?? "—"}–{w.weeks[w.weeks.length - 1] ?? "—"}. The position and weeks filters above do not apply.</>}
+      subtitle={<>{d.team.name} · free agents only · {projectionsPhrase(d.projection_source)} · weeks {w.weeks[0] ?? "—"}–{w.weeks[w.weeks.length - 1] ?? "—"}. The position and weeks filters above do not apply.</>}
       actions={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
       footnote={<>One streaming slot per position: each week either keeps your current player or adds one free agent, never one on bye and never one without a projection. Free agent: listed at the last sync. Waiver claim: needs a claim. If still available: a later week&apos;s add, not confirmed. The plan stops at the first week with fewer than {d.rules.min_projected} projected free agents.</>}
     >
