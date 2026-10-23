@@ -71,6 +71,14 @@ logs, caches and other agents' worktrees are cleaned up by the coordinator after
 `rm` over a shared directory is not allowed. Why: the #229 agent ran `rm -rf <session scratchpad>/*`. D-08 and D-09
 reached `docs/agent-workflow.md` (inherited by new worktrees) with PR #237 (e6bb3f3).
 
+## D-10 · 2026-10-23 · Codex review quota exhausted; one independent Claude review replaces it
+On PR #241 Codex reported that the account reached its code-review usage limit. Buying credits is outside the
+zero-spend rule, so Codex review is unavailable until the quota resets. Until then, each PR gets one independent,
+read-only review before merge. Security-sensitive diffs (auth, RLS, /v2, tenant isolation, cross-league data) get the
+`multileague-security-reviewer` subagent. Other diffs get one correctness review from a subagent given the diff, not
+the author's conclusions. This replaces the lost reviewer; it is not an extra round. Merge gates are otherwise
+unchanged (D-07).
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
