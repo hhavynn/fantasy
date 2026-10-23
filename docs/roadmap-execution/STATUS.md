@@ -32,7 +32,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | IN PROGRESS | `feature/fi-177-bye-planner` from 5b4fe14 | one agent; section on schedule-intelligence; unknown ≠ safe |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
-| #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
+| #187 player profile tabs | 2 | IN PROGRESS | `feature/fi-187-player-tabs` from 07484b1 | one agent; no News tab unless a redistributable source exists (#186 gate) |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
