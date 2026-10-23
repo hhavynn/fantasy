@@ -248,7 +248,7 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
 | A | #254 phase 1 (#255 merged 04:39Z) | agent | `.worktrees/fi-254-scoring` | targeted until granted |
-| A2 | G5 waivers missing-as-zero + S2 warning: built (7937a14 + main merge); closing ranking/UI zero paths, then heavyweight + PR | agent | `.worktrees/fix-waiver-missing` | heavyweight + Playwright |
+| A2 | G5 → PR #260 (efa43cb): local a/s/e2e pass; CI + independent review running | agent | `.worktrees/fix-waiver-missing` | released |
 | B | #182 → PR #258 (f91f5b2): local a/s/e2e pass; Codex P1×2 + P2 (streaming cache key) held for batch with security review | agent | `.worktrees/fi-182-trade-discovery` | released |
 | C | #253 phase 2 = PR #256: fixing review MEDIUM (G2 wording) + Codex P2 + 4 LOW (incl. Start/Sit '0.0*') | agent | `.worktrees/fi-253-compat` | targeted |
 
@@ -257,6 +257,7 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 1c. Follow-up: add/drop simulator treats Sleeper FREEAGENT as no-claim-needed.
 1d. Tooling: `agent_check.py` backend step hard-coded 300 s (~line 1044) turns large `affected` selections into FAIL with no failures (seen on #258: direct run 756 passed in 6m05s).
 1e. Follow-up: waiver OP/FLEX picks compare position percentiles, not points (needs #254 basis); labelled in G5 PR.
+1f. Follow-up: `players/ProfileTabs.tsx:144` and `my-team/value/sections.tsx:452` print `waiver_score` without the partial flag (#260 scope limit).
 1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
