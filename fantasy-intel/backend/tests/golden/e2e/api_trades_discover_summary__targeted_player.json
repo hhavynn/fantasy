@@ -50,6 +50,7 @@
     "lineup_solves_stage_a": "<masked>",
     "matching_filters": 80,
     "max_exact": 20000,
+    "max_work": 1000000,
     "not_evaluated": 0,
     "not_evaluated_reason": null,
     "not_qualified": 3,
@@ -58,7 +59,8 @@
     "seconds": "<masked>",
     "simpler_equivalents_hidden": 9,
     "survivors": 306,
-    "termination": "all_candidates_evaluated"
+    "termination": "all_candidates_evaluated",
+    "work_used": 3485
    },
    "exact_shapes": [
     "1-for-1",
@@ -71,12 +73,16 @@
      "seeds": 6,
      "width": 6
     },
+    "budget_reached": false,
+    "budget_reached_opponents": [],
     "exhaustive": false,
+    "max_work_per_opponent": 666666,
     "method": "heuristic_beam",
     "note": "Exact evaluation of every listed package, but candidate generation is a bounded beam: packages outside the pools and the beam were never evaluated, so this is not a proven top list.",
     "packages_evaluated": 110,
     "per_opponent": [
      {
+      "budget_reached": false,
       "evaluated": 110,
       "opponent_team_id": 1,
       "pool_mine": [
@@ -94,9 +100,11 @@
        301
       ],
       "rows": 22,
-      "seeds": 5
+      "seeds": 5,
+      "work": 4385
      },
      {
+      "budget_reached": false,
       "evaluated": 0,
       "opponent_team_id": 3,
       "pool_mine": [
@@ -113,9 +121,11 @@
        403
       ],
       "rows": 0,
-      "seeds": 0
+      "seeds": 0,
+      "work": 0
      },
      {
+      "budget_reached": false,
       "evaluated": 0,
       "opponent_team_id": 4,
       "pool_mine": [
@@ -130,7 +140,8 @@
        404
       ],
       "rows": 0,
-      "seeds": 0
+      "seeds": 0,
+      "work": 0
      }
     ],
     "qualifying_rows": 22,
@@ -755,6 +766,7 @@
    "lineup_solves_stage_a": "<masked>",
    "matching_filters": 80,
    "max_exact": 20000,
+   "max_work": 1000000,
    "not_evaluated": 0,
    "not_evaluated_reason": null,
    "not_qualified": 3,
@@ -763,7 +775,8 @@
    "seconds": "<masked>",
    "simpler_equivalents_hidden": 9,
    "survivors": 306,
-   "termination": "all_candidates_evaluated"
+   "termination": "all_candidates_evaluated",
+   "work_used": 3485
   },
   "sections": {
    "fair_no_lineup_gain": [

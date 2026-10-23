@@ -50,6 +50,7 @@
     "lineup_solves_stage_a": "<masked>",
     "matching_filters": 143,
     "max_exact": 20000,
+    "max_work": 1000000,
     "not_evaluated": 32,
     "not_evaluated_reason": "each remaining candidate's upper bound on the sort key (largest 3.3) is below the 100th result, so none can enter the results",
     "not_qualified": 0,
@@ -58,7 +59,8 @@
     "seconds": "<masked>",
     "simpler_equivalents_hidden": 0,
     "survivors": 143,
-    "termination": "proven_by_upper_bounds"
+    "termination": "proven_by_upper_bounds",
+    "work_used": 3975
    },
    "exact_shapes": [
     "1-for-1",
@@ -71,12 +73,16 @@
      "seeds": 6,
      "width": 6
     },
+    "budget_reached": false,
+    "budget_reached_opponents": [],
     "exhaustive": false,
+    "max_work_per_opponent": 666666,
     "method": "heuristic_beam",
     "note": "Exact evaluation of every listed package, but candidate generation is a bounded beam: packages outside the pools and the beam were never evaluated, so this is not a proven top list.",
     "packages_evaluated": 152,
     "per_opponent": [
      {
+      "budget_reached": false,
       "evaluated": 67,
       "opponent_team_id": 1,
       "pool_mine": [
@@ -92,9 +98,11 @@
        401
       ],
       "rows": 24,
-      "seeds": 6
+      "seeds": 6,
+      "work": 2010
      },
      {
+      "budget_reached": false,
       "evaluated": 49,
       "opponent_team_id": 2,
       "pool_mine": [
@@ -109,9 +117,11 @@
        307
       ],
       "rows": 17,
-      "seeds": 6
+      "seeds": 6,
+      "work": 1625
      },
      {
+      "budget_reached": false,
       "evaluated": 36,
       "opponent_team_id": 3,
       "pool_mine": [
@@ -125,7 +135,8 @@
        403
       ],
       "rows": 10,
-      "seeds": 6
+      "seeds": 6,
+      "work": 1080
      }
     ],
     "qualifying_rows": 51,
@@ -940,6 +951,7 @@
    "lineup_solves_stage_a": "<masked>",
    "matching_filters": 143,
    "max_exact": 20000,
+   "max_work": 1000000,
    "not_evaluated": 32,
    "not_evaluated_reason": "each remaining candidate's upper bound on the sort key (largest 3.3) is below the 100th result, so none can enter the results",
    "not_qualified": 0,
@@ -948,7 +960,8 @@
    "seconds": "<masked>",
    "simpler_equivalents_hidden": 0,
    "survivors": 143,
-   "termination": "proven_by_upper_bounds"
+   "termination": "proven_by_upper_bounds",
+   "work_used": 3975
   },
   "sections": {
    "fair_no_lineup_gain": [

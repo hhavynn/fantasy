@@ -50,6 +50,7 @@
     "lineup_solves_stage_a": "<masked>",
     "matching_filters": 94,
     "max_exact": 20000,
+    "max_work": 1000000,
     "not_evaluated": 0,
     "not_evaluated_reason": null,
     "not_qualified": 16,
@@ -58,7 +59,8 @@
     "seconds": "<masked>",
     "simpler_equivalents_hidden": 0,
     "survivors": 306,
-    "termination": "all_candidates_evaluated"
+    "termination": "all_candidates_evaluated",
+    "work_used": 3840
    },
    "exact_shapes": [
     "1-for-1",
@@ -71,12 +73,16 @@
      "seeds": 6,
      "width": 6
     },
+    "budget_reached": false,
+    "budget_reached_opponents": [],
     "exhaustive": false,
+    "max_work_per_opponent": 666666,
     "method": "heuristic_beam",
     "note": "Exact evaluation of every listed package, but candidate generation is a bounded beam: packages outside the pools and the beam were never evaluated, so this is not a proven top list.",
     "packages_evaluated": 281,
     "per_opponent": [
      {
+      "budget_reached": false,
       "evaluated": 125,
       "opponent_team_id": 1,
       "pool_mine": [
@@ -94,9 +100,11 @@
        301
       ],
       "rows": 25,
-      "seeds": 6
+      "seeds": 6,
+      "work": 6728
      },
      {
+      "budget_reached": false,
       "evaluated": 107,
       "opponent_team_id": 3,
       "pool_mine": [
@@ -113,9 +121,11 @@
        403
       ],
       "rows": 25,
-      "seeds": 6
+      "seeds": 6,
+      "work": 5070
      },
      {
+      "budget_reached": false,
       "evaluated": 49,
       "opponent_team_id": 4,
       "pool_mine": [
@@ -130,7 +140,8 @@
        404
       ],
       "rows": 10,
-      "seeds": 6
+      "seeds": 6,
+      "work": 1625
      }
     ],
     "qualifying_rows": 60,
@@ -54428,6 +54439,7 @@
    "lineup_solves_stage_a": "<masked>",
    "matching_filters": 94,
    "max_exact": 20000,
+   "max_work": 1000000,
    "not_evaluated": 0,
    "not_evaluated_reason": null,
    "not_qualified": 16,
@@ -54436,7 +54448,8 @@
    "seconds": "<masked>",
    "simpler_equivalents_hidden": 0,
    "survivors": 306,
-   "termination": "all_candidates_evaluated"
+   "termination": "all_candidates_evaluated",
+   "work_used": 3840
   },
   "sections": {
    "concerns": [
