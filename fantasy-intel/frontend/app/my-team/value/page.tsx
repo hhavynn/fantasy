@@ -1,9 +1,11 @@
 import { BackendProblem } from "@/components/BackendProblem";
 import { Missing, num } from "@/lib/format";
 import { Notice, PageHeader, Stat, StatStrip, Tabs } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, requestLeague } from "@/lib/api";
 import { projectionName, providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { withLeague } from "@/lib/league-scope";
+import { effectivePool, parseAssets, parsePool, utilityQuery, type RosterUtility } from "@/lib/roster-utility";
 import { parseSort, type SortState } from "@/lib/sort";
 import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
@@ -11,6 +13,7 @@ import {
   BenchSection, MARGINAL_SORT_KEYS, MarginalTable, RaceContext, SlotGaps, SlotStrength, Summary, TopContributors,
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
 } from "./sections";
+import { RosterUtilitySection } from "./RosterUtility";
 import styles from "./value.module.css";
 import { ChooseTeam, TeamPerspective, needsTeam } from "@/components/TeamPerspective";
 import { TeamLink } from "@/components/TeamLink";
@@ -28,6 +31,8 @@ const PHASES: TvPhase[] = ["all", "regular", "playoff"];
 const TAB_TEXT: Record<TvPhase, string> = { all: "Rest of season", regular: "Regular", playoff: "Playoffs" };
 
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+const ids = (v: string | string[] | undefined): number[] =>
+  (v === undefined ? [] : Array.isArray(v) ? v : [v]).map(Number).filter((n) => Number.isInteger(n));
 
 /** A phase's projected total; its known partial sum marked with an asterisk; or a dash when no weeks are left. */
 function total(s: TvPhaseSplit) {
@@ -112,6 +117,13 @@ async function Dashboard({ d, phase, trades, sort, sp }: {
   const ranks = ov.league_ranks.phases[phase];
   const unused = [...d.bench!.players].sort((a, b) => b.unused_projected_points - a.unused_projected_points)[0];
   const partial = [ov.phases.regular, ov.phases.playoff].some((s) => phaseState(s) === "incomplete");
+  // Roster utility (#216): asked only when players are chosen (`mu`), for exactly the team this page shows.
+  const chosen = parseAssets(ids(sp.mu), d.players!.map((p) => p.espn_player_id));
+  const pool = effectivePool(chosen, parsePool(one(sp.pool)));
+  const utility = chosen.length > 0
+    ? api<RosterUtility>(`/api/my-team/value/marginal?${utilityQuery(chosen, pool, String(d.team.team_id))}`)
+    : null;
+  const action = withLeague(PATH, await requestLeague());
   return (
     <>
       <StatStrip>
@@ -164,6 +176,7 @@ async function Dashboard({ d, phase, trades, sort, sp }: {
 
       <SlotStrength d={d} phase={phase} />
       <MarginalTable d={d} phase={phase} sort={sort} sp={sp} words={words} />
+      <RosterUtilitySection players={d.players!} sp={sp} action={action} chosen={chosen} pool={pool} result={utility} />
       <BenchSection d={d} words={words} />
       <SlotGaps d={d} />
       <WaiverMoves d={d} words={words} />

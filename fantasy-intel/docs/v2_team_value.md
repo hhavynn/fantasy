@@ -141,3 +141,25 @@ real Los Subies data**, and the synthetic tests say nothing about real outcomes.
 * The trade preview is 1-for-1 only; 2-for-1 and 1-for-2 trades are on Trade discovery.
 * Slot-week gaps are single-slot, single-week ceilings, not lineup totals.
 * League ranks need comparable weeks. If every week has some team incomplete, no rank is shown.
+
+## Roster utility (issue #216)
+
+`GET /api/my-team/value/marginal?ids=…&pool=bench|waiver` answers one question about this roster: what removing one to
+three of its players changes in its exact optimal starting lineups, week by week, and who fills in. It is the evaluator
+in `analytics/marginal_utility.py` (#216 PR 1) on the same league state, streaming setting and window as this page.
+
+* **Jointly, never summed.** Several players are removed together and evaluated as one lineup. The answer also lists
+  each one's single removal and says whether the joint loss differs from their sum (one can be the other's backfill).
+* **Explicit replacement.** `bench` (default): the rest of the roster moves up. `waiver` (one player at a time): plus
+  the best fully projected free agent whose availability is synced (ESPN `FREEAGENT` or `WAIVERS`). A free agent of
+  unknown availability is never assumed addable and is counted (`waiver_availability`); with none known the pool is
+  `unknown_pool` and no replacement is assumed. A hypothetical acquisition is the trade analyzer's question, not this
+  page's.
+* **Unknown is not 0.** A week with a missing projection has no delta, and neither does any total that contains it (the
+  known part is shown marked). Players in IR or taxi slots start no lineup, and the answer says so.
+* **Labelled.** Every answer names its unit, the projections it used, the evaluated weeks, and that lineup locks and
+  weeks after the final fantasy week are not modelled.
+
+On the page, the "Roster utility" section is a plain GET form (`mu` repeated for the players, `pool`); the answer
+streams in under it with the replacement path week by week. It is read-only, and the route is served per league under
+`/v2/leagues/{id}` like the rest of this router.
