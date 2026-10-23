@@ -92,6 +92,51 @@ def test_removal_and_incremental_totals_equal_a_full_solve_bit_for_bit():
                     assert started.without(gone) == fresh.without(gone)
 
 
+@pytest.mark.parametrize("flex_values,flex_counted", [((-1.5,), False), ((-0.6, -0.6), False), ((-0.5,), True),
+                                                       ((-0.4, -0.4), True)])
+def test_discovery_totals_match_the_evaluator_when_only_negative_players_can_fill_flex(flex_values, flex_counted):
+    """STATUS 1r: a single-FLEX league whose FLEX can only be filled by negative projections. assign_lineup (the
+    evaluator, team_lineups.project_week) leaves FLEX empty when the best fill is worth -1 or less and starts it in
+    (-1, 0); discovery's totals (no exact_negative) now agree in both cases, also through removals and edits."""
+    cfg = {"QB": 1, "RB": 1, "WR": 1, "TE": 1, "FLEX": len(flex_values), "K": 1}
+    slots = lineup_slots(cfg)
+    pos = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 6: "QB"}
+    proj = {1: {1: 20.0}, 2: {1: 12.0}, 3: {1: 11.0}, 4: {1: 8.0}, 5: {1: 7.0}, 6: {1: 15.0}}
+    for i, v in enumerate(flex_values):             # the only flex-eligible players left after the fixed slots
+        pos[10 + i], proj[10 + i] = "RB", {1: v}
+    state = types.SimpleNamespace(slots=slots, projections=proj)
+    weeks = (1,)
+    discovery = LineupTotals(state, weeks, set(pos), pos, {p: "X" for p in pos})
+    evaluator = LineupTotals(state, weeks, set(pos), pos, {p: "X" for p in pos}, exact_negative=True)
+    ids = list(pos)
+
+    def reference(players):
+        return sum(lineup_total(assign_lineup([{"espn_player_id": p, "position": pos[p], "value": proj[p][w]}
+                                               for p in players if w in proj[p]], slots)) for w in weeks)
+    fixed = 20.0 + 12.0 + 11.0 + 8.0 + 7.0
+    assert reference(ids) == fixed + (sum(flex_values) if flex_counted else 0.0)     # the -1 rule, pinned
+    assert sum(discovery.vec(ids)) == sum(evaluator.vec(ids)) == reference(ids)
+    rt = discovery.removal_total(ids)
+    for gone in ({6}, {10}, {1, 6}):
+        rest = [p for p in ids if p not in gone]
+        assert rt.without(gone) == sum(discovery.vec(rest)) == reference(rest)
+    base = discovery.base([1, 2, 3, 4, 5])
+    assert sum(discovery.vec_change(base, [], [p for p in ids if p >= 10])) == reference(ids[:5] + [p for p in ids if p >= 10])
+
+
+def test_a_standard_week_with_mild_negatives_keeps_the_fast_fill():
+    """The STATUS 1r routing costs nothing where the -1 rule cannot apply: flex-eligible negatives summing above -1, or
+    negatives only at non-flex positions (a D/ST), keep the single-flex fill."""
+    slots = lineup_slots(cf.STANDARD)
+    pos = {1: "RB", 2: "D/ST", 3: "WR"}
+    proj = {1: {1: -0.3}, 2: {1: -4.0}, 3: {1: 5.0}}
+    T = LineupTotals(types.SimpleNamespace(slots=slots, projections=proj), (1,), set(pos), pos, {p: "X" for p in pos})
+    assert T.exact_week == [False]
+    proj[1] = {1: -1.2}
+    T = LineupTotals(types.SimpleNamespace(slots=slots, projections=proj), (1,), set(pos), pos, {p: "X" for p in pos})
+    assert T.exact_week == [True]
+
+
 def test_the_single_removal_bound_is_the_exact_single_cost():
     """RemovalTotal.single_bound: one solve per week and position (starters at one position are interchangeable in the
     lineup matroid) gives each player's single-removal cost; float rounding only."""
