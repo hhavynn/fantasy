@@ -3813,10 +3813,12 @@
     ],
     "claims": [],
     "record_bounds": {
-     "abstain": [],
+     "abstain": [
+      "The provider's records do not match the stored final matchups (see the record check), so the remaining schedule cannot bound them."
+     ],
      "fixed_results": 1,
      "open_games": 23,
-     "rule": "Record bounds: each team's record if it wins, and if it loses, every open game, with your set results fixed and every other remaining game open (projections are not used). They are exact under the record order above and are never turned into a clinch or elimination claim.",
+     "rule": "Record bounds: each team's record if it wins, and if it loses, every open game, with your set results fixed and every other remaining game open (projections are not used). They are exact only under the assumed record order, with the provider's records matching the stored final matchups, a complete schedule, no median games, one division and seeds that follow record order; otherwise they are withheld. They are never turned into a clinch or elimination claim.",
      "teams": [
       {
        "best": {
@@ -3826,10 +3828,10 @@
        },
        "claim": null,
        "open_games": 11,
-       "record_order": "open",
+       "record_order": null,
        "team_id": 1,
-       "teams_able_to_match_worst": 3,
-       "teams_certain_ahead_of_best": 0,
+       "teams_able_to_match_worst": null,
+       "teams_certain_ahead_of_best": null,
        "worst": {
         "losses": 11,
         "ties": 0,
@@ -3844,10 +3846,10 @@
        },
        "claim": null,
        "open_games": 11,
-       "record_order": "open",
+       "record_order": null,
        "team_id": 2,
-       "teams_able_to_match_worst": 3,
-       "teams_certain_ahead_of_best": 0,
+       "teams_able_to_match_worst": null,
+       "teams_certain_ahead_of_best": null,
        "worst": {
         "losses": 13,
         "ties": 0,
@@ -3862,10 +3864,10 @@
        },
        "claim": null,
        "open_games": 12,
-       "record_order": "open",
+       "record_order": null,
        "team_id": 3,
-       "teams_able_to_match_worst": 3,
-       "teams_certain_ahead_of_best": 0,
+       "teams_able_to_match_worst": null,
+       "teams_certain_ahead_of_best": null,
        "worst": {
         "losses": 14,
         "ties": 0,
@@ -3880,10 +3882,10 @@
        },
        "claim": null,
        "open_games": 12,
-       "record_order": "open",
+       "record_order": null,
        "team_id": 4,
-       "teams_able_to_match_worst": 3,
-       "teams_certain_ahead_of_best": 0,
+       "teams_able_to_match_worst": null,
+       "teams_certain_ahead_of_best": null,
        "worst": {
         "losses": 15,
         "ties": 0,

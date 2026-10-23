@@ -102,6 +102,7 @@ export const UNRESOLVED_REASON: Record<string, string> = {
   actual_baseline: "no result yet (actual-results baseline)",
   projection_incomplete: "projection incomplete",
   equal_projection: "equal projections",
+  no_period: "no matchup period (cannot be placed or set)",
 };
 
 /** "2 projection incomplete, 1 under way": counts per reason, largest first, unknown reasons kept as given. */

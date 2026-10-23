@@ -104,7 +104,8 @@ exactly the scenario-off answer (the default goldens are unchanged); with one, i
 * `assumptions` and `method`, and `sampling`: `deterministic`, 1 exact scenario, 0 random samples, no seed and no
   probability. Probabilistic season simulation is separate, calibration-gated work and is not done here.
 * `completeness`: `partial` when any remaining game is unresolved, with counts per reason (`projection_incomplete`,
-  `equal_projection`, `in_progress`, `unmapped`, `actual_baseline`, `set_unresolved`). Unresolved games count for
+  `equal_projection`, `in_progress`, `unmapped`, `actual_baseline`, `set_unresolved`, and `no_period` for an undecided
+  regular-season game sent without a matchup period, which can be neither placed nor set). Unresolved games count for
   nobody; a missing projection never decides a game and is never scored as 0.
 * `baseline_standings` (the same baseline without your results) and `changes` (each team's baseline and what-if
   rank, record and status, the rank change and whether the status changed). Both are labelled hypothetical; the
@@ -116,10 +117,17 @@ exactly the scenario-off answer (the default goldens are unchanged); with one, i
 * `conclusions.record_bounds`: each team's record if it wins, and if it loses, every open game, with your set results
   fixed and every other remaining game open (projections are not used). `record_order` is `above_line` when, even
   losing out, fewer other teams than there are spots can match its winning percentage; `below_line` when, even winning
-  out, at least that many finish strictly ahead in every outcome; otherwise `open`. This is exact under the assumed
-  record order (tests check it against every outcome), and it is never turned into a claim (`claim` is always null).
-  The bounds abstain (`record_order` null, reasons in `abstain`) when a record is unknown, the regular-season length
-  is unknown, the stored schedule misses regular-season matchups, or an undecided matchup has no period.
+  out, at least that many finish strictly ahead in every outcome; otherwise `open`. It is never turned into a claim
+  (`claim` is always null). It is exact (tests check it against every outcome) only under these conditions; when any
+  fails, the bounds abstain (`record_order` and the counts null, each reason listed in `abstain`; the records
+  themselves are still shown):
+  * the assumed winning-percentage order decides the spots: one division, and the provider's seeds follow record
+    order;
+  * every team's record is known and matches the stored final matchups (`record_check` is empty), so the remaining
+    schedule explains every future result;
+  * no median game: a Sleeper league with `league_average_match` adds a result against the league median each week;
+  * the schedule is complete: the regular-season length is known, no team is missing a regular-season matchup, and no
+    undecided matchup lacks a period.
 
 The page shows the what-if section only when a result is set: the method line with the sample count, the set
 results (each with a link to the Matchup page for its week and a remove link), a partial notice, the baseline vs

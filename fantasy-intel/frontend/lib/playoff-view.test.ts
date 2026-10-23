@@ -80,6 +80,7 @@ test("unresolvedText names each reason with its count, largest first", () => {
   assert.equal(unresolvedText({ in_progress: 1, projection_incomplete: 2 }), "2 projection incomplete, 1 under way");
   assert.equal(unresolvedText({ set_unresolved: 1, brand_new: 1, equal_projection: 0 }), "1 brand new, 1 set unresolved by you");
   assert.equal(unresolvedText({}), "");
+  assert.equal(unresolvedText({ no_period: 1 }), "1 no matchup period (cannot be placed or set)");
 });
 
 test("matchupAnalysisHref opens the game's first week from the spotlight side when it plays, else home", () => {

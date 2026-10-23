@@ -462,18 +462,20 @@ def _all_outcomes(d, games, fixed):
 
 
 def test_record_bounds_are_exact_under_record_order_and_never_a_claim():
-    # Periods 1-4 final, 5-6 open; ESPN records chosen so one team is clear, one is far behind and two are level.
-    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8,
-                records={1: [5, 0, 0], 2: [2, 2, 0], 3: [2, 2, 0], 4: [0, 5, 0]})
+    # Periods 1-4 final, 5-6 open. Team 3 wins its period-1 game against team 2, so after period 4 the records
+    # (reproducible from the stored finals) are 4-0, 2-2, 2-2, 0-4. Both period-5 games are set to home wins
+    # (1 beats 3, 2 beats 4): one team is then clear, one far behind and two in between.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8, scores={(1, 3): 200.0})
     base = build_playoff_race(d, base="actual")
+    assert base["record_check"] == []
     open_games = [m for m in base["matchups"]["regular"] if m["status"] == "upcoming"]
     assert len(open_games) == 4
-    fixed = {open_games[0]["matchup_id"]: "home"}
+    fixed = {m["matchup_id"]: "home" for m in open_games if m["matchup_period"] == 5}
     w = build_playoff_race(d, base="actual", overrides=fixed)["whatif"]
     bounds = w["conclusions"]["record_bounds"]
-    assert bounds["fixed_results"] == 1 and bounds["open_games"] == 3 and bounds["abstain"] == []
+    assert bounds["fixed_results"] == 2 and bounds["open_games"] == 2 and bounds["abstain"] == []
     worlds = list(_all_outcomes(d, [m for m in open_games if m["matchup_id"] not in fixed], fixed))
-    assert len(worlds) == 27
+    assert len(worlds) == 9
     seen = set()
     for row in bounds["teams"]:
         statuses = {standing(rows, row["team_id"])["status"] for rows in worlds}
@@ -496,18 +498,18 @@ def test_record_bounds_are_exact_under_record_order_and_never_a_claim():
 
 def test_unmapped_tiebreak_and_other_unknown_rules_block_conclusions(monkeypatch):
     from app.analytics import playoff_race
-    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8, divisions={1: 1, 2: 1, 3: 2, 4: 2})
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8)
     d.rules_raw = {"scheduleSettings.playoffSeedingRule": "TOTAL_POINTS_SCORED"}
     game = next(m for m in build_playoff_race(d)["matchups"]["regular"] if m["status"] == "upcoming")
     c = build_playoff_race(d, overrides={game["matchup_id"]: "tie"})["whatif"]["conclusions"]
     by = {b["rule"]: b for b in c["blocked_by"]}
     assert by["tiebreak"]["state"] == "unmapped"
     assert by["tiebreak"]["reported"] == {"scheduleSettings.playoffSeedingRule": "TOTAL_POINTS_SCORED"}
-    assert by["divisions"]["state"] == "not_modeled" and c["status"] == "blocked" and c["claims"] == []
+    assert c["status"] == "blocked" and c["claims"] == [] and c["record_bounds"]["abstain"] == []
     assert {t["record_order"] for t in c["record_bounds"]["teams"]} >= {"above_line"}      # decided by record alone ...
     assert all(t["claim"] is None for t in c["record_bounds"]["teams"])                     # ... and still not claimed
     # Even a verified tiebreak mapping leaves the gate closed while the order itself is assumed.
-    monkeypatch.setattr(playoff_race, "MAPPED_TIEBREAK_RULES", {"scheduleSettings.playoffSeedingRule": {"TOTAL_POINTS_SCORED"}})
+    monkeypatch.setattr(playoff_race, "MAPPED_TIEBREAK_RULES", {"scheduleSettings.playoffSeedingRule": frozenset({"TOTAL_POINTS_SCORED"})})
     c2 = build_playoff_race(d, overrides={game["matchup_id"]: "tie"})["whatif"]["conclusions"]
     assert "tiebreak" not in {b["rule"] for b in c2["blocked_by"]} and c2["status"] == "blocked" and c2["claims"] == []
     # Unknown playoff spots: blocked, and no team gets a record order.
@@ -515,6 +517,59 @@ def test_unmapped_tiebreak_and_other_unknown_rules_block_conclusions(monkeypatch
     c3 = build_playoff_race(d, overrides={game["matchup_id"]: "tie"})["whatif"]["conclusions"]
     assert "playoff_spots" in {b["rule"] for b in c3["blocked_by"]}
     assert {t["record_order"] for t in c3["record_bounds"]["teams"]} == {None}
+
+
+def _no_record_order(c):
+    return all(t["record_order"] is None and t["teams_able_to_match_worst"] is None
+               and t["teams_certain_ahead_of_best"] is None for t in c["record_bounds"]["teams"])
+
+
+def test_record_order_is_withheld_when_divisions_or_seeds_can_override_it():
+    # Several divisions: a division auto-bid could put a worse record in, so "above the line" would read as a clinch.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8, divisions={1: 1, 2: 1, 3: 2, 4: 2})
+    game = next(m for m in build_playoff_race(d)["matchups"]["regular"] if m["status"] == "upcoming")
+    c = build_playoff_race(d, overrides={game["matchup_id"]: "tie"})["whatif"]["conclusions"]
+    assert {b["rule"]: b["state"] for b in c["blocked_by"]}["divisions"] == "not_modeled"
+    assert any("2 divisions" in a for a in c["record_bounds"]["abstain"]) and _no_record_order(c)
+    # The provider's seeds disagree with record order (team 4, last on record, holds seed 1).
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8)
+    for t in d.teams:
+        t["playoff_seed"] = 5 - t["team_id"]
+    c = build_playoff_race(d, overrides={game["matchup_id"]: "tie"})["whatif"]["conclusions"]
+    assert "seeding" in {b["rule"] for b in c["blocked_by"]}
+    assert any("seeds do not follow record order" in a for a in c["record_bounds"]["abstain"]) and _no_record_order(c)
+
+
+def test_record_bounds_abstain_when_records_do_not_match_the_stored_finals_or_a_median_game_counts():
+    # Review repro (#278): records carry results the stored matchups do not explain (e.g. Sleeper median games).
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8,
+                records={1: [7, 1, 0], 2: [6, 2, 0], 3: [3, 5, 0], 4: [0, 8, 0]})
+    res0 = build_playoff_race(d)
+    assert len(res0["record_check"]) == 4
+    game = next(m for m in res0["matchups"]["regular"] if m["status"] == "upcoming")
+    c = build_playoff_race(d, overrides={game["matchup_id"]: "home"})["whatif"]["conclusions"]
+    assert any("do not match the stored final matchups" in a for a in c["record_bounds"]["abstain"])
+    assert _no_record_order(c) and all(t["best"] is not None for t in c["record_bounds"]["teams"])
+    # A median-game league whose records do match: still withheld, with its own reason.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8)
+    d.median_game = True
+    res1 = build_playoff_race(d)
+    assert res1["record_check"] == []
+    game = next(m for m in res1["matchups"]["regular"] if m["status"] == "upcoming")
+    c = build_playoff_race(d, overrides={game["matchup_id"]: "home"})["whatif"]["conclusions"]
+    assert c["record_bounds"]["abstain"] == ["The league adds a result against the league median each week, which "
+                                             "these bounds do not model."]
+    assert _no_record_order(c)
+
+
+def test_undecided_matchup_without_a_period_makes_the_whatif_partial():
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8,
+                overrides_matchups=[{"matchup_id": 77, "matchup_period": None, "home_team_id": 1, "away_team_id": 2}])
+    res = build_playoff_race(d, base="actual")
+    open_ids = [m["matchup_id"] for m in res["matchups"]["regular"] if m["status"] == "upcoming"]
+    w = build_playoff_race(d, base="actual", overrides={mid: "home" for mid in open_ids})["whatif"]
+    assert w["completeness"] == {"status": "partial", "unresolved_games": 1, "by_reason": {"no_period": 1}}
+    assert any("no matchup period" in a for a in w["conclusions"]["record_bounds"]["abstain"])
 
 
 def test_record_bounds_abstain_when_the_schedule_may_hide_games():
