@@ -307,7 +307,7 @@ jobs:
         run: |
           v=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
           # an empty or undefined version would collapse the cache key and restore a stale browser
-          test -n "$v" && test "$v" != undefined
+          [ -n "$v" ] && [ "$v" != undefined ] || exit 1
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
@@ -324,10 +324,13 @@ jobs:
       - name: Install Playwright system dependencies (only if missing)
         run: |
           bin=$(find ~/.cache/ms-playwright -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -n 1)
-          if [ -n "$bin" ] && libs=$(ldd "$bin" 2>&1) && ! grep -q "not found" <<< "$libs"; then
-            echo "All shared libraries of $bin are present; skipping install-deps."
+          # fonts are invisible to ldd; Liberation Sans is the metric-compatible Arial behind the pages' local("Arial") fallback
+          fonts=$(fc-list : family 2>/dev/null || true)
+          if [ -n "$bin" ] && libs=$(ldd "$bin" 2>&1) && ! grep -q "not found" <<< "$libs" \
+             && grep -qi "Liberation Sans" <<< "$fonts"; then
+            echo "All shared libraries of $bin and Liberation Sans are present; skipping install-deps."
           else
-            echo "Missing shared libraries (or no browser binary found); installing system dependencies."
+            echo "Missing shared libraries or fonts (or no browser binary found); installing system dependencies."
             npx playwright install-deps chromium
           fi
 
