@@ -61,7 +61,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from itertools import combinations
 
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
+from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total, separable, unsupported_of
 from .team_lineups import NDIGITS, STREAMER_IDS, RosterPlayer, lineup_relevant, r, slot_filled, stream_levels
 from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
                      evaluate_trade, legal_roster)
@@ -164,6 +164,10 @@ class _Totals:
         relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
+        unsupported = unsupported_of(state.slots)
+        if unsupported and not separable(unsupported):
+            # an unrecognised slot may take any position, so no delta is exact (team_lineups.delta_exact, #253 G3)
+            self.missing = [frozenset(relevant) for _ in weeks]
         self.solves = 0
 
     def week(self, ids, i: int) -> float:
@@ -819,6 +823,7 @@ def _side_detail(side: dict) -> dict:
         "redundant_incoming_asset": ro["redundant_incoming_asset"],
         "open_active_roster_spots_before": ro["open_active_roster_spots_before"],
         "open_active_roster_spots": ro["open_active_roster_spots"],
+        **({"legality": ro["legality"]} if ro.get("legality") else {}),
         "hypothetical_fa_fill": side["hypothetical_fa_fill"],
         "incomplete": side["incomplete"],
         "empty_slots_after": _empty_slots(side),

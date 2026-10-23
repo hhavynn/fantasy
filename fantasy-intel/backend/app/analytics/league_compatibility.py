@@ -29,7 +29,7 @@ from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
 from .league_rules import HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED, build_league_rules
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, separable
 from .reserve_slots import is_reserved
 
 CONTRACT = "league-compatibility/v1"
@@ -210,10 +210,14 @@ class _League:
         if not self.unfilled:
             return []
         slots = ", ".join(self.unfilled)
+        exact = ("a lineup change is still measured exactly when it moves nobody who can start there" if
+                 separable(self.unfilled) else "a lineup change is not measured exactly, since players the engines "
+                                               "value may also start there")
         text = {
-            "lineup": f"{slots}: no engine fills these slots, so the recommendation leaves them out while your "
-                      "submitted lineup's total counts your starters there.",
-            "totals": f"{slots}: no engine fills these slots, so lineup totals leave them out.",
+            "lineup": f"{slots}: no engine fills these slots, so your starters there are kept as they are, and the "
+                      "submitted and recommended totals cover the other slots only and are marked partial.",
+            "totals": f"{slots}: no engine fills these slots, so lineup totals cover the other starting slots only and "
+                      f"are marked partial; {exact}.",
             "waivers": f"{slots}: no engine fills these slots, so roster capacity is unknown and add/drop moves are "
                        "not planned.",
             "bye": f"{slots}: who may fill these slots is not established, so weeks that need them are unconfirmed.",
@@ -222,14 +226,23 @@ class _League:
         return [finding("unfilled_slots", PARTIAL, text, missing_input="an engine for these slots",
                         action="Read lineup totals as covering the other starting slots only.", value=self.unfilled)]
 
+    def legality_finding(self) -> list[dict]:
+        """trades.roster_legality: with slots no engine fills, a roster the count shows legal is unverified (G4)."""
+        if not self.unfilled:
+            return []
+        return [finding("roster_legality", UNVERIFIED, f"{', '.join(self.unfilled)}: players in these slots are not "
+                        "valued, so roster legality is unverified: a move the count shows as fitting is never "
+                        "reported legal.", missing_input="an engine for these slots",
+                        action="Check your open roster spots in the provider's app.", value=self.unfilled)]
+
     def missing_players_finding(self, capacity: bool) -> list[dict]:
         n = self.facts.get("players_missing") or 0
         if not n:
             return []
         if capacity:
-            return [finding("players_missing", UNSUPPORTED, f"{_plural(n, 'rostered player')} not in the player data "
-                            "are left out of active roster counts, so roster capacity cannot be checked.",
-                            missing_input="player data for those players",
+            return [finding("players_missing", UNVERIFIED, f"{_plural(n, 'rostered player')} not in the player data "
+                            "are left out of active roster counts, so an open spot may not exist and roster legality "
+                            "is unverified.", missing_input="player data for those players",
                             action="Check your open roster spots in the provider's app.", value=n)]
         return [finding("players_missing", PARTIAL, f"{_plural(n, 'rostered player')} not in the player data "
                         "are left out of rosters.", missing_input="player data for those players", value=n)]
@@ -308,6 +321,8 @@ class _League:
             roster += self.unfilled_finding(slot_kind)
         if kind in ("lineup", "totals", "waivers"):
             roster += self.missing_players_finding(capacity)
+        if capacity:
+            roster += self.legality_finding()
         if code in ("waivers",) and self.provider != "espn":
             roster.append(finding("roster_restrictions", UNVERIFIED, f"{self.name}'s synced settings carry no roster "
                                   "restrictions, so the waiver planner cannot establish whether a claim needs a drop.",
@@ -333,14 +348,11 @@ class _League:
                                    "league's scoring.", missing_input="usage values in this league's scoring",
                                    action="Compare the projected points shown beside each claim.", value=refs or None))
         # feature
-        if kind == "lineup" and self.unfilled and self.facts.get("starters_in_unfilled_slots"):
-            n = self.facts["starters_in_unfilled_slots"]
-            feature.append(finding("gain_unfilled_slots", UNSUPPORTED,
-                                   "The projected gain is understated and can be negative: a submitted lineup's "
-                                   f"total counts its starters in {', '.join(self.unfilled)} ({n} across the league), "
-                                   "which the recommendation cannot start.",
-                                   missing_input="an engine for those slots",
-                                   action="Compare the lineups slot by slot rather than by the projected gain.",
+        if kind == "lineup" and self.unfilled:
+            n = self.facts.get("starters_in_unfilled_slots") or 0
+            feature.append(finding("gain_unfilled_slots", HANDLED,
+                                   f"Starters in {', '.join(self.unfilled)} ({n} across the league) stay where they "
+                                   "are in both lineups, so the projected gain compares the other slots exactly.",
                                    value=n))
         if kind == "lineup":
             lock = self.support.get("lineup_lock")

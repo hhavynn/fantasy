@@ -12,7 +12,10 @@ trade analyzer's own machinery, unchanged:
   * the evaluation window is the trade engine's (LeagueState.window): the first scoring period none of whose NFL games
     has kicked off, through the final one. A week already under way is never credited;
   * waiver_roster.ir_slot_eligible: an IR occupant without an IR-eligible status blocks adds at the provider;
-  * waiver_decisions.resource_diagnostics: free agent, waiver priority or FAAB, the same words as the waiver table.
+  * waiver_decisions.resource_diagnostics: free agent, waiver priority or FAAB, the same words as the waiver table;
+  * trades.roster_legality: in a league starting slots no engine fills (IDP, P, HC), or whose rostered players are
+    missing from the player data, a roster the count shows legal is `unverified` (legal None, a ROSTER_UNVERIFIED
+    note, no open-spot count), never legal (issue #253 G4).
 
 Honest data: a week's delta is None unless both lineups are complete; `known_delta` sums known projections only and
 is labelled as such. A missing projection is unknown, never 0. Nothing here predicts whether a claim succeeds.
@@ -41,12 +44,14 @@ from .team_lineups import (
     stream_summary,
 )
 from .trades import (
+    ROSTER_UNVERIFIED,
     EvaluationUnavailable,
     LeagueState,
     TradeError,
     legal_roster,
     resolve_roster,
     roster_issues,
+    roster_legality,
     side_lineups,
     streaming_enabled,
 )
@@ -394,12 +399,15 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
                                              "not known here.", drop))
 
     # ---- roster capacity, the same rules as the trade engine ----
+    legality = roster_legality(state, team_id)
     roster_block: dict[str, Any] = {"active_capacity": state.active_capacity, "position_limits": state.position_limits,
                                     "active_before": _active(roster) if roster is not None else None,
                                     "active_after": None, "open_spots_before": None, "open_spots_after": None,
                                     "legal": None, "drop_required": None, "issues": None, "suggested_drop": None,
                                     "ir_slot_blockers": [n["player_id"] for n in notes if n["code"] == IR_SLOT_INELIGIBLE]}
-    if roster is not None:
+    if legality:
+        roster_block["legality"] = legality
+    if roster is not None and not legality:
         roster_block["open_spots_before"] = max(0, state.active_capacity - _active(roster))
     out["roster"] = roster_block
     out["depth"] = depth(roster, None, state.slots) if roster is not None else []
@@ -413,7 +421,14 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
         legal = legal_roster(pre, state, before)
         roster_block.update(legal=legal, drop_required=not legal, issues=roster_issues(state, before, pre),
                             active_after=_active(pre), open_spots_after=max(0, state.active_capacity - _active(pre)))
-        if not legal:
+        if legal and legality:
+            # the count shows room, but the count is not verified: never "legal" (an over-capacity count stays illegal)
+            roster_block.update(legal=None, drop_required=None, open_spots_after=None)
+            notes.append(_item(ROSTER_UNVERIFIED, legality["reason"].replace("the provider's app", ctx.provider),
+                               None, "caution"))
+        elif legality:
+            roster_block["open_spots_after"] = None
+        if legal is False:
             problems.append(_item(DROP_REQUIRED, _drop_required_text(state, before, pre, add_p, drop_p), drop or add,
                                   "caution"))
             roster_block["suggested_drop"] = _suggest_drop(state, window, before, pre, add)

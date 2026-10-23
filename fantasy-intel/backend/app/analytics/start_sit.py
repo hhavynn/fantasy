@@ -24,7 +24,7 @@ from typing import Any
 import json
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, unsupported_slots
 from .player_availability import load_availability
 from .reserve_slots import is_taxi
 from .team_lineups import RosterPlayer
@@ -373,6 +373,44 @@ def load_actual_lineup(
             bench.append(r)
 
     return starters, bench, ir
+
+
+def slot_label(p: dict) -> str | None:
+    """A lineup row's slot label (Sleeper rows carry it; ESPN rows also by numeric id)."""
+    label = p.get("lineup_slot")
+    if not label and p.get("lineup_slot_id") is not None:
+        label = SLOT_MAP.get(p["lineup_slot_id"])
+    return label
+
+
+def split_held_starters(starters: list[dict], unsupported) -> tuple[list[dict], list[dict]]:
+    """(starters in slots the engines fill, starters held in slots no engine fills). A held starter (IDP, P, HC, an
+    unrecognised slot) is kept where he is: the recommendation never moves him and no total counts him, so the
+    submitted and recommended lineups differ only in the slots the engines fill and the gain between them is exact
+    (issue #253 G2)."""
+    unsupported = set(unsupported)
+    held = [p for p in starters if slot_label(p) in unsupported]
+    return [p for p in starters if slot_label(p) not in unsupported], held
+
+
+def lineup_coverage(unsupported, held: list[dict], projections: dict, not_in_player_data: int) -> dict:
+    """The `lineup_coverage` block: totals are partial when the league starts slots no engine fills (#253 G3)."""
+    slots = ", ".join(unsupported)
+    n = len(held)
+    held_text = (f" Your {n} starter{'s' if n != 1 else ''} there {'are' if n != 1 else 'is'} kept as "
+                 f"{'they are' if n != 1 else 'he is'}." if held else "")
+    missing_text = (f" {not_in_player_data} starter{'s are' if not_in_player_data != 1 else ' is'} not in the synced "
+                    "player data (positions Fantasy Intel does not store) and not shown." if not_in_player_data else "")
+    return {
+        "status": "partial", "unsupported_slots": list(unsupported),
+        "held_starters": [{"player_id": p.get("espn_player_id"), "name": p.get("full_name"),
+                           "position": p.get("position"), "slot": slot_label(p),
+                           "projected_points": projections.get(p.get("espn_player_id"))} for p in held],
+        "starters_not_in_player_data": not_in_player_data,
+        "reason": f"{slots}: no engine fills these slots, so lineup totals cover the other starting slots only and "
+                  f"are partial, never complete.{held_text}{missing_text} A projected gain compares only the slots "
+                  "the engines fill, where the two lineups differ, so it is exact.",
+    }
 
 
 def _map_optimizer_output_to_slots(
@@ -808,7 +846,14 @@ def load_start_sit_evaluation(
             bench = prev_s + prev_b
             ir = prev_ir
 
-    all_roster = starters + bench + ir
+    # Starters in slots no engine fills (IDP, P, HC) are held where they are: never moved, never in a total (G2).
+    roster_slots_raw = lg.get("roster_slots")
+    if isinstance(roster_slots_raw, str):
+        roster_slots_raw = json.loads(roster_slots_raw)
+    unsupported = unsupported_slots(roster_slots_raw or {})
+    starters, held = split_held_starters(starters, unsupported)
+    held_ids = {p["espn_player_id"] for p in held if "espn_player_id" in p}
+    all_roster = starters + bench + ir + held
     # Sleeper taxi-squad players load as bench rows (slot label TAXI): rostered, but never a lineup candidate.
     taxi_ids = {p["espn_player_id"] for p in bench if "espn_player_id" in p and is_taxi(p)}
 
@@ -887,9 +932,6 @@ def load_start_sit_evaluation(
         )
 
     # 8. Slot instances & lock preservation
-    roster_slots_raw = lg.get("roster_slots")
-    if isinstance(roster_slots_raw, str):
-        roster_slots_raw = json.loads(roster_slots_raw)
     slot_instances = build_slot_instances(roster_slots_raw or {})
 
     actual_assignments: list[dict] = []
@@ -906,7 +948,7 @@ def load_start_sit_evaluation(
 
     # 9. Optimization
     opt = optimize_lock_constrained_lineup(
-        roster_players=all_roster,
+        roster_players=[p for p in all_roster if p.get("espn_player_id") not in held_ids],
         slot_instances=slot_instances,
         locked_starter_assignments=locked_starters,
         locked_bench_ids=locked_bench_ids,
@@ -1089,6 +1131,14 @@ def load_start_sit_evaluation(
             "nfl_ineligible": pid in unavailable_ids,
         })
 
+    coverage = None
+    if unsupported:
+        absent = fetch_dicts(con, """
+            SELECT count(*) AS n FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
+            WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ? AND l.is_starter
+              AND fp.espn_player_id IS NULL""", [league_id, season, target_week, tid])
+        coverage = lineup_coverage(unsupported, held, projections, int(absent[0]["n"]) if absent else 0)
+
     # Summary status
     locked_count = sum(1 for p in all_roster if (locks.get(p.get("pro_team")) or PlayerLock(team=p.get("pro_team"), status=LOCK_UNKNOWN)).status == LOCK_LOCKED)
     all_locked = locked_count == len(all_roster) and len(all_roster) > 0
@@ -1116,6 +1166,7 @@ def load_start_sit_evaluation(
             locked_bench_ids=set(locked_bench_ids), ir_ids=set(ir_ids), taxi_ids=set(taxi_ids),
             unavailable_ids=set(unavailable_ids), projections=dict(projections), origin=dict(origin), locks=locks,
             avail_records=avail_records, starters=list(starters), bench=list(bench), ir=list(ir),
+            held_starters=list(held),
             recommended_lineup=list(opt["recommended_lineup"]),
         )
 
@@ -1147,11 +1198,12 @@ def load_start_sit_evaluation(
         "projection_source": projection_source_label(source, src["available"], projections),
         "projection_source_detail": describe(src),
         "summary": {
-            "actual_projected_total": opt["actual_total"],
-            "recommended_projected_total": opt["recommended_total"],
+            # With slots no engine fills, a total covers the other slots only: partial (None), the known sum kept (G3).
+            "actual_projected_total": None if coverage else opt["actual_total"],
+            "recommended_projected_total": None if coverage else opt["recommended_total"],
             "known_actual_total": opt["known_actual_total"],
             "known_recommended_total": opt["known_recommended_total"],
-            "unconstrained_total": opt["unconstrained_total"],
+            "unconstrained_total": None if coverage else opt["unconstrained_total"],
             "known_unconstrained_total": opt["known_unconstrained_total"],
             "projected_gain": opt["projected_gain"],
             "projection_complete": opt["is_complete"],
@@ -1164,6 +1216,7 @@ def load_start_sit_evaluation(
             "ir_count": len(ir),
             "locked_players_count": locked_count,
             "status": summary_status,
+            **({"lineup_coverage": coverage} if coverage else {}),
         },
         "actual_lineup": enriched_actual,
         "recommended_lineup": enriched_recommended,

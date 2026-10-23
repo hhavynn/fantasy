@@ -5,6 +5,7 @@ import { OriginTag } from "@/components/ProjectionNotice";
 import { Badge, Delta, Notice, ProvenanceBadge, Section, Stat, StatStrip, VisuallyHidden } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num } from "@/lib/format";
+import { partialSlotsNote } from "@/lib/lineup-coverage";
 import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
 import {
@@ -57,6 +58,7 @@ export async function WhatIf({ apiPath, whatif, sp, provider, ours, invalidParam
   const rec = shownTotal(d.totals.recommended);
   const scen = shownTotal(d.totals.scenario);
   const delta = shownDelta(d.totals.delta, d.totals.known_delta);
+  const slotsNote = partialSlotsNote(d.totals.lineup_coverage?.unsupported_slots);
   const missing = d.totals.scenario.missing_projection_ids.map((id) => players.get(id)?.name ?? `Player ${id}`);
   const last = moves.length > 0 ? moves[moves.length - 1] : null;
   const atLimit = moves.length >= d.scenario.move_limit;
@@ -81,9 +83,9 @@ export async function WhatIf({ apiPath, whatif, sp, provider, ours, invalidParam
       <div className={styles.head}>
         <StatStrip compact>
           <Stat label="Recommended (proj)" value={<>{num(rec.value, 1)}{rec.partial ? "*" : null}</>}
-                note={rec.partial ? "*Known projections only" : "Best lineup under kickoff locks"} />
+                note={rec.partial ? (slotsNote ?? "*Known projections only") : "Best lineup under kickoff locks"} />
           <Stat label="What-if (proj)" value={<>{num(scen.value, 1)}{scen.partial ? "*" : null}</>}
-                note={scen.partial ? "*Known projections only" : applied ? `${moves.length} ${plural(moves.length, "move")}` : "No moves yet"} />
+                note={scen.partial ? (slotsNote ?? "*Known projections only") : applied ? `${moves.length} ${plural(moves.length, "move")}` : "No moves yet"} />
           <Stat label="Versus recommended"
                 tone={!delta.partial && delta.value < 0 ? "negative" : !delta.partial && delta.value > 0 ? "positive" : undefined}
                 value={<><Delta value={delta.value} suffix=" pts" />{delta.partial ? "*" : null}</>}

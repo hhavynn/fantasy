@@ -25,6 +25,11 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
     analytics/player_availability.py) is treated like an IR week for that week only: he cannot
     start, his ESPN projection is kept and reported under `unavailable`, and it is never a measured
     0 and never makes the week incomplete. Outside those weeks nothing is assumed about his health.
+  * Starting slots no engine fills (IDP, punter, head coach, unrecognised: lineup.LineupSlots.unsupported) are left
+    out of every lineup, never filled with a 0. A week of such a league is partial: `projection_complete` False,
+    `projected_lineup_points` None, the slots named under `unsupported_slots` (issue #253 G3). A comparison of two
+    lineups is still exact when every one of those slots takes only positions the engines never start and both rosters
+    hold the same such players (compare): the slots the engines leave out then contribute the same to both.
   * K / D/ST streaming baseline (opt-in, see StreamingProjections). Kickers and team defenses are
     streamed from free agents week to week, so holding one rostered K or D/ST all season is not the
     real alternative. When the projections carry a streaming baseline, each week a "waiver
@@ -40,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, separable, unsupported_of
 
 PROJECTION_SOURCE = "ESPN"
 
@@ -235,11 +240,14 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
     assignment = assign_lineup(pool, slots)
     starters = {a["player_id"] for a in assignment if a["player_id"] is not None}
     total = sum(a["value"] for a in assignment if a["player_id"] is not None)
-    complete = not missing
+    unsupported = unsupported_of(slots)
+    # A slot no engine fills leaves the total partial: the known total is never presented as the lineup's (#253 G3).
+    complete = not missing and not unsupported
     return {
         "week": week,
         "phase": phase,
         "projection_complete": complete,
+        **({"unsupported_slots": list(unsupported)} if unsupported else {}),
         "known_lineup_points": r(total),
         "projected_lineup_points": r(total) if complete else None,
         "assignment": [_assignment_row(a, streamers) for a in assignment],
@@ -253,6 +261,10 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         "missing_projection_ids": sorted(missing),
         "teamless_unprojected_ids": sorted(teamless),
         "_total": total,             # unrounded known total, for exact comparisons
+        "_projections_complete": not missing,
+        # active players who can fill no slot the engines fill (the candidates for the unsupported slots)
+        "_offslot": frozenset(p.espn_player_id for p in players if not p.reserved
+                              and not lineup_relevant(p.position, slots)) if unsupported else frozenset(),
     }
 
 
@@ -282,6 +294,7 @@ def _part(weeks: list[dict]) -> tuple[float | None, float, int, int]:
 
 
 def summarize_team(weeks: list[dict], window: Window) -> dict:
+    unsupported = next((w["unsupported_slots"] for w in weeks if w.get("unsupported_slots")), None)
     ros = _part(weeks)
     if window.last_regular is None:
         reg = po = (None, None, None, None)
@@ -295,9 +308,10 @@ def summarize_team(weeks: list[dict], window: Window) -> dict:
         "regular_season_projected_starting_points": reg[0], "regular_season_known_starting_points": reg[1],
         "playoff_projected_starting_points": po[0], "playoff_known_starting_points": po[1],
         "ros_weeks_expected": ros[2], "ros_weeks_complete": ros[3],
-        "missing_weeks": [w["week"] for w in weeks if not w["projection_complete"]],
+        "missing_weeks": [w["week"] for w in weeks if w["missing_projection_ids"]],
         "missing_players": sorted({pid for w in weeks for pid in w["missing_projection_ids"]}),
         "projection_complete": ros[3] == ros[2],
+        **({"unsupported_slots": unsupported} if unsupported else {}),
     }
 
 
@@ -322,12 +336,28 @@ def _sum_delta(rows: list[dict]) -> float | None:
     return r(sum(x["_delta"] for x in rows))
 
 
+def delta_exact(b: dict, a: dict) -> bool:
+    """Is after - before of two week lineups known exactly? Both sides must have every projection they need. In a league
+    with unsupported starting slots (whose totals are partial) the delta is still exact when those slots take only
+    positions the engines never start (lineup.separable) and both rosters hold the same such players: the left-out
+    slots then contribute the same to both lineups."""
+    if not (b.get("_projections_complete", b["projection_complete"]) and a.get("_projections_complete",
+                                                                               a["projection_complete"])):
+        return False
+    unsupported = b.get("unsupported_slots") or a.get("unsupported_slots")
+    if not unsupported:
+        return True
+    return separable(unsupported) and b.get("_offslot", frozenset()) == a.get("_offslot", frozenset())
+
+
 def compare(before: dict, after: dict, window: Window) -> dict:
     """Week-by-week and aggregate starting-lineup delta (after - before). A week's canonical delta
-    is None unless both sides are complete; an aggregate is None unless every week in it is."""
+    is None unless it is exact (delta_exact); an aggregate is None unless every week in it is."""
     rows = []
+    unsupported = None
     for b, a in zip(before["weeks"], after["weeks"]):
-        complete = b["projection_complete"] and a["projection_complete"]
+        unsupported = unsupported or b.get("unsupported_slots") or a.get("unsupported_slots")
+        complete = delta_exact(b, a)
         d = a["_total"] - b["_total"]
         rows.append({"week": b["week"], "phase": b["phase"],
                      "before": b["projected_lineup_points"], "after": a["projected_lineup_points"],
@@ -348,6 +378,7 @@ def compare(before: dict, after: dict, window: Window) -> dict:
         "weeks_unchanged": sum(1 for x in done if x["delta"] == 0),
         "weeks_incomplete": [x["week"] for x in rows if x["delta"] is None],
         "projection_complete": ros is not None,
+        **({"unsupported_slots": unsupported} if unsupported else {}),
         "weeks": [{k: v for k, v in x.items() if not k.startswith("_")} for x in rows],
     }
     return out

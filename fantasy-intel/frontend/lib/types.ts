@@ -1,3 +1,5 @@
+import type { RosterLegality } from "./lineup-coverage.ts";
+
 // Shapes returned by the FastAPI backend (only the fields the UI reads).
 
 export type SyncInfo = {
@@ -227,12 +229,16 @@ export type TeamLineupSummary = {
   ros_projected_starting_points: number | null; ros_known_starting_points: number;
   regular_season_projected_starting_points: number | null; playoff_projected_starting_points: number | null;
   ros_weeks_expected: number; ros_weeks_complete: number; missing_weeks: number[]; missing_players: number[];
+  /** Starting slots no engine fills: every total above leaves them out, so it is partial (issue #253 G3). */
+  unsupported_slots?: string[];
 };
 
 export type TradeDeltas = {
   ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
   known_ros_delta: number; average_weekly_delta: number | null; weeks_improved: number; weeks_worsened: number;
   weeks_unchanged: number; weeks_incomplete: number[]; projection_complete: boolean;
+  /** Starting slots no engine fills; a delta is still exact when it moves nobody who can start there. */
+  unsupported_slots?: string[];
 };
 
 export type FaPick = {
@@ -259,8 +265,10 @@ export type TradeSide = {
   weekly: { week: number; phase: string | null; before: number | null; after: number | null; delta: number | null;
     known_delta: number; projection_complete: boolean; entered: number[]; exited: number[] }[];
   lineups: { before: LineupWeek[]; after: LineupWeek[] };
-  roster: { active_capacity: number; active_before: number; active_after: number; open_active_roster_spots: number;
-    open_active_roster_spots_before: number;
+  roster: { active_capacity: number; active_before: number; active_after: number;
+    /** null when roster legality is unverified (`legality`): the count may show a spot that does not exist. */
+    open_active_roster_spots: number | null; open_active_roster_spots_before: number | null;
+    legality?: RosterLegality;
     forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
     forced_drop_lineup_cost: number | null; forced_drop_known_lineup_cost: number; forced_drop_basis: string | null;
     redundant_incoming_asset: { player_ids: number[]; names: (string | null)[]; lineup_points_saved_by_cutting_it: number; note: string } | null };
@@ -328,7 +336,7 @@ export type DiscoverySide = {
   forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
   forced_drop_lineup_cost: number | null;
   redundant_incoming_asset: { names: string[]; lineup_points_saved_by_cutting_it: number } | null;
-  open_active_roster_spots_before: number; open_active_roster_spots: number;
+  open_active_roster_spots_before: number | null; open_active_roster_spots: number | null; legality?: RosterLegality;
   hypothetical_fa_fill: { player: { espn_player_id: number; name: string | null; position: string | null } | null;
     lineup_points_added?: number | null } | null;
   incomplete: { missing_weeks: number[]; missing_players: number[] };

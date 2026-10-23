@@ -12,6 +12,7 @@ from ..analytics.availability import availability, injury_order_sql, latest_inju
 from ..analytics import forward_ours
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
+from ..analytics.lineup import unsupported_of
 from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value, source_label
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
@@ -689,6 +690,8 @@ def lineup_projections():
                 "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections,
                                                          projection_source=source_label(state.projection_source))
                 if window.weeks else None,
+                # slots no engine fills: every stored total is partial (team_lineups.project_week, #253 G3)
+                **({"unsupported_slots": list(unsupported_of(state.slots))} if unsupported_of(state.slots) else {}),
                 "projection_source": "ESPN", "note": BASELINE_NOTE}
 
 

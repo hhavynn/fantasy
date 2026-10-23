@@ -307,6 +307,9 @@ def _claim(c: dict, cap: dict, remaining: float | None, weeks: int, share: int, 
         out["reason"] = (problems[0]["message"] if problems else "The synced data says this claim is not valid.") + \
             " No bid is suggested."
         return out
+    unverified = next((r for r in c["reasons"] if r["code"] == "ROSTER_UNVERIFIED"), None)
+    if unverified is not None:      # add_drop / trades.roster_legality (#253 G4): the claim's roster room is not known
+        out["notes"].append({"code": "ROSTER_UNVERIFIED", "message": unverified["message"]})
     if c["claim_kind"] == "free_agent":
         out["status"], out["reason"] = NO_BID_NEEDED, f"A free agent is added in {provider} without a claim or a bid."
         return out

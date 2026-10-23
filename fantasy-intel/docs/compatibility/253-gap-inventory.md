@@ -277,6 +277,27 @@ waivers `scoring.partial` (xFP is full PPR).
 | **G13** | P1 (test debt) | No OP, multi-QB or 3-FLEX coverage in start_sit, what-if, waivers, trade_discovery, add_drop, kdst or action center. | test inventory above | M2 matrix |
 | **G14** | P3 | `engine_support` has no stable code, and what-if keys on the English rule text. | `lineup_what_if.py:360` | rename the rule text and what-if loses the lock rule silently |
 
+### Phase 3 status: G2, G3 and G4 (unsupported-slot integrity)
+
+One shared mechanism: `lineup.lineup_slots` returns a `LineupSlots` list that also names the league's starting slots no
+engine fills (`unsupported`: IDP, P, HC, unrecognised; bench, IR, taxi and the blank ESPN slot are never among them).
+Synthetic fixtures M8 (ESPN LB + DL), M8p (ESPN P + HC) and M8s (Sleeper DL + LB + IDP_FLEX) pin the behaviour in
+`tests/test_unsupported_slots.py` and `tests/test_league_compatibility.py`.
+
+- **G2 fixed.** Start/Sit holds a starter in such a slot where he is: he is in neither total and never moved, so the
+  projected gain compares like with like and is exact (M8: +0.9, where the old rule gave -18.5). `summary.lineup_coverage`
+  names the slots, the held starters and, for Sleeper, the starters missing from the player data.
+- **G3 fixed.** `team_lineups.project_week` marks such a week partial (`projection_complete` False,
+  `projected_lineup_points` None, `unsupported_slots`), so every consumer (matchup, lineup projections, trades, add/drop,
+  claim planner, FAAB, team value, power rankings, playoff race) shows known points only. A comparison stays exact
+  (`team_lineups.delta_exact`) only when every such slot takes positions the engines never start and both rosters hold the
+  same such players; otherwise it is known-only. Start/Sit and what-if totals are partial the same way.
+- **G4 fixed.** `trades.roster_legality`: with such slots, or rostered players missing from the player data (Sleeper IDP),
+  a roster the count shows legal is `unverified` (add/drop `legal` None with a `ROSTER_UNVERIFIED` note, no open-spot
+  count; trade sides carry `legality` and no open-spot count; the claim planner marks the claim unverified and FAAB repeats
+  the note). A count already over capacity stays illegal. The diagnostic reports `roster_legality` (unverified) for the
+  tools that check capacity.
+
 ### Scoring-fidelity items left to #254 (inventory only)
 
 - TE premium as an ESPN slot override: the skill model abstains, which is correct; ratings and xFP ignore it (a `partial`

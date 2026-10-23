@@ -3,6 +3,7 @@
 // reads its answer and builds URLs: the scenario lives in the `whatif` query parameter, so a view can be shared and
 // the browser's back button undoes a move. Nothing here talks to ESPN or Sleeper.
 
+import type { LineupCoverage } from "./lineup-coverage.ts";
 import type { ProjectionOrigin } from "./projection-source.ts";
 import type { ProvenancePayload } from "./signal-provenance.ts";
 
@@ -97,7 +98,11 @@ export type WhatIfResponse = {
   changed_slot_ids: string[];
   slots: WhatIfSlot[];
   players: WhatIfPlayer[];
-  totals: { recommended: WhatIfTotals; scenario: WhatIfTotals; delta: number | null; known_delta: number; complete: boolean };
+  totals: {
+    recommended: WhatIfTotals; scenario: WhatIfTotals; delta: number | null; known_delta: number; complete: boolean;
+    /** Slots no engine fills: both totals are partial, the delta stays exact (issue #253 G3). */
+    lineup_coverage?: LineupCoverage;
+  };
   lineup_lock: {
     rule: { value: string | null; display: string | null; reason: string | null };
     engine_status: "handled" | "unsupported" | "unverified" | null;

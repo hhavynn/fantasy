@@ -74,6 +74,8 @@ export type Matchup = {
   opponent: TeamSide | null;
   status: MatchupStatus;
   notes: string[];
+  /** Starting slots no engine fills: every projected total is partial (known points), and a note says so (#253 G3). */
+  unsupported_slots?: string[];
   projection_source?: ProjectionSourceDetail;
   /** signal-provenance.v1: league data and the week's projections (lib/signal-provenance.ts). */
   provenance?: ProvenancePayload | null;

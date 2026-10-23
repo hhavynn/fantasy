@@ -3,6 +3,7 @@
 // totals. This module only validates the URL, builds links and reads the answer. The scenario lives in the `add` and
 // `drop` query parameters, so it can be shared and Back undoes it. Nothing here talks to ESPN or Sleeper.
 
+import type { RosterLegality } from "./lineup-coverage.ts";
 import type { ProvenancePayload } from "./signal-provenance.ts";
 
 export const ADD_PARAM = "add";
@@ -105,6 +106,8 @@ export type AddDropRos = {
   regular_season_delta: number | null; playoff_delta: number | null; average_weekly_delta: number | null;
   weeks_improved: number; weeks_worsened: number; weeks_unchanged: number; weeks_incomplete: number[];
   projection_complete: boolean;
+  /** Starting slots no engine fills (issue #253 G3): totals are partial; a delta is exact only when it can be. */
+  unsupported_slots?: string[];
 };
 
 export type AddDropDepth = {
@@ -133,6 +136,9 @@ export type AddDropResponse = {
     active_capacity: number; position_limits: Record<string, number>;
     active_before: number | null; active_after: number | null; open_spots_before: number | null; open_spots_after: number | null;
     legal: boolean | null; drop_required: boolean | null; ir_slot_blockers: number[];
+    /** Present when legality cannot be verified (slots no engine fills, players missing from the data): `legal` is then
+     * never true and no open-spot count is given (issue #253 G4). */
+    legality?: RosterLegality;
     suggested_drop: ({ available: true; espn_player_id: number; name: string | null; position: string | null;
       lineup_cost: number | null; known_lineup_cost: number; basis: string; rule: string }
       | { available: false; reason: string }) | null;
@@ -179,7 +185,7 @@ export function headline(d: AddDropResponse): string {
   if (d.status === "options") return "Choose a player to add, one to drop, or both";
   if (d.status === "blocked") return `${move}: not possible as asked`;
   const ros = d.impact ? shownChange(d.impact.rest_of_season.ros_delta, d.impact.rest_of_season.known_ros_delta) : null;
-  if (!ros || ros.value === null) return move;
+  if (!ros || ros.value === null) return d.roster.legality ? `${move}: roster legality unverified` : move;
   const dir = Math.abs(ros.value) < 0.05 ? "no change to your projected lineups" : ros.value > 0 ? "a projected lineup gain" : "a projected lineup loss";
-  return `${move}: ${dir}${ros.partial ? " (known projections only)" : ""}`;
+  return `${move}: ${dir}${ros.partial ? " (known projections only)" : ""}${d.roster.legality ? "; roster legality unverified" : ""}`;
 }
