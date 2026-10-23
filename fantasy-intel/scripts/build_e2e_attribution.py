@@ -31,7 +31,8 @@ from app.espn.constants import nflverse_team  # noqa: E402
 from app.sleeper.scoring import to_scoring_items  # noqa: E402
 
 BASE = {1: 18.0, 2: 12.0, 3: 11.0, 4: 8.0}
-WITHHELD = 202          # Foxtrot RB: withheld (ESPN status OUT) in the earlier forecast, projected in the latest
+WITHHELD = 202          # Foxtrot RB: withheld (reserve list) in the earlier forecast, projected in the latest
+WITHHELD_REASON = "not on the NFL active roster (weekly roster status RES, week 1)"
 EARLIER = datetime(SEASON, 9, 1, 12, 0)     # before week CURRENT - 1's kickoff (synthetic_nfl: Sep 2)
 LATEST = datetime(SEASON, 9, 21, 12, 0)     # after the fixture's own cycle run (Sep 20), before week CURRENT
 
@@ -60,7 +61,7 @@ def _row(pid, pos, team, week, k, later: bool):
     if pid == WITHHELD and not later:
         row.update(coverage_status="withheld_unavailable", projected_points=None, interval_low=None,
                    interval_high=None, p_play=None, expected_points=None, explanation=[],
-                   missing_inputs=["ESPN status OUT"])
+                   missing_inputs=[WITHHELD_REASON])
     return row
 
 

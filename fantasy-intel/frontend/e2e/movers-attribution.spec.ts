@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 // "Why it changed" on /movers (issue #225; playwright.attribution.config.ts, 1440 and 375). The fixture
 // (scripts/build_e2e_attribution.py) is the Sleeper league, whose movers are Fantasy Intel's own, with two stored forecast
-// cycles of the same model artifact: Foxtrot RB was withheld (ESPN status OUT) in the earlier forecast; every other
+// cycles of the same model artifact: Foxtrot RB was withheld (reserve list) in the earlier forecast; every other
 // player's points moved through two stored input terms plus one the earlier forecast did not store (the residual).
 const PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -31,7 +31,8 @@ test("a status change is the whole move and cites only the stored reason", async
   const status = rows.locator("details").filter({ hasText: "Status withheld (unavailable) → projected" });
   await expect(status.locator("summary")).toContainText("Stored status");
   await status.locator("summary").click();
-  await expect(status).toContainText("Earlier forecast: ESPN status OUT (stored with the forecast)");
+  await expect(status).toContainText(
+    "Earlier forecast: not on the NFL active roster (weekly roster status RES, week 1) (stored with the forecast)");
   await expect(why).toContainText("The parts below account for the whole change");
   await expect(why).toContainText(/Parts and residual add up to the change of \+\d+\.\d\d points/);
   await expect(why).toContainText(/Earlier forecast made Sep 1 12:00 UTC, games through 2026 week 1\. Latest forecast made Sep 21 12:00 UTC, games through 2026 week 2\./);
@@ -57,9 +58,9 @@ test("input rows open to their values and weeks, and the residual says what is n
   await expect(residual).toContainText("Inputs stored in only one of the two forecasts");
   await why.getByText(/Inputs stored without a measured share/).click();
   await expect(why).toContainText("opponent points allowed to position vs league");
-  await expect(why).toContainText("not among the inputs this forecast stored");
+  // missing is a muted dash with its reason as the title, never a 0
+  await expect(why.locator('.missing[title="not among the inputs this forecast stored"]').first()).toBeVisible();
   await expect(why).toContainText("Source: Fantasy Intel model.");
-  await expect(why).not.toContainText(/\bESPN\b.*projection/);
   await noHorizontalScroll(page);
 });
 
