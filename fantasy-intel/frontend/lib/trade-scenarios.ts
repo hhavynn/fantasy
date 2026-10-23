@@ -259,10 +259,11 @@ export const COMPARE_UNAVAILABLE = "The comparison service is unavailable.";
  * The /api/trade-scenarios route's error answer. The backend's own message is forwarded only for the answers it writes
  * for the manager (404 league or team not found, 409 no remaining weeks, 422 a bad horizon or list). Anything else
  * (offline, an unreadable answer, a server error) gets a generic message: the internal API address or a start hint
- * never reaches the browser.
+ * never reaches the browser. The status is the backend's only for an HTTP error; anything else (offline, or a 2xx
+ * whose body is not JSON, which api() reports with that 2xx status) answers 502, never a success status.
  */
 export function compareRouteError(res: { error: string; kind?: string; status?: number }): { body: { error: string; kind: string }; status: number } {
-  const status = res.status ?? 502;
+  const status = res.kind === "http" && res.status !== undefined && res.status >= 400 ? res.status : 502;
   const own = res.kind === "http" && (status === 404 || status === 409 || status === 422);
   return { body: { error: own ? res.error : COMPARE_UNAVAILABLE, kind: own ? "http" : (res.kind ?? "unknown") }, status };
 }

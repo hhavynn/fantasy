@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { UNSCOPED_PREFIXES } from "./lib/unscoped-prefixes.mjs";
 
 // League-scoped links and forms (multi-league site). On a league page (`/l/<lg>/...`) a bare in-app href or form action
 // such as `/players?id=1` leaves the league prefix, and proxy.ts then routes it by the last-viewed-league cookie, which
@@ -27,12 +28,12 @@ const ROUTER_CALL = "CallExpression[callee.object.name='router'][callee.property
 const CLIENT_NAV_CALL = "Program:has(> ExpressionStatement[directive='use client']) "
   + "CallExpression[callee.type='MemberExpression'][callee.property.name=/^(push|replace)$/]:not([callee.object.name='router'])"
   + ":matches([arguments.length=1], [arguments.1.type='ObjectExpression'])";
-// `redirect("/players")` / `permanentRedirect(...)` to an in-app league page. Unscoped targets are legitimate (the
-// connections page, sign-in, account pages, terms; keep in step with UNSCOPED_PREFIXES in lib/league-scope.ts, which
-// lib/league-scope.test.ts checks), as are already-scoped `/l/...` targets and the bare home page `/` (sign-out).
-export const UNSCOPED_REDIRECT_PREFIXES = ["_next", "api", "leagues", "login", "auth", "invite", "account", "admin", "terms",
-  "privacy", "favicon", "icon", "apple-icon", "robots", "sitemap"];
-const LEAGUE_PAGE = `/^\\/(?!\\/|(?:l|${UNSCOPED_REDIRECT_PREFIXES.join("|")})(?:[\\/.?#]|$))[^?#]/`;
+// `redirect("/players")` / `permanentRedirect(...)` to an in-app league page, including the league home with a query or
+// hash (`/?team=1`). Unscoped targets are legitimate (lib/unscoped-prefixes.mjs, the list the proxy passes through: the
+// connections page, sign-in, account pages, terms), as are already-scoped `/l/...` targets and the bare home page `/`
+// (sign-out).
+const UNSCOPED = UNSCOPED_PREFIXES.map((p) => p.slice(1)).join("|");
+const LEAGUE_PAGE = `/^\\/(?!$|\\/|(?:l|${UNSCOPED})(?:[\\/.?#]|$))/`;
 const REDIRECT_CALL = "CallExpression[callee.name=/^(redirect|permanentRedirect)$/]";
 
 const eslintConfig = defineConfig([

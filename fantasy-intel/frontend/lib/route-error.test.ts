@@ -68,11 +68,14 @@ test("an answer that is not JSON, or a 5xx, is never forwarded either", async ()
     answering(200, "<html>");
     const bad = await route.run();
     const badText = await bad.text();
+    assert.equal(bad.status, 502, route.name);                       // a 2xx without JSON is never a success status
     assert.equal(bad.headers.get("cache-control"), "private, no-store", route.name);
     assert.equal(badText.includes(host), false, route.name);
     assert.equal(JSON.parse(badText).error, route.unavailable, route.name);
     answering(500, JSON.stringify({ detail: "Traceback at /srv/app/main.py" }));
     const five = await route.run();
+    // 502 on the shared helper; the scenario route's own mapping keeps the backend's 5xx (an error status either way).
+    assert.equal(five.status, route.name === "trade-scenarios" ? 500 : 502, route.name);
     assert.equal(five.headers.get("cache-control"), "private, no-store", route.name);
     assert.equal(JSON.parse(await five.text()).error, route.unavailable, route.name);
   }

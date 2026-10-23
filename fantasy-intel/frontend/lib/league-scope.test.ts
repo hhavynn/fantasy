@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { UNSCOPED_REDIRECT_PREFIXES } from "../eslint.config.mjs";
+import { readFileSync } from "node:fs";
 import {
-  UNSCOPED_PREFIXES, appPath, crossesLeagueScope, leagueRouteHref, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath,
-  withLeague,
+  appPath, crossesLeagueScope, leagueRouteHref, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague,
 } from "./league-scope.ts";
+import { UNSCOPED_PREFIXES } from "./unscoped-prefixes.mjs";
 
 const LG = "lg_" + "a".repeat(24);
 
@@ -200,7 +200,15 @@ test("client navigations from a league page stay in that league end to end", asy
   assert.deepEqual(e.getAll("a"), ["204"]);
 });
 
-test("the lint guard's redirect rule allows exactly the unscoped prefixes the proxy passes through", () => {
-  // eslint.config.mjs flags redirect("/page") to a league page; its allow-list must not drift from UNSCOPED_PREFIXES.
-  assert.deepEqual([...UNSCOPED_REDIRECT_PREFIXES].sort(), UNSCOPED_PREFIXES.map((p) => p.slice(1)).sort());
+test("the proxy and the lint guard's redirect rule share one unscoped-prefix list", () => {
+  // Every listed prefix passes through the proxy untouched, even with a last-viewed-league cookie...
+  for (const p of UNSCOPED_PREFIXES) {
+    assert.deepEqual(proxyDecision({ enabled: true, pathname: `${p}/x`, search: "", cookie: LG }), { kind: "next" }, p);
+    assert.equal(withLeague(`${p}/x`, LG), `${p}/x`, p);
+  }
+  // ...and eslint.config.mjs builds its redirect() allow-list from the same module, not a copy that could drift.
+  const config = readFileSync(new URL("../eslint.config.mjs", import.meta.url), "utf8");
+  assert.match(config, /import \{ UNSCOPED_PREFIXES \} from "\.\/lib\/unscoped-prefixes\.mjs";/);
+  assert.match(config, /UNSCOPED_PREFIXES\.map\(/);
+  assert.doesNotMatch(config, /\[\s*"_next"|"\/_next"/);
 });

@@ -193,7 +193,9 @@ test("a failed comparison never sends the internal API address or start hint to 
   const out = compareRouteError(offline);
   assert.deepEqual(out, { body: { error: COMPARE_UNAVAILABLE, kind: "offline" }, status: 502 });
   assert.equal(/127\.0\.0\.1|uvicorn/.test(JSON.stringify(out.body)), false);
-  assert.equal(compareRouteError({ error: "Unexpected token < in JSON at http://api.internal:8000", kind: "unknown", status: 200 }).body.error, COMPARE_UNAVAILABLE);
+  const notJson = compareRouteError({ error: "Unexpected token < in JSON at http://api.internal:8000", kind: "unknown", status: 200 });
+  assert.equal(notJson.body.error, COMPARE_UNAVAILABLE);
+  assert.equal(notJson.status, 502);                                  // never a success status for an error
   assert.equal(compareRouteError({ error: "Internal Server Error", kind: "http", status: 500 }).body.error, COMPARE_UNAVAILABLE);
   assert.equal(compareRouteError({ error: "schema too old", kind: "schema", status: 503 }).body.error, COMPARE_UNAVAILABLE);
   for (const status of [404, 409, 422]) {
