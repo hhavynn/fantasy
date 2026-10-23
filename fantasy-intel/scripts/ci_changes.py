@@ -10,6 +10,10 @@ main, workflow_dispatch). Fail closed: when in doubt, run everything.
 
 Prints `docs_only=true|false` and `reason=...` (append it to $GITHUB_OUTPUT). Stdlib only; never exits non-zero
 for a classification problem (that is a full run), only for bad arguments.
+
+CI runs this file as it exists on the base commit (`git show $BASE_SHA:fantasy-intel/scripts/ci_changes.py`), never
+the pull request's own copy, so a pull request cannot loosen the rules it is judged by; with no classifier at the
+base, CI runs in full. Keep the command line above stable: a newer workflow calls an older classifier.
 """
 from __future__ import annotations
 
@@ -39,8 +43,8 @@ NOT_DOCS_ONLY: tuple[str, ...] = (
 
 
 def is_docs_path(path: str) -> bool:
-    if not path or path != path.strip() or any(ord(c) < 32 or ord(c) == 127 for c in path):
-        return False                                   # odd names (control characters, padding) are never docs
+    if not path or path != path.strip() or not path.isprintable():
+        return False                       # odd names (control characters, undecodable bytes, padding) are never docs
     if path.startswith("/") or ".." in path.split("/"):
         return False
     if any(fnmatch.fnmatchcase(path, p) for p in NOT_DOCS_ONLY):
@@ -63,8 +67,10 @@ def changed_paths(base: str, head: str) -> list[str]:
     """Paths touched between the merge base of `base` and `head`, and `head`. Renames count as both paths."""
     merge_base = subprocess.run(["git", "merge-base", base, head], capture_output=True, text=True, check=True)
     diff = subprocess.run(["git", "diff", "--name-only", "--no-renames", "-z", merge_base.stdout.strip(), head],
-                          capture_output=True, text=True, check=True)
-    return [p for p in diff.stdout.split("\0") if p]
+                          capture_output=True, check=True)
+    # Paths are bytes: a name that is not UTF-8 keeps its undecodable bytes as lone surrogates (not printable, so
+    # never docs) instead of raising.
+    return [p for p in diff.stdout.decode("utf-8", "surrogateescape").split("\0") if p]
 
 
 def decide(event: str, base: str, head: str) -> tuple[bool, str]:
@@ -74,13 +80,13 @@ def decide(event: str, base: str, head: str) -> tuple[bool, str]:
         return False, "missing base or head SHA: full CI"
     try:
         paths = changed_paths(base, head)
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         return False, f"diff undeterminable ({type(exc).__name__}): full CI"
     return classify(paths)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "CI change classifier").splitlines()[0])
     ap.add_argument("--event", required=True)
     ap.add_argument("--base", default="")
     ap.add_argument("--head", default="")

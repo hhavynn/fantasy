@@ -16,8 +16,9 @@ concurrency:
 
 jobs:
   # Docs-only pull requests (every changed path on the short Markdown allow-list in fantasy-intel/scripts/ci_changes.py)
-  # skip the backend, social, frontend and E2E jobs; they show as skipped, and the two aggregate checks below say so in
-  # their summary. Everything else, and every push to main or manual run, gets the full suite.
+  # skip the backend, social, frontend and E2E jobs (shown as skipped) and run the repository credential scan in the
+  # docs-scan job instead; the two aggregate checks below say so in their summary. Everything else, every push to main
+  # or manual run, and any failure to classify, gets the full suite.
   changes:
     name: Classify changes
     runs-on: ubuntu-latest
@@ -32,6 +33,8 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
+      # The classifier that runs is the base commit's copy, never the pull request's own, so a pull request cannot
+      # loosen the rules it is judged by. No classifier at the base, or a classifier failure, means full CI.
       - name: Classify the diff against its merge base
         id: classify
         env:
@@ -39,9 +42,55 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -o pipefail   # a classifier crash fails this job, and with it both aggregate checks
-          python3 fantasy-intel/scripts/ci_changes.py --event "$EVENT" --base "$BASE_SHA" --head "$HEAD_SHA" \
-            | tee -a "$GITHUB_OUTPUT" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          verdict="$RUNNER_TEMP/verdict"
+          classifier="$RUNNER_TEMP/ci_changes_base.py"
+          if [ "$EVENT" != pull_request ]; then
+            printf 'docs_only=false\nreason=%s event: full CI\n' "$EVENT" > "$verdict"
+          elif ! git show "$BASE_SHA:fantasy-intel/scripts/ci_changes.py" > "$classifier" 2>/dev/null; then
+            printf 'docs_only=false\nreason=no classifier at the base commit: full CI\n' > "$verdict"
+          elif ! python3 -I "$classifier" --event "$EVENT" --base "$BASE_SHA" --head "$HEAD_SHA" > "$verdict"; then
+            echo "::warning title=Classify changes::the base commit's classifier failed; running full CI"
+            printf 'docs_only=false\nreason=classifier failed: full CI\n' > "$verdict"
+          fi
+          grep -E '^(docs_only|reason)=' "$verdict" | tee -a "$GITHUB_OUTPUT" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
+  docs-scan:
+    # The one whole-repository check that reads Markdown: the credential scan over every tracked file
+    # (backend/tests/test_no_credential_leaks.py). On a docs-only change it runs here; otherwise it runs in the shards.
+    name: Docs-only checks (credential scan)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fantasy-intel/backend
+    env:
+      TZ: UTC
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+
+      - name: Scan every tracked file for credentials
+        run: >-
+          uv run pytest -p no:cacheprovider
+          "tests/test_no_credential_leaks.py::test_no_credentials_are_committed_to_the_repository"
+          "tests/test_no_credential_leaks.py::test_the_env_example_files_ship_empty_credentials"
+          "tests/test_no_credential_leaks.py::test_the_scanner_catches_each_credential_shape_and_honours_the_allowlist"
 
   backend-shard:
     # The suite runs as parallel shards (balanced by tests/shard_weights.json; whole files except the heaviest), each with its
@@ -49,7 +98,7 @@ jobs:
     # weights are per-file durations measured on these runners (all eight shards of one CI run), not on a laptop.
     name: Backend shard ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -94,30 +143,32 @@ jobs:
         run: uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   backend:
-    # One status for the whole suite: green only when every shard passed, or for a docs-only change (shards not run).
-    # Skipped, not red, when the run itself was cancelled (a newer push supersedes it).
+    # One status for the whole suite: green only when every shard passed, or for a docs-only change when the credential
+    # scan passed (shards not run). Red when a shard was cancelled, including a run superseded by a newer push.
     name: Backend (Python 3.12)
     runs-on: ubuntu-latest
-    needs: [changes, backend-shard]
-    if: ${{ !cancelled() }}
+    needs: [changes, docs-scan, backend-shard]
+    if: always()
     steps:
       - name: Every shard passed
         env:
           CHANGES: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          DOCS_SCAN: ${{ needs.docs-scan.result }}
           SHARDS: ${{ needs.backend-shard.result }}
         run: |
-          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ] && [ "$SHARDS" = skipped ]; then
+          echo "changes: $CHANGES (docs_only=$DOCS_ONLY), credential scan: $DOCS_SCAN, backend shards: $SHARDS"
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ]; then
+            if [ "$DOCS_SCAN" != success ] || [ "$SHARDS" != skipped ]; then exit 1; fi
             echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "changes: $CHANGES, backend shards: $SHARDS"
-          test "$CHANGES" = success && test "$SHARDS" = success
+          test "$SHARDS" = success
 
   social:
     name: Social trend engine (Python 3.12)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -152,7 +203,7 @@ jobs:
   frontend:
     name: Frontend (Node.js 22)
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -191,7 +242,7 @@ jobs:
     # smoke while it has no committed baselines (it skips).
     name: E2E ${{ matrix.name }}
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -248,8 +299,26 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps --only-shell chromium
+      # The browser download is cached (it once took 6-8 min in two jobs of one run); the key is the resolved
+      # @playwright/test version, which pins the browser build. The system packages are installed either way (what
+      # `--with-deps` did), as their own step so its time shows apart from the download's.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
+
+      - name: Install Playwright system dependencies
+        run: npx playwright install-deps chromium
+
+      - name: Install Playwright Chromium (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --only-shell chromium
 
       - name: Build frontend
         id: build
@@ -300,21 +369,23 @@ jobs:
 
   e2e:
     # The check name the single E2E job used to have: green only when every suite job passed, or for a docs-only change
-    # (suites not run). Skipped, not red, when the run itself was cancelled.
+    # when the credential scan passed (suites not run). Red when a suite was cancelled, including a superseded run.
     name: E2E smoke (Playwright)
     runs-on: ubuntu-latest
-    needs: [changes, e2e-suite]
-    if: ${{ !cancelled() }}
+    needs: [changes, docs-scan, e2e-suite]
+    if: always()
     steps:
       - name: Every E2E suite passed
         env:
           CHANGES: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          DOCS_SCAN: ${{ needs.docs-scan.result }}
           SUITES: ${{ needs.e2e-suite.result }}
         run: |
-          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ] && [ "$SUITES" = skipped ]; then
+          echo "changes: $CHANGES (docs_only=$DOCS_ONLY), credential scan: $DOCS_SCAN, E2E suites: $SUITES"
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ]; then
+            if [ "$DOCS_SCAN" != success ] || [ "$SUITES" != skipped ]; then exit 1; fi
             echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "changes: $CHANGES, E2E suites: $SUITES"
-          test "$CHANGES" = success && test "$SUITES" = success
+          test "$SUITES" = success
