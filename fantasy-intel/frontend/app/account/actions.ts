@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
+import { actionErrorMessage } from "@/lib/route-error";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { CONFIRM_WORD } from "./confirm";
 
@@ -18,7 +19,8 @@ export async function deleteAccount(_prev: DeleteState, form: FormData): Promise
     return { ok: false, message: `Type ${CONFIRM_WORD} to confirm.` };
   }
   const res = await apiRequest("/v2/me", { method: "DELETE" });
-  if (!res.ok) return { ok: false, message: res.error };
+  // Fixed words unless the backend wrote a 4xx message for the visitor: never the internal API_URL or a server error.
+  if (!res.ok) return { ok: false, message: actionErrorMessage(res, "Your account could not be deleted right now. Try again in a few minutes.") };
   const supabase = await supabaseServer();
   if (supabase) await supabase.auth.signOut();
   redirect("/leagues");

@@ -2,7 +2,7 @@
 
 import Link from "@/components/LeagueLink";
 import { useEffect } from "react";
-import { BackendProblem } from "@/components/BackendProblem";
+import { BackendProblemView } from "@/components/BackendProblemView";
 import { Notice, PageHeader } from "@/components/ui";
 import type { ApiErrorKind } from "@/lib/api";
 import styles from "./route-state.module.css";
@@ -29,7 +29,7 @@ export default function RouteError({ error, retry }: { error: Error & { digest?:
           {error.digest ? <p className={styles.digest}>Reference {error.digest}</p> : null}
         </Notice>
       ) : (
-        <BackendProblem kind={kind} error={error.message} />
+        <BackendProblemView kind={kind} error={error.message} />
       )}
       <div className={styles.actions}>
         <button type="button" onClick={() => retry()}>Try again</button>

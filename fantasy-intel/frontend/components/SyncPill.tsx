@@ -1,6 +1,7 @@
 import Link from "@/components/LeagueLink";
 import { when } from "@/lib/format";
 import type { Provider } from "@/lib/labels";
+import { isLocalRun } from "@/lib/deployment.server";
 import { type StatusPayload, computeSyncSummary } from "@/lib/sync-status";
 import { SyncPopover } from "./SyncPopover";
 
@@ -11,11 +12,14 @@ export function SyncPill({ status, provider = "espn", degraded = false }: { stat
   const s = computeSyncSummary(status, undefined, provider, degraded);
   return (
     <SyncPopover state={s.state} text={s.text}>
-      {s.state === "offline" ? (
+      {s.state === "offline" && isLocalRun() ? (
         <div className="sync-callout bad">
           <b>Cannot reach the local API.</b> Start it from <code>fantasy-intel/backend</code>:
           <code className="block">uv run uvicorn app.main:app --reload</code>
         </div>
+      ) : s.state === "offline" ? (
+        // A hosted deployment's visitors get no server command (lib/deployment.server.ts decides on the server).
+        <div className="sync-callout bad"><b>The league data is not answering.</b> Try again in a minute.</div>
       ) : (
         <>
           {s.degraded && (
