@@ -62,6 +62,8 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   const recParam = first(sp.rec);
   const rec = recParam && ["CLAIM", "WAIT", "IGNORE"].includes(recParam) ? recParam : "ALL";
   const offset = Math.max(0, Number.parseInt(first(sp.offset) ?? "", 10) || 0);
+  // A link from the bye planner names the week it was planning for; waiver results are always for the current period.
+  const plannedWeek = /^\d{1,2}$/.test(first(sp.week) ?? "") ? Number(first(sp.week)) : null;
   const profile = await getLeagueProfile();
   const pv = providerName(profile.provider);
   // Waivers follow the league's default projections (ESPN's; Ours where the provider publishes none).
@@ -130,6 +132,12 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         provenance={<ProvenanceBadge signals={signalsOf(res.data.provenance)} />}
         actions={<TeamPerspective path="/waivers" sp={sp} current={perspective?.team_id ?? null} />}
       />
+      {plannedWeek !== null && (
+        <Notice tone="info" title={`Looking for week ${plannedWeek} cover`}>
+          These recommendations are for the current waiver period, not ranked for week {plannedWeek}. Check that a
+          player&apos;s NFL team plays in week {plannedWeek} before claiming him for it.
+        </Notice>
+      )}
       {res.data.roster_newer_than_analysis && (
         <Notice tone="caution" title="This roster changed after the waiver analysis ran">
           {pv} rosters were re-synced after these suggestions were computed, so a suggested drop may already be gone and a fit may have changed.

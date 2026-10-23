@@ -6,7 +6,9 @@ import { PlayerPhoto } from "@/components/PlayerPhoto";
 import {
   Badge, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip,
 } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
+import type { ByePlanner } from "@/lib/bye-planner";
+import { currentLeague } from "@/lib/league-scope.server";
 import { cx } from "@/lib/cx";
 import { when } from "@/lib/format";
 import {
@@ -16,6 +18,7 @@ import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/so
 import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "@/lib/types";
 import styles from "./schedule.module.css";
 import { TeamLink } from "@/components/TeamLink";
+import { ByePlannerSection } from "./ByePlanner";
 
 export const metadata = { title: "Schedule" };
 
@@ -61,7 +64,15 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
   if (team) q.set("team_id", team);
   q.set("position", position);
   q.set("phase", phase);
-  const res = await api<ScheduleIntelligence>(`/api/schedule-intelligence?${q.toString()}`);
+  // The bye planner covers every starting slot of the same team; it is fetched beside the opponent view.
+  const planned = new URLSearchParams();
+  if (team) planned.set("team_id", team);
+  const plannerPath = `/api/schedule-intelligence/bye-planner${planned.toString() ? `?${planned}` : ""}`;
+  const [res, planner, league] = await Promise.all([
+    api<ScheduleIntelligence>(`/api/schedule-intelligence?${q.toString()}`),
+    api<ByePlanner>(plannerPath),
+    currentLeague(),
+  ]);
   let detail: SiPlayer | undefined;
   if (res.ok && selected) {
     detail = res.data.players.find((p) => String(p.espn_player_id) === selected);
@@ -79,10 +90,13 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
       </div>
     );
   }
-  return <Body d={res.data} detail={detail} position={position} phase={phase} sp={sp} />;
+  return <Body d={res.data} detail={detail} position={position} phase={phase} sp={sp} planner={planner} league={league?.id ?? null} />;
 }
 
-function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; detail?: SiPlayer; position: string; phase: string; sp: SearchParams }) {
+function Body({ d, detail, position, phase, sp, planner, league }: {
+  d: ScheduleIntelligence; detail?: SiPlayer; position: string; phase: string; sp: SearchParams;
+  planner: ApiResult<ByePlanner>; league: string | null;
+}) {
   const w = d.window;
   const href = (pid?: number) => {
     const p = new URLSearchParams();
@@ -131,6 +145,8 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
         </form>
       </Section>
 
+      <ByePlannerSection res={planner} league={league} />
+
       {d.players.length === 0 ? (
         <Notice tone="caution">No {position === "all" ? "QB/RB/WR/TE" : position} players on this roster.</Notice>
       ) : (
@@ -149,7 +165,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
 
       {detail && <Detail p={detail} />}
 
-      <Glossary terms={["EPA", "Target share", "Bye", "—"]} />
+      <Glossary terms={["EPA", "Target share", "Bye", "Bye cluster", "Slot coverage", "—"]} />
       <Method title="What this is (and is not)">
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
         <p>{d.label_rule}</p>

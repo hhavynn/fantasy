@@ -7,7 +7,7 @@ import { STALE_HOURS, parseTimestamp } from "./sync-status.ts";
 
 export const PROVENANCE_CONTRACT = "signal-provenance.v1";
 
-export type SignalKey = "league" | "projections" | "injuries" | "usage" | "analysis";
+export type SignalKey = "league" | "projections" | "injuries" | "usage" | "analysis" | "schedule";
 export type SignalSource = "espn" | "sleeper" | "nflverse" | "fantasy_intel";
 
 export type SignalCoverage = { available: number; total: number; label: string };
