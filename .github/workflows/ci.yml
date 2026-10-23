@@ -304,7 +304,11 @@ jobs:
       # `--with-deps` did), as their own step so its time shows apart from the download's.
       - name: Resolve the Playwright version
         id: playwright
-        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+        run: |
+          v=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          # an empty or undefined version would collapse the cache key and restore a stale browser
+          test -n "$v" && test "$v" != undefined
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
