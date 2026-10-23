@@ -275,6 +275,8 @@ def test_ranges_come_from_the_distribution_engine_with_horizon_basis_and_coverag
         assert "ifpd-0.1.0" in a["basis"] and "if he plays" in a["basis"]
         assert a["coverage"]["nominal"] == 0.8 and a["coverage"]["confirmation"]["coverage"] == 0.813
         assert "5,409 WR rows" in a["coverage"]["text"]
+        assert "0.807 on the exploratory 2025-26 replay" in a["coverage"]["text"]
+        assert a["coverage"]["replay"]["kind"] == "exploratory"
         assert not r[QUINN]["range"]["available"] and "QB" in r[QUINN]["range"]["reason"]      # QB is held back
         assert not r[BRAVO]["range"]["available"]                  # WR, but the engine served no range for him
         assert body["ranges"]["rest_of_season"]["available"] is False
@@ -349,3 +351,26 @@ def test_api_route(template_db, tmp_path, monkeypatch):
     body = r.json()
     assert body["contract"] == pc.CONTRACT and body["scope"] == "overall" and body["show"] == "compared"
     assert client.get("/api/rankings/compare?scope=team").status_code == 422
+
+
+def test_sleeper_past_the_regular_season_never_says_the_provider_ranks(template_db, tmp_path, monkeypatch):
+    """The window note past the regular season is compare's own: provider_copy would otherwise turn rankings' "ESPN
+    ranks the remaining weeks" into a false "Sleeper ranks ..." (and /api/rankings' note gets an honest rule)."""
+    path = tmp_path / "late.duckdb"
+    shutil.copyfile(template_db, path)
+    c = connect(path)
+    make_sleeper(c)
+    c.execute("UPDATE leagues SET current_week = 15")         # the regular season ended in week 14
+    c.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(path))
+    for name in ("FANTASY_API_KEY", "MULTILEAGUE_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    from app.main import app
+    client = TestClient(app)
+    r = client.get("/api/rankings/compare?horizon=ros")
+    assert r.status_code == 200
+    note = r.json()["window"]["note"]
+    assert note and "Ours has no rest-of-season total" in note and "Sleeper publishes no projections" in note
+    for p in ("/api/rankings/compare?horizon=ros", "/api/rankings?horizon=ros", "/api/rankings?horizon=ros&source=independent"):
+        text = client.get(p).text
+        assert "Sleeper ranks" not in text and "ranked on Sleeper" not in text and "ESPN" not in text, p

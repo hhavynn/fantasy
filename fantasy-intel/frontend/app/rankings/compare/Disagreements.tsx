@@ -103,7 +103,7 @@ function Item({ row, data }: { row: CompareRow; data: CompareResponse }) {
               <h3 className={styles.panelTitle}>Range</h3>
               {range ? (
                 <p>
-                  {rangeText(range)} points if he plays (median {formatPoints(range.median)}).{" "}
+                  {rangeText(range)} points if he plays in week {range.week}, around the week&apos;s Ours projection of {formatPoints(range.centre)} (median {formatPoints(range.median)}).{" "}
                   <span className={styles.small}>{range.horizon}. {range.basis}. Coverage: {range.coverage.text}.</span>
                 </p>
               ) : <p className={styles.muted}>{(row.range && !row.range.available && row.range.reason) || "No range"}.</p>}

@@ -530,3 +530,99 @@ def test_trade_evidence_is_served_only_for_the_league_in_the_path(pg, served, cl
         r = client.get(path, headers={"x-fi-league": b.league_id})
         assert r.status_code == 404 and MARK not in r.text, path
     assert client.get(f"/v2/leagues/{b.league_id}{ev}", headers=bearer(U2)).status_code == 200
+
+
+# ---- projection-source comparison (#189): Ours runs, ranges and forecast history stay in their league ---------------
+
+def _add_ours_ranges_and_history(db) -> None:
+    """League B's own data for /api/rankings/compare: a sealed Ours run for the current week (ranks roughly reversed
+    against ESPN, so there are large gaps; its stored drivers carry MARK), a pinned point-distribution table under the
+    league's scoring, and a second, earlier ESPN projection snapshot (so there is forecast history)."""
+    from datetime import datetime
+
+    from app.analytics import independent_projection_store as ips
+    from app.analytics import projection_ranges as pr
+    from app.analytics import projection_source as ps
+    from app.db.connection import connect
+    from test_projection_ranges import _dist_artifact, _pin
+
+    con = connect(db)
+    try:
+        season, week = con.execute("SELECT season, current_week FROM leagues").fetchone()
+        fp, why = ps._scoring(con, season)
+        assert fp is not None, why
+        players = con.execute("""SELECT fp.espn_player_id, fp.position, p.projected_points FROM fantasy_players fp
+                                 JOIN espn_player_weekly_points p ON p.espn_player_id = fp.espn_player_id
+                                 WHERE p.season = ? AND p.scoring_period = ? AND p.projected_points IS NOT NULL
+                                   AND fp.position IN ('QB', 'RB', 'WR', 'TE')""", [season, week]).fetchall()
+        created = datetime(2026, 10, 19, 12, 0)
+        rows = []
+        for pid, pos, espn in players:
+            pts = round(max(0.5, 30.0 - float(espn)), 2)
+            rows.append({"season": season, "week": week, "espn_player_id": pid, "gsis_id": None, "position": pos,
+                         "nfl_team": None, "opponent": None, "is_home": None, "projected_points": pts,
+                         "interval_low": None, "interval_high": None, "model": "tenant-test",
+                         "coverage_status": "projected", "games_used": 4, "latest_usage_season": season,
+                         "latest_usage_week": week - 1, "missing_inputs": [], "flags": [],
+                         "explanation": [{"feature": "leakcheck", "value": 1.0, "training_mean": 0.0,
+                                          "contribution": 2.5, "text": f"{MARK} input"}],
+                         "p_play": 1.0, "expected_points": pts, "participation": None})
+        ips.write_run(con, {"season": season, "week": week, "forecast_horizon": 0, "projected_from_week": week,
+                            "data_through_season": season, "data_through_week": week - 1, "created_at": created,
+                            "artifact_id": "tenant-test", "artifact_created_at": created.isoformat(),
+                            "run_id": f"{MARK.lower()}-run", "model_version": ps.MODEL_VERSION,
+                            "scoring_fingerprint": fp, "model_status": {}, "evaluation": {},
+                            "participation_version": None, "participation_status": None,
+                            "participation_evaluation": None, "nfl_synced_at": created}, rows)
+        art = _dist_artifact(scoring_fingerprint=fp)
+        pr.store(con, art, _pin(art))
+        con.execute("""INSERT INTO espn_projection_history
+                       SELECT DATE '2026-10-13', season, espn_player_id, scoring_period, projected_points * 0.6,
+                              TIMESTAMP '2026-10-13 12:00:00'
+                       FROM espn_projection_history WHERE snapshot_date = (SELECT max(snapshot_date) FROM espn_projection_history)""")
+        con.execute("CHECKPOINT")
+    finally:
+        con.close()
+
+
+@pytest.fixture(scope="module")
+def e2e_ours_b(tmp_path_factory, e2e):
+    b = tmp_path_factory.mktemp("scope_ours_b") / "b.duckdb"
+    shutil.copy(e2e, b)
+    _add_ours_ranges_and_history(b)
+    return b
+
+
+def test_source_comparison_never_reads_another_leagues_runs_ranges_or_history(pg, served, client, e2e, e2e_ours_b,
+                                                                               tmp_path):
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, e2e_ours_b, served, tmp_path / "b", visibility="public", name="B", external_id="1999",
+                      stamp="2026-10-20T13:00:00")      # the same team and player ids as A
+    path = "/api/rankings/compare?show=large&scope=overall"
+    first_a = client.get(f"/v2/leagues/{a.league_id}{path}")
+    rb = client.get(f"/v2/leagues/{b.league_id}{path}")
+    ra = client.get(f"/v2/leagues/{a.league_id}{path}")
+    assert first_a.status_code == rb.status_code == ra.status_code == 200
+
+    # B: its own Ours run, ranges and forecast history are all served
+    body_b = rb.json()
+    explained = [p for p in body_b["players"] if p["explanation"]]
+    assert body_b["sources"][1]["available"] and explained
+    assert explained[0]["explanation"]["model"]["inputs"][0]["text"] == f"{MARK} input"
+    assert any(p["range"]["available"] for p in body_b["players"])
+    assert explained[0]["explanation"]["history"]["provider"]["available"]
+
+    # A, before and after B was served: no Ours, no explanation, no range, no history, nothing of B's
+    for r in (first_a, ra):
+        body = r.json()
+        assert body["sources"][1]["available"] is False and body["players"] == [] and body["counts"]["large"] == 0
+        assert MARK not in r.text and MARK.lower() not in r.text
+    every = client.get(f"/v2/leagues/{a.league_id}/api/rankings/compare?scope=overall").json()
+    assert every["players"] and every["ranges"]["available"] is False
+    assert all(p["explanation"] is None and not p["range"]["available"] for p in every["players"])
+
+    # cache entries never cross: A's repeat is a hit identical to A's own first answer, B's answer was its own miss
+    assert first_a.headers["x-fi-cache"] == "miss" and rb.headers["x-fi-cache"] == "miss"
+    assert ra.headers["x-fi-cache"] == "hit" and ra.content == first_a.content
+    again_b = client.get(f"/v2/leagues/{b.league_id}{path}")
+    assert again_b.headers["x-fi-cache"] == "hit" and again_b.content == rb.content

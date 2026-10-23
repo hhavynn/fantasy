@@ -231,7 +231,7 @@ def _row_range(x: dict, block: dict, ranges: dict, rows_by_pid: dict) -> dict:
             "basis": f"{block['version']} point distribution around the Ours projection, if he plays (P10 / P50 / P90)",
             "coverage": {"nominal": block["coverage"], "confirmation": conf or None, "replay": replay or None,
                          "text": (f"80% nominal; measured {conf['coverage']:.3f} on {conf['rows']:,} {pos} rows "
-                                  f"({conf['window']}) and {replay['coverage']:.3f} on the {replay['window']} replay")
+                                  f"({conf['window']}) and {replay['coverage']:.3f} on the {replay.get('kind', '')} {replay['window']} replay")
                          if conf and replay else "80% nominal"},
             "sample": {"games_used": row.get("games_used"),
                        "latest_usage": ({"season": row["latest_usage_season"], "week": row["latest_usage_week"]}
@@ -426,10 +426,18 @@ def build_compare(con, *, position: str = "ALL", horizon: str = "week", scope: s
          "description": ("Fantasy Intel's own model (expected points, league scoring); not an expert consensus"
                          if ours_ranked else None)},
     ]
+    # rankings._window's note says which source ranks a window past the regular season in ESPN's words; a Sleeper
+    # league's response would reword it into a false "Sleeper ranks ...". Compare states it in its own, provider-aware words.
+    window = dict(win)
+    if win["note"]:
+        window["note"] = (
+            f"The end of the regular season is unknown or already past, so {provider_name} totals cover {label.lower()} "
+            "and Ours has no rest-of-season total for this window." if eligible else
+            f"The end of the regular season is unknown or already past, so Ours has no rest-of-season total for this "
+            f"window, and {provider_name} publishes no projections.")
     notes = [CONSENSUS_NOTE]
-    if not win["regular_season_only"] and horizon == "ros":
-        notes.append("The end of the regular season is unknown or already past, so Ours has no rest-of-season total "
-                     "for this window.")
+    if window["note"]:
+        notes.append(window["note"])
     if horizon == "ros":
         notes.append("Rest-of-season totals count a week only when every required week has a value; a partial sum "
                      "is never ranked.")
@@ -444,7 +452,7 @@ def build_compare(con, *, position: str = "ALL", horizon: str = "week", scope: s
         "contract": CONTRACT, "season": season, "week": pool["window_state"].current, "horizon": horizon,
         "position": position, "scope": scope, "show": show, "roster_status": status, "q": q or "",
         "sort": {"key": sort_key, "dir": direction},
-        "window": win, "rosters_synced": bool(pool["teams"]),
+        "window": window, "rosters_synced": bool(pool["teams"]),
         "provider": {"key": provider_key, "name": provider_name, "publishes_projections": eligible},
         "sources": sources,
         "thresholds": {"large_rank": LARGE_RANK[scope], "min_points_per_week": MIN_POINTS_PER_WEEK,

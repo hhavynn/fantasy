@@ -2,7 +2,7 @@ import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Delta, SortableTh } from "@/components/ui";
 import { Missing } from "@/lib/format";
 import {
-  deltaMissingText, deltaSentence, rangeHorizonNote, rangeText, sideMissingText, sideRankText,
+  deltaMissingText, deltaSentence, rangeHorizonNote, rangeMetaText, rangeText, sideMissingText, sideRankText,
   type CompareResponse, type CompareRow, type CompareScope, type CompareSide,
 } from "@/lib/projection-compare";
 import { formatPoints } from "@/lib/rankings";
@@ -83,7 +83,7 @@ export function CompareTable({ data, sort, sp }: { data: CompareResponse; sort: 
                 {r.range && r.range.available ? (
                   <span title={`${r.range.basis}. ${r.range.horizon}. Coverage: ${r.range.coverage.text}.`}>
                     {rangeText(r.range)}
-                    <span className={styles.rangeMeta}>{r.range.horizon.split(",")[0]} · P10–P90 · {Math.round(r.range.coverage.nominal * 100)}%</span>
+                    <span className={styles.rangeMeta}>{rangeMetaText(r.range)}</span>
                   </span>
                 ) : <Missing why={(r.range && !r.range.available && r.range.reason) || "No range"} />}
               </td>

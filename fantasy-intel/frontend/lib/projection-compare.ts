@@ -220,6 +220,15 @@ export function rangeHorizonNote(horizon: RankHorizon, week: number): string {
   return horizon === "ros" ? `Week ${week} only; no rest-of-season range` : `Week ${week}`;
 }
 
+/**
+ * The line under a range in the table: its week, the Ours projection it surrounds (points if he plays, the week's
+ * number, not a rest-of-season total), the percentiles and the nominal coverage. Null for no range.
+ */
+export function rangeMetaText(r: CompareRange | null): string | null {
+  if (!r || !r.available) return null;
+  return `Week ${r.week} · around ${r.centre.toFixed(1)} if he plays · P10–P90 · ${Math.round(r.coverage.nominal * 100)}%`;
+}
+
 /** A model input's contribution in points with a sign, or null when the run records none. */
 export function contributionText(c: number | null | undefined): string | null {
   if (c === null || c === undefined || Number.isNaN(c)) return null;

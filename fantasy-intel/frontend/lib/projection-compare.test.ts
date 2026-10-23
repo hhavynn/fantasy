@@ -9,6 +9,7 @@ import {
   deltaSentence,
   parseCompareFilters,
   rangeHorizonNote,
+  rangeMetaText,
   rangeText,
   sideMissingText,
   sideRankText,
@@ -129,4 +130,14 @@ test("verdict counts say they are totals before the Show filter whenever Show na
     assert.doesNotMatch(n.compared, /in view/);
   }
   assert.match(verdictNotes("missing", 3).scope ?? "", /\(One side missing\)/);
+});
+
+test("the range line names its week and the weekly projection it surrounds, never a season total", () => {
+  const r = {
+    available: true as const, floor: 8.1, median: 18.4, ceiling: 33, centre: 20.04, week: 7, horizon: "Week 7", basis: "b",
+    coverage: { nominal: 0.8, text: "t", confirmation: null, replay: null }, sample: { games_used: 6, latest_usage: null },
+  };
+  assert.equal(rangeMetaText(r), "Week 7 · around 20.0 if he plays · P10–P90 · 80%");
+  assert.equal(rangeMetaText({ available: false, reason: "QB held back" }), null);
+  assert.equal(rangeMetaText(null), null);
 });

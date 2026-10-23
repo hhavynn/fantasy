@@ -54,11 +54,11 @@ POSITION_POLICY = {
 VALIDATION_SOURCE = "the fantasy point-distribution report (docs/research), sections 6 and 18"
 VALIDATION = {
     "RB": {"confirmation": {"window": "2023-24", "rows": 3398, "coverage": 0.813},
-           "replay": {"window": "2025-26", "coverage": 0.810}},
+           "replay": {"window": "2025-26", "kind": "exploratory", "coverage": 0.810}},
     "WR": {"confirmation": {"window": "2023-24", "rows": 5409, "coverage": 0.813},
-           "replay": {"window": "2025-26", "coverage": 0.807}},
+           "replay": {"window": "2025-26", "kind": "exploratory", "coverage": 0.807}},
     "TE": {"confirmation": {"window": "2023-24", "rows": 3208, "coverage": 0.801},
-           "replay": {"window": "2025-26", "coverage": 0.791}},
+           "replay": {"window": "2025-26", "kind": "exploratory", "coverage": 0.791}},
 }
 DEFINITION = ("floor = 10th percentile, median = 50th, ceiling = 90th percentile of his points if he plays: 80% of "
               "outcomes land between floor and ceiling. The projection is the distribution's mean.")

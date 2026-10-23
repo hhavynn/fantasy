@@ -119,7 +119,7 @@ export default async function SourceComparePage({ searchParams }: PageProps<"/ra
       </Section>
 
       {explained > 0 && (
-        <Section title="Large gaps, explained"
+        <Section title="Large gaps: what is recorded"
           subtitle="The model's own stored drivers, the recorded forecast history and the next-week range. Nothing here says why the provider differs."
           flush>
           <Disagreements data={data} />
