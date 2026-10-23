@@ -117,6 +117,17 @@ export function formatDetail(detail: unknown): string | null {
 }
 
 /**
+ * The headers of an apiRequest: the caller's own, then the signed-in visitor's token, then the service API key (which
+ * always wins). A caller that names its own Authorization (the email callback, holding a session the cookies may not
+ * carry yet) keeps it: the visitor's token is not added over it.
+ */
+export function requestHeaders(explicit: Record<string, string>, user: Record<string, string>, service: Record<string, string>,
+                               json: boolean): Record<string, string> {
+  const ownAuth = Object.keys(explicit).some((k) => k.toLowerCase() === "authorization");
+  return { ...explicit, ...(ownAuth ? {} : user), ...service, ...(json ? { "Content-Type": "application/json" } : {}) };
+}
+
+/**
  * Like `api()` but with any method and extra headers. A 204 (or other empty 2xx) answers `data: null`.
  * Same result shape and error kinds as `api()`, but `error` carries the backend's own `detail` text.
  */
@@ -126,12 +137,7 @@ export async function apiRequest<T = null>(path: string, options: ApiRequestOpti
   const init: RequestInit = {
     cache: "no-store",
     method,
-    headers: {
-      ...headers,
-      ...(await userAuth(path)),
-      ...AUTH,
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
+    headers: requestHeaders(headers, await userAuth(path), AUTH, body !== undefined),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   };
   let res: Response;

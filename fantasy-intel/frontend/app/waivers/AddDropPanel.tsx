@@ -2,6 +2,7 @@ import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Delta, Notice, ProvenanceBadge, Skeleton, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
+import { projectionsPhrase } from "@/lib/labels";
 import { Missing, num, when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
@@ -205,7 +206,7 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
         )}
 
         <p className={styles.window}>
-          {span ? <>{span}</> : "No remaining weeks"} · {d.projection_source} projections · computed {when(ev.evaluated_at)}.
+          {span ? <>{span}</> : "No remaining weeks"} · {projectionsPhrase(d.projection_source)} · computed {when(ev.evaluated_at)}.
           {ev.start_week_reason.reason ? <> Window: {String(ev.start_week_reason.reason)}.</> : null}
           {ev.uncertain && ev.warning ? <> {ev.warning}</> : null}
         </p>

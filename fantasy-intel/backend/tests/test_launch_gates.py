@@ -99,6 +99,19 @@ def test_sign_ups_closed_keep_new_accounts_out_of_every_write_and_me(client, pg,
     assert client.get("/v2/me", headers=bearer(new)).status_code == 200
 
 
+def test_signup_status_reports_the_gate_publicly_and_follows_the_setting(client, users, monkeypatch):
+    """GET /v2/signups (issue #270): what the web app's Create account page asks before it sends an account-creating
+    link. Anonymous, never cached, no account data; a present-and-invalid token is still a 401."""
+    monkeypatch.delenv("SIGNUPS_ENABLED", raising=False)
+    r = client.get("/v2/signups")
+    assert (r.status_code, r.json()) == (200, {"open": False})
+    assert r.headers["cache-control"] == "private, no-store"
+    assert client.get("/v2/signups", headers=bearer(U1)).json() == {"open": False}
+    assert client.get("/v2/signups", headers={"Authorization": "Bearer nope.nope.nope"}).status_code == 401
+    monkeypatch.setenv("SIGNUPS_ENABLED", "1")
+    assert client.get("/v2/signups").json() == {"open": True}
+
+
 def test_the_25th_league_is_the_last(client, pg, users):
     with pg.connect() as su:
         for _ in range(25):

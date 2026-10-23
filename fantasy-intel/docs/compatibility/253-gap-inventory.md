@@ -479,6 +479,8 @@ on the league pages are now underlined (`app/leagues/leagues.module.css`).
 3. Still open from section 8.3 and the triage table: G6/G7 (Sleeper waiver legality and IR rules, #180 owner), G8
    (sparse replacement level, diagnostic only), G9 (2 K or 2 D/ST streamed as one slot), G10 (one abstaining family
    makes totals known-only, named by the diagnostic), G11/G12, and `team_lineups.source_label` naming "Ours" with no
-   Ours run. Scoring fidelity (S1b, S2 basis, S3) stays with #254.
+   Ours run. Scoring fidelity (S1b, S2 basis, S3) stays with #254. **#254 phase 2:** S1b closed for the kicker
+   re-score and the Sleeper box score, S3 per-row `actual_source`, and `team_lineups.source_label` "Unavailable" for
+   every caller outside the trade evaluation and trade alternatives (`254-scoring-support.md` section 7).
 4. The `league-compatibility/v1` diagnostic has no page of its own. The League rules page already discloses slot and
    rule support; a per-tool table there is optional (issue #253 step 5: "only if necessary").

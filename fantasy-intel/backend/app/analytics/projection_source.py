@@ -56,6 +56,9 @@ from . import production_forecasts as pf
 
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
+# Origins of numbers Fantasy Intel's own models made (league_projections' detail tags included); any other value shown
+# under source=independent is the provider's, used where the models abstain, and is never named "Ours" (#254 L2).
+MODEL_ORIGINS = frozenset({OURS, OURS_ZERO, "kicker_model", "dst_model", "dst_carried"})
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
 POSITIONS = ("QB", "RB", "WR", "TE")
 MODEL_VERSION = "ifp-2.2.0"     # approved production (registry manifest); app.analytics.context_model.MODEL_VERSION
@@ -168,6 +171,17 @@ def league_projections(con, season: int, weeks, source: str,
         version = (detail.get(src) or {}).get(pid, (None, None))[1]
         detail.setdefault(w, {})[pid] = ("dst_carried", version)
     return out
+
+
+def served_label(origins) -> str:
+    """The source a set of shown numbers is named by, from their origins (one per non-null value): "Ours" when the
+    models made every one, "ESPN" when every one is the provider's fallback, "Ours and ESPN" when they mix, and
+    "Unavailable" when there is none. A source is never named over numbers it did not supply (#254 L2, D-14 item 2)."""
+    seen = set(origins)
+    ours, provider = bool(seen & MODEL_ORIGINS), bool(seen - MODEL_ORIGINS)
+    if ours and provider:
+        return "Ours and ESPN"
+    return "Ours" if ours else "ESPN" if provider else "Unavailable"
 
 
 def _carry_dst_forward(con, season: int, weeks: list[int], out: dict, carried: dict | None = None) -> None:

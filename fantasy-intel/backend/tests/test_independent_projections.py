@@ -145,7 +145,7 @@ def live(tmp_path):
                     "on_team_id) VALUES (?, ?, ?, ?, ?, 1)", [pid, name, pos, tm, inj])
         con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) VALUES "
                     "(?, ?, ?, ?)", [pid, g, "espn_id:nfl_players" if conf == "high" else "name_position_team", conf])
-        con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, ?, '2026-10-13 12:00:00')",
+        con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, 6, NULL, ?, '2026-10-13 12:00:00')",
                     [pid, 0.0 if pid in ESPN_ZERO else 10.0 + pid])
         con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, "
                     "lineup_slot_id, is_starter) VALUES (99, 2026, 6, 1, ?, ?, false)", [pid, 21 if pid == 6 else 20])

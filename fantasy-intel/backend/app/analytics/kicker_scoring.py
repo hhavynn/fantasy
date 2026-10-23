@@ -172,11 +172,19 @@ COARSE_BUCKETS = {"0_39": 30, "40_49": 45, "50_59": 55, "60_plus": 62}
 def expected_points(scoring: KickerScoring, s: dict) -> float | None:
     """League points of a kicker's expected statistics (`stat_line.scoring_stats`: expected made / missed / blocked
     field goals per bucket and PAT outcomes). Exact for every supported scoring, which is linear in the counts. None
-    when the row has only the coarse 0-39 bucket and the scoring splits it (no exact answer)."""
+    when the row has only the coarse 0-39 bucket and the scoring splits it (no exact answer), and when the row has no
+    expectation for an outcome or bucket the scoring awards points for (a row stored before that outcome was recorded):
+    missing is never zero (#254)."""
     made = s["fg"].get("made", {})
     yards = SCORING_BUCKETS if "0_19" in made else COARSE_BUCKETS
     if yards is COARSE_BUCKETS and any(len({scoring.fg_points(d, o) for d in range(10, 40)}) > 1 for o in OUTCOMES):
         return None
+    for o in OUTCOMES:
+        scored = [b for b, d in yards.items() if scoring.fg_points(d, o)]
+        if any((s["fg"].get(o) or {}).get(b) is None for b in scored):
+            return None
+        if scoring.pat_points(o) and (s.get("pat") or {}).get(o) is None:
+            return None
     fg = sum(n * scoring.fg_points(yards[b], o) for o, by in s["fg"].items() for b, n in by.items() if b in yards)
     return round(fg + sum(n * scoring.pat_points(o) for o, n in s["pat"].items()), 6)
 

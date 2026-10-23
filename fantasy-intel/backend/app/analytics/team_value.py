@@ -494,7 +494,7 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
 
     # E. upgrades --------------------------------------------------------------
     market = replacement_market(state.free_agents, slots, window, proj, top_n=1,
-                                projection_source=source_label(state.projection_source))
+                                projection_source=source_label(state.projection_source, state.projections))
     gaps = []
     for bw, mw in zip(base["weeks"], market["weeks"]):
         if not bw["projection_complete"]:
