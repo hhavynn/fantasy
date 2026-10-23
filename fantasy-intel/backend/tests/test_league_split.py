@@ -6,6 +6,7 @@ import json
 
 from app.db.league_split import (BOTH_TABLES, GLOBAL_TABLES, LEAGUE_TABLES, REFERENCE_SCORING, REFERENCE_TABLES,
                                  split_database)
+from app.db.connection import init_db
 from golden.golden import build_e2e_db
 
 
@@ -179,3 +180,24 @@ def test_a_working_copy_that_already_holds_references_is_split_without_copying_t
     a = duckdb.connect(str(second.global_path), read_only=True)
     assert a.execute(f"SELECT count(*) FROM {REFERENCE_SCORING}").fetchone() == (1,)
     a.close()
+
+
+def test_forecast_input_references_carry_only_player_model_and_run_keys():
+    """The forecast-input tables (#225) reach every league file through the global references: they may name a
+    player (espn_player_id) and the model and run keys, nothing that identifies a league, team, member or owner."""
+    con = duckdb.connect()
+    try:
+        init_db(con)
+        allowed = {
+            "independent_projection_models": {"artifact_id", "position", "model_kind", "model_version", "columns",
+                                              "means", "stds", "coef", "intercept", "model_sha256"},
+            "independent_projection_row_inputs": {"run_id", "espn_player_id", "artifact_id", "position", "model_kind",
+                                                  "input_values", "imputed", "mixture_column", "scale", "shift",
+                                                  "inputs_version", "inputs_digest", "base_run_id", "changed"},
+        }
+        for table, cols in allowed.items():
+            assert table in REFERENCE_TABLES and table in LEAGUE_TABLES
+            got = {r[0] for r in con.execute(f'DESCRIBE "{table}"').fetchall()}
+            assert got == cols, (table, got ^ cols)
+    finally:
+        con.close()

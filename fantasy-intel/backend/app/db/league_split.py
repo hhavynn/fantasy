@@ -40,6 +40,7 @@ LEAGUE_TABLES = frozenset({
     "team_ros_lineup_projections", "manager_metrics", "manager_classifications",
     # Ours, kicker and D/ST runs carry a scoring fingerprint: league scoring
     "independent_projection_runs", "independent_projection_rows", "independent_player_projections",
+    "independent_projection_models", "independent_projection_row_inputs",
     "kicker_projection_runs", "kicker_projection_rows", "dst_projection_runs", "dst_projection_rows",
     # owner research and run bookkeeping of this database; projection ranges carry a scoring fingerprint
     "projection_performance_reports", "model_replays", "sync_runs", "validation_issues", "projection_range_quantiles",
@@ -66,7 +67,8 @@ BOTH_TABLES = frozenset({"schema_meta"})
 # research tables (projection_performance_reports, model_replays) are NOT references: their start/sit evaluation is
 # computed from the laptop league's own lineup decisions, so they stay that league's tables.
 REFERENCE_TABLES = {t: "ref_" + t for t in (
-    "independent_projection_runs", "independent_projection_rows", "kicker_projection_runs", "kicker_projection_rows",
+    "independent_projection_runs", "independent_projection_rows", "independent_projection_models",
+    "independent_projection_row_inputs", "kicker_projection_runs", "kicker_projection_rows",
     "dst_projection_runs", "dst_projection_rows", "projection_range_quantiles")}
 REFERENCE_SCORING = "ref_league_scoring"
 GLOBAL_TABLES = GLOBAL_TABLES | frozenset(REFERENCE_TABLES.values()) | {REFERENCE_SCORING}

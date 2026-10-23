@@ -50,11 +50,14 @@ MISSING_COMPONENT_FLAG = "a scored box-score component is missing from the mix"
 SHIFTED_FLAG = "explanation contributions are in the reference scoring"
 
 SKILL = ("independent_projection_runs", "independent_projection_rows")
+# a skill run's full model inputs (production_forecasts "forecast inputs"): copied with a copied run; a re-scored run
+# keeps the reference inputs and records its per-row factor (or shift), so its points still rebuild from them
+SKILL_INPUTS = (pf.MODELS, pf.INPUTS)
 KICKER = ("kicker_projection_runs", "kicker_projection_rows")
 DST = ("dst_projection_runs", "dst_projection_rows")
 # calibrated in the reference scoring: copied only when the league's skill scoring is the reference's
 RANGES = ("projection_range_quantiles",)
-DERIVED_TABLES = frozenset((*SKILL, *KICKER, *DST, *RANGES))
+DERIVED_TABLES = frozenset((*SKILL, *SKILL_INPUTS, *KICKER, *DST, *RANGES))
 
 
 def _json(v):
@@ -110,10 +113,12 @@ def _scale(v, f):
     return None if v is None else round(v * f, 2)
 
 
-def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, target: SkillScoring) -> list[dict]:
+def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, target: SkillScoring,
+                       factors: dict | None = None) -> list[dict]:
     """The rows of one skill run re-scored from `ref` to `target` (module docstring). Rows that are not projected
     (bye, withheld, no estimate) are unchanged. A row whose mix lacks a component either scoring weights is not
-    estimated (MISSING_COMPONENT_FLAG); a row without any mix gets NO_MIX_FLAG."""
+    estimated (MISSING_COMPONENT_FLAG); a row without any mix gets NO_MIX_FLAG. `factors`, when given, receives
+    {espn_player_id: {"scale": f} | {"shift": d}} for every re-scored row."""
     out = []
     for r in rows:
         if r["coverage_status"] != "projected" or r["projected_points"] is None:
@@ -137,11 +142,15 @@ def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, targe
                 new["interval_low"], new["interval_high"] = new["interval_high"], new["interval_low"]
             expl = None if expl is None else [{**e, "contribution": _scale(e.get("contribution"), f)}
                                                if isinstance(e, dict) else e for e in expl]
+            if factors is not None:
+                factors[int(r["espn_player_id"])] = {"scale": f}
         else:
             d = b - a
             new = {k: None if r[k] is None else round(max(r[k] + d, 0.0), 2)
                    for k in ("projected_points", "interval_low", "interval_high")}
             flags.append(SHIFTED_FLAG)
+            if factors is not None:
+                factors[int(r["espn_player_id"])] = {"shift": d}
         p_play = r.get("p_play")
         out.append({**r, **new, "explanation": expl, "flags": [*flags, RESCORED_FLAG],
                     "expected_points": None if p_play is None else round(new["projected_points"] * p_play, 2)})
@@ -201,10 +210,14 @@ def _copy(con, table: str, where: str = "", params: list | None = None) -> int:
     return con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {_ref(table)} {where}", params or []).fetchone()[0]
 
 
+def _derived_id(run_id: str, fp: str) -> str:
+    return f"{run_id}~{fp.split(':')[-1][-8:]}"
+
+
 def _derive(con, family: tuple[str, str], run: dict, rows: list[dict], fp: str, *, method: str,
-            digest, scoring_meta: dict | None = None) -> None:
+            digest, scoring_meta: dict | None = None) -> str:
     runs_t, rows_t = family
-    rid = f"{run['run_id']}~{fp.split(':')[-1][-8:]}"
+    rid = _derived_id(run["run_id"], fp)
     meta = {**run, "run_id": rid, "scoring_fingerprint": fp,
             "evaluation": {**(_json(run.get("evaluation")) or {}),
                            "rescored_from": {"run_id": run["run_id"], "scoring_fingerprint": run["scoring_fingerprint"],
@@ -216,6 +229,24 @@ def _derive(con, family: tuple[str, str], run: dict, rows: list[dict], fp: str, 
     meta["row_count"] = len(stamped)
     insert_rows(con, runs_t, [meta])
     insert_rows(con, rows_t, stamped)
+    return rid
+
+
+def _derive_inputs(con, ref_run_id: str, rid: str, factors: dict, fp: str) -> int:
+    """The reference run's input rows under the derived run id, each with its row's re-score factor or shift (rows
+    that were not re-scored keep none). Values and models are the reference's, untouched; a row stored as changes
+    against its cycle's base names that base's derived run (re-scored in the same pass)."""
+    if not table_exists(con, _ref(pf.INPUTS)):
+        return 0
+    out = []
+    for r in fetch_dicts(con, f"SELECT * FROM {_ref(pf.INPUTS)} WHERE run_id = ?", [ref_run_id]):
+        fx = factors.get(int(r["espn_player_id"]))
+        if fx is None or r.get("scale") is not None or r.get("shift") is not None:
+            continue
+        out.append({**{k: r[k] for k in pf.INPUT_COLUMNS if k not in ("run_id", "inputs_digest", "scale", "shift")},
+                    "base_run_id": None if r.get("base_run_id") is None else _derived_id(r["base_run_id"], fp),
+                    "scale": fx.get("scale"), "shift": fx.get("shift")})
+    return pf.write_inputs(con, rid, out)
 
 
 def _runs(con, family, season: int) -> list[dict]:
@@ -243,19 +274,27 @@ def apply_reference(con, season: int) -> dict:
     target = resolve_skill_scoring(items)
     ref = resolve_skill_scoring(_json(ref_row[0]["scoring_items"])) if ref_row else None
     if table_exists(con, _ref(SKILL[0])) and target.supported:
+        if table_exists(con, _ref(pf.MODELS)):
+            _copy(con, pf.MODELS)
+        has_inputs = table_exists(con, _ref(pf.INPUTS))
         mixes: dict[tuple[int, int], dict] = {}
         for run in _runs(con, SKILL, season):
             if run["scoring_fingerprint"] == target.fingerprint:
                 _copy(con, SKILL[0], "WHERE run_id = ?", [run["run_id"]])
                 _copy(con, SKILL[1], "WHERE run_id = ?", [run["run_id"]])
+                if has_inputs:
+                    _copy(con, pf.INPUTS, "WHERE run_id = ?", [run["run_id"]])
                 stats["copied"] += 1
             elif ref is not None and ref.supported and run["scoring_fingerprint"] == ref.fingerprint:
                 through = (run.get("data_through_season") or season,
                            run.get("data_through_week") or max(int(run["week"]) - 1, 0))
                 if through not in mixes:
                     mixes[through] = stat_mix(con, through)
-                rows = rescore_skill_rows(_rows(con, SKILL, run["run_id"]), mixes[through], ref, target)
-                _derive(con, SKILL, run, rows, target.fingerprint, method="stat-mix ratio", digest=pf.content_sha256)
+                factors: dict = {}
+                rows = rescore_skill_rows(_rows(con, SKILL, run["run_id"]), mixes[through], ref, target, factors)
+                rid = _derive(con, SKILL, run, rows, target.fingerprint, method="stat-mix ratio",
+                              digest=pf.content_sha256)
+                _derive_inputs(con, run["run_id"], rid, factors, target.fingerprint)
                 stats["rescored"] += 1
             else:
                 stats["skipped"] += 1

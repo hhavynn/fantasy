@@ -712,6 +712,23 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   publishing never writes the local history. The local file stays the system of record: publishing a local
   DB that lacks a run removes it from the hosted copy, so never publish from a restored older file.
   (`tests/test_production_forecasts.py::test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history`.)
+* **Forecast inputs (#225, create-only, no version bump).** `independent_projection_models` (one row per artifact,
+  position and model kind: design columns, training means and stds, coefficients, intercept, `model_sha256`) and
+  `independent_projection_row_inputs` (one row per run and projected player: the raw design row the point went
+  through, with imputed cells marked, the model kind, the QB start-share column for the start/no-start mixture, and
+  a league re-score `scale` or `shift`). The `project` command captures them (`build_live(..., inputs_out=)`) and
+  `write_run(..., inputs=)` stores them in the run's transaction, beside only the stored rows they were captured
+  for, and never as part of the run's `content_sha256`: old runs keep their seals, an idempotent retry writes
+  nothing, and runs stored before the tables existed have none (never backfilled). A later target week of a
+  rest-of-season cycle stores only the columns that differ from the cycle's earlier whole row (`base_run_id`,
+  `changed`); each row carries a 64-bit `inputs_digest`. `production_forecasts.verified_inputs` trusts a row only
+  when its digest (and its base's), the model's digest and the run's own `artifact_id` match and the reconstructed
+  inputs rebuild the stored `projected_points`; anything else reads as "inputs not stored". Both tables are league
+  tables with `ref_*` references in the global file; `rescore.apply_reference` copies them with a copied run and
+  gives a re-scored run the reference inputs with each row's factor. Read by `projection_attribution` only
+  (contract `projection-attribution/v2`, docs/projection_movers.md). Size, one league file, one season (17 cycles,
+  450 projected players, 55 inputs, compacted as by the league split): about 5 MB when 6 inputs change between target
+  weeks, 7 MB when 12 do; 19 MB without the per-cycle changes.
 
 ## ifp-2.2.0: research shadows promoted into Ours (production)
 

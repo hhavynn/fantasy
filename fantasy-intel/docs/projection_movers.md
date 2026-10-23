@@ -125,10 +125,19 @@ created strictly before the week's first kickoff (and before the player's own ki
 a run records its data cutoff, that cutoff is before both the compared week and the run's own cutoff week. Otherwise the
 week is residual ("as-of check failed") and listed in `as_of.refused`.
 
-**Not done (needs stored inputs).** Because the model is retrained weekly, week-over-week comparisons normally show
-"model changed". Splitting such a change between new inputs and new coefficients needs each run's full input vector and
-coefficients stored with the run (a write-path change to the run tables, the league-file split and the re-score copy);
-see issue #225.
+**Full stored inputs (`projection-attribution/v2`).** The model is retrained weekly, so week-over-week comparisons
+under v1 normally show "model changed". Runs stored with their forecast inputs (docs/independent_projection_engine.md,
+"Forecast inputs") keep every projected row's whole design row and the model it went through. When both compared rows
+have inputs that verify, the per-game change is split exactly across a retrain or a league re-score by the two-factor
+midpoint (Shapley) convention: an input's part is its change times the average of the two models' weights (times the
+latest chance he plays and the average re-score factor); the model's own part ("Model retrained", measured) is the
+change in weights and intercept at the average of the two forecasts' inputs; a changed league re-score factor is its
+own measured part. Swapping the two forecasts negates every part. An input unknown in either forecast (imputed with the
+training average) is residual ("imputed"), never a measured change; a floored row is not split; full-input parts under
+0.05 points are shown as one line. The block then has `contract = projection-attribution/v2`, `method =
+exact_midpoint` and `full_inputs = {weeks, convention}`; every v1 field keeps its meaning. A week without verified inputs
+on both sides is split exactly as under v1, and a block that used no inputs is byte-identical to v1 (tested: a failed
+digest, inputs on one side only, a missing model, inputs naming another artifact).
 
 **On the player profile.** The Outlook tab of a QB, RB, WR or TE profile (`app/players/ProjectionChange.tsx`) asks the
 same route for Fantasy Intel's rest-of-season change of that one player (`source=independent&view=ros&limit=1&player=`)

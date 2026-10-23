@@ -975,6 +975,44 @@ CREATE TABLE IF NOT EXISTS independent_projection_rows (
     PRIMARY KEY (run_id, espn_player_id)
 );
 
+-- Forecast inputs (#225, create-only, no version bump): the full point-model inputs of a projected row and the model
+-- they went through, so a forecast change can be split exactly between inputs and model across a retrain
+-- (production_forecasts "forecast inputs", projection_attribution). Write-once and sealed by their own digests;
+-- never part of a run's content_sha256. Runs stored before these tables existed have none (never backfilled).
+-- NEVER list them in a connection._REBUILD entry (that list DROPS tables).
+CREATE TABLE IF NOT EXISTS independent_projection_models (
+    artifact_id          VARCHAR NOT NULL,   -- == independent_projection_runs.artifact_id of the runs it made
+    position             VARCHAR NOT NULL,
+    model_kind           VARCHAR NOT NULL,   -- main | fallback (ifp-2.2.0 QB without a start candidate)
+    model_version        VARCHAR,
+    columns              VARCHAR[],          -- design columns ("<f>__missing" = null indicator of f)
+    means                DOUBLE[],           -- training means (imputation + centering)
+    stds                 DOUBLE[],
+    coef                 DOUBLE[],           -- per standardized column
+    intercept            DOUBLE,
+    model_sha256         VARCHAR,
+    PRIMARY KEY (artifact_id, position, model_kind)
+);
+
+CREATE TABLE IF NOT EXISTS independent_projection_row_inputs (
+    run_id               VARCHAR NOT NULL,
+    espn_player_id       BIGINT NOT NULL,
+    artifact_id          VARCHAR,
+    position             VARCHAR,
+    model_kind           VARCHAR,
+    base_run_id          VARCHAR,            -- NULL: the whole row is here; else the cycle run whose row this differs from
+    changed              INTEGER[],          -- with base_run_id: the column positions that differ from it
+    input_values         DOUBLE[],           -- raw design row aligned with the model's columns (imputed = training mean),
+                                             -- or the values at `changed`
+    imputed              BOOLEAN[],          -- TRUE: the input was unknown and filled with the training mean
+    mixture_column       VARCHAR,            -- QB start/no-start mixture: the start-share column (its value = the share)
+    scale                DOUBLE,             -- league re-score factor applied to the reference point (rescore.py)
+    shift                DOUBLE,             -- league re-score shift instead of a factor (rescore.py)
+    inputs_version       VARCHAR,
+    inputs_digest        UBIGINT,            -- first 64 bits of a sha256 over the row as stored
+    PRIMARY KEY (run_id, espn_player_id)
+);
+
 -- Approved weekly artifacts (create-only, no version bump). ifp-2.0.0 retrains every week, so its approval is
 -- one row per artifact, written ON CONFLICT DO NOTHING when the artifact (saved through the write-once weekly
 -- store) is used by `project`. A run is served / counted as evidence only if its artifact_id (the sha256 of the

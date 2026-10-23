@@ -180,8 +180,10 @@ def build(con, sources, artifact, season: int, week: int, *, base: dict, partici
         raise ReprojectRefused(f"artifact file sha256 {artifact_sha256[:12]} is not the base run's ({sha[:12]}): a "
                                "re-projection reuses the base run's approved artifact, never a newer model")
     check_participation(base, participation)
+    captured: dict = {}
     meta, rows = build_live(con, sources, artifact, season, week, participation=participation,
-                            artifact_sha256=artifact_sha256, context_inputs=context_inputs, news=news)
+                            artifact_sha256=artifact_sha256, context_inputs=context_inputs, news=news,
+                            inputs_out=captured)
     started, unknown, sched = kicked_off(con, season, week, meta["created_at"])
     # A team that had a game in the base run but is absent from the refreshed schedule (a transient feed gap) has an
     # unprovable kickoff too: freeze and carry it like an explicit unknown, never re-project it as a bye.
@@ -195,7 +197,9 @@ def build(con, sources, artifact, season: int, week: int, *, base: dict, partici
     fresh_new = [r for r in stored if int(r["espn_player_id"]) not in frozen_ids]
     fresh_base = [r for r in base["rows"] if int(r["espn_player_id"]) not in frozen_ids]
     same = pf.content_sha256(meta, fresh_new) == pf.content_sha256(base["run"], fresh_base)
-    return {"meta": meta, "rows": stored, "base_run_id": base["run"]["run_id"],
+    # a frozen row is the base run's, not this build's: it keeps no inputs (write_run also matches each row's content)
+    captured["rows"] = [r for r in captured.get("rows") or [] if int(r["espn_player_id"]) not in frozen_ids]
+    return {"meta": meta, "rows": stored, "inputs": captured, "base_run_id": base["run"]["run_id"],
             "base_run_created_at": str(base["run"]["created_at"]), "status": UNCHANGED if same else WRITTEN,
             "kicked_off_teams": sorted(started), "unknown_kickoff_teams": sorted(unknown),
             "missing_from_schedule_teams": sorted(missing), **part,
@@ -208,4 +212,4 @@ def store(con, built: dict) -> dict:
     found nothing changed. Returns {status, run_id, created, row_count, content_sha256}."""
     if built["status"] == UNCHANGED:
         return {"status": UNCHANGED, "run_id": built["base_run_id"], "created": False}
-    return {"status": WRITTEN, **write_run(con, built["meta"], built["rows"])}
+    return {"status": WRITTEN, **write_run(con, built["meta"], built["rows"], inputs=built.get("inputs"))}
