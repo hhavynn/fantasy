@@ -59,6 +59,14 @@ test("simulate an add and a drop, read the impact, then clear it", async ({ page
   await press(page, sim.getByRole("link", { name: "Clear move" }));
   await expect(page).not.toHaveURL(/add=|drop=/);
   await expect(sim.getByText("Choose a player to add, one to drop, or both")).toBeVisible();
+  // the pickers follow the URL on client navigation (Clear, Back), never the previous move
+  await expect(add).toHaveValue("");
+  await expect(drop).toHaveValue("");
+  await page.goBack();
+  await expect(page).toHaveURL(/add=209&drop=206/);
+  await expect(sim.getByText("Add Waiver RB, drop Juliet RB: a projected lineup gain")).toBeVisible();
+  await expect(add).toHaveValue("209");
+  await expect(drop).toHaveValue("206");
 });
 
 test("a rostered player is explained, never simulated as a claim", async ({ page }) => {

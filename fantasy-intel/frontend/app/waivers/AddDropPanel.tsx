@@ -94,7 +94,10 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
         </Notice>
       )}
 
+      {/* Keyed on the scenario: the selects are uncontrolled (defaultValue), so a client navigation to another move
+          (a Simulate link, Clear, Back/Forward) must remount them or they would keep showing the previous players. */}
       <AddDropForm
+        key={`${d.request.add ?? ""}|${d.request.drop ?? ""}`}
         addOptions={d.options.add.map((o) => ({ value: String(o.espn_player_id), label: optionLabel(o) }))}
         dropOptions={d.options.drop.map((o) => ({ value: String(o.espn_player_id), label: optionLabel(o) }))}
         add={d.request.add !== null && d.options.add.some((o) => o.espn_player_id === d.request.add) ? String(d.request.add) : ""}
