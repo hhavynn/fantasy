@@ -257,6 +257,8 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 1c. Follow-up: add/drop simulator treats Sleeper FREEAGENT as no-claim-needed.
 1d. Tooling: `agent_check.py` backend step hard-coded 300 s (~line 1044) turns large `affected` selections into FAIL with no failures (seen on #258: direct run 756 passed in 6m05s).
 1e. Follow-up: waiver OP/FLEX picks compare position percentiles, not points (needs #254 basis); labelled in G5 PR.
+1g. Follow-up (security-adjacent, unreachable on self-hosted Next 16.4): `splitLeaguePath` lets `/l/<lg>//evil.example/x` rewrite to a protocol-relative path; reject rest paths starting `//` or containing `\`. Also e2e for forged `x-fi-league` on `/api/search` and `Cache-Control: private` on `trade-evidence/route.ts`.
+1h. In progress: league-scoped hrefs for server-rendered links and no-JS forms (`fix/league-scoped-server-links`).
 1f. Follow-up: `players/ProfileTabs.tsx:144` and `my-team/value/sections.tsx:452` print `waiver_score` without the partial flag (#260 scope limit).
 1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
