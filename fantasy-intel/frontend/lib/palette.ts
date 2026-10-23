@@ -186,6 +186,28 @@ export function parseRecents(raw: string | null): PaletteItem[] {
 /** The slim player shape `/api/search` returns. */
 export type SearchPlayer = { id: number; name: string; position: string | null; team: string | null; owner: string | null };
 
+const SEARCH_MAX_QUERY = 80;
+const SEARCH_LIMIT = 8;
+
+/**
+ * The browser's player-search URL (the app/api/search route handler). On a league page the caller wraps it in
+ * `leagueRouteHref` (lib/league-scope.ts) so the proxy hands the handler that league; a bare `/api/...` fetch is
+ * unscoped and would answer for the classic league.
+ */
+export function searchSrc(q: string): string {
+  return `/api/search?q=${encodeURIComponent(q)}`;
+}
+
+/**
+ * The backend path the search handler calls for the browser's query, or null for an empty one. Only the trimmed,
+ * capped query is forwarded. `api()` moves it to `/v2/leagues/<lg>/...` (with the visitor's token) when the proxy set
+ * the league header, so the handler never chooses a league itself.
+ */
+export function searchPath(params: URLSearchParams): string | null {
+  const q = (params.get("q") ?? "").trim().slice(0, SEARCH_MAX_QUERY);
+  return q ? `/api/players?q=${encodeURIComponent(q)}&limit=${SEARCH_LIMIT}` : null;
+}
+
 export function playerItem(p: SearchPlayer): PaletteItem {
   const meta = [p.position, p.team ?? "FA"].filter(Boolean).join(" · ");
   return { id: `player:${p.id}`, kind: "player", label: p.name, hint: p.owner ? `${meta} · ${p.owner}` : meta, href: `/players?id=${p.id}` };

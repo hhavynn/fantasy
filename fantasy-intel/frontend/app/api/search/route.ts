@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { SearchPlayer } from "@/lib/palette";
+import { type SearchPlayer, searchPath } from "@/lib/palette";
 
 type BackendPlayer = {
   espn_player_id: number;
@@ -9,19 +9,19 @@ type BackendPlayer = {
   fantasy_team: string | null;
 };
 
-const MAX_QUERY = 80;
-const LIMIT = 8;
-
 /**
- * Player search for the command palette. The browser cannot reach the backend (API_URL is
- * server-only), so this proxies `GET /api/players?q=` through `api()`, which attaches the hosted-mode
- * API key on the server, and returns only what the palette shows. The site password gate in
- * `proxy.ts` covers this route like every page.
+ * Player search for the command palette and the compare pickers. The browser cannot reach the backend (API_URL is
+ * server-only), so this proxies `GET /api/players?q=` through `api()`, which attaches the hosted-mode API key on the
+ * server and returns only what the pickers show. On a league page the browser fetches `/l/<lg>/api/search`
+ * (leagueRouteHref); proxy.ts rewrites that here with the league header, and `api()` then calls
+ * `/v2/leagues/<lg>/api/players` with the visitor's token, so the backend authorizes that league. A bare `/api/search`
+ * is unscoped (the proxy strips any league header the browser sends) and answers for the classic league only. The
+ * site password gate in `proxy.ts` covers this route like every page.
  */
 export async function GET(request: Request) {
-  const q = (new URL(request.url).searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY);
-  if (!q) return Response.json({ players: [] satisfies SearchPlayer[] });
-  const res = await api<BackendPlayer[]>(`/api/players?q=${encodeURIComponent(q)}&limit=${LIMIT}`);
+  const path = searchPath(new URL(request.url).searchParams);
+  if (!path) return Response.json({ players: [] satisfies SearchPlayer[] });
+  const res = await api<BackendPlayer[]>(path);
   if (!res.ok) {
     return Response.json({ players: [], error: res.kind ?? "unknown" }, { status: 502 });
   }

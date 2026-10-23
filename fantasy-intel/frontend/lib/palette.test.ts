@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { leagueRouteHref, proxyDecision, scopeApiPath } from "./league-scope.ts";
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
   FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
-  rankItems, scoreItem, wrapIndex, type PaletteItem,
+  rankItems, scoreItem, searchPath, searchSrc, wrapIndex, type PaletteItem,
 } from "./palette.ts";
 
 const pages = pageItems(NAV_GROUPS);
@@ -158,4 +159,34 @@ test("hidden routes leave quick actions, recents and pages alike", () => {
   assert.ok(shown.includes("/waivers"));
   assert.ok(!hrefs(buildSections("research", pages, [], recents, false, hidden)).some((h) => h.startsWith("/research")));
   assert.ok(hrefs(buildSections("", pages, [], recents)).includes("/research"));   // nothing hidden: unchanged
+});
+
+test("a player search from a league page stays in that league end to end", () => {
+  const LG = "lg_" + "c".repeat(24);
+  const src = searchSrc("Zay F&lowers");
+  // What the command palette and the compare pickers fetch on /l/<lg>/...: the league-prefixed route handler URL ...
+  const fetched = new URL(leagueRouteHref(src, LG), "http://x");
+  assert.equal(fetched.pathname, `/l/${LG}/api/search`);
+  // ... which proxy.ts rewrites to app/api/search with that league's header ...
+  const d = proxyDecision({ enabled: true, pathname: fetched.pathname, search: fetched.search });
+  assert.equal(d.kind, "rewrite");
+  assert.equal(d.kind === "rewrite" && d.league, LG);
+  // ... whose backend path carries only the query, and api() moves it to the league's /v2 mount.
+  const path = searchPath(new URL(d.kind === "rewrite" ? d.path : "", "http://x").searchParams)!;
+  assert.equal(path, "/api/players?q=Zay%20F%26lowers&limit=8");
+  assert.equal(scopeApiPath(path, d.kind === "rewrite" ? d.league : null), `/v2/leagues/${LG}/api/players?q=Zay%20F%26lowers&limit=8`);
+  // The old bare URL is unscoped: the proxy passes it on without a league, even with a last-viewed-league cookie, so it
+  // could only reach the classic league (or a 404 once the classic site is off).
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/api/search", search: fetched.search, cookie: LG }), { kind: "next" });
+  // The classic site keeps its unprefixed URL and its unscoped backend path.
+  assert.equal(leagueRouteHref(src, null), src);
+  assert.equal(scopeApiPath(path, null), path);
+});
+
+test("searchPath forwards only a trimmed, capped query", () => {
+  assert.equal(searchPath(new URLSearchParams("q=%20%20")), null);
+  assert.equal(searchPath(new URLSearchParams("")), null);
+  assert.equal(searchPath(new URLSearchParams("q=%20josh%20&limit=100&team_id=3")), "/api/players?q=josh&limit=8");
+  const long = searchPath(new URLSearchParams({ q: "x".repeat(200) }))!;
+  assert.equal(new URL(long, "http://x").searchParams.get("q"), "x".repeat(80));
 });
