@@ -1,0 +1,708 @@
+// /api/start-sit/what-if
+{
+ "body": {
+  "changed_slot_ids": [],
+  "contract": "start-sit-what-if/v1",
+  "errors": [],
+  "freshness": {
+   "lineup_synced_at": "<masked>",
+   "nfl_schedule_synced_at": "<masked>",
+   "projection_synced_at": "<masked>"
+  },
+  "is_future_preview": false,
+  "key": "w3t2",
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "limitations": [
+   "A what-if is computed for this page only: nothing is saved and nothing is sent to the provider.",
+   "Kickoff locks are the Start/Sit engine's own: stored NFL kickoff times and final scores, so exact provider lock acceptance cannot be guaranteed.",
+   "A starter without a projection is unknown, not zero: a total that includes one is shown as known-only."
+  ],
+  "lineup_lock": {
+   "engine_detail": "Start/Sit locks each player at his own game's kickoff. ESPN's rule for this league is not in the synced settings, so that assumption is not verified.",
+   "engine_status": "unverified",
+   "rule": {
+    "display": null,
+    "reason": "The synced settings do not include a lineup-lock rule.",
+    "value": null
+   }
+  },
+  "players": [
+   {
+    "injury_status": "ACTIVE",
+    "is_home": true,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Sierra WR",
+    "nfl_ineligible": false,
+    "opponent": "LA",
+    "player_id": 307,
+    "position": "WR",
+    "pro_team": "TB",
+    "projected_points": 11.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "WR_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "bench",
+    "scenario_slot_id": "WR_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Romeo WR",
+    "nfl_ineligible": false,
+    "opponent": "LAC",
+    "player_id": 306,
+    "position": "WR",
+    "pro_team": "SEA",
+    "projected_points": 10.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "WR_1",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "WR_1"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Zulu K",
+    "nfl_ineligible": false,
+    "opponent": "NE",
+    "player_id": 502,
+    "position": "K",
+    "pro_team": "BUF",
+    "projected_points": 10.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "K_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "K_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Bravo QB",
+    "nfl_ineligible": false,
+    "opponent": "NE",
+    "player_id": 102,
+    "position": "QB",
+    "pro_team": "BUF",
+    "projected_points": 9.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "QB_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "QB_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": true,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": false,
+    "name": "Kilo RB",
+    "nfl_ineligible": false,
+    "opponent": "LA",
+    "player_id": 207,
+    "position": "RB",
+    "pro_team": "TB",
+    "projected_points": 9.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": null,
+    "restriction": "RESERVED",
+    "restriction_reason": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+    "roster_spot": "ir",
+    "scenario_slot_id": null
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": true,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Quebec WR",
+    "nfl_ineligible": false,
+    "opponent": "LV",
+    "player_id": 305,
+    "position": "WR",
+    "pro_team": "SF",
+    "projected_points": 9.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "FLEX_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "FLEX_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Juliet RB",
+    "nfl_ineligible": false,
+    "opponent": "LAC",
+    "player_id": 206,
+    "position": "RB",
+    "pro_team": "SEA",
+    "projected_points": 8.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "RB_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "bench",
+    "scenario_slot_id": "RB_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Papa WR",
+    "nfl_ineligible": false,
+    "opponent": "MIA",
+    "player_id": 304,
+    "position": "WR",
+    "pro_team": "PHI",
+    "projected_points": 8.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": null,
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": null
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Victor TE",
+    "nfl_ineligible": false,
+    "opponent": "NE",
+    "player_id": 402,
+    "position": "TE",
+    "pro_team": "BUF",
+    "projected_points": 8.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "TE_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "TE_0"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": true,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "India RB",
+    "nfl_ineligible": false,
+    "opponent": "LV",
+    "player_id": 205,
+    "position": "RB",
+    "pro_team": "SF",
+    "projected_points": 7.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "RB_1",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "RB_1"
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Hotel RB",
+    "nfl_ineligible": false,
+    "opponent": "MIA",
+    "player_id": 204,
+    "position": "RB",
+    "pro_team": "PHI",
+    "projected_points": 6.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": null,
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": null
+   },
+   {
+    "injury_status": "ACTIVE",
+    "is_home": false,
+    "kickoff_utc": "<masked>",
+    "lock_status": "UNLOCKED",
+    "movable": true,
+    "name": "Bills D/ST",
+    "nfl_ineligible": false,
+    "opponent": "NE",
+    "player_id": -16002,
+    "position": "D/ST",
+    "pro_team": "BUF",
+    "projected_points": 5.3,
+    "projection_origin": "espn",
+    "recommended_slot_id": "D/ST_0",
+    "restriction": null,
+    "restriction_reason": null,
+    "roster_spot": "starter",
+    "scenario_slot_id": "D/ST_0"
+   }
+  ],
+  "projection_source": "ESPN",
+  "projection_source_detail": {
+   "available": true,
+   "counts": null,
+   "model_status": null,
+   "reason": null,
+   "run": null,
+   "source": "espn"
+  },
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 9,
+      "label": "starters with a projection",
+      "total": 9
+     },
+     "label": "ESPN weekly projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "scenario": {
+   "applied": false,
+   "move_limit": 20,
+   "moves": [],
+   "requested": false,
+   "whatif": null
+  },
+  "schedule_warnings": [],
+  "scoring_period": 3,
+  "slots": [
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "QB"
+    ],
+    "is_flex": false,
+    "label": "QB",
+    "lock_reason": null,
+    "locked": false,
+    "options": [],
+    "recommended_player_id": 102,
+    "scenario_player_id": 102,
+    "slot": "QB",
+    "slot_id": "QB_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "RB"
+    ],
+    "is_flex": false,
+    "label": "RB 1",
+    "lock_reason": null,
+    "locked": false,
+    "options": [
+     {
+      "complete": true,
+      "delta": -2.0,
+      "displaced_player_id": 206,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -2.0,
+      "known_total": 77.7,
+      "player_id": 204,
+      "total": 77.7,
+      "whatif": "w3t2~RB_0.204"
+     }
+    ],
+    "recommended_player_id": 206,
+    "scenario_player_id": 206,
+    "slot": "RB",
+    "slot_id": "RB_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "RB"
+    ],
+    "is_flex": false,
+    "label": "RB 2",
+    "lock_reason": null,
+    "locked": false,
+    "options": [
+     {
+      "complete": true,
+      "delta": -1.0,
+      "displaced_player_id": 205,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -1.0,
+      "known_total": 78.7,
+      "player_id": 204,
+      "total": 78.7,
+      "whatif": "w3t2~RB_1.204"
+     }
+    ],
+    "recommended_player_id": 205,
+    "scenario_player_id": 205,
+    "slot": "RB",
+    "slot_id": "RB_1"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "WR"
+    ],
+    "is_flex": false,
+    "label": "WR 1",
+    "lock_reason": null,
+    "locked": false,
+    "options": [
+     {
+      "complete": true,
+      "delta": 0.0,
+      "displaced_player_id": 307,
+      "displaced_to_slot_id": "FLEX_0",
+      "from_slot_id": "FLEX_0",
+      "known_delta": 0.0,
+      "known_total": 79.7,
+      "player_id": 305,
+      "total": 79.7,
+      "whatif": "w3t2~WR_0.305"
+     },
+     {
+      "complete": true,
+      "delta": -3.0,
+      "displaced_player_id": 307,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -3.0,
+      "known_total": 76.7,
+      "player_id": 304,
+      "total": 76.7,
+      "whatif": "w3t2~WR_0.304"
+     }
+    ],
+    "recommended_player_id": 307,
+    "scenario_player_id": 307,
+    "slot": "WR",
+    "slot_id": "WR_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "WR"
+    ],
+    "is_flex": false,
+    "label": "WR 2",
+    "lock_reason": null,
+    "locked": false,
+    "options": [
+     {
+      "complete": true,
+      "delta": 0.0,
+      "displaced_player_id": 306,
+      "displaced_to_slot_id": "FLEX_0",
+      "from_slot_id": "FLEX_0",
+      "known_delta": 0.0,
+      "known_total": 79.7,
+      "player_id": 305,
+      "total": 79.7,
+      "whatif": "w3t2~WR_1.305"
+     },
+     {
+      "complete": true,
+      "delta": -2.0,
+      "displaced_player_id": 306,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -2.0,
+      "known_total": 77.7,
+      "player_id": 304,
+      "total": 77.7,
+      "whatif": "w3t2~WR_1.304"
+     }
+    ],
+    "recommended_player_id": 306,
+    "scenario_player_id": 306,
+    "slot": "WR",
+    "slot_id": "WR_1"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "TE"
+    ],
+    "is_flex": false,
+    "label": "TE",
+    "lock_reason": null,
+    "locked": false,
+    "options": [],
+    "recommended_player_id": 402,
+    "scenario_player_id": 402,
+    "slot": "TE",
+    "slot_id": "TE_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "K"
+    ],
+    "is_flex": false,
+    "label": "K",
+    "lock_reason": null,
+    "locked": false,
+    "options": [],
+    "recommended_player_id": 502,
+    "scenario_player_id": 502,
+    "slot": "K",
+    "slot_id": "K_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "D/ST"
+    ],
+    "is_flex": false,
+    "label": "D/ST",
+    "lock_reason": null,
+    "locked": false,
+    "options": [],
+    "recommended_player_id": -16002,
+    "scenario_player_id": -16002,
+    "slot": "D/ST",
+    "slot_id": "D/ST_0"
+   },
+   {
+    "blocked": [
+     {
+      "code": "RESERVED",
+      "message": "Kilo RB is in a fantasy IR slot and cannot start without a roster move.",
+      "player_id": 207
+     },
+     {
+      "code": "INELIGIBLE_SWAP",
+      "message": "Moving Juliet RB to FLEX would send Quebec WR (WR) to RB 1, which takes RB.",
+      "player_id": 206
+     },
+     {
+      "code": "INELIGIBLE_SWAP",
+      "message": "Moving Victor TE to FLEX would send Quebec WR (WR) to TE, which takes TE.",
+      "player_id": 402
+     },
+     {
+      "code": "INELIGIBLE_SWAP",
+      "message": "Moving India RB to FLEX would send Quebec WR (WR) to RB 2, which takes RB.",
+      "player_id": 205
+     }
+    ],
+    "changed": false,
+    "eligible_positions": [
+     "RB",
+     "WR",
+     "TE"
+    ],
+    "is_flex": true,
+    "label": "FLEX",
+    "lock_reason": null,
+    "locked": false,
+    "options": [
+     {
+      "complete": true,
+      "delta": 0.0,
+      "displaced_player_id": 305,
+      "displaced_to_slot_id": "WR_0",
+      "from_slot_id": "WR_0",
+      "known_delta": 0.0,
+      "known_total": 79.7,
+      "player_id": 307,
+      "total": 79.7,
+      "whatif": "w3t2~FLEX_0.307"
+     },
+     {
+      "complete": true,
+      "delta": 0.0,
+      "displaced_player_id": 305,
+      "displaced_to_slot_id": "WR_1",
+      "from_slot_id": "WR_1",
+      "known_delta": 0.0,
+      "known_total": 79.7,
+      "player_id": 306,
+      "total": 79.7,
+      "whatif": "w3t2~FLEX_0.306"
+     },
+     {
+      "complete": true,
+      "delta": -1.0,
+      "displaced_player_id": 305,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -1.0,
+      "known_total": 78.7,
+      "player_id": 304,
+      "total": 78.7,
+      "whatif": "w3t2~FLEX_0.304"
+     },
+     {
+      "complete": true,
+      "delta": -3.0,
+      "displaced_player_id": 305,
+      "displaced_to_slot_id": null,
+      "from_slot_id": null,
+      "known_delta": -3.0,
+      "known_total": 76.7,
+      "player_id": 204,
+      "total": 76.7,
+      "whatif": "w3t2~FLEX_0.204"
+     }
+    ],
+    "recommended_player_id": 305,
+    "scenario_player_id": 305,
+    "slot": "FLEX",
+    "slot_id": "FLEX_0"
+   }
+  ],
+  "team": {
+   "abbrev": "T2",
+   "id": 2,
+   "is_mine": true,
+   "name": "Team 2"
+  },
+  "totals": {
+   "complete": true,
+   "delta": 0.0,
+   "known_delta": 0.0,
+   "recommended": {
+    "complete": true,
+    "known_total": 79.7,
+    "missing_projection_ids": [],
+    "starters": 9,
+    "starters_with_projection": 9,
+    "total": 79.7
+   },
+   "scenario": {
+    "complete": true,
+    "known_total": 79.7,
+    "missing_projection_ids": [],
+    "starters": 9,
+    "starters_with_projection": 9,
+    "total": 79.7
+   }
+  }
+ },
+ "status": 200
+}
