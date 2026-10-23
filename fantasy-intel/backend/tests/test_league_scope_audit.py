@@ -157,7 +157,11 @@ def test_legacy_routes_do_not_import_the_league_layer_or_the_control_plane():
         if rel.startswith(("leagues/", "control_plane/", "sync/")) or rel in ("api/leagues_v2.py", "api/league_scope.py",
                                                                                 "api/connect.py", "main.py", "config.py"):
             continue
-        if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*(?:leagues|control_plane)(?:\.|\s|$)",
-                     p.read_text("utf-8"), re.M):
+        text = p.read_text("utf-8")
+        if rel == "api/portfolio.py":
+            # The cross-league portfolio (#209), reached only through GET /v2/portfolio, may read the cross-provider
+            # identity rules (app.leagues.identity) and nothing else of the league layer, never the control plane.
+            text = re.sub(r"^\s*from\s+\.\.leagues\.identity\s+import\s+[\w, ]+$", "", text, flags=re.M)
+        if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*(?:leagues|control_plane)(?:\.|\s|$)", text, re.M):
             offenders.append(rel)
     assert not offenders, f"legacy modules import app.leagues / app.control_plane: {offenders}"

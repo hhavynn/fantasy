@@ -458,7 +458,10 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "api/signal_provenance.py",   # labels which projections a page shows (default_source only)
                # the compatibility diagnostic: counts who the engines' projections cover (league_projections and
                # select_run, never weekly()); it never feeds a lineup
-               "analytics/league_compatibility.py"}
+               "analytics/league_compatibility.py",
+               # the cross-league portfolio (#209): each rostered player's number this week from the league's default
+               # source (default_source + league_projections, never weekly()); shown per league, never summed or ranked
+               "api/portfolio.py"}
     assert switch <= users <= switch | readers | engines
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 

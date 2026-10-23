@@ -168,3 +168,25 @@ def test_action_center_lists_exactly_the_leagues_the_matrix_grants(client, leagu
         assert leagues[hidden] not in r.text, (actor, hidden)
     # no league here has a published snapshot: each says so instead of showing a roster
     assert all(s["state"] == "not_ready" and s["overview"] is None for s in r.json()["leagues"])
+
+
+# The cross-league player portfolio (issue #209) is user-scoped like the action center: the same leagues, never one
+# more, nothing for a stranger, and 401 for the anonymous caller.
+@pytest.mark.parametrize("actor", list(ACTORS))
+def test_portfolio_reads_exactly_the_leagues_the_matrix_grants(client, leagues, actor, monkeypatch):
+    from app.api import action_center
+    monkeypatch.setattr(action_center, "_FLIGHTS", {})
+    monkeypatch.setattr(action_center, "_HOLDERS", {})
+    r = client.get("/v2/portfolio", headers=headers(actor))
+    if actor == "anon":
+        assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."})
+        return
+    assert r.status_code == 200, r.text[:200]
+    names = {v: k for k, v in leagues.items()}
+    body = r.json()
+    listed = [s["league"]["league_id"] for s in body["leagues"]] + [x["league"]["league_id"] for x in body["excluded"]["leagues"]]
+    assert {names[i] for i in listed} == ACTION_CENTER_EXPECTED[actor]
+    for hidden in set(STATES) - ACTION_CENTER_EXPECTED[actor]:
+        assert leagues[hidden] not in r.text, (actor, hidden)
+    # no league here has a published snapshot: each says so, and no player is invented
+    assert all(s["state"] == "not_ready" for s in body["leagues"]) and body["players"] == []

@@ -374,24 +374,23 @@ def worker_pool() -> ThreadPoolExecutor:
         return pool
 
 
-async def build(principal, granted: list, now: datetime | None = None) -> tuple[dict, bool]:
-    """(response body, whether any league was read from older files). `granted` is the authorized list, in the order
-    GET /v2/leagues gives it; the first `max_leagues` are evaluated on the shared pool, at most `concurrency` at once,
-    for at most `budget` seconds; the others are only listed. Awaiting holds no thread: the event loop waits."""
-    now = now or datetime.now(timezone.utc)
-    max_leagues, concurrency, budget = limits()
-    evaluated, extra = granted[:max_leagues], granted[max_leagues:]
+async def run_bounded(items: list, fn, concurrency: int, budget: float, on_error=None) -> list:
+    """`fn(item)` for every item on the shared pool, at most `concurrency` at once, for at most `budget` seconds; the
+    results in order, None for an item still running (or never started) when the budget ran out. `fn` must not raise;
+    if it does anyway, that item's result is `on_error(item)` (None without one). Awaiting holds no thread: the event
+    loop waits. Shared by the action center and the portfolio (app/api/portfolio.py), so both stay on the one
+    process-wide pool."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + budget
-    results: list[dict | None] = [None] * len(evaluated)
-    pending = list(enumerate(evaluated))
+    results: list = [None] * len(items)
+    pending = list(enumerate(items))
     running: dict[asyncio.Future, int] = {}
     pool = worker_pool()
     try:
         while pending or running:
             while pending and len(running) < concurrency:
-                i, access = pending.pop(0)
-                running[asyncio.wrap_future(pool.submit(evaluate_league, principal, access, now))] = i
+                i, item = pending.pop(0)
+                running[asyncio.wrap_future(pool.submit(fn, item))] = i
             left = deadline - loop.time()
             if left <= 0:
                 break
@@ -402,14 +401,26 @@ async def build(principal, granted: list, now: datetime | None = None) -> tuple[
                 i = running.pop(fut)
                 try:
                     results[i] = fut.result()
-                except Exception as err:  # noqa: BLE001 - evaluate_league does not raise; a replacement still must not
-                    log.warning("action center: league %s failed: %s", evaluated[i].league_id, type(err).__name__)
-                    results[i] = _section(evaluated[i], "unavailable", UNREADABLE)
+                except Exception as err:  # noqa: BLE001 - fn does not raise; a replacement still must not
+                    log.warning("bounded fan-out: an item failed: %s", type(err).__name__)
+                    results[i] = on_error(items[i]) if on_error is not None else None
     finally:
-        # Also when this build is cancelled mid-wait: a queued evaluation never runs, a running one finishes and
-        # releases its own files.
+        # Also when the caller is cancelled mid-wait: a queued item never runs, a running one finishes and releases
+        # its own files.
         for fut in running:
             fut.cancel()
+    return results
+
+
+async def build(principal, granted: list, now: datetime | None = None) -> tuple[dict, bool]:
+    """(response body, whether any league was read from older files). `granted` is the authorized list, in the order
+    GET /v2/leagues gives it; the first `max_leagues` are evaluated on the shared pool, at most `concurrency` at once,
+    for at most `budget` seconds; the others are only listed."""
+    now = now or datetime.now(timezone.utc)
+    max_leagues, concurrency, budget = limits()
+    evaluated, extra = granted[:max_leagues], granted[max_leagues:]
+    results = await run_bounded(evaluated, lambda access: evaluate_league(principal, access, now), concurrency, budget,
+                                on_error=lambda access: _section(access, "unavailable", UNREADABLE))
     out = [s if s is not None else _section(evaluated[i], "not_ready", TOO_SLOW) for i, s in enumerate(results)]
     body = {
         "contract": CONTRACT,
@@ -433,7 +444,8 @@ def admission_slots() -> int:
 
 _ADMISSION_LOCK = threading.Lock()
 _ADMISSION: dict[str, Any] = {}
-_FLIGHTS: dict[str, tuple[tuple, Future]] = {}      # user id -> (the league ids it was authorized for, its build)
+_FLIGHTS: dict[str, tuple[tuple, Future]] = {}      # user id (or kind:user id) -> (its authorized league ids, its build)
+_HOLDERS: dict[str, Future] = {}                    # user id -> the build of whichever kind holds (or awaits) its slot
 
 
 def _admission() -> threading.BoundedSemaphore:
@@ -461,20 +473,27 @@ async def _acquire_slot(sem: threading.BoundedSemaphore, wait_s: float) -> bool:
     return True
 
 
-async def serve(principal, granted: list) -> tuple[dict, bool]:
+async def serve(principal, granted: list, *, kind: str = "action-center", build_fn=None,
+                budget_s: float | None = None) -> tuple[dict, bool]:
     """`build`, with two process-wide guards (the pool is shared by every user):
 
       * one build per user: a request from a user whose build is running joins it when it is for exactly the same
         authorized leagues (its own authorization has already run), and otherwise waits for it to finish and then
         builds once, so one user never holds two slots. Flights are keyed by the verified user id: two users never
         share a build, whatever their leagues;
+      * one slot per user across kinds: a user's build of another kind (the portfolio beside the action center) waits for
+        the first to finish before it takes a slot, so one user can never hold every slot;
       * admission: at most POOL_WORKERS // CONCURRENCY builds at once in the process. A request waits up to
         ADMISSION_WAIT_S for a slot (on the event loop), then gets Busy (503 with Retry-After): never a long queue
-        behind other users' leagues."""
+        behind other users' leagues.
+
+    `kind`, `build_fn` and `budget_s` let another all-leagues view (the portfolio, app/api/portfolio.py) share the
+    pool's admission slots with its own single flight per (kind, user) and its own `build_fn(principal, granted)`."""
     ids = tuple(a.league_id for a in granted)
-    user = principal.user_id
+    user = principal.user_id if kind == "action-center" else f"{kind}:{principal.user_id}"
+    build_fn = build_fn or build
     loop = asyncio.get_running_loop()
-    give_up = loop.time() + limits()[2] + 10
+    give_up = loop.time() + (limits()[2] if budget_s is None else budget_s) + 10
     while True:
         with _ADMISSION_LOCK:
             flight = _FLIGHTS.get(user)
@@ -499,12 +518,31 @@ async def serve(principal, granted: list) -> tuple[dict, bool]:
         if same:
             return result
         # Different leagues (a membership changed in between): that build is over; build our own next round.
+    holder = False
     try:
+        while True:
+            with _ADMISSION_LOCK:
+                other = _HOLDERS.get(principal.user_id)
+                if other is None:
+                    _HOLDERS[principal.user_id] = mine
+                    holder = True
+                    break
+            left = give_up - loop.time()
+            if left <= 0:
+                raise Busy()
+            if other.done():                           # finished, its holder entry about to go: look again shortly
+                await asyncio.sleep(_POLL_S)
+                continue
+            try:
+                await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(other)), left)
+            except (Exception, TimeoutError):  # noqa: BLE001 - that build failed or ran long: look again
+                if loop.time() >= give_up:
+                    raise Busy() from None
         sem = _admission()
         if not await _acquire_slot(sem, ADMISSION_WAIT_S):
             raise Busy()
         try:
-            result = await build(principal, granted)
+            result = await build_fn(principal, granted)
         finally:
             sem.release()
         mine.set_result(result)
@@ -517,3 +555,5 @@ async def serve(principal, granted: list) -> tuple[dict, bool]:
         with _ADMISSION_LOCK:
             if _FLIGHTS.get(user, (None, None))[1] is mine:
                 del _FLIGHTS[user]
+            if holder and _HOLDERS.get(principal.user_id) is mine:
+                del _HOLDERS[principal.user_id]
