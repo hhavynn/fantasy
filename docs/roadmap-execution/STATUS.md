@@ -37,7 +37,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #178 add/drop simulator | 3 | PR OPEN | PR #249 (f4ef8e2) | security clean except MEDIUM shared-optimizer cost (pre-existing `_best_flex`, widened by add-only path); Codex P2 fixed; merges after `fix/lineup-flex-solver` |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
-| #181 K/DST streaming | 3 | PR OPEN | PR #250 (dcef8df) | security clean; fixing MEDIUM hold_cell downgrade + Codex P2 partial-schedule coverage + 3 LOW |
+| #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | NOT STARTED | — | |
 | #183 trade scenarios | 4 | NOT STARTED | — | |
 | #184 trade-market values | 4 | NOT STARTED | — | |
@@ -107,7 +107,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 
 ## Active wave
 
-**Now (2026-10-23 02:20Z):** #248 CI speed (fixing review HIGH: docs-only skips credential scan; MEDIUM: restore `always()` aggregates); `fix/lineup-flex-solver` (shared optimizer: polynomial, identical assignments, goldens unchanged); #249 and #250 fix rounds.
+**Now (2026-10-23 02:50Z):** #248 and #250 merged. #251 = live docs-only CI demo. `fix/lineup-flex-solver` (shared optimizer: polynomial, identical assignments, goldens unchanged) in progress; #249 waits on it and conflicts with main in `app/waivers/page.tsx`.
 
 
 **Wave 1** (parallel, isolated worktrees under `.worktrees/`, all from `5315c96`):
@@ -132,6 +132,8 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
 | #247 | c5cc957 | docs only (full CI ~10 min) | green | Codex P1 (ESPN events leak) fixed |
+| #250 | 90b8e5f | q a s + kdst e2e | green | security re-check RESOLVED; withLeague hash-drop fixed |
+| #248 | 8ce062a | ci_changes/agent_check 104 + actionlint | green, 6m30s | CI 9.5–12 min → 6.5–7.5 min; review HIGH (docs-only skipped credential scan) + MEDIUM (always()) fixed |
 | #244 | 766044f | bye_planner 17 + a 546 + s 627 + fe + bye-planner e2e 6 | green | security review + re-check; Codex clean |
 | #245 | 2e267dc | fe 686 + player-tabs/ux-gates e2e + multileague 2 locally | green | D-10 correctness review, Codex stalled |
 | #246 | 625b7ca | test_agent_check 40 (real run_command timeout) | green | Codex P2 + D-10 review LOWs fixed |
@@ -146,6 +148,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #235 | 6164e84 | targeted 60 + s (623) | green | stale base, no file overlap with main → merged as is (D-07) |
 
 ## Lessons
+- CI (#248): the 6–8 min E2E outliers were apt `install-deps`, not the browser download; it now runs only when `ldd` or the Liberation Sans check finds something missing. Backend shards are the critical path now (~6 min).
 
 - `agent_check affected` used to miss the app-wide source audits; PR #236 adds them. Do not run full local suites
   instead (D-08): CI on the exact SHA is the full gate.
