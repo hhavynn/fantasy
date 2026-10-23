@@ -132,11 +132,12 @@ def my_team_stash(team_id: int | None = None, horizon: int = 4, kdst_streaming: 
                                 projection_source=source_label(state.projection_source, state.projections))
         except StashPlanError as err:
             raise HTTPException(422, str(err))
-        try:
+        try:                        # tid is already in this league, so only "not available yet" is expected here
             tree = build_opportunity_tree(con, team_id=tid)
-            contingency = {"available": True, "week": tree.get("week"), **contingencies(tree)}
-        except (InjuryImpactUnavailable, LookupError) as err:
+        except InjuryImpactUnavailable as err:
             contingency = {"available": False, "reason": str(err), "items": []}
+        else:
+            contingency = {"available": True, "week": tree.get("week"), **contingencies(tree)}
         return {**plan, "contract": "stash-plan/v1",
                 "team": {k: teams[tid][k] for k in ("team_id", "name", "is_mine")},
                 "contingencies": contingency, "provenance": trade_provenance(con, race.league, state)}

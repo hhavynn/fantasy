@@ -197,3 +197,20 @@ def test_the_stash_route_is_read_only_and_labelled(tmp_path, monkeypatch):
     con = connect(db_path, read_only=True)
     assert _raw_snapshot(con) == raw
     con.close()
+
+
+def test_an_internal_tree_error_is_not_served_as_an_unavailable_reason(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.api import team_value
+    from test_trade_data import synced
+    db_path = tmp_path / "stash.duckdb"
+    synced(db_path).close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+
+    def broken(con, team_id=None):
+        raise KeyError("secret_col")
+    monkeypatch.setattr(team_value, "build_opportunity_tree", broken)
+    from app.main import app
+    res = TestClient(app, raise_server_exceptions=False).get("/api/my-team/stash")
+    assert res.status_code == 500 and "secret_col" not in res.text
