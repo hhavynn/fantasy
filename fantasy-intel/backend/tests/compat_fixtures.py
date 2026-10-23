@@ -10,6 +10,10 @@ Matrix rows (`MATRIX`; docs: fantasy-intel/docs/compatibility/253-gap-inventory.
   M2  FX-17 on ESPN, full PPR (M2b: plus an unmapped stat and a TE slot override, so Ours abstains)
   M3  FX-17 on Sleeper (reserve_slots 3), half PPR
   M4  superflex with RB/WR, WR/TE and two FLEX, tied projections and a sparse pool (no free agent projected)
+  M5  PPR variants of M1: half PPR on ESPN (M5), full PPR on Sleeper (M5s)
+  M6  custom scoring on M1: known on ESPN (6-point passing TD), unmapped on Sleeper (M6s: a 300-yard passing bonus and
+      a key no reader knows), so Ours and the kicker model abstain
+  M7  FX-17 on Sleeper with a 3-player taxi squad (taxi rows are Sleeper-only; the ESPN builders reject them)
   M8  individual defensive player (IDP) slots on ESPN (LB, DL) and Sleeper (DL, LB, IDP_FLEX)
   M8p punter and head coach slots on ESPN (P, HC): players ESPN stores and projects, but no engine values
 
@@ -61,9 +65,9 @@ _DST = [(99, 1.0), (95, 2.0), (96, 2.0), (98, 2.0), (97, 2.0), (103, 6.0), (104,
         (91, 3.0), (92, 1.0), (121, 0.0), (122, -1.0), (123, -1.0), (124, -3.0), (125, -5.0)]
 
 
-def espn_scoring(ppr: float = 1.0, *, unmapped: bool = False) -> list[dict]:
+def espn_scoring(ppr: float = 1.0, *, unmapped: bool = False, pass_td: float = 4.0) -> list[dict]:
     items = [{"statId": sid, "points": pts} for sid, pts in (
-        (3, 0.04), (4, 4.0), (19, 2.0), (20, -2.0), (24, 0.1), (25, 6.0), (26, 2.0), (42, 0.1), (43, 6.0), (44, 2.0),
+        (3, 0.04), (4, pass_td), (19, 2.0), (20, -2.0), (24, 0.1), (25, 6.0), (26, 2.0), (42, 0.1), (43, 6.0), (44, 2.0),
         (72, -2.0), (80, 3.0), (77, 4.0), (74, 5.0), (85, -1.0), (86, 1.0), (88, -1.0))]
     items.append({"statId": 53, "points": ppr, **({"pointsOverrides": {"6": ppr + 0.5}} if unmapped else {})})
     items += [{"statId": sid, "points": 0.0, "pointsOverrides": {"16": pts}} for sid, pts in _DST if pts]
@@ -81,6 +85,7 @@ SLEEPER_HALF_PPR = {
     "pts_allow_28_34": -1, "pts_allow_35p": -4,
 }
 SLEEPER_IDP = {**SLEEPER_HALF_PPR, "idp_tkl": 1.0, "idp_sack": 3.0}
+SLEEPER_UNMAPPED = {**SLEEPER_HALF_PPR, "bonus_pass_yd_300": 3.0, "zz_new_rule": 1.0}
 
 
 @dataclass(frozen=True)
@@ -105,7 +110,13 @@ MATRIX = {
     "M8": Row("M8", "espn", IDP_ESPN),
     "M8s": Row("M8s", "sleeper", IDP_SLEEPER, sleeper_scoring=dict(SLEEPER_IDP)),
     "M8p": Row("M8p", "espn", PHC_ESPN),
+    "M5": Row("M5", "espn", STANDARD, espn_items=espn_scoring(0.5)),
+    "M5s": Row("M5s", "sleeper", STANDARD, sleeper_scoring={**SLEEPER_HALF_PPR, "rec": 1.0}),
+    "M6": Row("M6", "espn", STANDARD, espn_items=espn_scoring(pass_td=6.0)),
+    "M6s": Row("M6s", "sleeper", STANDARD, sleeper_scoring=dict(SLEEPER_UNMAPPED)),
+    "M7": Row("M7", "sleeper", {**FX17, "TAXI": 3}, teams=6),
 }
+RESERVE = ("BE", "IR", "TAXI")        # slots whose players do not start
 
 
 # ---- rosters -----------------------------------------------------------------------------------------------------------
@@ -121,7 +132,8 @@ class Player:
 
 def league_players(row: Row) -> list[Player]:
     """Every team's roster: one player per starting slot (a flex slot gets FILL / FLEX_FILL in turn), the bench from
-    BENCH_FILL and injured players in IR; then free agents at each position. Deterministic."""
+    BENCH_FILL, injured players in IR and rookie WRs on the taxi squad; then free agents at each position.
+    Deterministic, and a row without taxi slots gets exactly the players it always had."""
     out: list[Player] = []
     n = 0
 
@@ -134,7 +146,7 @@ def league_players(row: Row) -> list[Player]:
         i = 0
         flex_i = 0
         for slot, count in row.slots.items():
-            if slot in ("BE", "IR"):
+            if slot in RESERVE:
                 continue
             for _ in range(count):
                 if slot == "FLEX":
@@ -154,6 +166,9 @@ def league_players(row: Row) -> list[Player]:
         for _ in range(row.slots.get("IR", 0)):
             i += 1
             out.append(Player(70_000 + t * 100 + i, "RB", next_team(), t, "IR"))
+        for _ in range(row.slots.get("TAXI", 0)):
+            i += 1
+            out.append(Player(70_000 + t * 100 + i, "WR", next_team(), t, "TAXI"))
     if row.free_agents:
         for j, pos in enumerate(("QB", "RB", "RB", "WR", "WR", "TE", "K", "K", "K")):
             out.append(Player(79_000 + j, pos, next_team(), None, None))
@@ -185,6 +200,8 @@ def espn_league_payload(row: Row) -> dict:
     """The mSettings + mTeam + mRoster league payload for the row (template: espn_fixture.league_payload)."""
     raw = ef.league_payload()
     template = raw["teams"][0]
+    if "TAXI" in row.slots:
+        raise ValueError("ESPN has no taxi squad: taxi rows are Sleeper-only")
     players = league_players(row)
     counts = {str(ESPN_SLOT_IDS[k]): v for k, v in row.slots.items()}
     counts.update({k: 0 for k in ("1", "22", "24") if k not in counts})   # zero counts, as ESPN sends them
@@ -277,7 +294,7 @@ def sleeper_payloads(row: Row):
     from app.sleeper.write import SleeperPayloads
 
     players = league_players(row)
-    positions = [SLEEPER_SLOTS[s] for s, n in row.slots.items() if s not in ("BE", "IR") for _ in range(n)]
+    positions = [SLEEPER_SLOTS[s] for s, n in row.slots.items() if s not in RESERVE for _ in range(n)]
     positions += ["BN"] * row.slots.get("BE", 0)
     league = json.loads((SLEEPER_FIX / "league.json").read_text())
     league.update(league_id="1180000000000025301", name=f"Compat {row.id}", total_rosters=row.teams,
@@ -289,10 +306,11 @@ def sleeper_payloads(row: Row):
     rosters = []
     for t in range(1, row.teams + 1):
         mine = [p for p in players if p.team == t]
-        starters = [_sleeper_id(p) for p in mine if p.slot not in ("BE", "IR")]
+        starters = [_sleeper_id(p) for p in mine if p.slot not in RESERVE]
+        taxi = [_sleeper_id(p) for p in mine if p.slot == "TAXI"]
         rosters.append({"roster_id": t, "owner_id": users[t - 1]["user_id"], "co_owners": None,
                         "players": [_sleeper_id(p) for p in mine], "starters": starters,
-                        "reserve": [_sleeper_id(p) for p in mine if p.slot == "IR"], "taxi": None,
+                        "reserve": [_sleeper_id(p) for p in mine if p.slot == "IR"], "taxi": taxi or None,
                         "settings": {"wins": 0, "losses": 0, "ties": 0, "fpts": 0, "waiver_position": t,
                                      "waiver_budget_used": 0, "total_moves": 0, "division": 1}})
     universe = {}

@@ -434,3 +434,45 @@ Other follow-ups:
 - The frontend `EngineRule` type can gain the optional `code` when the UI entry for the diagnostic is built (no UI in
   this PR).
 - UI entry point and E2E acceptance items for #253 remain open.
+
+---
+
+## 9. Completion audit (against `origin/main` at `dc06428`, plus the journey PR)
+
+Each #253 completion criterion (`docs/roadmap-execution/STATUS.md`) checked against the code and tests on main after
+phases 1-3 (784b89b, #256, #268), plus what the journey PR adds. Backend test paths are under
+`fantasy-intel/backend/tests/`. "Import to analysis" means the row's raw provider payload goes through the real sync
+write path (`write_all` for ESPN, `write_sleeper` for Sleeper) into a league file that the engines then read.
+
+| Criterion | Status | Evidence, or the gap |
+|---|---|---|
+| Per-tool gap inventory committed | **met** | this document, sections 1-8 (784b89b, updated in #256 and #268) |
+| Standard redraft | **met** | M1: `test_league_compatibility.py::test_every_matrix_row_keeps_its_slot_counts`, `::test_a_league_without_projections_gets_no_total_and_an_honest_source_label`, `::test_a_team_without_a_synced_roster_makes_capacity_tools_unverified`; `test_unsupported_slots.py::test_a_standard_week_keeps_its_exact_shape`, `::test_a_standard_league_keeps_legal_moves_legal` |
+| Superflex / multi-FLEX with ties and sparse pools | **met** | M2 and M3 (FX-17), M4 (OP + RB/WR + WR/TE + 2 FLEX, all tied, no free agents): `::test_fx17_start_sit_starts_17_distinct_players_with_three_interchangeable_flex`, `::test_fx17_weekly_lineups_never_start_bench_ir_or_a_player_twice`, `::test_tied_and_sparse_superflex_lineups_are_deterministic_and_unique`, `::test_a_sparse_pool_flags_the_trade_replacement_level` |
+| Half and full PPR | **met (this PR)** | M1/M2 (ESPN full), M3 (Sleeper half), new M5 (ESPN half) and M5s (Sleeper full): `::test_ppr_variants_survive_the_import_and_the_full_ppr_waiver_basis_is_disclosed` (format and PPR read from the import, `ppr` row partial only when PPR is not 1, waivers' full-PPR basis cited, ESPN projections stay league-scored) |
+| Known and unmapped custom scoring | **met (this PR)** | new M6 (ESPN 6-point passing TD): `::test_known_custom_scoring_is_read_and_espn_projections_stay_league_scored`; M2b (ESPN unmapped stat + TE slot override): `::test_roster_support_is_not_scoring_fidelity`; new M6s (Sleeper `bonus_pass_yd_300` + an unknown key): `::test_unmapped_custom_scoring_abstains_and_never_becomes_a_measured_zero` |
+| IR / taxi | **met (this PR adds FX-17 + taxi)** | FX-17's 3 IR in the two FX-17 lineup tests above; new M7 (FX-17 on Sleeper with 3 taxi per team, taxi players projected far above everyone): `::test_fx17_with_a_taxi_squad_never_starts_taxi_or_ir_and_keeps_them_off_the_active_roster`; `test_sleeper_taxi.py` (recorded-shape Sleeper fixture through `write_sleeper` into Start/Sit, trades, waivers, team value) |
+| IDP / atypical slots | **met** | M8 (ESPN DL/LB), M8p (ESPN P/HC), M8s (Sleeper DL/LB/IDP_FLEX): all of `test_unsupported_slots.py`; `test_league_compatibility.py::test_idp_slots_are_partial_for_lineups_and_unverified_legality_only_when_players_are_missing`, `::test_punter_and_head_coach_slots_are_reported_unsupported` |
+| FX-17 invariants (counts unchanged, no double start, 3 interchangeable FLEX, no BE/IR start, totals and displacement in tied, sparse and multi-flex pools) | **met** | `::test_fx17_slot_counts_survive_normalization_on_both_providers`, the two FX-17 lineup tests, the M4 test and the M7 taxi test above (totals equal the sum of the assigned starters); displacement with slots no engine fills: `test_unsupported_slots.py::test_start_sit_holds_starters_in_unsupported_slots_and_the_gain_is_exact` |
+| Every applicable engine answers or abstains with an actionable reason | **met, with one follow-up** | engine level: Start/Sit, what-if, matchup, projected lineups, trades, trade discovery (M8, M8p), add/drop, claim planner, FAAB, team value, power rankings and playoff race in `test_unsupported_slots.py` and `test_league_compatibility.py`. Route level (new): `::test_every_tool_answers_or_abstains_with_a_reason_from_the_imported_file` serves the imported file of M2, M3, M6s, M7, M8p and M8s and calls 18 tool routes plus an evaluated trade: each answers (200) or abstains with a `detail` (Waivers answers 503 "not computed yet, run the analytics refresh" on a file the analytics pipeline has not run on), never 500. The diagnostic answers all 13 tools on four dimensions for every one of the 13 matrix rows (`::test_every_row_answers_every_tool_on_four_dimensions`). **Follow-up (performance, not correctness):** trade discovery on FX-17 (M2: 6 teams, 30 players each, 17 starters with OP and 3 FLEX) took **451 s** for `GET /api/trades/discover?team_id=1` offline (M1 and M8: about 6 s), so it is left out of the route test; the team value page's trade preview took 19 s on M2 (`trades=false`: 0.6 s). Engine work, not done here. |
+| Missing or unsupported scoring never becomes a measured 0 or a faux league-scored total | **met for #253's scope** | G1: `::test_a_league_without_projections_gets_no_total_and_an_honest_source_label`, `::test_a_starter_slot_only_an_unprojected_player_can_fill_makes_the_recommendation_incomplete`; S8: `::test_an_unavailable_source_label_survives_the_sleeper_wording`, the two "rows all abstain" tests; S1 label: `::test_ours_re_scored_from_the_reference_scoring_is_partial_not_league_scored`; G3: `test_unsupported_slots.py` partial totals; G5 (#260): `test_waivers.py::test_player_without_value_leaves_lineup_value_unknown_not_zero` and its neighbours; new M6s test (every lineup total None, never 0.0). Left to #254: S1b (re-score counts a missing stat component as 0) and S3 (Sleeper actual points mix sources per row). |
+| Per-league / per-tool diagnostic contract (D-12) with tests and readable explanations | **met (backend)** | `app/analytics/league_compatibility.py`, `GET /v2/leagues/{lg}/api/league-compatibility`; `test_league_compatibility.py` (`well_formed`, reasons asserted word for word for G2/G3). The diagnostic itself has no UI entry; the League rules page discloses the same slot and rule support (`Lineup slots`, `Engine support`), which the journey checks. |
+| `league_scope` / tenant isolation on the fixtures; no provider writes, no credentials | **met** | `::test_v2_league_compatibility_is_league_scoped` (404 for unknown and inaccessible leagues, `private, no-store`, no league id in the body), `test_league_scope.py` (per-league goldens of every mounted route), `test_league_scope_audit.py`; the journey asserts no request to a provider host and no non-GET API call from the browser. The fixtures carry fake ids and names only. |
+| One responsive, accessible E2E: connect/demo → league rules → lineup/waivers/trades, with an unsupported case | **met (this PR; CI pending)** | `fantasy-intel/frontend/e2e/compat-journey-multileague.spec.ts`, run by `playwright.multileague.config.ts` (the CI "multi-league parity + UX gates" suite picks it up with no workflow change), at 1440 and 375 px: demo → connect page → ESPN fixture league (rules all handled, complete Start/Sit totals, add/drop counts the roster, trade needs no drop) → Sleeper IDP league (`build_e2e_sleeper.py --idp`: DL and LB "Not applied" on the rules page, Start/Sit totals marked `*` partial with the slots named, add/drop and trade say roster legality is unverified, trade totals `pts* (partial)`, missing values a titled dash). Each page: one h1, landmarks, decision first, no sideways scroll, app bar fits, axe in dark and light, no console error; a keyboard pass on three pages. |
+| Exact-head CI green, independent security review (D-10), merged | **not met** | pending on the journey PR |
+
+**Found by the journey and fixed in the same PR:** the demo page's "Connect a league" link in muted running text was
+told apart by colour only (axe `link-in-text-block`, 1.01:1 against the surrounding text); links inside `.plain` text
+on the league pages are now underlined (`app/leagues/leagues.module.css`).
+
+**Follow-ups (not done here; engine or ownership boundaries):**
+
+1. Trade discovery on FX-17-sized leagues: 451 s for one request offline. Needs a time or work budget (and a stated
+   abstention when it is hit), or a cheaper candidate stage. Owner: the trade-discovery code (#182 area).
+2. Team value's trade preview: 19 s on FX-17. Same area.
+3. Still open from section 8.3 and the triage table: G6/G7 (Sleeper waiver legality and IR rules, #180 owner), G8
+   (sparse replacement level, diagnostic only), G9 (2 K or 2 D/ST streamed as one slot), G10 (one abstaining family
+   makes totals known-only, named by the diagnostic), G11/G12, and `team_lineups.source_label` naming "Ours" with no
+   Ours run. Scoring fidelity (S1b, S2 basis, S3) stays with #254.
+4. The `league-compatibility/v1` diagnostic has no page of its own. The League rules page already discloses slot and
+   rule support; a per-tool table there is optional (issue #253 step 5: "only if necessary").

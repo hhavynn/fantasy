@@ -427,6 +427,151 @@ def test_a_league_starting_no_kicker_or_defense_has_nothing_to_stream(league):
     assert tool(out, "kdst_streaming")["feature"]["status"] == "unsupported"
 
 
+# ---- the rest of the matrix: PPR variants, known and unmapped custom scoring, taxi (M5, M6, M7) ----------------------
+
+@pytest.mark.parametrize("row, fmt, ppr", [("M1", "ppr", 1.0), ("M5", "half_ppr", 0.5), ("M3", "half_ppr", 0.5),
+                                           ("M5s", "ppr", 1.0)])
+def test_ppr_variants_survive_the_import_and_the_full_ppr_waiver_basis_is_disclosed(league, row, fmt, ppr):
+    con = league(row)
+    rules = build_league_rules(latest_league(con))
+    assert (rules["scoring"]["format"]["value"], rules["scoring"]["points_per_reception"]["value"]) == (fmt, ppr)
+    support = {r["code"]: r for r in rules["engine_support"]}
+    # xFP and player ratings are full PPR: a league scoring another PPR gets a partial `ppr` row, a full-PPR one none
+    assert ("ppr" in support) is (ppr != 1.0)
+    if ppr != 1.0:
+        assert support["ppr"]["status"] == "partial" and f"use {ppr:g} per catch" in support["ppr"]["detail"]
+    basis = next(e for e in tool(diagnostic(con), "waivers")["scoring"]["evidence"] if e["code"] == "player_value_basis")
+    assert basis["status"] == "partial" and (basis["value"] or []) == (["ppr"] if ppr != 1.0 else [])
+    if cf.MATRIX[row].provider == "espn":           # ESPN projects in the league's own scoring, whatever the PPR
+        out = load_start_sit_evaluation(con, team_id=1, now=NOW)
+        assert out["projection_source"] == "ESPN" and out["summary"]["projection_complete"] is True
+
+
+def test_known_custom_scoring_is_read_and_espn_projections_stay_league_scored(league):
+    """M6: a 6-point passing TD. The rules page shows it, Ours can score it, and the tools read ESPN's projections in
+    that scoring, so every dimension is handled except what waivers never model."""
+    con = league("M6")
+    rules = build_league_rules(latest_league(con))
+    assert {h["label"]: h["display"] for h in rules["scoring"]["highlights"]}["Passing TD"] == "6 per TD"
+    assert {r["code"]: r["status"] for r in rules["engine_support"]}["skill_projections"] == "handled"
+    out = diagnostic(con)
+    assert {d: e["status"] for d, e in out["dimensions"].items()} == dict.fromkeys(("import", "roster", "scoring"),
+                                                                                   "handled")
+    assert tool(out, "start_sit")["scoring"]["status"] == "handled"
+    assert tool(out, "waivers")["scoring"]["status"] == "partial"         # usage percentiles, not league points
+    ss = load_start_sit_evaluation(con, team_id=1, now=NOW)
+    assert ss["projection_source"] == "ESPN" and ss["summary"]["projection_complete"] is True
+
+
+def test_unmapped_custom_scoring_abstains_and_never_becomes_a_measured_zero(league):
+    """M6s: a Sleeper league scoring a 300-yard passing bonus and a key no reader knows. Ours and the kicker model
+    abstain (named on the rules page and by the diagnostic), Sleeper publishes no projections, so every lineup total is
+    unknown (None), never 0.0, and no source is named for numbers that do not exist."""
+    con = league("M6s")
+    lg = latest_league(con)
+    rules = build_league_rules(lg)
+    assert "zz_new_rule" in {u["key"] for u in rules["unmapped"]}
+    support = {r["code"]: r for r in rules["engine_support"]}
+    assert support["skill_projections"]["status"] == UNSUPPORTED
+    assert "bonus_pass_yd_300" in support["skill_projections"]["detail"]
+    assert support["kicker_projections"]["status"] == UNSUPPORTED and support["dst_projections"]["status"] == "handled"
+    out = diagnostic(con)
+    assert out["dimensions"]["scoring"]["status"] == "unsupported" and out["dimensions"]["roster"]["status"] == "handled"
+    assert {"skill_projections", "kicker_projections"} <= codes(tool(out, "start_sit")["scoring"])
+    assert tool(out, "start_sit")["projection_source"] == "none"
+
+    ss = load_start_sit_evaluation(con, team_id=1, now=NOW)
+    s = ss["summary"]
+    assert ss["projection_source"] == NO_PROJECTIONS
+    assert s["recommended_projected_total"] is None and s["actual_projected_total"] is None
+    assert s["projected_gain"] is None and s["projection_complete"] is False
+    state = load_league_state(con, now=NOW)
+    for team, players in state.rosters.items():
+        for week in project_team(players, state.slots, state.window(), state.projections)["weeks"]:
+            assert week["projection_complete"] is False and week["projected_lineup_points"] is None, team
+
+
+def test_fx17_with_a_taxi_squad_never_starts_taxi_or_ir_and_keeps_them_off_the_active_roster(league):
+    """M7: FX-17 on Sleeper with three taxi players per team, each projected far above everyone else (provider-style
+    rows, read with source="espn", as tests/test_sleeper_taxi.py does): no lineup starts them or an IR player, 17
+    distinct players start with three FLEX, and taxi and IR spots are outside the 27 active roster spots."""
+    con = league("M7")
+    lg = latest_league(con)
+    assert json.loads(lg["roster_slots"]) == {**cf.FX17, "TAXI": 3}
+    taxi = {p.pid for p in cf.league_players(cf.MATRIX["M7"]) if p.slot == "TAXI"}
+    rows = con.execute("SELECT espn_player_id, lineup_slot, is_starter FROM lineup_snapshots WHERE scoring_period = ? "
+                       "AND lineup_slot = 'TAXI'", [cf.CURRENT]).fetchall()
+    assert {r[0] for r in rows} == taxi and len(taxi) == 18 and not any(r[2] for r in rows)
+    ids = [r[0] for r in con.execute("SELECT espn_player_id FROM fantasy_players WHERE availability_status = 'ONTEAM'")
+           .fetchall()]
+    con.executemany("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, "
+                    "projected_points) VALUES (?, ?, ?, NULL, ?)",
+                    [[cf.SEASON, pid, w, 40.0 if pid in taxi else cf.projection(cf.MATRIX["M7"], pid, w)]
+                     for pid in ids for w in range(cf.CURRENT, cf.FINAL + 1)])
+    assert build_league_rules(lg)["roster"]["starters"]["value"] == 17
+
+    out = load_start_sit_evaluation(con, team_id=1, source="espn", now=NOW)
+    rec = out["recommended_lineup"]
+    reserved = {r[0] for r in con.execute("SELECT espn_player_id FROM lineup_snapshots WHERE team_id = 1 AND "
+                                          "scoring_period = ? AND (lineup_slot_id = 21 OR lineup_slot = 'TAXI')",
+                                          [cf.CURRENT]).fetchall()}
+    assert len(reserved) == 6                                              # 3 IR + 3 taxi
+    starters = [r["player_id"] for r in rec]
+    assert len(rec) == 17 and None not in starters and len(set(starters)) == 17 and not set(starters) & reserved
+    assert sorted(r["slot_id"] for r in rec if r["slot"] == "FLEX") == ["FLEX_0", "FLEX_1", "FLEX_2"]
+    assert out["summary"]["projection_complete"] is True
+
+    state = load_league_state(con, source="espn", now=NOW)
+    assert state.active_capacity == 27
+    for team, players in state.rosters.items():
+        held = {p.espn_player_id for p in players if p.on_ir or p.on_taxi}
+        assert len(players) == 33 and len(held) == 6, team
+        for week in project_team(players, state.slots, state.window(), state.projections)["weeks"]:
+            ids_ = [a["player_id"] for a in week["assignment"]]
+            assert len(set(ids_)) == 17 and None not in ids_ and not set(ids_) & held
+    rs = tool(diagnostic(con), "start_sit")["roster"]
+    assert rs["status"] == "handled" and "IR and taxi players never start" in rs["reason"]
+
+
+# ---- every tool, from the imported league file: an answer or an actionable abstention ---------------------------------
+
+TOOL_ROUTES = ("/api/league-rules", "/api/league-compatibility", "/api/overview", "/api/start-sit?team_id=1",
+               "/api/start-sit/what-if?team_id=1", "/api/lineup-projections", "/api/matchup?team_id=1",
+               "/api/my-team/value?team_id=1&trades=false", "/api/waivers?team_id=1", "/api/waivers/add-drop?team_id=1",
+               "/api/waivers/claim-plan?team_id=1", "/api/waivers/faab?team_id=1", "/api/trades/options",
+               "/api/schedule-intelligence/bye-planner?team_id=1",
+               "/api/schedule-intelligence/kdst-streaming?team_id=1", "/api/rankings", "/api/power-rankings",
+               "/api/playoff-race")
+
+
+@pytest.mark.parametrize("row", ["M2", "M3", "M6s", "M7", "M8p", "M8s"])
+def test_every_tool_answers_or_abstains_with_a_reason_from_the_imported_file(tmp_path, monkeypatch, row):
+    """The league file each matrix row's real import writes, served by the API: every tool's route answers (200) or
+    abstains with a stated reason (4xx/503 with a `detail`), never a server error; an evaluated trade answers too.
+    Trade discovery is left out on purpose: on FX-17-sized rosters it does not finish in a usable time (a follow-up in
+    docs/compatibility/253-gap-inventory.md, "Completion audit")."""
+    db = tmp_path / f"{row}.duckdb"
+    con = duckdb.connect(str(db))
+    init_db(con)
+    cf.import_row(con, cf.MATRIX[row])
+    con.close()
+    api = _client(monkeypatch, db)
+    for route in TOOL_ROUTES:
+        r = api.get(route)
+        assert r.status_code == 200 or (400 <= r.status_code < 600 and r.status_code != 500
+                                        and isinstance(r.json().get("detail"), str) and r.json()["detail"]), \
+            (route, r.status_code, r.text[:300])
+    players = cf.league_players(cf.MATRIX[row])
+    give = next(p.pid for p in players if p.team == 1 and p.slot == "BE")
+    get = next(p.pid for p in players if p.team == 2 and p.slot == "BE")
+    r = api.post("/api/trades/evaluate", json={"team_a_id": 1, "team_b_id": 2, "team_a_sends": [give],
+                                                  "team_b_sends": [get]})
+    assert r.status_code == 200, r.text[:300]
+    body = r.json()
+    if cf.MATRIX[row].provider == "sleeper" and row != "M7":               # no projections at all: nothing measured
+        assert body["team_a"]["deltas"]["ros_delta"] is None
+
+
 # ---- league rules codes ------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("row", list(cf.MATRIX))
