@@ -216,7 +216,7 @@ still shows a misleading number. "Blocking" means a fix or a gate ships before t
 | G11, G12, G14 | no | low | rare | yes | defer (#253 follow-ups) |
 | Trade-evidence fetch without `/l/<lg>/` (from #180) | **no exposure**: the backend authorizes by path only; the classic path serves the operator's own league or 404 | wrong-league display | league trade-discovery page | — | fixed in #182 (229cc42) + tenant-boundary tests (f52ff56) |
 | `/api/search` without `/l/<lg>/` (CommandPalette, ComparePicker) | no exposure (same analysis) | wrong-league search results | all league pages | — | bounded fix after #182 merges (reuses `leagueRouteHref`) |
-| `league_scope._response_key` sorts whole (key, value) pairs | LOW: same scope only (key starts with `scope.cache_key` + path) | low (e.g. playoff-race overrides order) | duplicated params only | — | bounded fix: stable sort by key; test in `test_league_scope.py` |
+| `league_scope._response_key` sorts whole (key, value) pairs | LOW: same scope only | low (playoff-race overrides order) | duplicated params only | — | **MERGED** #257 → 902f38e (review approve; e2e override test = LOW follow-up) |
 | Sleeper sync marks every unrostered player FREEAGENT (`sleeper/write.py:355`), so add/drop `claim_required` is wrong | no | medium (claim shown as unneeded) | Sleeper leagues | no | #255 gates it in the planner; add/drop simulator follow-up |
 
 **Likely file overlap:** #253 → `analytics/league_rules.py`, `api/league_rules.py`, `app/league-rules/*`, new synthetic
@@ -253,7 +253,6 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
-1b. Bounded fix: `league_scope._response_key` stable sort by key (security file; independent review).
 1c. Follow-up: add/drop simulator treats Sleeper FREEAGENT as no-claim-needed.
 1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
@@ -280,6 +279,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Reruns | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #257 | 04:30 | 04:36 | 04:34 (approve) | 04:37 (7 min) | 0 | 0 |
 | #249 | 02:01 | 03:22 | 02:17 (MEDIUM → fixed by #252, merged 03:07) | 03:22 (81 min) | 0 | 1 (waivers/page.tsx vs #244/#250) |
 
 ## Verification receipts (merged)
