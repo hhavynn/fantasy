@@ -56,6 +56,12 @@ test("withLeague prefixes in-app links for the current league and leaves the res
   assert.equal(withLeague("/waivers?team=2", LG), `/l/${LG}/waivers?team=2`);
   assert.equal(withLeague("/", LG), `/l/${LG}`);
   assert.equal(withLeague("/players/12#log", LG), `/l/${LG}/players/12#log`);
+  // The query and the hash both survive (review #250: a limited split dropped the hash after a query).
+  assert.equal(withLeague("/schedule-intelligence?team=2#kdst-streaming", LG), `/l/${LG}/schedule-intelligence?team=2#kdst-streaming`);
+  assert.equal(withLeague("/schedule-intelligence#kdst-streaming", LG), `/l/${LG}/schedule-intelligence#kdst-streaming`);
+  assert.equal(withLeague("/kickers?week=9&team=3", LG), `/l/${LG}/kickers?week=9&team=3`);
+  assert.equal(withLeague(`/l/${LG}/schedule-intelligence?team=2#kdst-streaming`, LG), `/l/${LG}/schedule-intelligence?team=2#kdst-streaming`);
+  assert.equal(withLeague("/waivers?league=clear#x", LG), "/waivers?league=clear#x");
   assert.equal(withLeague("/waivers", null), "/waivers");
   for (const href of ["/leagues", "/favicon.ico", "https://espn.com/x", "//evil.example/x", `/l/${LG}/trades`, "/?league=clear", "/data?league=clear"]) {
     assert.equal(withLeague(href, LG), href, href);

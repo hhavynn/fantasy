@@ -53,7 +53,8 @@ export function leaguePath(league: string, path: string): string {
  */
 export function withLeague(href: string, league: string | null | undefined): string {
   if (!league || !isLeagueId(league) || !href.startsWith("/") || href.startsWith("//")) return href;
-  const [path, query = ""] = href.split(/(?=[?#])/, 2);
+  // Path, then everything after it (query and hash) kept whole: a split with a limit would drop the hash after a query.
+  const [, path, query] = /^([^?#]*)([\s\S]*)$/.exec(href)!;
   if (splitLeaguePath(path).league || unscoped(path) || new URLSearchParams(query.replace(/^[?]/, "").split("#")[0]).get(CLEAR_PARAM) === "clear") return href;
   return `${leaguePath(league, path)}${query}`;
 }
