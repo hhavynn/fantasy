@@ -69,7 +69,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #185 draft-pick valuation | 4 | RESEARCH-ONLY | — | |
 | #188 SOS heatmaps | 5 | MERGED | #271 | QB/WR/TE share pass-defense metric (stated); WR/TE target share as context |
 | #189 projection comparison | 5 | MERGED | #273 | next-week ranges only (ROS bands declined: engine validated for next week) |
-| #190 opportunity trees | 5 | NOT STARTED | — | |
+| #190 opportunity trees | 5 | MERGED | #274 | observed / hypothesis / abstain; return needs week-W report evidence |
 | #198 defensive matchups | 5 | NOT STARTED | — | data-rights research first |
 | #199 consensus/ADP | 5 | RESEARCH-ONLY | — | |
 | #200 saved views/search | 5 | NOT STARTED | — | |
@@ -294,6 +294,7 @@ conflicts.
 From #261 on: opened and merged times come from GitHub; the CI column is the head's last completed check (approximate where noted); the review column records outcomes only, since review completion times were not captured.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #274 | 11:35 | 12:28 (a118337) | changes requested (3 MEDIUM honesty) + Codex 4×P2 → re-check OK, R1 fixed | 12:28 (53 min) | 3 | 0 |
 | #273 | 10:19 | 11:07 (831e821; shards 4/8 app-wide guards + skeleton race) | approve 6 LOW + Codex P2 | 11:08 (49 min) | 2 | 0 |
 | #271 | 09:01 | 09:47 (97a26a1) | MEDIUM+3 LOW → self-check | 09:48 (47 min) | 2 | 0 |
 | #268 | 08:02 | 09:36 (aedc728) | REQUEST CHANGES (F1 HIGH) → N1 MEDIUM → self-check | 09:37 (95 min) | 4 | 0 |
