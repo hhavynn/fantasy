@@ -11,9 +11,13 @@ tables every consumer reads:
     f = mix_points(league) / mix_points(reference), where the mix is the player's average box score over his last 8
     regular-season games up to the run's data cutoff (his position's average mix when he has fewer than 3 games).
     The same f scales the interval and the explanation's contributions. A reference mix worth less than 1 point
-    shifts instead (+ the difference, never below 0);
+    shifts instead (+ the difference, never below 0). A box-score component missing (NULL) in any of the player's
+    games is unknown in his mix, never 0; when either scoring weights it the row is not estimated
+    (`insufficient_data`, MISSING_COMPONENT_FLAG) and consumers fall back to the provider's number, labelled as such.
+    A position's mix averages each component over the players who have it;
   * a K or D/ST run is re-scored from each row's expected statistics (`stat_line.scoring_stats`), exact because both
-    scorings are linear in them; a run stored before those were recorded is not re-scored;
+    scorings are linear in them; a run stored before those were recorded, or whose rows lack a statistic the league
+    scores, is not re-scored;
   * a scoring a family's resolver does not support gets no runs of that family (consumers show the provider's
     numbers, as for any unsupported scoring).
 
@@ -42,6 +46,7 @@ MIX_MIN_GAMES = 3
 SHIFT_BELOW = 1.0            # reference mix points under this: additive shift instead of a ratio
 RESCORED_FLAG = "re-scored to this league's scoring"
 NO_MIX_FLAG = "no box-score mix to re-score from"
+MISSING_COMPONENT_FLAG = "a scored box-score component is missing from the mix"
 SHIFTED_FLAG = "explanation contributions are in the reference scoring"
 
 SKILL = ("independent_projection_runs", "independent_projection_rows")
@@ -63,17 +68,21 @@ def _ref(t: str) -> str:
 # ----------------------------------------------------------------------------- skill players
 
 
-def stat_mix(con, through: tuple[int, int]) -> dict[str, dict[str, float]]:
+def stat_mix(con, through: tuple[int, int]) -> dict[str, dict[str, float | None]]:
     """gsis_id -> his per-game average of every component column over his last MIX_GAMES regular-season games up to
     `through` = (season, week) inclusive, current and previous season; `__pos__<POS>` -> the position's average mix
-    over players with at least MIX_MIN_GAMES games. A player below MIX_MIN_GAMES gets his position's mix."""
+    over players with at least MIX_MIN_GAMES games. A player below MIX_MIN_GAMES gets his position's mix.
+
+    Missing is never zero: a component that is NULL in any of the player's games is None in his mix (unknown), and a
+    position's component is the average over the players who have it (None when none does)."""
     season, week = through
     have = {r["column_name"] for r in fetch_dicts(
         con, "SELECT column_name FROM duckdb_columns() WHERE table_name = 'nfl_weekly_stats'")}
     cols = [c for c in MIX_COLUMNS if c in have]
     if not cols:
         return {}
-    avg = ", ".join(f"avg(coalesce({c}, 0)) AS {c}" for c in cols)
+    # count(c) counts the games where c is known: the average is used only when every game in the window has it
+    avg = ", ".join(f"CASE WHEN count({c}) = count(*) THEN avg({c}) END AS {c}" for c in cols)
     rows = fetch_dicts(con, f"""
         WITH g AS (
             SELECT player_id AS gsis_id, CASE WHEN position = 'FB' THEN 'RB' ELSE position END AS position,
@@ -88,11 +97,12 @@ def stat_mix(con, through: tuple[int, int]) -> dict[str, dict[str, float]]:
     by_pos: dict[str, list[dict]] = {}
     for r in rows:
         if r["games"] >= MIX_MIN_GAMES:
-            m = {c: float(r[c]) for c in cols}
+            m = {c: None if r[c] is None else float(r[c]) for c in cols}
             mix[r["gsis_id"]] = m
             by_pos.setdefault(r["position"], []).append(m)
     for pos, ms in by_pos.items():
-        mix["__pos__" + pos] = {c: sum(m[c] for m in ms) / len(ms) for c in cols}
+        known = {c: [m[c] for m in ms if m[c] is not None] for c in cols}
+        mix["__pos__" + pos] = {c: sum(v) / len(v) if v else None for c, v in known.items()}
     return mix
 
 
@@ -102,7 +112,8 @@ def _scale(v, f):
 
 def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, target: SkillScoring) -> list[dict]:
     """The rows of one skill run re-scored from `ref` to `target` (module docstring). Rows that are not projected
-    (bye, withheld, no estimate) are unchanged."""
+    (bye, withheld, no estimate) are unchanged. A row whose mix lacks a component either scoring weights is not
+    estimated (MISSING_COMPONENT_FLAG); a row without any mix gets NO_MIX_FLAG."""
     out = []
     for r in rows:
         if r["coverage_status"] != "projected" or r["projected_points"] is None:
@@ -114,12 +125,16 @@ def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, targe
         b = None if m is None else points(m, target, r["position"])
         if a is None or b is None:
             out.append({**r, "coverage_status": "insufficient_data", "projected_points": None, "interval_low": None,
-                        "interval_high": None, "expected_points": None, "flags": [*flags, NO_MIX_FLAG]})
+                        "interval_high": None, "expected_points": None,
+                        "flags": [*flags, NO_MIX_FLAG if m is None else MISSING_COMPONENT_FLAG]})
             continue
         expl = _json(r["explanation"])
         if a >= SHIFT_BELOW:
             f = b / a
             new = {k: _scale(r[k], f) for k in ("projected_points", "interval_low", "interval_high")}
+            if f < 0 and new["interval_low"] is not None and new["interval_high"] is not None:
+                # a negative factor (a scoring whose typical game is worth negative points) flips the range
+                new["interval_low"], new["interval_high"] = new["interval_high"], new["interval_low"]
             expl = None if expl is None else [{**e, "contribution": _scale(e.get("contribution"), f)}
                                                if isinstance(e, dict) else e for e in expl]
         else:
@@ -165,8 +180,16 @@ def rescore_kicker_rows(rows: Iterable[dict], target) -> list[dict] | None:
     return _rescore_expected(rows, lambda s: kicker_points(target, s))
 
 
+def _dst_points(weights: dict[int, float], scoring_stats: dict) -> float | None:
+    """None when the row lacks the expectation of a statistic the league scores (a run stored before that statistic
+    was recorded, e.g. another provider's points-allowed tiers): missing is never zero."""
+    if any(scoring_stats.get(str(sid), scoring_stats.get(sid)) is None for sid in weights):
+        return None
+    return dst_store.expected_points(weights, scoring_stats)
+
+
 def rescore_dst_rows(rows: Iterable[dict], weights: dict[int, float]) -> list[dict] | None:
-    return _rescore_expected(rows, lambda s: dst_store.expected_points(weights, s))
+    return _rescore_expected(rows, lambda s: _dst_points(weights, s))
 
 
 # ----------------------------------------------------------------------------- apply

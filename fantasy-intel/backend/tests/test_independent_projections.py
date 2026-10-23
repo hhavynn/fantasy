@@ -449,7 +449,10 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     # engines that read the league's default source (Ours only for a league without provider projections)
     engines = {"analytics/trade_data.py", "analytics/waiver_data.py",
                "api/routes.py",   # GET /api/league-profile names the league's default source (default_source only)
-               "api/signal_provenance.py"}   # labels which projections a page shows (default_source only)
+               "api/signal_provenance.py",   # labels which projections a page shows (default_source only)
+               # the compatibility diagnostic: counts who the engines' projections cover (league_projections and
+               # select_run, never weekly()); it never feeds a lineup
+               "analytics/league_compatibility.py"}
     assert switch <= users <= switch | readers | engines
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 

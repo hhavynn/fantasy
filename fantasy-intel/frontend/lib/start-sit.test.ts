@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, emptyStartingSlots, actionabilityBadge, slotChange,
+  NO_PROJECTIONS, noProjections, projectedTotal, projectionsMeta,
 } from "./start-sit-helpers.ts";
 
 test("formatGain formats positive, zero, and missing gains", () => {
@@ -91,4 +92,26 @@ test("an empty starting slot is flagged instead of called optimal", () => {
   assert.equal(swaps.tone, "caution");
   assert.match(swaps.headline, /\+3\.9 pts/);
   assert.match(swaps.detail, /D\/ST stays empty/);
+});
+
+test("a week without any projection has no recommended total, never 0.0", () => {
+  const row = (player_id: number | null, projected_points: number | null) => ({ player_id, projected_points });
+  assert.equal(noProjections(NO_PROJECTIONS, [row(1, 12.5)]), true);                  // the backend says so
+  assert.equal(noProjections("Ours", [row(null, null), row(2, null)]), true);         // nobody projected
+  assert.equal(noProjections("ESPN", []), true);
+  assert.equal(noProjections("ESPN", [row(null, null), row(2, 0)]), false);           // a projected 0 is a number
+  assert.equal(projectionsMeta(NO_PROJECTIONS), "no projections");
+  assert.equal(projectionsMeta("ESPN"), "ESPN projections");
+});
+
+test("a submitted lineup in a week without projections has no total, never a partial 0.0", () => {
+  // the backend's current-week answer: actual_projected_total None, known_actual_total 0.0
+  assert.deepEqual(projectedTotal(true, true, false, null, 0), { value: null, partial: false });
+  assert.deepEqual(projectedTotal(true, true, true, 0, 0), { value: null, partial: false });
+  assert.deepEqual(projectedTotal(false, true, false, null, 0), { value: null, partial: false });
+  // with projections, lineupTotal's rule is unchanged: a partial sum stays flagged, a projected 0 is a number
+  assert.deepEqual(projectedTotal(true, false, false, null, 41.5), { value: 41.5, partial: true });
+  assert.deepEqual(projectedTotal(true, false, true, 0, 0), { value: 0, partial: false });
+  assert.equal(projectionsMeta("ESPN", true), "ESPN projections, none for this team this week");
+  assert.equal(projectionsMeta(NO_PROJECTIONS, true), "no projections");
 });

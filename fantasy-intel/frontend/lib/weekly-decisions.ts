@@ -27,8 +27,9 @@ export type DecisionContext = {
   /** The scoring week the decisions are for; null when no source said. */
   week: number | null;
   /** Whose weekly projections the lineup decisions read. It is the visitor's projection switch (a cookie that
-   *  Start/Sit and Matchup read too), so links do not repeat it as a URL parameter. */
-  projectionSource: ProjectionSource;
+   *  Start/Sit and Matchup read too), so links do not repeat it as a URL parameter. Null when the week has no
+   *  projection at all (Start/Sit's "Unavailable"). */
+  projectionSource: ProjectionSource | null;
 };
 
 export type DecisionEvidence = {

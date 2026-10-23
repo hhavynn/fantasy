@@ -120,7 +120,7 @@ function LeagueCard({ card: c, now }: { card: CenterCard; now: number | null }) 
         <p className={styles.faint}>
           {asOf ? `${asOf} UTC` : "Not synced yet"}
           {c.versions ? <> · <span title={`Data version ${c.versions.data_version}; NFL data version ${c.versions.global_version}`}>version {shortVersion(c.versions.data_version)}</span></> : null}
-          {c.projections ? ` · ${c.projections} projections` : null}
+          {c.projections ? ` · ${c.projections}` : null}
         </p>
         <Link className={styles.cta} href={c.href} prefetch={false}>{c.cta} →</Link>
       </div>
