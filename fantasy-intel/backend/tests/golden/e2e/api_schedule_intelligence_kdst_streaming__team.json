@@ -1,0 +1,394 @@
+// /api/schedule-intelligence/kdst-streaming?team_id=2
+{
+ "body": {
+  "contract": "kdst-streaming.v1",
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "last_regular_season_week": 14,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "notes": [
+   "Only free agents count: a player on any roster is never a candidate. Availability is the provider's status at the last sync; claims by other managers before your move are not predicted.",
+   "One streaming slot per position. Adding a different player is one add/drop; which player to drop is your call.",
+   "A missing projection is unknown, never 0: such a week is not planned, and a player is not held through it.",
+   "A bye is a real 0. A player is never added for his bye week; holding him through it leaves the slot empty.",
+   "Future K and D/ST projections are matchup-driven and noisy, so weeks two or more ahead are an outlook, and the plan stops at the first week with too few projected free agents.",
+   "The model columns (Fantasy Intel's kicker and D/ST runs) are shown for comparison; the plan uses the league's projections."
+  ],
+  "positions": [
+   {
+    "capped_weeks": [
+     3,
+     4,
+     5
+    ],
+    "excluded": [],
+    "incumbents": [
+     {
+      "espn_player_id": 502,
+      "injury_status": "ACTIVE",
+      "name": "Zulu K",
+      "pro_team": "BUF",
+      "provider_status": null
+     }
+    ],
+    "model": {
+     "3": {
+      "reason": "No kicker projections: the league's kicker scoring uses a rule the kicker model does not implement.",
+      "run": null
+     },
+     "4": {
+      "reason": "No kicker projections: the league's kicker scoring uses a rule the kicker model does not implement.",
+      "run": null
+     },
+     "5": {
+      "reason": "No kicker projections: the league's kicker scoring uses a rule the kicker model does not implement.",
+      "run": null
+     }
+    },
+    "no_plan_reason": null,
+    "plan": null,
+    "planned_weeks": [],
+    "pool": {
+     "candidates": 0,
+     "cap": 40,
+     "excluded": 0,
+     "free_agents": 0,
+     "unprojected": 0
+    },
+    "position": "K",
+    "slots": 1,
+    "status": "no_weeks",
+    "this_week": null,
+    "weeks": [
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 0,
+      "outlook": false,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 3 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 3
+     },
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 1,
+      "outlook": false,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 4 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 4
+     },
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 2,
+      "outlook": true,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 5 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 5
+     }
+    ]
+   },
+   {
+    "capped_weeks": [
+     3,
+     4,
+     5
+    ],
+    "excluded": [],
+    "incumbents": [
+     {
+      "espn_player_id": -16002,
+      "injury_status": "ACTIVE",
+      "name": "Bills D/ST",
+      "pro_team": "BUF",
+      "provider_status": null
+     }
+    ],
+    "model": {
+     "3": {
+      "reason": "No D/ST projections: the league scores no D/ST statistic.",
+      "run": null
+     },
+     "4": {
+      "reason": "No D/ST projections: the league scores no D/ST statistic.",
+      "run": null
+     },
+     "5": {
+      "reason": "No D/ST projections: the league scores no D/ST statistic.",
+      "run": null
+     }
+    },
+    "no_plan_reason": null,
+    "plan": null,
+    "planned_weeks": [],
+    "pool": {
+     "candidates": 0,
+     "cap": 40,
+     "excluded": 0,
+     "free_agents": 0,
+     "unprojected": 0
+    },
+    "position": "D/ST",
+    "slots": 1,
+    "status": "no_weeks",
+    "this_week": null,
+    "weeks": [
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 0,
+      "outlook": false,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 3 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 3
+     },
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 1,
+      "outlook": false,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 4 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 4
+     },
+     {
+      "action": null,
+      "alternatives": [],
+      "baseline": null,
+      "candidates_with_game": 0,
+      "gap": null,
+      "hold": {
+       "detail": null,
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
+      },
+      "horizon": 2,
+      "outlook": true,
+      "phase": "regular",
+      "planned": false,
+      "projected_candidates": 0,
+      "reason": "No free agent is projected for week 5 (at least 3 needed).",
+      "reasons": [],
+      "schedule_loaded": true,
+      "start": null,
+      "week": 5
+     }
+    ]
+   }
+  ],
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN weekly projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 3,
+      "label": "planned weeks with a loaded NFL schedule",
+      "total": 3
+     },
+     "label": "NFL schedule and byes (nflverse)",
+     "reason_unavailable": null,
+     "signal": "schedule",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "provider": "espn",
+  "query": {
+   "max_moves": null,
+   "move_cost": 0.0,
+   "team_id": 2,
+   "weeks": 3
+  },
+  "rules": {
+   "eligibility": {
+    "free_agent": "Listed as a free agent at the last sync: can be added now, before his game locks.",
+    "held": "Held from an earlier week of the plan: no new add/drop.",
+    "hypothetical": "A later week's add: assumes he is still available then. Not confirmed.",
+    "unconfirmed": "The provider does not publish waiver status: availability is not confirmed.",
+    "waiver_claim": "On waivers at the last sync: needs a claim, and waiver order decides who gets him."
+   },
+   "max_move_cost": 10.0,
+   "max_moves_limit": 4,
+   "max_pool": 40,
+   "min_coverage": 0.5,
+   "min_projected": 3,
+   "outlook_from": 2,
+   "stream_rank": 3,
+   "weeks": [
+    2,
+    4
+   ]
+  },
+  "schedule": {
+   "available": true,
+   "weeks_missing": []
+  },
+  "team": {
+   "abbrev": "T2",
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_mine": false,
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_mine": true,
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_mine": false,
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_mine": false,
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ],
+  "window": {
+   "espn_current_week": 3,
+   "first_actionable_week": 3,
+   "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+   "remaining_weeks": true,
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5
+   ]
+  }
+ },
+ "status": 200
+}

@@ -1,6 +1,6 @@
 """Read-only schedule intelligence endpoints: no writes, no syncs, no provider calls.
 
-Both routes are on this one router, which app/main.py also mounts under /v2/leagues/{league_id} with `league_scope`
+Every route is on this one router, which app/main.py also mounts under /v2/leagues/{league_id} with `league_scope`
 (authorization, the league's own files, 404 for an inaccessible league)."""
 
 from __future__ import annotations
@@ -8,7 +8,20 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.bye_planner import build_bye_planner
-from ..analytics.schedule_intelligence import NotFound, NotSynced, build_schedule_intelligence
+from ..analytics.kdst_streaming import (
+    DEFAULT_WEEKS,
+    MAX_MOVE_COST,
+    MAX_MOVES_LIMIT,
+    MAX_WEEKS,
+    MIN_WEEKS,
+    BadParam,
+    build_kdst_streaming,
+)
+from ..analytics.schedule_intelligence import (
+    NotFound,
+    NotSynced,
+    build_schedule_intelligence,
+)
 from ..db.connection import table_exists
 from .deps import db
 from .signal_provenance import Provenance, coverage, payload
@@ -48,6 +61,51 @@ def bye_planner(team_id: int | None = Query(None, description="Fantasy team to p
             raise HTTPException(404, str(err))
         out["provenance"] = bye_planner_provenance(con, out)
         return out
+
+
+@router.get("/schedule-intelligence/kdst-streaming")
+def kdst_streaming(team_id: int | None = Query(None, description="Fantasy team to plan for (defaults to yours)"),
+                   weeks: int = Query(DEFAULT_WEEKS, ge=MIN_WEEKS, le=MAX_WEEKS, description="Weeks to plan"),
+                   max_moves: int | None = Query(None, ge=0, le=MAX_MOVES_LIMIT,
+                                                 description="Most add/drops per position (default: no limit)"),
+                   move_cost: float = Query(0.0, ge=0, le=MAX_MOVE_COST,
+                                            description="Points charged per add/drop")):
+    """A one-slot K and D/ST streaming plan for the next 2-4 actionable weeks from the league's free agents: this week's
+    best streamer, the week-by-week plan, alternatives, gaps and the data horizon (contract kdst-streaming.v1)."""
+    with db() as con:
+        try:
+            out = build_kdst_streaming(con, team_id=team_id, weeks=weeks, max_moves=max_moves, move_cost=move_cost)
+        except NotSynced as err:
+            raise HTTPException(503, str(err))
+        except NotFound as err:
+            raise HTTPException(404, str(err))
+        except BadParam as err:          # only the parameter checks' own messages, never an internal error's
+            raise HTTPException(422, str(err))
+        out["provenance"] = kdst_streaming_provenance(con, out)
+        return out
+
+
+def kdst_streaming_provenance(con, d: dict) -> dict:
+    """The rosters and free-agent status (provider sync), the weekly projections the plan reads (coverage: candidate
+    weeks with a projection over the weeks considered) and the NFL schedule behind byes and opponents."""
+    prov = Provenance(con)
+    pos = [p for p in d["positions"] if p["status"] != "not_started"]
+    with_game = sum(w["candidates_with_game"] for p in pos for w in p["weeks"])
+    projected = sum(w["projected_candidates"] for p in pos for w in p["weeks"])
+    cov = coverage(projected, with_game, "free-agent weeks not on a bye that have a projection") if with_game else None
+    source = "independent" if d["projection_source"] == "Ours" else "espn"
+    detail = {"available": projected > 0, "run": None,
+              "reason": None if projected else "No projections are stored for the planned weeks."} \
+        if source == "independent" else None
+    weeks = d["window"]["weeks"]
+    missing = d["schedule"]["weeks_missing"]
+    schedule = prov.nflverse(
+        "schedule", "NFL schedule and byes (nflverse)",
+        cov=coverage(len(weeks) - len(missing), len(weeks), "planned weeks with a loaded NFL schedule") if weeks else None,
+        reason=None if d["schedule"]["available"] and not missing else
+        ("No NFL schedule is stored." if not d["schedule"]["available"]
+         else f"No NFL schedule is loaded for week {', '.join(map(str, missing))}."))
+    return payload(prov.league(), prov.projections(source, detail, cov=cov), schedule)
 
 
 def bye_planner_provenance(con, d: dict) -> dict:

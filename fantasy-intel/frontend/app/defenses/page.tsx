@@ -1,10 +1,12 @@
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlayer, type DstResponse } from "@/lib/defenses";
 import { Missing, num, when } from "@/lib/format";
 import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { currentLeague } from "@/lib/league-scope.server";
 import { DstChart } from "./DstChart";
 import styles from "./defenses.module.css";
 
@@ -53,8 +55,8 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   const sp: SP = await searchParams;
   const week = Number(one(sp.week)) || undefined;
   const sel = Number(one(sp.sel)) || null;
-  const [res, profile] = await Promise.all([
-    api<DstResponse>(`/api/projections/defenses${week ? `?week=${week}` : ""}`), getLeagueProfile()]);
+  const [res, profile, league] = await Promise.all([
+    api<DstResponse>(`/api/projections/defenses${week ? `?week=${week}` : ""}`), getLeagueProfile(), currentLeague()]);
   const espn = profile.providerProjections;
   if (!res.ok) {
     return (
@@ -69,6 +71,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
     <form action="/defenses" className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
+      <TeamLink href="/schedule-intelligence#kdst-streaming" league={league?.id ?? null}>Multi-week streaming plan</TeamLink>
     </form>
   );
   const meta = (
