@@ -110,7 +110,9 @@ test("a link across the league boundary re-renders the header, both ways", async
   // /leagues -> a league by a client-side link: the league header comes back.
   await page.goto("/leagues", { waitUntil: "load" });
   await expect(page.locator("button.sync-pill")).toHaveCount(0);
-  await page.getByRole("link", { name: "Private Fixture League" }).first().click();
+  // The league list's own link: the action center above it ("Across your leagues", streamed in) links the same
+  // league with ?team=, so the region is matched exactly.
+  await page.getByRole("region", { name: "Your leagues", exact: true }).getByRole("link", { name: "Private Fixture League", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/l/${lg}$`));
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
