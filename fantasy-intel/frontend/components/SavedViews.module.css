@@ -38,7 +38,7 @@
 .item > .delete { grid-column: 2; grid-row: 1 / span 2; }
 .open { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
 .open[aria-current] { color: var(--ink); }
-.open[aria-current]::after { content: " · open now"; color: var(--ink-faint); font-size: 12px; font-weight: 400; }
+.here { color: var(--ink); font-weight: 600; }
 .open:focus-visible, .delete:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .delete {
   height: 30px; padding: 0 10px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-muted);

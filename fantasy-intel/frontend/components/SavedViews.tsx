@@ -68,6 +68,16 @@ function useViews(league: string | null, tool: ViewTool): Store & { snapshot: Sn
   return { ...store, snapshot };
 }
 
+/** A view's filters in words, and whether the page shows it now (in words, not only by colour). */
+function ViewLine({ tool, view, current }: { tool: ViewTool; view: SavedView; current: boolean }) {
+  return (
+    <span className={styles.what}>
+      {viewSummary(tool, view.params)}
+      {current && <span className={styles.here}> · open now</span>}
+    </span>
+  );
+}
+
 /**
  * Saved views for a filterable page (issue #200): suggested views, the manager's own named views for this league, a
  * form that saves the current URL filters under a name, and a reset to the page's default. Views are device-local and
@@ -103,7 +113,7 @@ export function SavedViews({ tool }: { tool: ViewTool }) {
 
   const summaryText = active ? active.name : current.length ? "Custom filters" : "Default view";
   return (
-    <details className={styles.box}>
+    <details className={styles.box} aria-label={`${spec.label} views`}>
       <summary className={styles.summary}>
         <span className={styles.title}>Views</span>
         <span className={styles.current}>{summaryText}</span>
@@ -123,7 +133,7 @@ export function SavedViews({ tool }: { tool: ViewTool }) {
               <li key={v.name} className={styles.item}>
                 <TeamLink href={viewHref(tool, v.params)} scroll={false} className={styles.open}
                   aria-current={sameView(v.params, current) ? "page" : undefined}>{v.name}</TeamLink>
-                <span className={styles.what}>{viewSummary(tool, v.params)}</span>
+                <ViewLine tool={tool} view={v} current={sameView(v.params, current)} />
               </li>
             ))}
           </ul>
@@ -143,7 +153,7 @@ export function SavedViews({ tool }: { tool: ViewTool }) {
                 <li key={v.name} className={styles.item}>
                   <TeamLink href={viewHref(tool, v.params)} scroll={false} className={styles.open}
                     aria-current={sameView(v.params, current) ? "page" : undefined}>{v.name}</TeamLink>
-                  <span className={styles.what}>{viewSummary(tool, v.params)}</span>
+                  <ViewLine tool={tool} view={v} current={sameView(v.params, current)} />
                   <button type="button" className={styles.delete} onClick={() => onDelete(v)} aria-label={`Delete view ${v.name}`}>
                     Delete
                   </button>
