@@ -1,0 +1,45 @@
+/* Trade values board. Tokens only; controls restack at 720 px, detail at 1000 px. */
+
+/* ---------- Controls ---------- */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-width: 0; max-width: 100%;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.controls :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.owner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.field { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.field select { max-width: 100%; min-width: 0; }
+@media (max-width: 720px) {
+  /* Phones: the chip row scrolls sideways instead of wrapping into a tall control panel. */
+  .controls { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .controls :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .controls :global(.chip) { flex: none; }
+  .controls > :global(.chip.reset) { align-self: flex-start; }
+  .owner { flex-wrap: nowrap; }
+  .field { flex: 1 1 auto; flex-direction: column; align-items: stretch; gap: 2px; }
+}
+
+/* ---------- Table ---------- */
+.table td { vertical-align: middle; }
+.playerCell { min-width: 180px; }
+.ownerCell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unavailable { color: var(--ink-faint); font-size: 12px; }
+.changeWeeks { color: var(--ink-faint); font-size: 12px; white-space: nowrap; }
+.caveats { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
+.links { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 12px; font-size: 13px; white-space: nowrap; }
+.selected { background: var(--surface-hover); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ---------- Detail ---------- */
+.detailHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; margin: 0 0 16px; }
+.detailLinks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 0; font-size: 13px; }
+.detailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; margin-top: 16px; }
+@media (max-width: 1000px) { .detailGrid { grid-template-columns: minmax(0, 1fr); } }
+.detailText { min-width: 0; }
+.panelTitle { margin: 0 0 4px; font-size: 14px; line-height: 20px; font-weight: 600; }
+.muted { margin: 0 0 12px; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.caveatList { margin: 0 0 12px; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.caveatList li { margin: 2px 0; }
+.weekTable { width: 100%; }
+.caption { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; text-align: left; caption-side: top; }
+.faintText { color: var(--ink-muted); font-size: 13px; line-height: 19px; }
