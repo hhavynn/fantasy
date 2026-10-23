@@ -23,11 +23,11 @@ Counted from merged PRs (checked via the GitHub API), not from issue open/closed
 
 | Workstream | Implementation merged | Research merged | PR open | Not started (incl. research-only) | Total |
 |---|---:|---:|---:|---:|---:|
-| #205 roadmap | 13 | 1 (#186) | 1 (#178 → PR #249) | 25 | 40 |
+| #205 roadmap | 14 | 1 (#186) | 0 | 25 (2 in progress) | 40 |
 | #227 expansion | 0 | 0 | 0 | 18 | 18 |
 | Correctness #228–#229 | 2 | 0 | 0 | 0 | 2 |
-| Compatibility #253–#254 | 0 | 0 | 0 | 2 | 2 |
-| **Total** | **15** | **1** | **1** | **45** | **62** |
+| Compatibility #253–#254 | 0 | 0 | 0 | 2 (1 in progress) | 2 |
+| **Total** | **16** | **1** | **0** | **45** | **62** |
 
 GitHub hygiene: 7 issues whose PRs merged are still open on GitHub (#165, #167, #168, #169, #193, #201, #202). Their
 PRs did not use a closing keyword. Closing them is an owner/coordinator action, not done here.
@@ -59,11 +59,11 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #186 player news | 2 | RESEARCH MERGED | PR #247 → 2d2c1c4 | NO-GO headlines; GO "Availability events" from nflverse (D-11); implementation not started |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
-| #178 add/drop simulator | 3 | PR OPEN | PR #249 (f4ef8e2) | security MEDIUM resolved by #252 (ea9e664); Codex P2 fixed; merging main next |
-| #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
+| #178 add/drop simulator | 3 | MERGED | PR #249 → 17d26e2 (2026-10-23) | security MEDIUM resolved by #252; Codex P2 fixed; LineupTooLargeError 422 test |
+| #180 claim planner | 3 | IN PROGRESS | `feature/fi-180-claim-planner` from 17d26e2 | reuses `evaluate_add_drop`; lane A |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
-| #182 targeted trade discovery | 4 | NOT STARTED | — | |
+| #182 targeted trade discovery | 4 | IN PROGRESS | `feature/fi-182-targeted-trade-discovery` from ea9e664 | lane B |
 | #183 trade scenarios | 4 | NOT STARTED | — | |
 | #184 trade-market values | 4 | NOT STARTED | — | |
 | #185 draft-pick valuation | 4 | RESEARCH-ONLY | — | |
@@ -120,7 +120,7 @@ A separate workstream, added 2026-10-23. It does not replace or re-scope #205 or
 
 | Issue | Priority | Workstream | State | Branch / PR |
 |---|---|---|---|---|
-| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | NOT STARTED | — |
+| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | IN PROGRESS (phase 1 read-only audit) | `feature/fi-253-compat-certification` |
 | [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | NOT STARTED | — |
 
 **Roster support is not scoring fidelity.** A league can be fully supported structurally (every slot parsed, filled
@@ -225,13 +225,12 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 **Lanes (D-13), 2026-10-23 03:25Z:**
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
-| A | #249 (#178) at fe45d45: CI running; merge on green (review MEDIUM resolved by #252) | coordinator | `.worktrees/fi-178-add-drop-sim` (agent idle) | none |
+| A | #180 claim planner (#249 merged 03:22Z → 17d26e2) | agent | `.worktrees/fi-180-claim-planner` | targeted until granted |
 | B | #182 targeted trade discovery | agent | `.worktrees/fi-182-trade-discovery` | heavyweight + Playwright |
 | C | #253 phase 1: read-only gap inventory (local commit, no PR) | agent | `.worktrees/fi-253-compat` | targeted tests only |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 phase 2: FX-17 fixtures + D-12 diagnostic contract (P0). Needs phase-1 inventory + #249 merged.
-2. #180 claim planner (P1). Reuses #178 `evaluate_add_drop`, so needs #249 merged; owns `app/waivers/*` after #178.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
@@ -256,6 +255,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Reruns | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #249 | 02:01 | 03:22 | 02:17 (MEDIUM → fixed by #252, merged 03:07) | 03:22 (81 min) | 0 | 1 (waivers/page.tsx vs #244/#250) |
 
 ## Verification receipts (merged)
 `q`=quick, `a`=affected, `s`=security tier, `L`=full local suite, CI=exact-SHA GitHub CI.
