@@ -20,7 +20,7 @@ test("a full split shows separate samples, unknown status excluded, and a reprod
   await expect(page.getByText("With Split Wingman", { exact: true })).toBeVisible();
   await expect(page.getByRole("table", { name: /Usage and production/ })).toContainText("xFP/G");
   await expect(page.getByRole("table", { name: /Team environment/ })).toContainText("Split Starter");
-  await expect(page.getByText("Not a causal estimate")).toBeVisible();
+  await expect(page.getByText("Not a causal estimate", { exact: true })).toBeVisible();
 
   const weeks = page.getByRole("table", { name: "Weekly source rows for the split" });
   await expect(weeks.locator('tr[data-outcome="with"]')).toHaveCount(5);
