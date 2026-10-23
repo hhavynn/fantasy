@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
+  DOCUMENT_404, applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
   expectNoSidewaysScroll, expectStructure, open, stubPhotos, tabThrough, useTheme,
 } from "./ux";
 import { RAIL_KEY } from "../lib/navigation";
@@ -27,6 +27,7 @@ const CORE: Core[] = [
   { name: "League analyzer", path: "/league-analyzer?vs=1", verdict: true },
   // The league connection page; with MULTILEAGUE_UI_ENABLED unset (as here) it explains the single-league setup.
   { name: "Leagues", path: "/leagues" },
+  { name: "Screener", path: "/screener" },
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -111,4 +112,43 @@ test("keyboard: a table that scrolls sideways is a tab stop and scrolls with the
       await expect.poll(() => scroller.evaluate((e) => e.scrollLeft), { message: "arrow keys scroll the focused table" }).toBeGreaterThan(0);
     });
   }
+});
+
+// The not-found page (app/not-found.tsx) answers 404 with the app shell: the same quality bar as a core destination,
+// at every width and in both themes. Its only console line is Chromium's own report of the 404 document.
+test("Not found meets the quality bar in both themes", async ({ page }) => {
+  const errors = collectErrors(page);
+  await useTheme(page, "dark");
+  await open(page, "/no-such-page", 404);
+  await expect(page.locator("main h1")).toHaveText("Page not found");
+  await expectStructure(page);
+  await expectNoBrokenValues(page);
+  await expectAppBarFits(page);
+  const bothThemes = ["mobile-390", "desktop-1440"].includes(test.info().project.name);
+  for (const theme of ["dark", "light"] as const) {
+    await test.step(theme, async () => {
+      await applyTheme(page, theme);
+      await expectNoSidewaysScroll(page);
+      if (theme === "dark" || bothThemes) await expectAccessible(page, theme);
+    });
+  }
+  expect(errors.filter((e) => !DOCUMENT_404.test(e)), "console errors").toEqual([]);
+});
+
+// The Overview's weekly decision hub (issue #165) on the demo league, at every width in light (the CORE run above
+// checks the light theme's layout only at 320 and 768): the next step is a decision with its evidence and a link that
+// keeps the week, and the other decisions sit under "Before kickoff". Axe-clean in light at this width.
+test("the Overview's weekly hub shows one next step and the decisions behind it (light)", async ({ page }) => {
+  const errors = collectErrors(page);
+  await useTheme(page, "light");
+  await open(page, "/");
+  const main = page.locator("main");
+  await expect(main.getByText(/^Next step · Week \d+ · \w+/)).toBeVisible();
+  await expect(main.getByRole("heading", { name: "Before kickoff" })).toBeVisible();
+  await expect(main.getByText(/Evidence age unknown|(Current data|Partial data|Stale data|Data age unknown|Data unavailable) · /).first()).toBeVisible();
+  await expect(main.getByText("Lineup is set")).toHaveCount(0);
+  await expectNoBrokenValues(page);
+  await expectNoSidewaysScroll(page);
+  await expectAccessible(page, "light");
+  expect(errors, "console errors").toEqual([]);
 });
