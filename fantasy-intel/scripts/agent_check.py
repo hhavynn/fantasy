@@ -122,7 +122,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/league_scope.py", ["tests/test_league_scope.py", "tests/test_league_scope_audit.py", "tests/test_league_scope_sleeper.py"]),
     ("api/routes.py", ["tests/test_api.py", "tests/test_league_scope_audit.py"]),
     ("api/trade", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py"]),
-    ("api/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py"]),
+    ("api/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_lineup_what_if.py"]),
     ("api/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py"]),
     ("api/rankings", ["tests/test_rankings.py"]),
     ("api/matchup", ["tests/test_matchup_api.py"]),
@@ -140,6 +140,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     # Analytics engines
     ("analytics/trades", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_dual_value.py"]),
     ("analytics/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py"]),
+    ("analytics/lineup_what_if", ["tests/test_lineup_what_if.py", "tests/test_start_sit.py", "tests/test_sleeper_taxi.py",
+                                  "tests/test_golden_legacy.py"]),
     ("analytics/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py", "tests/test_kdst_streaming.py"]),
     ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py"]),
     ("analytics/projections", ["tests/test_espn_projections.py", "tests/test_independent_projections.py", "tests/test_projection_performance.py"]),

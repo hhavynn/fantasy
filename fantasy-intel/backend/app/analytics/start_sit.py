@@ -702,9 +702,14 @@ def load_start_sit_evaluation(
     week: int | None = None,
     now: datetime | None = None,
     source: str | None = None,
+    capture: dict | None = None,
 ) -> dict:
     """Full evaluation payload for Start/Sit Command Center. `source` is "espn" (default) or
-    "independent" (Fantasy Intel's model, see analytics/projection_source.py)."""
+    "independent" (Fantasy Intel's model, see analytics/projection_source.py).
+
+    `capture`, when given, receives the evaluation's internal constraint sets (slot instances, kickoff-locked starters
+    and bench players, IR, taxi and NFL-ineligible players, the projections used): the what-if lineup builder
+    (analytics/lineup_what_if.py) applies exactly these rules instead of re-deriving them. The payload is unchanged."""
     from .projection_source import describe, normalize, weekly
 
     source = normalize(source, con)
@@ -1073,6 +1078,15 @@ def load_start_sit_evaluation(
     last_nfl = nfl_runs[0]["last_nfl"] if nfl_runs else None
 
     lineup_sync = starters[0].get("snapshot_synced_at") if starters else (bench[0].get("snapshot_synced_at") if bench else lg.get("synced_at"))
+
+    if capture is not None:
+        capture.update(
+            league_row=lg, slot_instances=slot_instances, locked_starters=locked_starters,
+            locked_bench_ids=set(locked_bench_ids), ir_ids=set(ir_ids), taxi_ids=set(taxi_ids),
+            unavailable_ids=set(unavailable_ids), projections=dict(projections), origin=dict(origin), locks=locks,
+            avail_records=avail_records, starters=list(starters), bench=list(bench), ir=list(ir),
+            recommended_lineup=list(opt["recommended_lineup"]),
+        )
 
     return {
         "league": {
