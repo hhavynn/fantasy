@@ -216,7 +216,8 @@ still shows a misleading number. "Blocking" means a fix or a gate ships before t
 | G11, G12, G14 | no | low | rare | yes | defer (#253 follow-ups) |
 | Trade-evidence fetch without `/l/<lg>/` (from #180) | **no exposure**: the backend authorizes by path only; the classic path serves the operator's own league or 404 | wrong-league display | league trade-discovery page | — | fixed in #182 (229cc42) + tenant-boundary tests (f52ff56) |
 | `/api/search` without `/l/<lg>/` (CommandPalette, ComparePicker) | no exposure (same analysis) | wrong-league search results | all league pages | — | bounded fix after #182 merges (reuses `leagueRouteHref`) |
-| `league_scope._response_key` sorts repeated params (order-dependent queries share an entry) | under review (within one scope?) | medium for order-dependent routes | none after #255's workaround | — | #255 reviewer assessing; separate security-file PR |
+| `league_scope._response_key` sorts whole (key, value) pairs | LOW: same scope only (key starts with `scope.cache_key` + path) | low (e.g. playoff-race overrides order) | duplicated params only | — | bounded fix: stable sort by key; test in `test_league_scope.py` |
+| Sleeper sync marks every unrostered player FREEAGENT (`sleeper/write.py:355`), so add/drop `claim_required` is wrong | no | medium (claim shown as unneeded) | Sleeper leagues | no | #255 gates it in the planner; add/drop simulator follow-up |
 
 **Likely file overlap:** #253 → `analytics/league_rules.py`, `api/league_rules.py`, `app/league-rules/*`, new synthetic
 fixture builders/tests, `provider-capability-matrix.md` (tests read it, so it is never docs-only). #254 →
@@ -246,12 +247,14 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 **Lanes (D-13), 2026-10-23 03:25Z:**
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
-| A | #180 → PR #255 (57bd830): affected 623 + security 627 + e2e 16 pass; CI + security review running | coordinator | `.worktrees/fi-180-claim-planner` | released |
+| A | #180 → PR #255 (57bd830, CI green): fixing review MEDIUM ×2 (open-spot/position-limit conflicts = Codex P2; Sleeper waiver status) + 2 LOW | agent | `.worktrees/fi-180-claim-planner` | Playwright |
 | B | #182: boundary verified (routing bug, no exposure; f52ff56 tests); awaiting slot | agent | `.worktrees/fi-182-trade-discovery` | queued after #253 |
 | C | #253 phase 2: adding G1 ordinary-league tests + S1 label + S8 check, then affected/security/PR | agent | `.worktrees/fi-253-compat` | holds heavyweight |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
+1b. Bounded fix: `league_scope._response_key` stable sort by key (security file; independent review).
+1c. Follow-up: add/drop simulator treats Sleeper FREEAGENT as no-claim-needed.
 1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
