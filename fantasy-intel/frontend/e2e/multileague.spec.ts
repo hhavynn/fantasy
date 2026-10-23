@@ -117,6 +117,35 @@ test("a link across the league boundary re-renders the header, both ways", async
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
 
+// League-scoped links (#262 and its part 2): with JavaScript off, a league page's server-rendered links and form actions
+// already carry /l/<lg>/, so a click never goes through the last-viewed-league cookie (set here to another league).
+// Only hrefs that belong to no league (account pages, the connections page, assets) and ?league=clear stay bare.
+// The waiver pages are converted separately (#264) and are not listed.
+const UNSCOPED_HREF = /^\/(leagues|login|auth|invite|account|admin|terms|privacy|api|_next)(\/|\?|#|$)/;
+test("with JavaScript off, a league page renders its links and forms in that league", async ({ browser }) => {
+  const { espn_public: lg, sleeper: other } = manifest().leagues;
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  await context.addCookies([{ name: "fi_league", value: other, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  const page = await context.newPage();
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const bare = async () => (await page.locator("a[href^='/'], form[action^='/']").evaluateAll((els) =>
+    els.map((e) => e.getAttribute("href") ?? e.getAttribute("action") ?? "")))
+    .filter((u) => !u.startsWith("//") && !u.startsWith(`/l/${lg}`) && !UNSCOPED_HREF.test(u) && !/[?&]league=clear\b/.test(u));
+  for (const p of ["/rankings", "/managers", "/", "/players?id=201", "/start-sit", "/transactions", "/trades/discover"]) {
+    const res = await page.goto(`/l/${lg}${p === "/" ? "" : p}`, { waitUntil: "load" });
+    expect(res?.status(), `${p} HTTP status`).toBe(200);
+    expect(await bare(), `${p}: in-app links and form actions outside /l/<lg>/`).toEqual([]);
+  }
+  await page.goto(`/l/${lg}/rankings`, { waitUntil: "load" });
+  expect(await page.locator(`a[href^='/l/${lg}/players?id=']`).count(), "player links scoped to the page's league").toBeGreaterThan(0);
+  // ?league=clear on a league URL is dropped before the page renders, so no link built from the page's params carries it
+  // (the league switcher's own "Classic site" link, `/?league=clear`, is the deliberate way out and is not counted).
+  await page.goto(`/l/${lg}/start-sit?league=clear`, { waitUntil: "load" });
+  expect(await page.locator("a[href*='league=clear']:not([href='/?league=clear']), option[value*='league=clear']").count(),
+    "no link built from the page's params leaves the league").toBe(0);
+  await context.close();
+});
+
 // Player profile tabs (#187): a deep-linked tab, a tab switch and a week window all stay under /l/<lg>/, and the
 // profile's Save writes only that league's device-local shortlist.
 test("a player profile tab keeps its league, and Save writes only that league's shortlist", async ({ page }) => {
