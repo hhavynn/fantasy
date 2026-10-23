@@ -1,10 +1,11 @@
-"""Read-only Injury Impact Center API router (docs/injury_impact.md)."""
+"""Read-only Injury Impact Center API router (docs/injury_impact.md, docs/opportunity_tree.md)."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.injury_impact import InjuryImpactUnavailable, build_injury_impact
+from ..analytics.opportunity_tree import build_opportunity_tree
 from .deps import db
 
 router = APIRouter(prefix="/api", tags=["injury-impact"])
@@ -24,6 +25,22 @@ def get_injury_impact(
             return build_injury_impact(con, position=position, status=status, team_id=team_id)
         except ValueError as err:
             raise HTTPException(422, str(err))
+        except LookupError as err:
+            raise HTTPException(404, str(err))
+        except InjuryImpactUnavailable as err:
+            raise HTTPException(503, str(err))
+
+
+@router.get("/injury-impact/opportunity-tree")
+def get_opportunity_tree(
+    team_id: int | None = Query(None, description="Fantasy team whose roster counts as yours (default: the owner's)"),
+):
+    """Per NFL team with an injured or returning starter: the position group's depth chart (depth rank, availability,
+    recent snap / route / touch share, personnel changes) and one scenario per starter with its sample, the teammates
+    the data supports (observed) or a labelled hypothesis, or an abstention, and league-specific ownership."""
+    with db() as con:
+        try:
+            return build_opportunity_tree(con, team_id=team_id)
         except LookupError as err:
             raise HTTPException(404, str(err))
         except InjuryImpactUnavailable as err:

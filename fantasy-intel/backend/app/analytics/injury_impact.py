@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_columns, table_exists, utcnow
@@ -388,7 +389,10 @@ def _split_weeks(t: _Team, injured: str, rosters: _Rosters) -> tuple[list[int], 
 
 def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: dict, depth: dict,
                status_of: dict, people: dict, attempts: dict, espn: dict, teams_by_id: dict, vacated: float | None,
-               unit: str, pool_positions: tuple[str, ...], rosters: _Rosters) -> tuple[list[dict], int]:
+               unit: str, pool_positions: tuple[str, ...], rosters: _Rosters,
+               limit: int | None = MAX_TEAMMATES) -> tuple[list[dict], int]:
+    """(relevant teammates, team games without him). `limit` caps the list (this page shows MAX_TEAMMATES); the
+    opportunity tree passes None so a qualifying teammate past the cap is still considered."""
     with_weeks, without_weeks = _split_weeks(t, injured, rosters)
     recent_weeks = t.weeks[-POOL_WEEKS:]
     # The split uses each teammate's role in the last games the injured player DID play: after he has already
@@ -454,7 +458,7 @@ def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: 
         out.sort(key=key)
     relevant = [m for m in out if (m["recent_volume_per_game"] or 0) > 0 or (m["depth_rank"] or 99) <= 3
                 or (m["observed"]["without"] or {}).get("played")]
-    return relevant[:MAX_TEAMMATES], len(without_weeks)
+    return (relevant if limit is None else relevant[:limit]), len(without_weeks)
 
 
 def _qb_receivers(t: _Team, injured: str, *, team_of: dict, pos_of: dict, people: dict, attempts: dict,
@@ -499,13 +503,44 @@ def _roster(person: dict, teams_by_id: dict[int, dict]) -> dict:
 # ----------------------------------------------------------------------------- payload
 
 
-def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team_id: int | None = None,
-                        now: datetime | None = None) -> dict:
-    """The Injury Impact payload. ValueError (naming the parameter) for a bad value; InjuryImpactUnavailable when the
-    league is not synced or its current week is unknown. `team_id` picks whose roster "yours" means (default: the
-    owner's team); an unknown team_id raises LookupError."""
-    position, status = _validate(position, status)
-    lg = latest_league(con, ["league_id", "season", "name"])
+@dataclass
+class ImpactContext:
+    """Everything the Injury Impact payload reads, loaded once (one query per table). The opportunity tree
+    (analytics/opportunity_tree.py) reads the same context, so both pages agree on statuses, teams and rosters."""
+    league: dict
+    season: int
+    week: int
+    now: datetime
+    teams_rows: list[dict]
+    mine: int | None
+    teams_by_id: dict[int, dict]
+    usage: list[dict]
+    attempts: dict
+    teams: dict[str, "_Team"]
+    team_of: dict[str, str]
+    pos_of: dict[str, str]
+    rosters: "_Rosters"
+    depth: dict[str, dict]
+    espn: dict[int, float]
+    espn_synced: str | None
+    trends: dict[str, str]
+    reports: dict
+    report_rows: dict[str, dict]
+    players: list[dict]
+    people: dict[str, dict]
+    status_of: dict[str, dict]
+    games: list[dict]
+    game_of: dict[str, dict]
+    covered: bool
+    diag: dict
+    fresh_of: dict[str, dict]
+    home: dict[str, bool]
+
+
+def load_context(con, *, team_id: int | None = None, now: datetime | None = None) -> ImpactContext:
+    """Load the league, its rosters and every NFL signal for the current scoring period. InjuryImpactUnavailable when
+    the league is not synced or its current week is unknown; LookupError for a team_id outside the league."""
+    lg = latest_league(con, ["league_id", "season", "name", "settings_raw"])
     if lg is None:
         raise InjuryImpactUnavailable("ESPN league not synced yet. Run scripts/sync_espn.py.")
     season = lg["season"]
@@ -553,27 +588,45 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
                         "practice_status": rep["practice_status"] if rep else None}
 
     games = fresh.scheduled_games(con, season, week)
-    game_of = {g["team"]: g for g in games}
-    covered = bool(games)
     diag = fresh.diagnostics(con, season, week, now)
-    fresh_of = {t["team"]: t for t in diag["teams"]}
+    return ImpactContext(
+        league=lg, season=season, week=week, now=now, teams_rows=teams_rows, mine=mine, teams_by_id=teams_by_id,
+        usage=usage, attempts=attempts, teams=teams, team_of=team_of, pos_of=pos_of, rosters=rosters, depth=depth,
+        espn=espn, espn_synced=espn_synced, trends=trends, reports=reports, report_rows=report_rows, players=players,
+        people=people, status_of=status_of, games=games, game_of={g["team"]: g for g in games}, covered=bool(games),
+        diag=diag, fresh_of={t["team"]: t for t in diag["teams"]}, home=_home_away(con, season, week))
 
+
+def team_game(ctx: ImpactContext, team: str) -> dict:
+    """The NFL team's game in the current week: opponent, home / away, kickoff, whether it started, bye."""
+    gm = ctx.game_of.get(team)
+    kickoff = fresh.naive_utc(gm["kickoff"]) if gm else None
+    return {"week": ctx.week, "opponent": gm["opponent"] if gm else None,
+            "is_home": ctx.home.get(team),  # scheduled_games is team/opponent only; home/away comes from the schedule
+            "kickoff": None if kickoff is None else kickoff.isoformat() + "Z",
+            "started": bool(kickoff and ctx.now >= kickoff),
+            "on_bye": None if not ctx.covered else gm is None}
+
+
+def impact_entries(ctx: ImpactContext) -> tuple[list[dict], dict]:
+    """(entries in decision order, skipped counts): every QB / RB / WR / TE with an injury designation this week and a
+    real role, with his workload and the teammates whose opportunity depends on it."""
     entries, skipped = [], {"no_games": 0, "small_role": 0, "no_team": 0}
-    for g, st in status_of.items():
+    for g, st in ctx.status_of.items():
         if st["status"] not in INJURED_LEVELS:
             continue
-        p = people.get(g, {})
-        rr = report_rows.get(g, {})
-        pos = p.get("position") or pos_of.get(g) or rr.get("position")
+        p = ctx.people.get(g, {})
+        rr = ctx.report_rows.get(g, {})
+        pos = p.get("position") or ctx.pos_of.get(g) or rr.get("position")
         if pos not in POSITIONS:
             continue
-        team = rr.get("team") or p.get("pro_team") or team_of.get(g)
-        t = teams.get(team) if team else None
+        team = rr.get("team") or p.get("pro_team") or ctx.team_of.get(g)
+        t = ctx.teams.get(team) if team else None
         if t is None:
             skipped["no_team" if not team else "no_games"] += 1
             continue
-        w = _workload(t, g, pos, attempts, trends.get(g), rosters)
-        roster = _roster(p, teams_by_id)
+        w = _workload(t, g, pos, ctx.attempts, ctx.trends.get(g), ctx.rosters)
+        roster = _roster(p, ctx.teams_by_id)
         if w is None:
             skipped["no_games"] += 1
             continue
@@ -581,24 +634,23 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
             skipped["small_role"] += 1
             continue
         absence = _absence(w)
+        shared = dict(team_of=ctx.team_of, pos_of=ctx.pos_of, depth=ctx.depth, status_of=ctx.status_of,
+                      people=ctx.people, attempts=ctx.attempts, espn=ctx.espn, teams_by_id=ctx.teams_by_id,
+                      rosters=ctx.rosters)
         if pos == "QB":
             unit, vacated = "pass_attempts", w["pass_attempts_per_game"]
-            mates, n_without = _teammates(t, g, pos, team_of=team_of, pos_of=pos_of, depth=depth, status_of=status_of,
-                                          people=people, attempts=attempts, espn=espn, teams_by_id=teams_by_id, vacated=None, unit=unit,
-                                          pool_positions=("QB",), rosters=rosters)
-            receivers = _qb_receivers(t, g, team_of=team_of, pos_of=pos_of, people=people, attempts=attempts,
-                                      espn=espn, status_of=status_of, teams_by_id=teams_by_id, rosters=rosters)
+            mates, n_without = _teammates(t, g, pos, vacated=None, unit=unit, pool_positions=("QB",), **shared)
+            receivers = _qb_receivers(t, g, team_of=ctx.team_of, pos_of=ctx.pos_of, people=ctx.people,
+                                      attempts=ctx.attempts, espn=ctx.espn, status_of=ctx.status_of,
+                                      teams_by_id=ctx.teams_by_id, rosters=ctx.rosters)
         else:
             pool_positions, unit = _POOL[pos]
             recent = [t.rows[g][wk] for wk in w["recent_weeks"]]
-            vacated = _r(sum(_volume(r, unit, attempts, g) for r in recent) / len(recent), 2)
-            mates, n_without = _teammates(t, g, pos, team_of=team_of, pos_of=pos_of, depth=depth, status_of=status_of,
-                                          people=people, attempts=attempts, espn=espn, teams_by_id=teams_by_id, vacated=vacated, unit=unit,
-                                          pool_positions=pool_positions, rosters=rosters)
+            vacated = _r(sum(_volume(r, unit, ctx.attempts, g) for r in recent) / len(recent), 2)
+            mates, n_without = _teammates(t, g, pos, vacated=vacated, unit=unit, pool_positions=pool_positions,
+                                          **shared)
             receivers = []
-        gm = game_of.get(team)
-        kickoff = fresh.naive_utc(gm["kickoff"]) if gm else None
-        tf = fresh_of.get(team)
+        tf = ctx.fresh_of.get(team)
         entries.append({
             "gsis_id": g, "espn_player_id": p.get("espn_player_id"),
             "full_name": p.get("full_name") or rr.get("full_name") or g, "position": pos, "team": team,
@@ -608,12 +660,8 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
             "absence": absence,
             "workload": w,
             "roster": roster,
-            "espn_projection": espn.get(p.get("espn_player_id")) if p.get("espn_player_id") else None,
-            "game": {"week": week, "opponent": gm["opponent"] if gm else None,
-                     "is_home": None,  # scheduled_games is team/opponent only; home/away comes from the schedule
-                     "kickoff": None if kickoff is None else kickoff.isoformat() + "Z",
-                     "started": bool(kickoff and now >= kickoff),
-                     "on_bye": None if not covered else gm is None},
+            "espn_projection": ctx.espn.get(p.get("espn_player_id")) if p.get("espn_player_id") else None,
+            "game": team_game(ctx, team),
             "freshness": None if tf is None else {
                 "status": tf["status"], "reason": tf["reason"], "source_used": tf["source_used"],
                 "evidence_retrieved_at": tf["evidence_retrieved_at"],
@@ -626,10 +674,6 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
             },
         })
 
-    home = _home_away(con, season, week)
-    for e in entries:
-        e["game"]["is_home"] = home.get(e["team"])
-
     for e in entries:
         e["affects_my_roster"] = e["roster"]["is_mine"] or any(
             m["roster"]["is_mine"] for m in e["impact"]["teammates"] + e["impact"]["receivers"])
@@ -640,6 +684,18 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
                 -(e["workload"]["xfp_per_game"] or e["workload"]["ppr_per_game"] or 0), e["full_name"])
 
     entries.sort(key=order)
+    return entries, skipped
+
+
+def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team_id: int | None = None,
+                        now: datetime | None = None) -> dict:
+    """The Injury Impact payload. ValueError (naming the parameter) for a bad value; InjuryImpactUnavailable when the
+    league is not synced or its current week is unknown. `team_id` picks whose roster "yours" means (default: the
+    owner's team); an unknown team_id raises LookupError."""
+    position, status = _validate(position, status)
+    ctx = load_context(con, team_id=team_id, now=now)
+    entries, skipped = impact_entries(ctx)
+    week, now, players = ctx.week, ctx.now, ctx.players
     matched = [e for e in entries if (position == "ALL" or e["position"] == position)
                and (status == "all" or (status == "out") == (e["status"]["level"] in OUT_LEVELS))]
     counts = {"total": len(entries), "matched": len(matched),
@@ -649,21 +705,21 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
               "affects_my_roster": sum(1 for e in entries if e["affects_my_roster"]),
               "skipped": skipped}
 
-    report = _report_freshness(con, season, week)
-    notices = _notices(report, diag, week, now, people, covered, bool(teams_rows), bool(usage))
+    report = _report_freshness(con, ctx.season, week)
+    notices = _notices(report, ctx.diag, week, now, ctx.people, ctx.covered, bool(ctx.teams_rows), bool(ctx.usage))
     return {
-        "season": season, "week": week, "position": position, "status": status,
+        "season": ctx.season, "week": week, "position": position, "status": status,
         "generated_at": now.isoformat() + "Z",
-        "league_context": {"available": bool(teams_rows), "league_name": lg["name"], "my_team_id": mine,
+        "league_context": {"available": bool(ctx.teams_rows), "league_name": ctx.league["name"], "my_team_id": ctx.mine,
                            "perspective": "query" if team_id is not None else "owner_default"},
         "freshness": {
             "injury_report": report,
-            "summary": diag["summary"],
-            "thresholds": diag["thresholds"],
+            "summary": ctx.diag["summary"],
+            "thresholds": ctx.diag["thresholds"],
             "espn_players_synced_at": _ts(max((p["synced_at"] for p in players if p["synced_at"]), default=None)),
-            "espn_projections_synced_at": espn_synced,
-            "usage_through_week": max((r["week"] for r in usage), default=None),
-            "depth_chart_as_of": max((d["as_of"] for d in depth.values()), default=None),
+            "espn_projections_synced_at": ctx.espn_synced,
+            "usage_through_week": max((r["week"] for r in ctx.usage), default=None),
+            "depth_chart_as_of": max((d["as_of"] for d in ctx.depth.values()), default=None),
         },
         "method": {"observed": OBSERVED_NOTE, "estimate": ESTIMATE_NOTE,
                    "thresholds": {"min_snap_share": MIN_SNAP_SHARE, "min_opportunities_per_game": MIN_OPPS_PER_GAME,
