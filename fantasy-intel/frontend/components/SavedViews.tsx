@@ -3,69 +3,49 @@
 import { useSearchParams } from "next/navigation";
 import { useId, useMemo, useState, useSyncExternalStore, type FormEvent } from "react";
 import {
-  MAX_NAME, readSavedViews, removeView, sameView, saveView, savedViewsKey, viewHref, viewParamsFromUrl, viewSummary, viewTool,
-  writeSavedViews, type SavedView, type ViewTool,
+  MAX_NAME, removeView, sameView, saveView, savedViewsKey, viewHref, viewParamsFromUrl, viewSummary, viewTool,
+  type SavedView, type SaveResult, type ViewTool,
 } from "@/lib/saved-views";
+import { EMPTY_SNAPSHOT, createViewStore, type ViewStore, type ViewStoreEnv } from "@/lib/saved-views-store";
 import { plural } from "@/lib/plural";
 import { TeamLink } from "./TeamLink";
 import { useLeagueId } from "./useAppPathname";
 import styles from "./SavedViews.module.css";
 
-type Snapshot = { views: SavedView[]; ready: boolean; available: boolean };
-const EMPTY: Snapshot = { views: [], ready: false, available: true };
-
-type Store = {
-  getSnapshot: () => Snapshot;
-  subscribe: (l: () => void) => () => void;
-  save: (views: SavedView[]) => boolean;
+const browserEnv: ViewStoreEnv = {
+  storage: () => window.localStorage,
+  listen(onChange) {
+    const changed = (e: StorageEvent) => onChange(e.key);
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  },
 };
 
-/** One store per league and tool, created on first use: views never move between leagues or tools. */
-const stores = new Map<string, Store>();
+/**
+ * One store per league and tool, created on first use: views never move between leagues or tools. A store re-reads
+ * storage when a panel subscribes after none was, and before every save or delete (lib/saved-views-store.ts), so a
+ * change made in another tab meanwhile is neither hidden nor overwritten.
+ */
+const stores = new Map<string, ViewStore>();
 
-function storeFor(league: string, tool: ViewTool): Store {
+function storeFor(league: string, tool: ViewTool): ViewStore {
   const key = savedViewsKey(league, tool)!;
-  const existing = stores.get(key);
-  if (existing) return existing;
-  let snapshot = EMPTY;
-  const listeners = new Set<() => void>();
-  const emit = () => listeners.forEach((l) => l());
-  const load = () => {
-    try {
-      snapshot = { ...readSavedViews(window.localStorage, league, tool), ready: true };
-    } catch {
-      // Reading the localStorage property itself can throw in restricted browsers.
-      snapshot = { views: [], ready: true, available: false };
-    }
-    emit();
-  };
-  const store: Store = {
-    getSnapshot: () => snapshot,
-    subscribe(listener) {
-      listeners.add(listener);
-      if (!snapshot.ready) load();
-      const changed = (e: StorageEvent) => { if (e.key === key || e.key === null) load(); };
-      window.addEventListener("storage", changed);
-      return () => { listeners.delete(listener); window.removeEventListener("storage", changed); };
-    },
-    save(views) {
-      let ok = false;
-      try { ok = writeSavedViews(window.localStorage, league, tool, views); } catch { /* the visit keeps the list */ }
-      snapshot = { views, ready: true, available: ok };
-      emit();
-      return ok;
-    },
-  };
-  stores.set(key, store);
+  let store = stores.get(key);
+  if (!store) {
+    store = createViewStore(league, tool, key, browserEnv);
+    stores.set(key, store);
+  }
   return store;
 }
 
-const noStore: Store = { getSnapshot: () => EMPTY, subscribe: () => () => {}, save: () => false };
+const noStore: ViewStore = {
+  getSnapshot: () => EMPTY_SNAPSHOT, subscribe: () => () => {}, update: () => ({ applied: false, written: false }),
+};
 
-function useViews(league: string | null, tool: ViewTool): Store & { snapshot: Snapshot } {
+function useViews(league: string | null, tool: ViewTool) {
   const store = league && savedViewsKey(league, tool) ? storeFor(league, tool) : noStore;
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, () => EMPTY);
-  return { ...store, snapshot };
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, () => EMPTY_SNAPSHOT);
+  return { snapshot, update: store.update };
 }
 
 /** A view's filters in words, and whether the page shows it now (in words, not only by colour). */
@@ -88,7 +68,7 @@ export function SavedViews({ tool }: { tool: ViewTool }) {
   const league = useLeagueId();
   const search = useSearchParams();
   const current = useMemo(() => viewParamsFromUrl(tool, search), [tool, search]);
-  const { snapshot, save } = useViews(league, tool);
+  const { snapshot, update } = useViews(league, tool);
   const { views, ready, available } = snapshot;
   const spec = viewTool(tool);
   const uid = useId();
@@ -98,16 +78,22 @@ export function SavedViews({ tool }: { tool: ViewTool }) {
 
   const onSave = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const res = saveView(tool, views, name, current);
+    // Saved against the views in storage now (another tab may have changed them), not the list on screen.
+    const out: { res?: SaveResult } = {};
+    const { written } = update((latest) => {
+      out.res = saveView(tool, latest, name, current);
+      return out.res.ok ? out.res.views : null;
+    });
+    const res = out.res;
+    if (!res) return;
     if (!res.ok) { setMessage({ text: res.error, tone: "error" }); return; }
-    const stored = save(res.views);
-    setMessage(stored
+    setMessage(written
       ? { text: `${res.replaced ? "Updated" : "Saved"} “${res.name}” on this device for this league.`, tone: "ok" }
       : { text: "This browser is not keeping saved views (storage is blocked), so the view lasts only for this visit.", tone: "error" });
     setName("");
   };
   const onDelete = (view: SavedView) => {
-    save(removeView(views, view.name));
+    update((latest) => removeView(latest, view.name));
     setMessage({ text: `Deleted “${view.name}”.`, tone: "ok" });
   };
 
