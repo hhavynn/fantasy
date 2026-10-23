@@ -21,6 +21,10 @@ Rules:
     ESPN's raw seeding/tie settings are reported but their vocabulary is not verified here, so teams
     with equal records share a rank and a tie across the cutline is shown as unresolved. Divisions
     are not modeled. No clinch or elimination is claimed.
+  * What-if (issue #192): only when the user sets at least one result does the answer carry a
+    `whatif` block (inputs, assumptions, deterministic method with no sampling, completeness,
+    changes against the same baseline without the user's results, and exact record bounds behind
+    a conclusion gate). With no result set the answer is unchanged.
 """
 
 from __future__ import annotations
@@ -29,7 +33,9 @@ import itertools
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from collections.abc import Mapping
 from fractions import Fraction
+from types import MappingProxyType
 
 from ..db.connection import fetch_dicts, table_exists
 from .projections import last_regular_season_week
@@ -55,8 +61,20 @@ PROJECTION_RULE = ("Projected winner of a remaining matchup = the side with the 
                    "when both sides' projections are complete. This is a deterministic scenario, not a probability.")
 CLOSE_RULE = (f"A projected matchup is marked close (a potential swing game) when the projected margin is at most "
               f"{CLOSE_SHARE:.0%} of the two sides' mean projected total. A display threshold, not a probability.")
+MEDIAN_NOTE = ("This league also scores a result against the league median each week. Projected and what-if records add "
+               "head-to-head games only, so ranks and cutline status here can differ from the league's.")
 CLINCH_NOTE = ("No team is described as clinched or eliminated: that needs the league's full seeding and tiebreak rules "
                "(and division rules), which are not verifiably available.")
+# Tiebreak / seeding settings whose meaning has been verified and can be applied. None yet: every reported ESPN value
+# stays unmapped, which keeps clinch and elimination conclusions blocked (issue #192). A read-only constant, not a cache.
+MAPPED_TIEBREAK_RULES: Mapping[str, frozenset] = MappingProxyType({})
+WHATIF_METHOD = ("Deterministic: one exact scenario computed from the results listed in its inputs. No random sampling, "
+                 "so there is no seed, no sample of simulated seasons and no probability.")
+BOUNDS_RULE = ("Record bounds: each team's record if it wins, and if it loses, every open game, with your set results "
+               "fixed and every other remaining game open (projections are not used). They are exact only under the "
+               "assumed record order, with the provider's records matching the stored final matchups, a complete "
+               "schedule, no median games, one division and seeds that follow record order; otherwise they are "
+               "withheld. They are never turned into a clinch or elimination claim.")
 
 
 class NotSynced(LookupError):
@@ -82,6 +100,7 @@ class RaceData:
     matchups: list[dict]    # matchups rows
     state: LeagueState      # canonical rosters, projections, slots and first actionable week
     window: dict            # trade_data.evaluation_start_week output
+    median_game: bool = False   # Sleeper `league_average_match`: an extra result against the league median each week
 
 
 # ------------------------------------------------------------------- loading --
@@ -114,7 +133,8 @@ def load_race_data(con, now: datetime | None = None) -> RaceData:
                                    WHERE league_id = ? AND season = ? ORDER BY matchup_period, matchup_id""",
                            [state.league_id, state.season]) if table_exists(con, "matchups") else []
     return RaceData(league=lg, schedule_settings=sched, rules_raw=rules, teams=teams, matchups=matchups,
-                    state=state, window=state.start_week_reason or {})
+                    state=state, window=state.start_week_reason or {},
+                    median_game=bool(settings.get("league_average_match")))
 
 
 # ------------------------------------------------------------------ schedule --
@@ -436,6 +456,180 @@ def pathways(sc: Scenario, tid: int) -> dict:
             "open_games": len(games), "fewest_wins_to_get_inside": fewest, "helpful_other_results": helpful[:12]}
 
 
+# ------------------------------------------------------------------ what-if --
+# Issue #192: when the user sets at least one result, the answer carries a `whatif` block that states the scenario's
+# inputs, assumptions and method, compares it with the same baseline without the user's results, and reports record
+# bounds behind a conclusion gate that never yields a clinch or elimination claim while any rule is unmapped.
+
+def _place(row: dict) -> dict:
+    return {"rank": row["rank"], "tied": row["tied"], "status": row["status"], "record": row["record"]}
+
+
+def _unresolved_reason(m: dict, base: str, overrides: dict[int, str]) -> str:
+    if overrides.get(m["matchup_id"]) == "none":
+        return "set_unresolved"
+    if m["status"] in ("in_progress", "unmapped"):
+        return m["status"]
+    if base == "actual":
+        return "actual_baseline"
+    return "projection_incomplete" if m.get("projected_margin") is None else "equal_projection"
+
+
+def conclusion_gate(data: RaceData, divisions: int, seeds_disagree: bool) -> dict:
+    """Which league rules a clinch or elimination conclusion would need, and whether each is mapped. A conclusion is
+    only possible when nothing blocks it; today the record order itself is assumed, so it is always blocked."""
+    raw = data.rules_raw
+    mapped = bool(raw) and all(isinstance(v, (str, int)) and v in MAPPED_TIEBREAK_RULES.get(k, frozenset())
+                               for k, v in raw.items())
+    blocked = []
+    if not mapped:
+        blocked.append({"rule": "tiebreak", "state": "unmapped", "reported": dict(raw),
+                        "detail": "The league's tiebreak and seeding settings are not mapped to a verified rule"
+                                  + (" (reported values are listed but not applied)." if raw else
+                                     " (none were reported).")})
+    blocked.append({"rule": "standings_order", "state": "assumed", "reported": {},
+                    "detail": "Standings order by winning percentage is assumed, not read from a league setting."})
+    if divisions > 1:
+        blocked.append({"rule": "divisions", "state": "not_modeled", "reported": {"divisions": divisions},
+                        "detail": f"{divisions} divisions: division-based playoff spots or seeding are not modeled."})
+    if seeds_disagree:
+        blocked.append({"rule": "seeding", "state": "conflicts", "reported": {},
+                        "detail": "The provider's current seeds do not follow overall record order."})
+    if not data.league.get("playoff_teams"):
+        blocked.append({"rule": "playoff_spots", "state": "unknown", "reported": {},
+                        "detail": "The number of playoff spots is not reported."})
+    return {"status": "blocked" if blocked else "open", "blocked_by": blocked, "claims": []}
+
+
+def record_bounds(sc: Scenario, fixed: dict[int, str], abstain: list[str]) -> dict:
+    """Each team's best and worst record over every remaining outcome, with `fixed` results held. Exact under the
+    assumed record order when nothing in `abstain` applies (records reproducible from the stored finals, a complete
+    schedule, no median games, one division, seeds following record order): `above_line` when, even losing every open game, fewer other teams than there are spots can match its
+    winning percentage; `below_line` when, even winning every open game, at least that many finish strictly ahead in
+    every outcome. Never a claim (see conclusion_gate). Abstains (record_order None) on any reason in `abstain`."""
+    team_ids = sorted(sc.base)
+    open_games = [m for m in sc.open_games if m["matchup_id"] not in fixed]
+
+    def bound(tid: int, wins_open: bool) -> tuple[int, int, int] | None:
+        if sc.base[tid] is None:
+            return None
+        w, l, t = sc.base[tid]
+        for m in sc.open_games:
+            if tid not in (m["home_team_id"], m["away_team_id"]):
+                continue
+            res = fixed.get(m["matchup_id"]) or (_win_for(m, tid) if wins_open else _loss_for(m, tid))
+            if res == "tie":
+                t += 1
+            elif res == _win_for(m, tid):
+                w += 1
+            else:
+                l += 1
+        return w, l, t
+
+    best = {t: bound(t, True) for t in team_ids}
+    worst = {t: bound(t, False) for t in team_ids}
+    bp = {t: _pct(b) if b else None for t, b in best.items()}
+    wp = {t: _pct(b) if b else None for t, b in worst.items()}
+    as_rec = lambda x: None if x is None else {"wins": x[0], "losses": x[1], "ties": x[2]}   # noqa: E731
+    rows = []
+    for t in team_ids:
+        row = {"team_id": t, "open_games": sum(1 for m in open_games if t in (m["home_team_id"], m["away_team_id"])),
+               "best": as_rec(best[t]), "worst": as_rec(worst[t]), "teams_able_to_match_worst": None,
+               "teams_certain_ahead_of_best": None, "record_order": None, "claim": None}
+        if not abstain and wp[t] is not None and bp[t] is not None:
+            level = sum(1 for o in team_ids if o != t and bp[o] is not None and bp[o] >= wp[t])
+            ahead = sum(1 for o in team_ids if o != t and wp[o] is not None and wp[o] > bp[t])
+            row.update(teams_able_to_match_worst=level, teams_certain_ahead_of_best=ahead)
+            if sc.spots:
+                row["record_order"] = ("above_line" if level < sc.spots else
+                                       "below_line" if ahead >= sc.spots else "open")
+        rows.append(row)
+    return {"rule": BOUNDS_RULE, "fixed_results": len(fixed), "open_games": len(open_games), "abstain": abstain,
+            "teams": rows}
+
+
+def whatif_report(data: RaceData, sc: Scenario, regular: list[dict], base_records: dict, base: str,
+                  baseline_results: dict[int, str], overrides: dict[int, str], *, coverage: dict,
+                  no_period: list[dict], divisions: int, seeds_disagree: bool, record_notes: list[str]) -> dict:
+    by_id = {m["matchup_id"]: m for m in regular}
+    baseline_rows = Scenario(data, regular, base_records, baseline_results).table()
+    base_by = {x["team_id"]: x for x in baseline_rows}
+    changes = []
+    for x in sc.table():
+        b = base_by[x["team_id"]]
+        changes.append({"team_id": x["team_id"], "baseline": _place(b), "whatif": _place(x),
+                        "rank_change": b["rank"] - x["rank"] if b["rank"] and x["rank"] else None,
+                        "status_changed": b["status"] != x["status"]})
+    set_results = []
+    for mid, outcome in sorted(overrides.items()):
+        m = by_id[mid]
+        before = baseline_results.get(mid)
+        set_results.append({"matchup_id": mid, "matchup_period": m["matchup_period"], "weeks": m["weeks"],
+                            "home_team_id": m["home_team_id"], "away_team_id": m["away_team_id"],
+                            "status": m["status"], "outcome": outcome, "baseline_result": before,
+                            "changes_baseline": (None if outcome == "none" else outcome) != before})
+    unresolved = [m for m in sc.open_games if m["matchup_id"] not in sc.results]
+    reasons: dict[str, int] = {}
+    for m in unresolved:
+        k = _unresolved_reason(m, base, overrides)
+        reasons[k] = reasons.get(k, 0) + 1
+    # Undecided regular-season games sent without a matchup period cannot be scheduled or set, but they are still
+    # games nobody has a result for: the what-if is partial while any remains.
+    unplaced = [m for m in no_period if m["winner"] not in FINAL_WINNERS and m.get("playoff_tier") in (None, "NONE")
+                and m["home_team_id"] is not None and m["away_team_id"] is not None]
+    if unplaced:
+        reasons["no_period"] = len(unplaced)
+    abstain = []
+    if any(rec is None for rec in base_records.values()):
+        abstain.append("A team's record is unknown.")
+    if record_notes:
+        abstain.append("The provider's records do not match the stored final matchups (see the record check), so the "
+                       "remaining schedule cannot bound them.")
+    if data.median_game:
+        abstain.append("The league adds a result against the league median each week, which these bounds do not "
+                       "model.")
+    if not coverage.get("checked"):
+        abstain.append("The regular-season length is unknown, so games not in the stored schedule may remain.")
+    elif coverage.get("missing"):
+        abstain.append("The stored schedule is missing regular-season matchups, so unseen games may remain.")
+    if unplaced:
+        abstain.append("Some undecided matchups have no matchup period and cannot be placed.")
+    if divisions > 1:
+        abstain.append(f"The league has {divisions} divisions: division-based spots or seeding could override record "
+                       "order.")
+    if seeds_disagree:
+        abstain.append("The provider's current seeds do not follow record order, so record order may not decide the "
+                       "playoff spots.")
+    fixed = {mid: o for mid, o in overrides.items() if o != "none"}
+    assumptions = [
+        "Results you set are hypothetical. Actual records, points for and against, and the provider's seeds are "
+        "unchanged.",
+        ("Every other eligible upcoming game uses the higher projected lineup total as a hypothetical winner (the "
+         "baseline). A game whose projection is incomplete is never decided by projection: missing is not zero.")
+        if base == "projected" else "Every other remaining game stays unresolved (actual-results baseline).",
+        "Unresolved games count for nobody: they are left out of the records, never scored as a loss or as 0 points.",
+        "Rosters are the current snapshot for every remaining week; no waiver, trade or lineup change is modeled.",
+        ORDERING_RULE,
+    ] + ([MEDIAN_NOTE] if data.median_game else [])
+    return {
+        "label": "hypothetical",
+        "method": WHATIF_METHOD,
+        "sampling": {"method": "deterministic", "scenarios": 1, "random_samples": 0, "seed": None,
+                     "probabilities": None},
+        "inputs": {"base": base, "first_actionable_week": data.state.start_week, "set_results": set_results},
+        "assumptions": assumptions,
+        "completeness": {"status": "partial" if unresolved or unplaced else "complete",
+                         "unresolved_games": len(unresolved) + len(unplaced),
+                         "by_reason": dict(sorted(reasons.items()))},
+        "labels": {"current_standings": "actual", "projected_standings": "hypothetical",
+                   "baseline_standings": "hypothetical baseline (no results set)"},
+        "baseline_standings": baseline_rows,
+        "changes": changes,
+        "conclusions": {**conclusion_gate(data, divisions, seeds_disagree),
+                        "record_bounds": record_bounds(sc, fixed, abstain)},
+    }
+
+
 # ---------------------------------------------------------------- the build --
 
 def parse_overrides(values: list[str] | None) -> dict[int, str]:
@@ -492,6 +686,7 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
             raise ValueError(f"matchup {mid} is {m['status']}: only unresolved regular-season games can be overridden")
     results = {m["matchup_id"]: m["projected_winner"] for m in regular
                if base == "projected" and m["status"] == "upcoming" and m.get("projected_winner")}
+    baseline_results = dict(results)
     for mid, outcome in overrides.items():
         if outcome == "none":
             results.pop(mid, None)
@@ -531,14 +726,18 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
         warnings.append(f"The league has {len(divisions)} divisions. Division-based playoff spots or seeding are not "
                         "modeled: the cutline here is by overall record only.")
     seeds = {t["team_id"]: t["playoff_seed"] for t in data.teams}
+    seeds_disagree = False
     if all(seeds.values()):
         pct = {x["team_id"]: x["pct"] for x in current_rows}
         if any(pct[a] is not None and pct[b] is not None and pct[a] < pct[b] and seeds[a] < seeds[b]
                for a in team_ids for b in team_ids):
+            seeds_disagree = True
             warnings.append("ESPN's current playoff seeds do not follow overall record order (divisions or seeding "
                             "rules apply). The projected cutline uses record order and may not match ESPN's seeding.")
     if not spots:
         warnings.append("The number of playoff spots is not reported in league settings: no cutline is drawn.")
+    if data.median_game:
+        warnings.append(MEDIAN_NOTE)
     open_unresolved = [m for m in sc.open_games if m["matchup_id"] not in results]
     if open_unresolved:
         warnings.append(f"{len(open_unresolved)} remaining regular-season game(s) are unresolved in this scenario "
@@ -612,7 +811,7 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
                "bubble": sorted({tid for tid in team_ids if any(g["high_leverage"] for g in lev[tid])}
                                 | {x["team_id"] for x in projected_rows if x["status"] == "cutline_tie"})}
 
-    return {
+    out = {
         "league": {**{k: data.league.get(k) for k in ("league_id", "season", "name", "current_week",
                                                       "current_matchup_period", "final_scoring_period",
                                                       "reg_season_matchups", "playoff_teams",
@@ -647,3 +846,8 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
                   "Points for and against are actual ESPN totals; projected games do not add points.",
                   "Playoff matchups are shown as ESPN lists them; future playoff opponents are not modeled."],
     }
+    if overrides:      # scenarios off (no result set): the answer is exactly what it was before issue #192
+        out["whatif"] = whatif_report(data, sc, regular, base_records, base, baseline_results, overrides,
+                                      coverage=coverage, no_period=no_period, divisions=len(divisions),
+                                      seeds_disagree=seeds_disagree, record_notes=record_notes)
+    return out
