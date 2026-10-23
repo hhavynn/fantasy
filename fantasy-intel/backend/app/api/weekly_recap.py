@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from ..analytics import decision_feedback as dfb
-from ..analytics.projection_source import SOURCES
 from ..analytics.weekly_recap import NotFound, NotSynced, build_weekly_recap, load_recap_data
 from .deps import db
 from .leagues_v2 import NOT_FOUND
@@ -39,8 +38,8 @@ def weekly_recap_feedback(request: Request,
     feedback (and share its cached answer)."""
     if "team_id" in request.query_params:
         raise HTTPException(404, NOT_FOUND)
-    if source is not None and source.lower() not in SOURCES:
-        raise HTTPException(422, f"source must be one of {', '.join(SOURCES)}")
+    if source is not None and source.lower() not in dfb.SOURCES:
+        raise HTTPException(422, f"source must be one of {', '.join(dfb.SOURCES)}")
     with db() as con:
         try:
             return dfb.build_feedback(dfb.load_feedback_data(con, week, source))

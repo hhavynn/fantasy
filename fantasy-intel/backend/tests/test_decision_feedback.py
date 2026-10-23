@@ -22,6 +22,7 @@ from app.analytics.decision_feedback import (
     week_feedback,
 )
 from app.db.connection import connect, init_db
+from test_leagues_api import env  # noqa: F401  (fixture)
 
 SLOTS = {"QB": 1, "RB": 1, "WR": 1, "FLEX": 1, "BE": 4, "IR": 1}
 
@@ -444,7 +445,7 @@ def e2e_archive(tmp_path_factory):
 def test_v2_own_team_only_with_indistinguishable_404s(pg, env, tmp_path, monkeypatch, e2e_archive):
     from cp_seed import U1, U2, U3, seed_membership, seed_user
     from league_fixtures import publish_local
-    from test_leagues_api import bearer
+    from test_leagues_api import bearer  # noqa: I001
 
     from app.api import deps, league_scope
     objects = tmp_path / "objects"
@@ -476,8 +477,8 @@ def test_v2_own_team_only_with_indistinguishable_404s(pg, env, tmp_path, monkeyp
     assert own.json()["status"] == "ok" and own.json()["team"]["team_id"] == 2
     other = client.get(url, headers=bearer(U2))                        # another member sees only their own team
     assert other.json()["team"]["team_id"] == 3 and other.json()["status"] == "ok"
-    mine_ids = {c["start"]["espn_player_id"] for w in own.json()["weeks"] for c in w["calls"]}
-    theirs_ids = {c["start"]["espn_player_id"] for w in other.json()["weeks"] for c in w["calls"]}
+    mine_ids = {p["espn_player_id"] for w in own.json()["weeks"] for p in w["players"]}
+    theirs_ids = {p["espn_player_id"] for w in other.json()["weeks"] for p in w["players"]}
     assert mine_ids and theirs_ids and not mine_ids & theirs_ids
     not_found = {"detail": "League not found."}
     for headers, path in ((bearer(U2), url + "&team_id=2"), (bearer(U1), url + "&team_id=2"), ({}, url),

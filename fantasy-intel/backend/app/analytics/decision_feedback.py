@@ -60,6 +60,7 @@ CLOSE_CALL_POINTS = 3.0          # forecast gap below which a call is a close ca
 TOP_ITEMS = 5
 WATCH_ITEMS = 3
 
+SOURCES = ps.SOURCES                     # "espn", "independent"
 SOURCE_LABEL = MappingProxyType({"espn": "ESPN", "independent": "Ours"})
 SKILL = ("QB", "RB", "WR", "TE")
 COVERED_POSITIONS = MappingProxyType({"espn": FIXED_SLOTS, "independent": SKILL})
