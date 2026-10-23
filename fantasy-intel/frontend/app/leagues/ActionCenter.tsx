@@ -103,13 +103,18 @@ function LeagueCard({ card: c, now }: { card: CenterCard; now: number | null }) 
         <ul className={styles.decisions}>
           {c.decisions.map(({ decision: d, deadline }) => <DecisionRow key={d.id} d={d} deadline={deadline} now={now} />)}
         </ul>
-      ) : c.state === "ready" && c.unavailable.length === 0 ? (
+      ) : c.state === "ready" && c.unavailable.length === 0 && c.partial.length === 0 ? (
         <p className={styles.none}>No lineup or injury decision is flagged{c.week ? ` for week ${c.week}` : ""}.</p>
       ) : null}
       {c.more ? <p className={styles.moreLink}><Link href={c.more.href}>{c.more.count} more {plural(c.more.count, "decision")} on Start/Sit</Link></p> : null}
       {c.unavailable.length > 0 ? (
         <Notice tone="caution" title={`Couldn't check ${joinNames(c.unavailable)}`}>
           Decisions from {c.unavailable.length === 1 ? "that source" : "those sources"} are missing here, so this is not an all-clear.
+        </Notice>
+      ) : null}
+      {c.partial.length > 0 ? (
+        <Notice tone="caution" title={`${joinNames(c.partial.map((x) => x.source))} data is incomplete`}>
+          {c.partial.map((x) => x.reason).join(" ")} This is not an all-clear.
         </Notice>
       ) : null}
 
