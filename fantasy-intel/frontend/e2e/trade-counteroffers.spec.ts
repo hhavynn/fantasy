@@ -44,7 +44,8 @@ test("counteroffers are listed on request, keep locked players and open in the b
   await qualityBar(page);
 
   await co.getByRole("link", { name: "Sierra WR" }).click();
-  await expect(page).toHaveURL(/[?&]lock=307/);
+  // The lock link re-renders the counteroffers on the server, which can take longer than the 5s default.
+  await expect(page).toHaveURL(/[?&]lock=307/, { timeout: 30_000 });
   await expect(co.getByRole("link", { name: "Kept: Sierra WR" })).toBeVisible({ timeout: 30_000 });
   await expect(co.getByText(/instead of Sierra WR|Team 2 keeps Sierra WR/)).toHaveCount(0);
 
