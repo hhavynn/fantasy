@@ -20,11 +20,11 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from itertools import combinations
 
-from .lineup import separable, unsupported_of
+from .lineup import nested_flex, separable, unsupported_of
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
 from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
                            StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
-                           known_total, lineup_relevant, project_team, public_weeks, r, replacement_context,
+                           known_total, lineup_relevant, project_team, project_week, public_weeks, r, replacement_context,
                            roster_marginal_value,
                            arrives_active, slot_flags, starters, stream_summary, with_stream)
 
@@ -292,20 +292,39 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
     if legal_roster(after, state, before):
         return {"forced_drops": [], "lineup_cost": 0.0, "redundant_incoming_asset": None, "basis": None}
     teams: dict[tuple, dict] = {}
+    sums: dict[tuple, float] = {}
 
-    def total(players):
+    def projected(players):
         key = tuple(sorted(p.espn_player_id for p in players))
         if key not in teams:
             teams[key] = project_team(players, state.slots, window, state.projections)
-        return known_total(teams[key])
+        return teams[key]
     negative = any(v < 0 for p in after for w, v in state.projections.get(p.espn_player_id, {}).items()
                    if w in window.weeks)
+    full = projected(after)
+    everyone = frozenset(p.espn_player_id for p in after)
+    # Nested flex slots and no negative projection (lineup.nested_flex): a week in which no dropped player starts keeps
+    # its lineup, the same players in the same slots, so only the weeks a dropped starter plays are solved again.
+    started = [starters(w) for w in full["weeks"]] if not negative and nested_flex(state.slots) else None
+
+    def total(players):
+        key = tuple(sorted(p.espn_player_id for p in players))
+        if key in teams:
+            return known_total(teams[key])
+        if key not in sums:
+            gone = everyone - set(key)
+            if started is None or not set(key) <= everyone:
+                sums[key] = known_total(projected(players))
+            else:
+                sums[key] = sum(w["_total"] if gone.isdisjoint(s) else
+                                project_week(players, state.slots, w["week"], state.projections, w["phase"])["_total"]
+                                for w, s in zip(full["weeks"], started))
+        return sums[key]
     res = choose_forced_drops(after, before, state, incoming, total, negative)
     best = res["best"]
-    full = teams[tuple(sorted(p.espn_player_id for p in after))]
     chosen = best.get(False) or best[True]
     _, combo, _ = chosen
-    team = teams[tuple(sorted(p.espn_player_id for p in after if p not in combo))]
+    team = projected([p for p in after if p not in combo])
     unsupported = unsupported_of(state.slots)
     # The cost is exact when the projections are complete and, with unsupported slots, no dropped player could fill
     # one (team_lineups.delta_exact's rule); otherwise it is known-only.

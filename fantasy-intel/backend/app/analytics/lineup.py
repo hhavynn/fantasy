@@ -151,6 +151,19 @@ def _matching_bound(flex: list[str], elig: dict, cands: list[dict], vals: list[f
     return bound
 
 
+def _nested(flex: list[str], elig: dict) -> bool:
+    """Every flex type is one contiguous run, and each type's positions are all taken by the next type."""
+    types = [s for i, s in enumerate(flex) if i == 0 or flex[i - 1] != s]
+    return len(types) == len(set(types)) and all(set(elig[a]) <= set(elig[b]) for a, b in zip(types, types[1:]))
+
+
+def nested_flex(slots: list[str]) -> bool:
+    """The flex slots are nested (_nested): with no negative value, assign_lineup then gives every slot, fixed or flex,
+    its first eligible player left in (value desc, id) order, so removing players it did not start changes nothing."""
+    flex = [s for s in slots if s in FLEX_ELIGIBILITY]
+    return _nested(flex, FLEX_ELIGIBILITY)
+
+
 def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
     """Exact max-value assignment of the flex slots: the first maximum in depth-first order over candidates sorted by
     (value desc, id), exactly what an exhaustive search returns, in polynomial time.
@@ -191,20 +204,32 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
     elig = {s: FLEX_ELIGIBILITY.get(s, (s,)) for s in flex}
     positions = sorted({q for e in elig.values() for q in e})
     pidx = {q: i for i, q in enumerate(positions)}
-    # Fast path: the very first leaf (every slot takes its first eligible candidate) is the answer when it already
-    # reaches the max-weight matching of the positive values, an upper bound on every leaf.
-    bound = _matching_bound(flex, elig, cands, vals, pidx)
-    if bound is not None:
+
+    def first_leaf() -> list[dict | None]:
+        """Every slot takes its first eligible candidate."""
         taken: set = set()
-        first_leaf: list[dict | None] = []
+        out: list[dict | None] = []
         for s in flex:
             pick = next((c for c in cands if c.get("position") in elig[s] and c["espn_player_id"] not in taken), None)
             if pick is not None:
                 taken.add(pick["espn_player_id"])
-            first_leaf.append(pick)
-        reach = sum(c.get("value") or 0.0 for c in first_leaf if c is not None)
+            out.append(pick)
+        return out
+    # Nested slots: each flex type is one run and takes only positions the next type takes too (FLEX then OP, RB/WR
+    # then FLEX). Then a later slot can take anyone an earlier one could, so with no negative value the first leaf is
+    # optimal (exchange argument): it reaches the matching bound below, and the fast path would return it.
+    if _nested(flex, elig) and all(v >= 0.0 for v in vals):
+        ids = [c["espn_player_id"] for c in cands if c.get("position") in pidx]
+        if len(ids) == len(set(ids)):           # no player listed under two positions (the bound needs that)
+            return first_leaf()
+    # Fast path: the very first leaf is the answer when it already reaches the max-weight matching of the positive
+    # values, an upper bound on every leaf.
+    bound = _matching_bound(flex, elig, cands, vals, pidx)
+    if bound is not None:
+        leaf = first_leaf()
+        reach = sum(c.get("value") or 0.0 for c in leaf if c is not None)
         if reach >= bound - TIE_TOLERANCE and reach > -1.0 + 1e-12:
-            return first_leaf
+            return leaf
     # The first candidate per (player id, position): a later listing of the same player at the same position fits the
     # same slots, is worth no more and comes later, so it is never chosen. Players listed twice still take one slot.
     first: dict = {}

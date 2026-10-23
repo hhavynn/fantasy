@@ -487,6 +487,106 @@ def test_bounded_search_reports_the_cap_and_is_fast_on_a_full_league():
     assert elapsed < 60, elapsed                               # ~3s locally; generous for slow CI
 
 
+NESTED_SLOTS = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 2, "OP": 1, "K": 1, "D/ST": 1})
+
+
+def test_nested_flex_types_use_the_greedy_totals_and_match_the_evaluator():
+    """FLEX x2 + OP (FX-17's structure, issue #253 M2): discovery's nested-flex totals and its subset totals for forced
+    drops are bit-identical to the evaluator's, forced drops included (full rosters: every uneven trade drops)."""
+    st = synthetic_league(n_teams=2, weeks=range(14, 18), roster=SMALL_ROSTER, slots=NESTED_SLOTS, seed=5)
+    st = replace(st, position_limits={"QB": 2})
+    ts = TS(st, 1)
+    assert ts.T.chain is not None and not ts.T.general
+    drops = 0
+    for c in every_candidate(st, 1):
+        try:
+            m = side_lineups(st, ts.window, 1, list(c[2]), [ts.players[x] for x in c[3]])
+        except TradeError:
+            with pytest.raises(TradeError):
+                ts._side(1, c[2], c[3])
+            continue
+        mine = ts._side(1, c[2], c[3])
+        assert {k: m["compare"][k] for k in KEYS} == {k: mine[k] for k in KEYS}, c
+        assert [d["espn_player_id"] for d in m["resolution"]["forced_drops"]] == mine["forced_drops"]
+        drops += bool(mine["forced_drops"])
+    assert drops > 50
+    rng = random.Random(1)
+    ids = sorted(ts.players)
+    for _ in range(300):                       # subset totals equal totals solved from scratch, bit for bit
+        full = rng.sample(ids, rng.randint(8, len(ids)))
+        total = ts.T.subsets(full)
+        for k in range(4):
+            sub = rng.sample(full, len(full) - k)
+            assert total(sub) == sum(ts.T.vec(sub))
+    neg = TS(replace(st, projections={**st.projections, 1001: {w: -1.0 for w in range(14, 18)}}), 1)
+    assert neg.T.chain is None and neg.T.general           # a negative value: the exact search instead
+
+
+def test_evaluator_week_reuse_in_forced_drops_changes_nothing(monkeypatch):
+    """resolve_roster re-solves only the weeks a dropped player starts when the flex slots are nested: every
+    evaluation (deltas, weekly rows, drops, costs, the redundant-asset flag) equals solving every drop set in full."""
+    import app.analytics.trades as trades_mod
+    st = synthetic_league(n_teams=2, weeks=range(14, 18), roster=SMALL_ROSTER, slots=NESTED_SLOTS, seed=9)
+    cands = [c for c in every_candidate(st, 1) if len(c[2]) != len(c[3])][::7]
+    fast = {}
+    for c in cands:
+        try:
+            fast[c] = evaluate_trade(st, 1, c[1], list(c[2]), list(c[3]))
+        except TradeError as err:
+            fast[c] = str(err)
+    monkeypatch.setattr(trades_mod, "nested_flex", lambda slots: False)
+    dropped = 0
+    for c in cands:
+        try:
+            slow = evaluate_trade(st, 1, c[1], list(c[2]), list(c[3]))
+        except TradeError as err:
+            slow = str(err)
+        assert fast[c] == slow, c
+        dropped += isinstance(slow, dict) and bool(slow["team_a"]["roster"]["forced_drops"]
+                                                   or slow["team_b"]["roster"]["forced_drops"])
+    assert dropped > 10
+
+
+def test_work_budget_stops_the_exact_search_and_says_so():
+    st = synthetic_league(n_teams=4, weeks=range(12, 18), roster=SMALL_ROSTER, seed=3)
+    full = TS(st, 1).top("combined", limit=10)
+    assert full["search"]["termination"] != "work_budget" and full["search"]["work_used"] > 0
+    budget = full["search"]["work_used"] // 4
+    cold = TS(st, 1, max_work=budget)
+    s = cold.top("combined", limit=10)
+    assert s["search"]["termination"] == "work_budget" and s["search"]["exhaustive"] is False
+    assert s["search"]["max_work"] == budget and s["search"]["work_used"] >= budget
+    reason = s["search"]["not_evaluated_reason"]
+    assert "work budget reached" in reason and "best found within the budget, not a proven top list" in reason
+    assert s["search"]["fully_evaluated"] < full["search"]["fully_evaluated"] and s["search"]["not_evaluated"] > 0
+    for r in s["results"]:                     # every row shown is still the exact evaluation
+        assert detail(st, r)["consistent_with_manual_evaluator"]
+    warm = TS(st, 1, max_work=budget)          # the cost of a cached evaluation still counts: same answer
+    for sort in SORTS:
+        warm.top(sort, limit=10)
+    again = warm.top("combined", limit=10)
+    assert [r["key"] for r in again["results"]] == [r["key"] for r in s["results"]]
+    assert again["search"]["fully_evaluated"] == s["search"]["fully_evaluated"]
+    roomy = TS(st, 1, max_work=full["search"]["work_used"]).top("combined", limit=10)   # within budget: unchanged
+    assert [r["key"] for r in roomy["results"]] == [r["key"] for r in full["results"]]
+    assert roomy["search"]["termination"] == full["search"]["termination"]
+
+
+def test_beam_work_budget_stops_each_manager_and_names_them():
+    st = synthetic_league(n_teams=3, weeks=range(12, 18), roster=SMALL_ROSTER, seed=4)
+    free = TS(st, 1, shapes=("2-for-2", "3-for-1"))
+    h = free.heuristic_top("my_gain", None, None, 10)["search"]
+    assert h["budget_reached"] is False and h["budget_reached_opponents"] == []
+    assert "work budget" not in h["note"]
+    share = min(x["work"] for x in h["per_opponent"]) // 3
+    cut = TS(st, 1, shapes=("2-for-2", "3-for-1"), max_beam_work=share * 2)
+    c = cut.heuristic_top("my_gain", None, None, 10)["search"]
+    assert c["max_work_per_opponent"] == share and c["budget_reached"] is True
+    assert c["budget_reached_opponents"] == [2, 3] and all(x["budget_reached"] for x in c["per_opponent"])
+    assert "reached its work budget" in c["note"] and "with Team 2, Team 3, so it stopped early" in c["note"]
+    assert c["packages_evaluated"] < h["packages_evaluated"]
+
+
 def test_discovery_never_mutates_the_league_state():
     st = synthetic_league(n_teams=3, weeks=range(14, 18), roster=SMALL_ROSTER)
     snap = copy.deepcopy((st.rosters, st.projections, st.free_agents, st.start_week))

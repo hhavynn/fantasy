@@ -537,7 +537,7 @@ def test_fx17_with_a_taxi_squad_never_starts_taxi_or_ir_and_keeps_them_off_the_a
 
 TOOL_ROUTES = ("/api/league-rules", "/api/league-compatibility", "/api/overview", "/api/start-sit?team_id=1",
                "/api/start-sit/what-if?team_id=1", "/api/lineup-projections", "/api/matchup?team_id=1",
-               "/api/my-team/value?team_id=1&trades=false", "/api/waivers?team_id=1", "/api/waivers/add-drop?team_id=1",
+               "/api/my-team/value?team_id=1", "/api/waivers?team_id=1", "/api/waivers/add-drop?team_id=1",
                "/api/waivers/claim-plan?team_id=1", "/api/waivers/faab?team_id=1", "/api/trades/options",
                "/api/schedule-intelligence/bye-planner?team_id=1",
                "/api/schedule-intelligence/kdst-streaming?team_id=1", "/api/rankings", "/api/power-rankings",
@@ -550,30 +550,31 @@ TOOL_ROUTES = ("/api/league-rules", "/api/league-compatibility", "/api/overview"
 NOT_COMPUTED = (503, "have not been computed yet")
 EXPECTED = {("M3", "/api/waivers?team_id=1"): NOT_COMPUTED, ("M6s", "/api/waivers?team_id=1"): NOT_COMPUTED,
             ("M7", "/api/waivers?team_id=1"): NOT_COMPUTED, ("M8s", "/api/waivers?team_id=1"): NOT_COMPUTED}
-# Trade discovery on standard-size rows only (about 5 s each). FX-17 (M2, M3, M7) is left out on purpose: one request
-# took 451 s offline, with no budget and no abstention (STATUS follow-up 1p, branch fix/trade-discovery-budget).
-DISCOVERY_ROWS = ("M6s", "M8p", "M8s")
+# Trade discovery on every row. FX-17 on ESPN (M2) once took 451 s offline; the nested-flex lineup totals, the week reuse
+# in forced drops and the work budget (docs/v2_trade_discovery.md "Work budget") bring it to about 15-20 s, exhaustive.
+DISCOVERY = "/api/trades/discover?team_id=1"
 
 
 @pytest.mark.parametrize("row", ["M2", "M3", "M6s", "M7", "M8p", "M8s"])
 def test_every_tool_answers_or_abstains_with_a_reason_from_the_imported_file(tmp_path, monkeypatch, row):
     """The league file each matrix row's real import writes, served by the API: every tool's route answers (200), and
     the only abstention is the pinned one in EXPECTED, with its reason; no 404 and no 5xx anywhere else. An evaluated
-    trade answers too. Team value runs with `trades=false`: its trade preview alone took 19 s on FX-17 (0.6 s without),
-    the same discovery cost as above, so this test checks the value part and leaves the preview to that follow-up."""
+    trade answers too. Trade discovery either proves its list or says in words that it stopped at its budget, and team
+    value includes its trade preview (19 s on FX-17 before the discovery fixes, about 2 s now)."""
     db = tmp_path / f"{row}.duckdb"
     con = duckdb.connect(str(db))
     init_db(con)
     cf.import_row(con, cf.MATRIX[row])
     con.close()
     api = _client(monkeypatch, db)
-    routes = TOOL_ROUTES + (("/api/trades/discover?team_id=1",) if row in DISCOVERY_ROWS else ())
-    for route in routes:
+    for route in TOOL_ROUTES + (DISCOVERY,):
         r = api.get(route)
         status, reason = EXPECTED.get((row, route), (200, None))
         assert r.status_code == status, (route, r.status_code, r.text[:300])
         if reason:
             assert reason in r.json()["detail"], (route, r.text[:300])
+    search = api.get(DISCOVERY).json()["search"]          # cached view: never silently partial
+    assert search["exhaustive"] or "work budget reached" in search["not_evaluated_reason"], search
     players = cf.league_players(cf.MATRIX[row])
     give = next(p.pid for p in players if p.team == 1 and p.slot == "BE")
     get = next(p.pid for p in players if p.team == 2 and p.slot == "BE")

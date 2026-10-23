@@ -238,7 +238,8 @@ export type DiscoveryV3 = {
       excluded_invalid_roster: number; excluded_missing_data: number; not_evaluated: number; not_evaluated_reason: string | null;
       termination: string; exhaustive: boolean; bounds_valid: boolean; seconds: { stage_a: number; stage_b: number } } | null;
     heuristic: { method: string; shapes: string[]; exhaustive: boolean; packages_evaluated: number; qualifying_rows: number;
-      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string } | null;
+      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string;
+      budget_reached: boolean; budget_reached_opponents: number[]; max_work_per_opponent: number } | null;
     exact_shapes: string[]; heuristic_shapes: string[]; positions: string[] | null;
   };
   opponents: { opponent_team_id: number; team_name: string | null;

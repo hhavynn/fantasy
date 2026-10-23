@@ -98,9 +98,36 @@ Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-on
 picks summed in the same slot order with the same `sum()` (bit-identical totals, so every rounded delta,
 average and week count is equal), the same forced-drop choice (`resolve_roster`'s search over legal
 removals, keeping the largest known total, ties by lowest ids, incoming players last), the same completeness
-and rounding. Leagues with mixed flex types (e.g. RB/WR + WR/TE) use the exact `assign_lineup` search itself.
-The tests compare discovery and the evaluator on well over a thousand candidates, including forced drops, IR,
-position limits and mixed flex slots.
+and rounding. Nested flex types (each type's positions all taken by the next type, e.g. FLEX then OP, or RB/WR
+then FLEX) with no negative projection are filled slot by slot with the best remaining eligible player: a later
+slot can take anyone an earlier one could, so that greedy fill is optimal (an exchange argument), and it is exactly
+the first leaf `lineup._best_flex` returns. Other mixes of flex types (e.g. RB/WR + WR/TE) use the exact
+`assign_lineup` search itself. Forced-drop resolution solves dozens of subsets of one post-trade roster: each
+week's per-position lists are sorted once, and a week in which no removed player starts keeps its total (the
+same picks in the same order). The manual evaluator's `resolve_roster` uses the same week reuse when the flex
+slots are nested and no projection is negative (then `assign_lineup` gives every slot its first eligible player,
+so removing a player it did not start changes nothing). The tests compare discovery and the evaluator on well
+over a thousand candidates, including forced drops, IR, position limits, mixed and nested flex slots.
+
+### Work budget
+
+Without a time limit, a league whose rosters are large and full can make every candidate expensive: on the
+synthetic FX-17 league (#253 matrix row M2: 6 teams, 2 QB, 3 RB, 4 WR, 2 TE, 1 OP, 3 FLEX, K, D/ST, 10 bench, 3 IR)
+every two-player trade forces drops, and one discovery request took 451 s (measured during #253) before the nested-flex solver and the
+week reuse above (about 15-20 s after, the same results). So each search also has a deterministic work budget, counted in lineup weeks
+solved (a week on the general `assign_lineup` solver counts `GENERAL_COST`, 8; roughly 2-6 microseconds a unit):
+
+* stage B (`max_work`, 1,000,000 a call): the search stops before the next candidate once the evaluations it
+  made or reused have cost that much (`termination: work_budget`, `exhaustive: false`), and `not_evaluated_reason`
+  says in words that the results are the best found within the budget, not a proven top list. An evaluation's
+  cost is recorded once, so a cached evaluation counts the same and a result never depends on what ran before.
+  The response reports `max_work` and `work_used`;
+* the beam (`max_beam_work`, 2,000,000, split equally between the other managers): a manager's expansion stops
+  once that manager's share is spent; `budget_reached`, `budget_reached_opponents` and the note name those managers.
+
+The standard matrix leagues use under 15% of either budget and FX-17 under 35%, so they finish exactly as they
+would without one. The discovery page says "work budget reached" in its notice and coverage tiles, and the team
+value trade preview adds the reason to its note.
 
 ### Stage C: the manual evaluator for what is shown
 
@@ -127,8 +154,8 @@ counted (`simpler_equivalents_hidden`). This is a display rule on exact results,
 `candidates_considered`, `screened_out_by_upper_bound`, `survivors`, `matching_filters`, `fully_evaluated`,
 `excluded_invalid_roster` (no legal roster within the forced-drop limit), `excluded_missing_data`,
 `not_qualified`, `simpler_equivalents_hidden`, `not_evaluated`, `termination`
-(`proven_by_upper_bounds`, `all_candidates_evaluated` or `evaluation_cap`) with its explanation,
-`bounds_valid`, `exhaustive`, stage timings, and the consistency check. Counts other than
+(`proven_by_upper_bounds`, `all_candidates_evaluated`, `evaluation_cap` or `work_budget`) with its explanation,
+`bounds_valid`, `exhaustive`, `max_work` and `work_used`, stage timings, and the consistency check. Counts other than
 `candidates_considered`/`screened_out_by_upper_bound` describe the candidates examined for the current query
 (the best-first search does not evaluate candidates that provably cannot enter the top K).
 

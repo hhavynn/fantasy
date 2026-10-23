@@ -471,7 +471,7 @@ export function TradePreview({ d, trades, sp }: { d: TeamValue; trades: boolean;
     <Section
       title="Trade preview (1-for-1)"
       actions={toggle}
-      footnote={<>{up.trade_preview_rule} <TeamLink href="/trades/discover">Open trade discovery</TeamLink> for 2-for-1 and 1-for-2 trades and every sort.</>}
+      footnote={<>{trades && up.trade_preview.length > 0 && up.trade_note ? `${up.trade_note} ` : ""}{up.trade_preview_rule} <TeamLink href="/trades/discover">Open trade discovery</TeamLink> for 2-for-1 and 1-for-2 trades and every sort.</>}
       flush={trades && up.trade_preview.length > 0}
     >
       {!trades ? (

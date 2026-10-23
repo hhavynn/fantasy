@@ -582,7 +582,10 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
             ts = TradeSearch(state, tid, ("1-for-1",))
             seen = set()
             for sort, cat in (("min_side", "MUTUAL_PROJECTED_IMPROVEMENT"), ("my_gain", None)):
-                for row in ts.top(sort, cat, None, TRADE_PREVIEW)["results"]:
+                found = ts.top(sort, cat, None, TRADE_PREVIEW)
+                if not found["search"]["exhaustive"]:
+                    trade_note = f"Trade preview ({'mutual' if cat else 'your gain'}): {found['search']['not_evaluated_reason']}."
+                for row in found["results"]:
                     key = (row["opponent_team_id"], tuple(row["sends"]), tuple(row["receives"]))
                     if key in seen:
                         continue

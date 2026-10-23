@@ -175,8 +175,13 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
       <TargetSummary target={d.target} horizonLabel={d.horizon?.label ?? null} />
       {(d.coverage.exact && !d.coverage.exact.exhaustive) || d.coverage.heuristic ? (
         <Notice tone="caution" title="This list is not a proven top list">
-          {d.coverage.exact && !d.coverage.exact.exhaustive ? "The exact search reached its evaluation cap. " : ""}
+          {d.coverage.exact && !d.coverage.exact.exhaustive
+            ? d.coverage.exact.termination === "work_budget"
+              ? "The exact search reached its work budget: these are the best trades found within it. "
+              : "The exact search reached its evaluation cap. "
+            : ""}
           {d.coverage.heuristic ? `Larger shapes (${d.coverage.heuristic_shapes.join(", ")}) come from a bounded heuristic search. ` : ""}
+          {d.coverage.heuristic?.budget_reached ? "That search also reached its work budget with some managers and stopped early there. " : ""}
           Every listed trade is still evaluated exactly; see About this search below.
         </Notice>
       ) : null}
@@ -322,13 +327,13 @@ function Coverage({ d }: { d: DiscoverySummary }) {
       <Stat label={<span title={d.pool_rule}>Pool for this view</span>} value={d.pool_size.toLocaleString()} note={d.pool_rule} />
       <Stat
         label={<span title={ex?.not_evaluated_reason ?? "Every exact candidate matching the filters was evaluated or proven unable to enter"}>Exact search ({d.coverage.exact_shapes.join(", ") || "none"})</span>}
-        value={ex ? (ex.exhaustive ? "Proven" : "Cap reached") : "—"}
-        note={ex ? `${ex.exhaustive ? "proven top list · " : "evaluation cap reached · "}${ex.candidates_considered.toLocaleString()} candidates, ${ex.fully_evaluated.toLocaleString()} evaluated exactly` : undefined}
+        value={ex ? (ex.exhaustive ? "Proven" : ex.termination === "work_budget" ? "Budget reached" : "Cap reached") : "—"}
+        note={ex ? `${ex.exhaustive ? "proven top list · " : ex.termination === "work_budget" ? "work budget reached · " : "evaluation cap reached · "}${ex.candidates_considered.toLocaleString()} candidates, ${ex.fully_evaluated.toLocaleString()} evaluated exactly` : undefined}
       />
       <Stat
         label={<span title={he?.note}>Larger shapes ({d.coverage.heuristic_shapes.join(", ") || "off"})</span>}
         value={he ? "Heuristic" : "Off"}
-        note={he ? `not exhaustive · ${he.packages_evaluated.toLocaleString()} packages evaluated exactly (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
+        note={he ? `not exhaustive${he.budget_reached ? ", work budget reached" : ""} · ${he.packages_evaluated.toLocaleString()} packages evaluated exactly (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
       />
       <Stat
         label="Checked against the analyzer"

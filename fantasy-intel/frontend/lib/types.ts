@@ -380,8 +380,9 @@ export type DiscoverySearch = {
   fully_evaluated: number; excluded_invalid_roster: number; excluded_missing_data: number; not_qualified: number;
   qualified_found: number; simpler_equivalents_hidden: number; not_evaluated: number;
   not_evaluated_reason: string | null; largest_unevaluated_upper_bound: number | null;
-  termination: "all_candidates_evaluated" | "proven_by_upper_bounds" | "evaluation_cap";
-  bounds_valid: boolean; exhaustive: boolean; max_exact: number; lineup_solves_stage_a: number;
+  termination: "all_candidates_evaluated" | "proven_by_upper_bounds" | "evaluation_cap" | "work_budget";
+  bounds_valid: boolean; exhaustive: boolean; max_exact: number; max_work: number; work_used: number;
+  lineup_solves_stage_a: number;
   seconds: { stage_a: number; stage_b: number }; consistency_checked: number; consistency_failures: number;
 };
 

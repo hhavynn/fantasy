@@ -114,6 +114,7 @@ def _key(picks):
 def test_flex_solver_matches_the_previous_search_exactly(monkeypatch, fast_path):
     if not fast_path:
         monkeypatch.setattr(lineup, "_matching_bound", lambda *a: None)
+        monkeypatch.setattr(lineup, "_nested", lambda *a: False)
     rng = random.Random(20261023)
     seen = {m: 0 for m in MODES}
     for trial in range(2500):
@@ -146,6 +147,39 @@ def test_flex_solver_matches_on_league_shaped_pools():
         finally:
             lineup._best_flex = orig
         assert got == want, (trial, slots, roster)
+
+
+NESTED = [{"FLEX": 3, "OP": 1}, {"RB/WR": 1, "FLEX": 2}, {"RB/WR": 2, "FLEX": 1, "OP": 1}, {"WR/TE": 1, "OP": 2},
+          {"FLEX": 1}, {"OP": 2}]
+
+
+def test_nested_flex_slots_take_the_first_leaf_which_is_the_previous_search_result(monkeypatch):
+    """FX-17's FLEX x3 + OP and every other nested mix (each type's positions inside the next type's): with no negative
+    value the solver returns the first leaf (every slot its first eligible candidate) without the bound or the
+    programme, and that is exactly the previous search's answer, ties, zeros, None values and duplicate ids included."""
+    rng = random.Random(253)
+    reached = 0
+    for trial in range(3000):
+        flex = lineup_slots(rng.choice(NESTED))
+        assert lineup.nested_flex(flex)
+        mode = rng.choice(["float", "tenth", "whole", "zeros", "identical", "none"])
+        pool = []
+        for i in range(rng.randint(0, 16)):
+            v = rng.uniform(0.0, 25.0)
+            v = {"float": v, "tenth": round(v, 1), "whole": float(round(v)), "zeros": v if rng.random() < 0.5 else 0.0,
+                 "identical": 10.0, "none": rng.choice([None, 0.0, float(round(v))])}[mode]
+            pid = 100 + rng.randint(0, 8) if rng.random() < 0.1 else 1000 + i
+            pool.append(P(pid, rng.choice(POSITIONS), v))
+        pool = _sorted(pool)
+        want = _key(_previous_best_flex(flex, pool))
+        assert _key(lineup._best_flex(flex, pool)) == want, (trial, mode, flex, pool)
+        with monkeypatch.context() as m:        # the same answer with the shortcut off (bound and programme)
+            m.setattr(lineup, "_nested", lambda *a: False)
+            assert _key(lineup._best_flex(flex, pool)) == want, (trial, mode, flex, pool)
+        reached += len({p["espn_player_id"] for p in pool}) == len(pool)
+    assert reached > 2000
+    assert not lineup.nested_flex(lineup_slots({"RB/WR": 1, "WR/TE": 1}))      # not nested: the exact search
+    assert not lineup.nested_flex(["OP", "FLEX"])                                # wider type first
 
 
 # ------------------------------------------------------------------ timing guards (the old search took seconds)
@@ -183,6 +217,7 @@ def _solve_time(flex, pool):
 def test_many_flex_slots_with_ties_or_starved_pools_solve_fast(monkeypatch, fast_path):
     if not fast_path:
         monkeypatch.setattr(lineup, "_matching_bound", lambda *a: None)
+        monkeypatch.setattr(lineup, "_nested", lambda *a: False)
     for name, flex, pool in _guard_pools():
         assert _solve_time(flex, _sorted(pool)) < 0.05, name      # ~1 ms; the old search took 0.1-4+ s
 

@@ -27,8 +27,9 @@ Search (details and proofs in docs/v2_trade_discovery.md):
   Stage B, exact canonical deltas, best-first. Survivors are evaluated in descending order of the
   upper bound of the requested sort key; with valid bounds the search stops when the K-th best exact
   value is above every remaining bound, so the returned top K is provably the true top K. With
-  invalid bounds every candidate matching the filters is evaluated; an evaluation cap ends either
-  search early and is reported (`termination`, `exhaustive`). Exact deltas follow
+  invalid bounds every candidate matching the filters is evaluated; an evaluation cap or a work budget
+  (DEFAULT_MAX_WORK, counted in lineup weeks solved) ends either search early and is reported in words
+  (`termination`, `not_evaluated_reason`, `exhaustive`). Exact deltas follow
   trades.side_lineups rule for rule (same lineup optimum with bit-identical totals, the same
   forced-drop choice, the same completeness and rounding), on a faster totals-only solver.
 
@@ -95,6 +96,15 @@ CATEGORIES = {
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 DEFAULT_MAX_EXACT = 20000
+# Work budgets (_Totals.work: lineup weeks solved, GENERAL_COST each on the general solver; about 2-6 microseconds a
+# unit). An exact top() call stops once the evaluations it made or reused cost DEFAULT_MAX_WORK, and the beam gives
+# each manager an equal share of DEFAULT_MAX_BEAM_WORK; either says so in words. An evaluation's cost is recorded
+# once, so a cached one counts the same and a result never depends on what ran before it. The standard matrix leagues
+# use under 15% of either budget and FX-17 (#253 M2) under 35%, so they finish exactly as without a budget
+# (docs/v2_trade_discovery.md "Work budget").
+DEFAULT_MAX_WORK = 1_000_000
+DEFAULT_MAX_BEAM_WORK = 2_000_000
+GENERAL_COST = 8                         # a general-solver week costs about this many fast weeks
 EPS = 1e-6          # float tolerance on bounds
 HALF_UNIT = 0.5 * 10 ** -NDIGITS   # a canonical delta is rounded, so it can exceed its exact value by this much
 # How far a displayed sort value can exceed the exact value its bound applies to: one rounding for a
@@ -144,10 +154,6 @@ class _Totals:
         flex = [s for s in state.slots if s in FLEX_ELIGIBILITY]
         self.m = len(flex)
         runs = [s for i, s in enumerate(fixed) if i == 0 or fixed[i - 1] != s]
-        # Mixed flex types need the exact search; non-contiguous fixed slots would change the summation order.
-        self.general = len(set(flex)) > 1 or len(runs) != len(self.fixed_groups)
-        self.elig = set(FLEX_ELIGIBILITY[flex[0]]) if flex else set()
-        self.flex_only = [p for p in sorted(self.elig) if p not in dict(self.fixed_groups)]
         self.pos = positions
         blocked = blocked or {}
         # A verified NFL-ineligible week (RosterPlayer.unavailable_weeks): he cannot start and his missing
@@ -155,6 +161,22 @@ class _Totals:
         self.val = [{p: (positions.get(p), float(state.projections[p][w])) for p in pids
                      if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
         self.negative = any(v < 0 for row in self.val for _, v in row.values())
+        # Nested flex types (each one's positions inside the next one's, every type contiguous: FLEX then OP, RB/WR
+        # then FLEX) with no negative value: filling the flex slots in order, each with the best remaining eligible
+        # player, is optimal (an exchange argument: a later slot takes anyone an earlier one could), so it reaches the
+        # matching bound and lineup._best_flex returns exactly that first leaf. Ties do not change the values: a tied
+        # player of either position stays eligible for every later slot. Other mixes need the exact search.
+        types = list(dict.fromkeys(flex))
+        flex_runs = [s for i, s in enumerate(flex) if i == 0 or flex[i - 1] != s]
+        nested = len(flex_runs) == len(types) and all(
+            set(FLEX_ELIGIBILITY[a]) <= set(FLEX_ELIGIBILITY[b]) for a, b in zip(types, types[1:]))
+        self.chain = [(s, FLEX_ELIGIBILITY[s]) for s in flex] if len(types) > 1 and nested and not self.negative \
+            else None
+        # Mixed flex types need the exact search unless nested; non-contiguous fixed slots would change the
+        # summation order.
+        self.general = (len(types) > 1 and self.chain is None) or len(runs) != len(self.fixed_groups)
+        self.elig = {q for s in types for q in FLEX_ELIGIBILITY[s]}
+        self.flex_only = [p for p in sorted(self.elig) if p not in dict(self.fixed_groups)]
         # The K/D/ST waiver streamer (team_lineups.project_week): a player every roster always has, worth the
         # week's streaming baseline. Adding one fixed element to every set keeps the lineup total monotone and
         # submodular, so every stage-A bound below stays valid.
@@ -169,6 +191,10 @@ class _Totals:
             # an unrecognised slot may take any position, so no delta is exact (team_lineups.delta_exact, #253 G3)
             self.missing = [frozenset(relevant) for _ in weeks]
         self.solves = 0
+        # Work done, for the search budgets: one unit per week solved, GENERAL_COST per week on the exact general
+        # solver (lineup.assign_lineup), and at least one per subset total even when every week is reused.
+        self.work = 0
+        self.week_cost = GENERAL_COST if self.general else 1
 
     def week(self, ids, i: int) -> float:
         row, stream = self.val[i], self.stream[i]
@@ -189,6 +215,9 @@ class _Totals:
         # Same picks, same order and the same sum() as project_week (slot order, best first; CPython's
         # float sum is compensated), so totals are bit-identical to the evaluator's and every rounded
         # delta matches.
+        if self.chain is not None:
+            return self._from_sorted({pos: sorted(((v, None) for v in vs), key=lambda vp: -vp[0])
+                                      for pos, vs in by.items()})[0]
         picks, rest = [], []
         for pos, n in self.fixed_groups:
             vs = by.get(pos)
@@ -206,7 +235,82 @@ class _Totals:
 
     def vec(self, ids) -> tuple[float, ...]:
         self.solves += len(self.val)
+        self.work += len(self.val) * self.week_cost
         return tuple(self.week(ids, i) for i in range(len(self.val)))
+
+    def subsets(self, ids):
+        """A function giving sum(self.vec(x)) for any subset x of `ids` (forced-drop resolution solves dozens of them),
+        from each week's per-position lists sorted once: the same picks in the same order, so the same sums. A
+        position contributes at most its fixed slots plus every flex slot, so only that many players are read, and a
+        week in which no removed player starts keeps its total: the picks never reach a removed player, so they are the
+        same players in the same order."""
+        if self.general:
+            return lambda x: sum(self.vec(x))
+        everyone = frozenset(ids)
+        self.work += len(self.val)
+        fixed = dict(self.fixed_groups)
+        need = {pos: fixed.get(pos, 0) + (self.m if pos in self.elig else 0) for pos in {*fixed, *self.elig}}
+        weeks = []
+        for row, stream in zip(self.val, self.stream):
+            by: dict = {pos: [(v, None)] for pos, v in stream.items()}       # the streamer is never dropped
+            for p in everyone:
+                e = row.get(p)
+                if e is not None and e[0] in need:
+                    by.setdefault(e[0], []).append((e[1], p))
+            for lst in by.values():
+                lst.sort(key=lambda vp: -vp[0])
+            weeks.append((by, *self._from_sorted({pos: lst[:need[pos]] for pos, lst in by.items()})))
+
+        def total(x) -> float:
+            keep = set(x)
+            if not keep <= everyone:
+                return sum(self.vec(x))         # not a subset: solved from scratch
+            gone = everyone - keep
+            self.solves += len(weeks)
+            out, solved = [], 0
+            for by, full, starters in weeks:
+                if gone.isdisjoint(starters):
+                    out.append(full)
+                else:
+                    out.append(self._from_sorted({pos: [vp for vp in lst if vp[1] not in gone][:need[pos]]
+                                                  for pos, lst in by.items()})[0])
+                    solved += 1
+            self.work += max(1, solved)
+            return sum(out)
+        return total
+
+    def _from_sorted(self, by: dict) -> tuple[float, set]:
+        """week() on per-position (value, player) lists already sorted best first: the total and who starts."""
+        picks, rest = [], []
+        left = {}
+        for pos, n in self.fixed_groups:
+            vs = by.get(pos)
+            if vs:
+                picks += vs[:n]
+                if pos in self.elig:
+                    left[pos] = vs[n:]
+                    rest += vs[n:]
+        for pos in self.flex_only:
+            vs = by.get(pos)
+            if vs:
+                left[pos] = vs
+                rest += vs
+        if self.chain is not None:
+            at = dict.fromkeys(left, 0)
+            for _, elig in self.chain:
+                best = None
+                for pos in elig:
+                    lst = left.get(pos)
+                    if lst is not None and at[pos] < len(lst) and \
+                            (best is None or lst[at[pos]][0] > left[best][at[best]][0]):
+                        best = pos
+                if best is not None:
+                    picks.append(left[best][at[best]])
+                    at[best] += 1
+        elif self.m:
+            rest.sort(key=lambda vp: -vp[0])
+            picks += rest[:self.m]
+        return sum(v for v, _ in picks), {p for _, p in picks}
 
     def complete(self, ids) -> tuple[bool, ...]:
         s = set(ids)
@@ -231,7 +335,8 @@ class TradeSearch:
     """Stage A runs once in the constructor; `top()` runs stages B (cached) for any sort/filter."""
 
     def __init__(self, state: LeagueState, anchor: int, shapes=tuple(SHAPES), opponents=None,
-                 max_exact: int = DEFAULT_MAX_EXACT, positions=DEFAULT_POSITIONS, focus_weeks=None):
+                 max_exact: int = DEFAULT_MAX_EXACT, positions=DEFAULT_POSITIONS, focus_weeks=None,
+                 max_work: int = DEFAULT_MAX_WORK, max_beam_work: int = DEFAULT_MAX_BEAM_WORK):
         t0 = time.perf_counter()
         requested = set(shapes)
         if anchor not in state.rosters:
@@ -243,6 +348,10 @@ class TradeSearch:
             raise NoRemainingWeeksError(
                 f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
         self.state, self.anchor, self.max_exact = state, anchor, max_exact
+        self.max_work, self.max_beam_work = max_work, max_beam_work
+        self.cost: dict[str, int] = {}               # work each exact evaluation (and beam package) cost, by key
+        self._ledger: dict[str, int] | None = None    # the evaluations the running top() call has charged
+        self._spent = 0
         # Positions that may be traded (players elsewhere stay on rosters and can still be forced drops).
         self.positions = None if positions is None else tuple(sorted(set(positions)))
         self.shapes = [s for s in SHAPES if s in requested]
@@ -370,11 +479,12 @@ class TradeSearch:
         """trades.resolve_roster's choice (the same shared trades.choose_forced_drops) on the same
         bit-identical totals."""
         memo: dict[tuple, float] = {}
+        of_subset = self.T.subsets(_active(after))      # every roster the rule solves is `after` minus some drops
 
         def total(players):
             key = tuple(sorted(_active(players)))
             if key not in memo:
-                memo[key] = sum(self.T.vec(list(key)))
+                memo[key] = of_subset(list(key))
             return memo[key]
         res = choose_forced_drops(after, before, self.state, incoming, total, self.T.negative)
         return (res["best"].get(False) or res["best"][True])[1]
@@ -406,8 +516,16 @@ class TradeSearch:
         (qualified, not_qualified, excluded_missing_data, excluded_invalid_roster)."""
         shape, opp, sends, receives = c[:4]
         key = _key(shape, opp, sends, receives)
-        if key in self.exact:
-            return self.exact[key]
+        if key not in self.exact:
+            w0 = self.T.work
+            self._evaluate(shape, opp, sends, receives, key)
+            self.cost[key] = self.T.work - w0
+        if self._ledger is not None and key not in self._ledger:
+            self._ledger[key] = self.cost[key]
+            self._spent += self.cost[key]
+        return self.exact[key]
+
+    def _evaluate(self, shape, opp, sends, receives, key) -> None:
         row, status = None, "not_qualified"
         try:
             mine = self._side(self.anchor, sends, receives)
@@ -421,7 +539,6 @@ class TradeSearch:
         except TradeError:
             status = "excluded_invalid_roster"
         self.exact[key], self.status[key] = row, status
-        return row
 
     def _row(self, shape, opp, sends, receives, mine, theirs) -> dict:
         m, t = mine["ros_delta"], theirs["ros_delta"]
@@ -470,12 +587,14 @@ class TradeSearch:
         """Exact both-side comparison of any package (cached); (mine, theirs, status)."""
         key = _key(shape, opp, sends, receives)
         if key not in self.pairs:
+            w0 = self.T.work
             try:
                 self.pairs[key] = (self._side(self.anchor, sends, receives), self._side(opp, receives, sends), "evaluated")
             except EvaluationUnavailable:
                 self.pairs[key] = (None, None, "excluded_evaluation_unavailable")
             except TradeError:
                 self.pairs[key] = (None, None, "excluded_invalid_roster")
+            self.cost["pair:" + key] = self.T.work - w0
         return self.pairs[key]
 
     def beam(self, target: TradeTarget | None = None) -> dict:
@@ -507,10 +626,11 @@ class TradeSearch:
         rows: list[dict] = []
         per_opp = []
         if not self.heuristic_shapes:
-            self._beams[tk] = {"rows": [], "per_opponent": [], "evaluated": 0, "seconds": 0.0}
+            self._beams[tk] = {"rows": [], "per_opponent": [], "evaluated": 0, "work_per_opponent": 0, "seconds": 0.0}
             return self._beams[tk]
         max_s = max(HEURISTIC_SHAPES[x][0] for x in self.heuristic_shapes)
         max_r = max(HEURISTIC_SHAPES[x][1] for x in self.heuristic_shapes)
+        share = self.max_beam_work // max(1, len(self.opponents))      # each manager's part of the beam budget
         mine_act = _active(self.state.rosters[A])
         m_ids = self.tradeable(self.state.rosters[A])
         base_me = sum(self.base[A])
@@ -521,7 +641,8 @@ class TradeSearch:
             o_act = _active(self.state.rosters[opp])
             o_ids = self.tradeable(self.state.rosters[opp])
             if not m_ids or not o_ids:
-                per_opp.append({"opponent_team_id": opp, "seeds": 0, "evaluated": 0, "rows": 0})
+                per_opp.append({"opponent_team_id": opp, "seeds": 0, "evaluated": 0, "rows": 0, "work": 0,
+                                "budget_reached": False})
                 continue
             base_o = sum(self.base[opp])
             their_cost = {t: base_o - sum(T.vec(_minus(o_act, t))) for t in o_ids}
@@ -537,25 +658,44 @@ class TradeSearch:
             approx = sorted(((min(adds_me[t] - my_cost[x], adds_them[x] - their_cost[t]), (x,), (t,))
                              for x in pool_m for t in pool_t if self._matches(target, (t,))),
                             key=lambda z: (-z[0], z[1], z[2]))[:BEAM_SEEDS]
-            beam, seen, evals, made = [], set(), 0, 0
-            for _, x, t in approx:
-                mine, theirs, st = self._pair("1-for-1", opp, x, t)
+            beam, seen, evals, made, spent, cut = [], set(), 0, 0, 0, False
+
+            def pair(shape, x, t):
+                """_pair within this manager's work budget; None once the budget is spent (nothing more is evaluated)."""
+                nonlocal evals, spent, cut
+                if spent >= share:
+                    cut = True
+                    return None
+                out = self._pair(shape, opp, x, t)
+                spent += self.cost["pair:" + _key(shape, opp, x, t)]
                 evals += 1
+                return out
+            for _, x, t in approx:
+                got = pair("1-for-1", x, t)
+                if got is None:
+                    break
+                mine, theirs, st = got
                 seen.add((x, t))
                 if st == "evaluated":
                     beam.append((x, t, mine, theirs))
             for _ in range(max_s + max_r - 2):
+                if cut:
+                    break
                 nxt = []
                 for x, t, pm, pt in beam:
+                    if cut:
+                        break
                     grown = [(tuple(sorted(x + (a,))), t) for a in pool_m if a not in x and len(x) < max_s] + \
                             [(x, tuple(sorted(t + (b,)))) for b in pool_t if b not in t and len(t) < max_r]
                     for nx, nt in grown:
                         if (nx, nt) in seen:
                             continue
-                        seen.add((nx, nt))
                         shape = f"{len(nx)}-for-{len(nt)}"
-                        mine, theirs, st = self._pair(shape, opp, nx, nt)
-                        evals += 1
+                        got = pair(shape, nx, nt)
+                        if got is None:
+                            break
+                        seen.add((nx, nt))
+                        mine, theirs, st = got
                         if st != "evaluated":
                             continue
                         padding = all(mine[k] == pm[k] and theirs[k] == pt[k] for k in EQUIVALENCE_KEYS) \
@@ -574,8 +714,8 @@ class TradeSearch:
                     break
             total_evals += evals
             per_opp.append({"opponent_team_id": opp, "seeds": len(approx), "pool_mine": pool_m, "pool_theirs": pool_t,
-                            "evaluated": evals, "rows": made})
-        self._beams[tk] = {"rows": rows, "per_opponent": per_opp, "evaluated": total_evals,
+                            "evaluated": evals, "rows": made, "work": spent, "budget_reached": cut})
+        self._beams[tk] = {"rows": rows, "per_opponent": per_opp, "evaluated": total_evals, "work_per_opponent": share,
                            "seconds": round(time.perf_counter() - t0, 3)}
         return self._beams[tk]
 
@@ -588,14 +728,21 @@ class TradeSearch:
         found = sorted((x for x in b["rows"] if (opponent is None or x["opponent_team_id"] == opponent)
                         and (category is None or category in x["categories"])
                         and self._matches(target, x["receives"])), key=rk)
+        cut = [x["opponent_team_id"] for x in b["per_opponent"]
+               if x["budget_reached"] and (opponent is None or x["opponent_team_id"] == opponent)]
+        note = ("Exact evaluation of every listed package, but candidate generation is a bounded beam: packages outside "
+                "the pools and the beam were never evaluated, so this is not a proven top list.")
+        if cut:
+            note += (f" The beam also reached its work budget ({b['work_per_opponent']:,} units per manager) with "
+                     f"{', '.join(self.state.team_names.get(t) or f'team {t}' for t in cut)}, so it stopped early "
+                     "there: these are the best packages found within the budget.")
         return {"results": [{**x, "simpler_equivalent": None} for x in found[:max(1, min(int(limit), MAX_LIMIT))]],
                 "search": {"method": "heuristic_beam", "shapes": self.heuristic_shapes, "exhaustive": False,
                            "packages_evaluated": b["evaluated"], "qualifying_rows": len(b["rows"]),
                            "beam": {"seeds": BEAM_SEEDS, "width": BEAM_WIDTH, "pool_per_signal": BEAM_POOL},
                            "per_opponent": b["per_opponent"], "seconds": b["seconds"],
-                           "note": "Exact evaluation of every listed package, but candidate generation is a bounded "
-                                   "beam: packages outside the pools and the beam were never evaluated, so this is "
-                                   "not a proven top list."}}
+                           "max_work_per_opponent": b["work_per_opponent"], "budget_reached": bool(cut),
+                           "budget_reached_opponents": cut, "note": note}}
 
     # ---- ranking
     def _check_sort(self, sort: str) -> None:
@@ -621,6 +768,7 @@ class TradeSearch:
         bounds_valid = not self.T.negative
         found, keys, examined_keys, redundant = [], set(), [], 0
         termination, stop_bound, stop_at = "all_candidates_evaluated", None, len(pool)
+        self._ledger, self._spent = {}, 0      # every evaluation this call makes or reuses, at its recorded cost
         for i, c in enumerate(pool):
             ub = _bound(c, sort)
             if bounds_valid and len(found) >= limit:          # invalid bounds never end the search
@@ -632,6 +780,9 @@ class TradeSearch:
                     break
             if len(examined_keys) >= self.max_exact:
                 termination, stop_bound, stop_at = "evaluation_cap", ub, i
+                break
+            if self._spent >= self.max_work:
+                termination, stop_bound, stop_at = "work_budget", ub, i
                 break
             examined_keys.append(_key(*c[:4]))
             row = self.evaluate(c)
@@ -646,6 +797,7 @@ class TradeSearch:
                 continue
             insort(found, {**row, "simpler_equivalent": sub["key"] if sub else None}, key=rk)
             keys.add(row["key"])
+        work, self._ledger = self._spent, None
         remaining = len(pool) - stop_at
         status = Counter(self.status[k] for k in examined_keys)
         reason = {
@@ -654,6 +806,9 @@ class TradeSearch:
                                       f"{_r(stop_bound)}) is below the {limit}th result, so none can enter the results",
             "evaluation_cap": f"exact-evaluation cap ({self.max_exact}) reached; the results are the best among the "
                               "candidates evaluated, not a proven top list",
+            "work_budget": f"work budget reached ({self.max_work:,} units of lineup work) after {len(examined_keys):,} "
+                           f"exact evaluations; {remaining:,} matching candidates were not evaluated, so the results "
+                           "are the best found within the budget, not a proven top list",
         }[termination]
         return {
             "results": found[:limit],
@@ -674,8 +829,10 @@ class TradeSearch:
                 # Only a valid bound says anything about unevaluated candidates.
                 "largest_unevaluated_upper_bound": _r(stop_bound) if remaining and bounds_valid else None,
                 "bounds_valid": bounds_valid,
-                "exhaustive": termination != "evaluation_cap",
+                "exhaustive": termination not in ("evaluation_cap", "work_budget"),
                 "max_exact": self.max_exact,
+                "max_work": self.max_work,
+                "work_used": work,
                 "exact_evaluations_cached": len(self.exact),
                 "lineup_solves_stage_a": self.T.solves,
                 "seconds": {"stage_a": self.stage_a_seconds, "stage_b": round(time.perf_counter() - t0, 3)},
