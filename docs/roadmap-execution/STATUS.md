@@ -28,8 +28,8 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
-| #166 action center | 2 | PR OPEN (BLOCKED) | PR #241 (b0b4280) | security review: isolation clean; 1 MEDIUM (pool/anyio starvation) + 3 LOW being fixed |
-| #171 what-if lineup | 2 | PR OPEN (BLOCKED) | PR #242 (01e9077) | `GET .../start-sit/what-if`; q/a/s pass; phone tap overlap being fixed; security review running (D-10) |
+| #166 action center | 2 | PR OPEN | PR #241 (32e6168) | 1 MEDIUM + 3 LOW fixed (async route, per-user single-flight, admission 503, non-blocking pins); reviewer re-check running |
+| #171 what-if lineup | 2 | PR OPEN | PR #242 (d275d1d) | phone tap fixed (real-tap e2e); security review: no HIGH/MEDIUM, 1 pre-existing LOW → #243 |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
@@ -94,6 +94,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
+- PR OPEN #243: response-cache key re-encoded so `%3D`/`%26` can't forge another URL's key (LOW from #242 review).
 - MERGED #240 → e234416: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
   test_overlapping_pytest_sessions_isolation, reproduced locally); ported into #238.
 - MERGED #236 → 9d68883 (`affected` adds the app-wide audits). MERGED #237 → e6bb3f3 ( quick defers `test_league_scope` /
