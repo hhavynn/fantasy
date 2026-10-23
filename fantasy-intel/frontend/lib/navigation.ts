@@ -57,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/players", label: "Player profile", summary: "One player's usage, game log and outlook" },
       { href: "/compare", label: "Compare", summary: "Players side by side on projection, usage and schedule" },
       { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" , ownerOnly: true },
+      { href: "/screener", label: "Screener", section: "Research", summary: "Every WR, RB and TE filtered on several usage and production metrics at once" },
       { href: "/schedule-intelligence", label: "Schedule", section: "Research", summary: "Upcoming opponents for each rostered player" },
       { href: "/schedule-intelligence/sos", label: "Strength of schedule", section: "Research", summary: "Opponent pass defense (QB, WR, TE) and run defense (RB) by week, for the rest of the season and the fantasy playoffs" },
       { href: "/rankings/compare", label: "Source comparison", section: "Research", summary: "Where the provider's projections and Fantasy Intel's own rank a player differently, with the evidence behind large gaps" },

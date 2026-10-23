@@ -107,7 +107,7 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
   assert.deepEqual(clusters.map((c) => c.title), [null, "Research"]);
   assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare"]);
   assert.deepEqual(clusters[1].pages.map((p) => p.href).sort(),
-    ["/movers", "/projection-performance", "/rankings/compare", "/research", "/schedule-intelligence", "/schedule-intelligence/sos"].sort());
+    ["/movers", "/projection-performance", "/rankings/compare", "/research", "/schedule-intelligence", "/schedule-intelligence/sos", "/screener"].sort());
   assert.equal(getActiveRoute("/rankings/compare").activeHref, "/rankings/compare");
   assert.equal(getActiveRoute("/rankings").activeHref, "/rankings");
   assert.equal(group("/schedule-intelligence"), "Players");

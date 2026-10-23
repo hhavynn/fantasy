@@ -1,0 +1,69 @@
+/* Player screener. Tokens only; the builder restacks at 720 px, filter rows at 560 px. */
+
+.lede { margin: 0; max-width: 72ch; color: var(--ink-muted); font-size: 14px; line-height: 21px; }
+.label { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.hint { margin: 6px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 18px; max-width: 80ch; }
+
+/* ---------- Presets ---------- */
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 20px; margin: 0; padding: 0; list-style: none; }
+.preset { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.preset a { font-weight: 600; font-size: 14px; }
+.presetActive { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.presetSummary { color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+
+/* ---------- Builder ---------- */
+.builder {
+  display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
+.inline { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.check { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; font-size: 13px; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 12px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field select, .field input { width: 100%; min-width: 0; }
+.rows { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; counter-reset: row; }
+.row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 64px 110px; gap: 8px; align-items: end; }
+.metricField { min-width: 0; }
+.value { font-variant-numeric: tabular-nums; }
+.footer { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; }
+.footer .field { width: 220px; max-width: 100%; }
+.actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+@media (max-width: 720px) {
+  .builder { padding: 10px; }
+  .actions { margin-left: 0; }
+  .footer .field { width: 100%; }
+}
+@media (max-width: 560px) {
+  /* One filter per two lines: group and comparison beside the value, the metric on its own line. */
+  .row { grid-template-columns: 72px 64px minmax(0, 1fr); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .row > .metricField { grid-column: 1 / -1; grid-row: 1; }
+}
+
+.errors { margin: 0; padding-left: 18px; }
+.expression { margin: 0; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
+.expression .label { margin-right: 6px; }
+
+/* ---------- Results ---------- */
+.table td { vertical-align: middle; }
+.caption { caption-side: top; }
+.playerCell { min-width: 190px; }
+.unlinked { display: inline-flex; flex-direction: column; min-width: 0; max-width: 220px; }
+.unlinkedName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.unlinkedMeta { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-muted); font-size: 12px; }
+.sample, .pctl { display: block; color: var(--ink-faint); font-size: 11px; line-height: 14px; white-space: nowrap; }
+.na { color: var(--ink-faint); font-size: 12px; }
+.ownerCell { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.unknown { color: var(--ink-faint); }
+.available { color: var(--positive); font-weight: 600; }
+.gaps { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
+.links { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 12px; font-size: 13px; white-space: nowrap; }
+
+.undecided { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 19px; }
+.undecided li { overflow-wrap: anywhere; }
+
+.metricTable td { font-size: 13px; line-height: 19px; vertical-align: top; min-width: 120px; }
+.metricTable td:first-child { min-width: 180px; }
+.metricDefs { margin: 8px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.metricDefs li { margin: 2px 0; }
