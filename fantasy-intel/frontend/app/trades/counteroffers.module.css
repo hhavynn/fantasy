@@ -17,3 +17,5 @@
 .lock:hover { background: var(--surface-hover); color: var(--ink); }
 .kept { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
 .action { margin: 0; }
+/* a link beside running text is underlined (axe link-in-text-block), not told apart by colour alone */
+.action a { text-decoration: underline; text-underline-offset: 2px; }

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { applyTheme, expectAccessible, expectNoSidewaysScroll } from "./ux";
 
 // Counteroffers (#214) in the trade analyzer against the synthetic league (scripts/build_e2e_db.py): team 2 sends
 // 307 "Sierra WR" for team 1's 303 "Oscar WR". The search runs only when asked for, every listed counteroffer opens in
@@ -10,6 +11,19 @@ test.beforeEach(async ({ page }) => {
   await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
 });
 
+async function qualityBar(page: Page) {
+  // The evaluation and the panel stream in; check the settled page (TableScroll marks wide tables a frame later).
+  await expect(page.locator('main [aria-busy="true"]')).toHaveCount(0, { timeout: 30_000 });
+  await expect.poll(() => page.locator("main .table-wrap").evaluateAll((els) => els.every((e) =>
+    (e.scrollWidth > e.clientWidth + 1) === (e.getAttribute("tabindex") === "0"))), {
+    message: "tabindex=0 on exactly the tables that overflow", timeout: 10_000 }).toBe(true);
+  for (const theme of ["dark", "light"] as const) {
+    await applyTheme(page, theme);
+    await expectNoSidewaysScroll(page);
+    await expectAccessible(page, theme);
+  }
+}
+
 const panel = (page: Page) => page.locator("section", { has: page.getByRole("heading", { name: "Counteroffers" }) });
 
 test("counteroffers are listed on request, keep locked players and open in the builder", async ({ page }) => {
@@ -17,6 +31,7 @@ test("counteroffers are listed on request, keep locked players and open in the b
   await page.goto("/trades?ta=2&tb=1&a=307&b=303");
   const find = page.getByRole("link", { name: "Find counteroffers" });
   await expect(find).toBeVisible({ timeout: 30_000 });
+  await qualityBar(page);
   await find.click();
   await expect(page).toHaveURL(/[?&]co=1/);
   const co = panel(page);
@@ -26,6 +41,7 @@ test("counteroffers are listed on request, keep locked players and open in the b
   expect(await items.count()).toBeLessThanOrEqual(3);
   const text = (await co.innerText()).toLowerCase();
   for (const word of ["guarantee", "will accept", "would accept", "likely"]) expect(text, word).not.toContain(word);
+  await qualityBar(page);
 
   await co.getByRole("link", { name: "Sierra WR" }).click();
   await expect(page).toHaveURL(/[?&]lock=307/);
