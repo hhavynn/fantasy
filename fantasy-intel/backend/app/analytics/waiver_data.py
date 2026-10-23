@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import FANTASY_POSITIONS
-from .league_scoring import DIRECT, DST_SLOT, EXTRA_DIRECT, RETURN_TD_COLUMN, resolve_skill_scoring
 from .lineup import assign_lineup, lineup_slots
 from .availability import ESPN_STATUS, availability
 from .projections import load_schedule
@@ -21,15 +20,18 @@ from .team_lineups import STREAM_POSITIONS, STREAM_RANK
 LANE_SIZE = 15
 FRESHNESS_HOURS = 72  # cautious snapshot threshold, not an injury forecast
 
-# The basis of the historical player values and xFP (player_scores): nflverse `fantasy_points_ppr`, per unit of each
-# box-score column. Columns the basis does not score (first downs, attempts, ...) are 0. A fumble-recovery TD is left
-# out of the comparison: whether the basis counts it is not verified here.
-PPR_BASIS = {"passing_yards": 0.04, "passing_tds": 4.0, "passing_interceptions": -2.0, "passing_2pt_conversions": 2.0,
-             "rushing_yards": 0.1, "rushing_tds": 6.0, "rushing_2pt_conversions": 2.0,
-             "receptions": 1.0, "receiving_yards": 0.1, "receiving_tds": 6.0, "receiving_2pt_conversions": 2.0,
-             "fumbles_lost_total": -2.0, RETURN_TD_COLUMN: 6.0}
-_COMPARED = set(PPR_BASIS) | {col for col, _ in EXTRA_DIRECT.values()}
-_LABELS = {**{col: label for col, label in (*DIRECT.values(), *EXTRA_DIRECT.values())}, RETURN_TD_COLUMN: "return TD"}
+# The basis of the historical player values and xFP (player_scores) is nflverse `fantasy_points_ppr`. Per ESPN-shaped
+# scoring statId (the shape every provider's translated scoring_items use): (label, basis points per unit). Read here
+# directly: canonical waiver code stays isolated from the research scoring modules (the isolation audit in tests/).
+PPR_BASIS = {3: ("passing yards", 0.04), 4: ("passing TD", 4.0), 19: ("passing 2-pt conversion", 2.0),
+             20: ("interception thrown", -2.0), 24: ("rushing yards", 0.1), 25: ("rushing TD", 6.0),
+             26: ("rushing 2-pt conversion", 2.0), 42: ("receiving yards", 0.1), 43: ("receiving TD", 6.0),
+             44: ("receiving 2-pt conversion", 2.0), 53: ("reception", 1.0), 72: ("fumble lost", -2.0),
+             101: ("kick return TD", 6.0), 102: ("punt return TD", 6.0),
+             # counts the basis does not score (synthetic ids of translated provider items)
+             2001: ("passing first down", 0.0), 2002: ("rushing first down", 0.0), 2003: ("receiving first down", 0.0),
+             2004: ("pass attempt", 0.0), 2005: ("pass completion", 0.0), 2006: ("rush attempt", 0.0)}
+DST_SLOT = "16"   # ESPN's D/ST lineup slot: an override there never scores an offensive player
 
 
 def stale_snapshot(stamp, now: datetime) -> bool:
@@ -42,28 +44,26 @@ def stale_snapshot(stamp, now: datetime) -> bool:
 
 def ppr_basis_differences(scoring_items) -> list[str]:
     """Known ways a league's offensive scoring differs from PPR_BASIS (#253 S2), as short phrases. Only rules the league
-    states are compared: an absent rule is unknown, not 0. Kicker and D/ST-only rules do not apply to the values."""
+    states are compared: an absent rule is unknown, not 0. Rules outside PPR_BASIS (yardage bonuses, kicker and D/ST
+    rules) are not listed here; the League rules page names every rule."""
     items = json.loads(scoring_items) if isinstance(scoring_items, str) else scoring_items
     if not items:
         return []
-    skill = resolve_skill_scoring(items)
-    direct = {**DIRECT, **EXTRA_DIRECT}
-    out = [f"{pts:g} per {_LABELS[col]} (basis {PPR_BASIS.get(col, 0.0):g})"
-           for col, pts in skill.weights.items() if col in _COMPARED and abs(pts - PPR_BASIS.get(col, 0.0)) > 1e-9]
-    out += [f"+{pts:g} per {_LABELS.get(col, col)} for {pos}"
-            for pos, cols in sorted(skill.position_weights.items()) for col, pts in sorted(cols.items()) if pts]
-    by_slot = set()
+    points: dict[int, float] = {}
+    out_slot, out_pos = [], []
     for item in items:
         sid = item.get("statId")
-        overrides = {str(k): v for k, v in (item.get("pointsOverrides") or {}).items() if str(k) != DST_SLOT}
-        if overrides and sid not in by_slot:
-            by_slot.add(sid)
-            name = _LABELS[direct[sid][0]] if sid in direct else f"stat {sid}"
-            out.append(f"{name} scored differently by lineup slot (such as a TE premium)")
-    other = sum(1 for u in skill.unsupported if u.get("stat_id") not in by_slot)
-    if other:
-        out.append(f"{other} other offensive scoring {'rule' if other == 1 else 'rules'} the basis does not model")
-    return out
+        if sid not in PPR_BASIS or item.get("isReverseItem"):
+            continue
+        name = PPR_BASIS[sid][0]
+        points[sid] = points.get(sid, 0.0) + float(item.get("points") or 0.0)
+        out_pos += [f"+{float(v):g} per {name} for {pos}" for pos, v in sorted((item.get("positionPoints") or {}).items()) if v]
+        base = float(item.get("points") or 0.0)
+        if any(str(k) != DST_SLOT and v is not None and float(v) != base for k, v in (item.get("pointsOverrides") or {}).items()):
+            out_slot.append(f"{name} scored differently by lineup slot (such as a TE premium)")
+    out = [f"{pts:g} per {PPR_BASIS[sid][0]} (basis {PPR_BASIS[sid][1]:g})"
+           for sid, pts in points.items() if abs(pts - PPR_BASIS[sid][1]) > 1e-9]
+    return out + out_pos + out_slot
 
 
 def comparable_free_agents(candidate: dict, values: dict, pool: list[dict], ctx: dict, reports: dict | None = None) -> list[dict]:

@@ -118,9 +118,9 @@ def test_ppr_basis_differences_name_pass_td_and_te_premium():
     assert ppr_basis_differences(te_slot) == ["reception scored differently by lineup slot (such as a TE premium)"]
     te_pos = [{**i, "positionPoints": {"TE": 0.5}} if i["statId"] == 53 else i for i in ppr]    # translated items
     assert ppr_basis_differences(te_pos) == ["+0.5 per reception for TE"]
-    extra = ppr + [{"statId": 2002, "points": 0.5}, {"statId": 9999, "points": 2}]
-    assert ppr_basis_differences(extra) == ["0.5 per rushing first down (basis 0)",
-                                           "1 other offensive scoring rule the basis does not model"]
+    extra = ppr + [{"statId": 2002, "points": 0.5}, {"statId": 74, "points": 3},             # 74: a kicker rule
+                   {"statId": 99, "points": 0, "pointsOverrides": {"16": 1}}]                # D/ST-only override
+    assert ppr_basis_differences(extra) == ["0.5 per rushing first down (basis 0)"]
 
 
 def test_waiver_warning_fires_for_a_full_ppr_league_with_six_point_pass_tds(tmp_path):
