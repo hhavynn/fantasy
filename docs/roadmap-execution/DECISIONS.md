@@ -79,7 +79,21 @@ read-only review before merge. Security-sensitive diffs (auth, RLS, /v2, tenant 
 the author's conclusions. This replaces the lost reviewer; it is not an extra round. Merge gates are otherwise
 unchanged (D-07).
 
+## D-11 · 2026-10-23 · #186 news gate: no news-headline feed; "Availability events" instead
+The licensing memo (PR #247, `docs/research/186-player-news-sources.md`) found no free source that permits
+automated fetch, cache and display of third-party news headlines. NFL.com, team sites, ESPN endpoints and Google
+News bar it. Sleeper, Reddit and the publisher RSS feeds are unclear or need consent. So no news tab or headline
+feed ships.
+What may ship instead is a separately labelled "Availability events" list:
+- Content: app-written, templated events from nflverse injuries and weekly rosters (CC BY 4.0), with no provider
+  free text and no cause, timeline or "confirmed" claims.
+- Attribution: "nflverse (CC BY 4.0), reformatted".
+- No new fetches. Roster filtering happens server-side behind `authorize_league`.
+Caveats: the memo's non-nflverse verdicts rest on search excerpts (the sandbox could only reach GitHub), and the
+nflverse upstream provider is unverified. Changes if: a source's full terms explicitly grant display in third-party
+apps, or the owner obtains written consent (e.g. from Sleeper).
+
 ## Open research gates (filled in as work reaches them)
-- #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.
+- #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
 - #173 live scoring: limited by provider polling cadence and quotas; no extra sync frequency without a budget.
