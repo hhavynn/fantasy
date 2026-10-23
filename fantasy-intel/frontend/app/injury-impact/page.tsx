@@ -5,7 +5,7 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
   EmptyState, Glossary, Method, Notice, PageHeader, Section, Skeleton, Tabs,
 } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
 import { when } from "@/lib/format";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -80,7 +80,9 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
   if (sel.kind === "invalid") return <Shell sp={sp} current={null}><UnknownTeam path={PATH} sel={sel} /></Shell>;
   const filters = parseInjuryFilters(sp);
   // The opportunity tree is a second, slower read: started now, rendered in its own Suspense boundary below.
-  const tree = api<OpportunityTreeResponse>(withTeamId("/api/injury-impact/opportunity-tree", sel));
+  // An early return below never awaits it, so a failure must never become an unhandled rejection.
+  const tree = api<OpportunityTreeResponse>(withTeamId("/api/injury-impact/opportunity-tree", sel))
+    .catch((): ApiResult<OpportunityTreeResponse> => ({ ok: false, data: null, error: "Request failed.", kind: "unknown" }));
   const [res, profile] = await Promise.all([api<InjuryImpactResponse>(withTeamId("/api/injury-impact", sel)), getLeagueProfile()]);
   const prov = providerName(profile.provider);
   const labels = { prov, espn: profile.providerProjections };

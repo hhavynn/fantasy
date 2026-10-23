@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Roster } from "./injury-impact.ts";
 import {
-  CERTAINTY_LABEL, claimText, eligibilityHref, evidenceText, personnelText, sampleText, sharePct, teamSummary,
+  CERTAINTY_LABEL, claimText, eligibilityHref, emptyEffectsText, evidenceText, personnelText, sampleText, sharePct, teamSummary,
+  treeErrorText,
   type Effect, type Ownership, type Scenario, type TreePerson, type TreeTeam,
 } from "./opportunity-tree.ts";
 
@@ -81,4 +82,39 @@ test("team summary counts observed, hypothesis and abstentions separately", () =
   } as TreeTeam;
   assert.deepEqual(teamSummary(t), { scenarios: "2 unavailable · 1 returning", outcome: "1 observed · 2 hypotheses · 1 abstention" });
   assert.equal(teamSummary({ scenarios: [scenario({ outcome: "no_supported_beneficiary" })] } as TreeTeam).outcome, "No supported beneficiary");
+});
+
+test("the claim link needs a safe integer player id", () => {
+  const own: Ownership = { claim: "waivers", claimable: true, needs_claim: true };
+  assert.equal(eligibilityHref(person(own, { espn_player_id: 1.5 })), null);
+  assert.equal(eligibilityHref(person(own, { espn_player_id: Number.MAX_SAFE_INTEGER + 1 })), null);
+  assert.equal(eligibilityHref(person(own, { espn_player_id: "42" as unknown as number })), null);
+  assert.equal(eligibilityHref(person(own, { espn_player_id: -16002, position: "D/ST" })), "/waivers?add=-16002#add-drop");
+});
+
+test("'the volume spread out' never renders with fewer than 2 games without him", () => {
+  for (const n of [0, 1]) {
+    for (const outcome of ["no_supported_beneficiary", "thin_history"] as const) {
+      for (const kind of ["teammate_unavailable", "teammate_returning"] as const) {
+        const text = emptyEffectsText(scenario({ kind, outcome, sample: { team_games_with: 4, team_games_without: n, weeks_without: [] } }));
+        assert.doesNotMatch(text, /spread out/, `${n} ${outcome} ${kind}`);
+        assert.match(text, /too few games/);
+      }
+    }
+  }
+  assert.match(emptyEffectsText(scenario({ outcome: "no_supported_beneficiary" })), /Over 2 games without him .* spread out/);
+  assert.equal(emptyEffectsText(scenario({ outcome: "thin_history", sample: { team_games_with: 5, team_games_without: 1, weeks_without: [6] } })),
+    "Only 1 game without him: too few games to observe a change.");
+});
+
+test("an offline or unreadable answer never shows the backend address", () => {
+  const offline = treeErrorText({ kind: "offline", error: "Cannot reach the backend at http://10.0.0.5:8000. Start it with: cd backend && uv run uvicorn app.main:app --reload" });
+  assert.doesNotMatch(offline, /10\.0\.0\.5|http|uvicorn/);
+  assert.doesNotMatch(treeErrorText({ kind: "unknown", error: "The backend at http://10.0.0.5:8000 returned a response that is not valid JSON." }), /http/);
+  assert.equal(treeErrorText({ kind: "http", error: "League not found." }), "League not found.");
+});
+
+test("weekly-roster evidence is labelled weaker", () => {
+  assert.equal(evidenceText({ source: "weekly_roster", week: 6, status: "ACT" }), "Week 6 weekly roster: ACT (weaker evidence than a report)");
+  assert.equal(CERTAINTY_LABEL.roster_only, "Roster only, not confirmed");
 });

@@ -7,10 +7,13 @@ scenario per starter:
   teammate_unavailable   a QB / RB / WR / TE the Injury Impact page lists (analytics/injury_impact.py, same context,
                          same statuses), except a questionable player who also missed the team's last game: for him the
                          change from the last game is his return, so he is a `teammate_returning` scenario instead.
-  teammate_returning     a player with a real role who missed the team's last game while on the team and is not
-                         designated out this week. A return needs pregame evidence (listed on this week's NFL report
-                         without an Out / Doubtful designation, or a provider status that clears him); without it the
-                         scenario abstains. A missing designation is never read as a return.
+  teammate_returning     a player with a real role who missed the team's last game while on the team (not released,
+                         traded or retired on the newest weekly roster before this week) and is not designated out this
+                         week. A return needs pregame evidence: listed on this week's NFL report without an Out /
+                         Doubtful designation, a real provider designation (questionable / day to day), or, weaker, an
+                         ACT / INA status on the newest weekly roster before this week. A player whose newest roster
+                         status is a reserve list needs the NFL report listing. Without evidence the scenario abstains.
+                         ESPN's default ACTIVE / NORMAL is no designation and never evidence of a return.
 
 Every scenario carries its sample (team games with / without the starter) and, per teammate, the observed volume per
 game in those games (injury_impact._teammates: a game he was available for but did not play counts as zero). A
@@ -21,6 +24,11 @@ teammate is named only when the data supports it:
                the team's depth chart at his position, or a pro-rata share of at least HYPOTHESIS_SHARE and
                HYPOTHESIS_EXTRA per game. Always labelled a hypothesis: a depth chart or a pro-rata rule is not a
                confirmed role change.
+  thin_history fewer than MIN_SUPPORT_GAMES games without him and no hypothesis: too few games to observe a change
+               (never "the volume spread out", which needs MIN_SUPPORT_GAMES games).
+
+Teammates who are out, doubtful, on IR or suspended themselves, whose availability is unknown, or who have left the
+team are never named.
 
 A scenario abstains (names nobody) when its inputs are unknown: the team's usage misses a game the schedule says it
 played, the schedule is not synced, the team has no depth chart and the observed history is too thin, or a return has
@@ -49,19 +57,28 @@ HYPOTHESIS_SHARE = 0.25
 HYPOTHESIS_EXTRA = 2.0
 RECENT_GAMES = ii.POOL_WEEKS
 MAX_PEERS = 6
-_CLEARING_PROVIDER_STATUS = ("ACTIVE", "NORMAL")
+# Real provider designations that say a player is being considered for the game. ESPN's ACTIVE / NORMAL is its default
+# for every healthy player (availability.ESPN_STATUS): no designation, never evidence that an absent player is back.
+_PROVIDER_DESIGNATIONS = ("QUESTIONABLE", "DAY_TO_DAY")
 _NOT_BACK_REPORT = ("Out", "Doubtful")
+_ROSTER_EVIDENCE = ("ACT", "INA")
 
 METHOD = {
     "observed": "Observed: team games this season split by whether the starter played, while each teammate was on the "
-                "team and not on a reserve list. A teammate is named only with at least "
-                f"{MIN_SUPPORT_GAMES} games on each side and a change of at least the unit's threshold per game.",
-    "hypothesis": "Hypothesis: with fewer than "
-                  f"{MIN_SUPPORT_GAMES} games without the starter there is no observed relationship, so the next "
-                  "healthy player on the team's depth chart or the pro-rata split can only be a hypothesis. A depth "
-                  "chart, a coach's statement or a pro-rata rule is not a confirmed role change.",
-    "abstain": "Abstain: nobody is named when the team's usage misses a game it played, the schedule is not synced, "
-               "the team has no depth chart and the history is thin, or a return has no pregame evidence.",
+                f"team and not on a reserve list. A teammate is named only with at least {MIN_SUPPORT_GAMES} games "
+                f"on each side and a change of at least {MIN_GAIN['touches']:g} carries + targets (running backs), "
+                f"{MIN_GAIN['targets']:g} targets (receivers) or {MIN_GAIN['pass_attempts']:g} pass attempts "
+                "(quarterbacks) per game. Teammates who are out themselves, of unknown availability or no longer on "
+                "the team are never named.",
+    "hypothesis": f"Hypothesis: with fewer than {MIN_SUPPORT_GAMES} games without the starter there is no observed "
+                  "relationship, so the next healthy player on the team's depth chart, or a pro-rata share of his "
+                  f"recent volume of at least {HYPOTHESIS_SHARE:.0%} and {HYPOTHESIS_EXTRA:g} per game, can only be a "
+                  "hypothesis. A depth chart, a coach's statement or a pro-rata rule is not a confirmed role change. "
+                  "With no hypothesis either, the scenario says there are too few games to observe a change.",
+    "abstain": "Abstain: nobody is named when the team's usage misses a game it played, the schedule has no past games "
+               "for the team, the team has no depth chart and the history is thin, or a return has no pregame "
+               "evidence (this week's NFL report, a provider designation, or the newest weekly roster). A provider's "
+               "default active status is not evidence.",
     "shares": "Shares are over the games each player played among the team's last "
               f"{RECENT_GAMES}: snap share (snap counts), route share (only where an external route provider "
               "supplied values) and touch share (his carries + targets over the team's skill-player carries + "
@@ -115,11 +132,35 @@ def _routes(con, season: int, week: int) -> tuple[dict[tuple[str, int], float], 
 
 
 def _provider(league: dict) -> str:
+    """espn | sleeper, or unknown when the saved settings are missing, empty or unreadable (then waiver status is never
+    assumed). The ESPN sync saves ESPN's own settings object (no provider key); the Sleeper sync marks its own."""
+    raw = league.get("settings_raw")
     try:
-        settings = json.loads(league.get("settings_raw") or "{}")
-    except (TypeError, ValueError):
-        settings = {}
-    return provider_of(settings if isinstance(settings, dict) else {})
+        settings = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return "unknown"
+    return provider_of(settings) if isinstance(settings, dict) and settings else "unknown"
+
+
+def _newest_rosters(ctx: ii.ImpactContext) -> dict[str, tuple[int, str, str]]:
+    """gsis -> (week, team, status) of his newest weekly-roster row before the current week. The week's own row (the
+    game-day active / inactive decision) is never read. On a tie (traded that week) the row on a team wins."""
+    out: dict[str, tuple[int, str, str]] = {}
+    for (g, team), weeks in ctx.rosters.status.items():
+        pre = [w for w in weeks if w < ctx.week]
+        if not pre:
+            continue
+        w = max(pre)
+        prev = out.get(g)
+        if prev is None or w > prev[0] or (w == prev[0] and prev[2] in ii._OFF_TEAM and weeks[w] not in ii._OFF_TEAM):
+            out[g] = (w, team, weeks[w])
+    return out
+
+
+def _left_team(newest: dict, g: str, team: str) -> bool:
+    """Released, retired or traded on his newest weekly roster, or that roster is another team's."""
+    n = newest.get(g)
+    return n is not None and (n[2] in ii._OFF_TEAM or n[1] != team)
 
 
 # ----------------------------------------------------------------------------- ownership
@@ -149,8 +190,8 @@ class _TeamView:
     """One NFL team's coverage, depth chart and recent shares."""
 
     def __init__(self, ctx: ii.ImpactContext, team: str, past: dict[str, set[int]] | None,
-                 routes: dict[tuple[str, int], float]):
-        self.ctx, self.team, self.routes = ctx, team, routes
+                 routes: dict[tuple[str, int], float], newest: dict[str, tuple[int, str, str]]):
+        self.ctx, self.team, self.routes, self.newest = ctx, team, routes, newest
         self.t = ctx.teams.get(team)
         self.depth = {g: d for g, d in ctx.depth.items() if d["team"] == team}
         self.depth_as_of = max((d["as_of"] for d in self.depth.values()), default=None)
@@ -159,6 +200,10 @@ class _TeamView:
             self.coverage = {"status": "unverified", "missing_weeks": [],
                              "reason": "The NFL schedule is not synced, so whether every team game has usage is "
                                        "unknown."}
+        elif team not in past:
+            self.coverage = {"status": "unverified", "missing_weeks": [],
+                             "reason": f"The synced NFL schedule has no past games for {team}, so whether every team "
+                                       "game has usage is unknown."}
         else:
             missing = sorted(past.get(team, set()) - played)
             self.coverage = {"status": "gap" if missing else "complete", "missing_weeks": missing,
@@ -185,11 +230,10 @@ class _TeamView:
         out = {g for g, d in self.depth.items() if d["position"] in positions}
         if self.t:
             out |= {g for g in self.t.rows if ctx.team_of.get(g) == self.team and ctx.pos_of.get(g) in positions}
-        return sorted(g for g in out if not self._off_team(g))
+        return sorted(g for g in out if not self.left(g))
 
-    def _off_team(self, g: str) -> bool:
-        weeks = self.ctx.rosters.status.get((g, self.team), {})
-        return bool(weeks) and weeks[max(weeks)] in ii._OFF_TEAM
+    def left(self, g: str) -> bool:
+        return _left_team(self.newest, g, self.team)
 
     def shares(self, g: str) -> dict:
         """Snap, route and touch share over the games he played among the team's last games (None = no data)."""
@@ -260,9 +304,10 @@ def _person(ctx: ii.ImpactContext, view: _TeamView, g: str, wsk: bool) -> dict:
 # ----------------------------------------------------------------------------- scenarios
 
 
-def _subjects(ctx: ii.ImpactContext, entries: list[dict]) -> list[tuple[str, str, str, dict]]:
+def _subjects(ctx: ii.ImpactContext, entries: list[dict], newest: dict) -> list[tuple[str, str, str, dict]]:
     """(kind, gsis, position, extra) for every scenario starter. Unavailable from the Injury Impact entries; returning
-    from players with a real role who missed the team's last game and are not designated out."""
+    from players with a real role who missed the team's last game, still belong to the team on the newest weekly
+    roster and are not designated out."""
     out = []
     returning_q = set()
     for e in entries:
@@ -273,7 +318,7 @@ def _subjects(ctx: ii.ImpactContext, entries: list[dict]) -> list[tuple[str, str
     listed = {e["gsis_id"] for e in entries} - returning_q
     for team, t in ctx.teams.items():
         for g in t.rows:
-            if g in listed or ctx.team_of.get(g) != team:
+            if g in listed or ctx.team_of.get(g) != team or _left_team(newest, g, team):
                 continue
             pos = ctx.pos_of.get(g)
             if pos not in ii.POSITIONS:
@@ -288,36 +333,50 @@ def _subjects(ctx: ii.ImpactContext, entries: list[dict]) -> list[tuple[str, str
             absence = ii._absence(w)
             if absence["consecutive_team_games_missed"] == 0:
                 continue
-            out.append(("teammate_returning", g, pos, {"workload": w, "absence": absence, "team": team}))
+            reserve = g in newest and newest[g][2] in ii._RESERVE
+            out.append(("teammate_returning", g, pos, {"workload": w, "absence": absence, "team": team,
+                                                       "reserve": reserve}))
     return out
 
 
-def _return_evidence(ctx: ii.ImpactContext, g: str, provider_label: str) -> tuple[str, list[dict]]:
-    """(certainty, evidence) for a return. Certainty: if_he_plays (questionable), status_cleared, unconfirmed."""
+def _return_evidence(ctx: ii.ImpactContext, g: str, provider_label: str, newest: dict,
+                     reserve: bool) -> tuple[str, list[dict]]:
+    """(certainty, evidence) for a return: if_he_plays (questionable), status_cleared (this week's NFL report or a
+    provider designation), roster_only (only an ACT / INA weekly-roster status before this week: weaker) or
+    unconfirmed. Off a reserve list only the NFL report listing counts."""
     ev = []
     rep = ctx.reports.get((g, ctx.week))
     if rep is not None and rep["report_status"] not in _NOT_BACK_REPORT:
         ev.append({"source": "nfl_report", "week": ctx.week, "report_status": rep["report_status"],
                    "practice_status": rep["practice_status"]})
     prov = (ctx.people.get(g, {}).get("injury_status") or "").upper()
-    if prov in _CLEARING_PROVIDER_STATUS or prov in ("QUESTIONABLE", "DAY_TO_DAY"):
+    if not reserve and prov in _PROVIDER_DESIGNATIONS:
         ev.append({"source": "provider_status", "provider": provider_label, "status": prov})
-    st = ctx.status_of.get(g)
-    if not ev:
-        return "unconfirmed", ev
-    return ("if_he_plays" if st is not None and st["status"] == QUESTIONABLE else "status_cleared"), ev
+    if ev:
+        st = ctx.status_of.get(g)
+        return ("if_he_plays" if st is not None and st["status"] == QUESTIONABLE else "status_cleared"), ev
+    n = newest.get(g)
+    if not reserve and n is not None and n[2] in _ROSTER_EVIDENCE:
+        return "roster_only", [{"source": "weekly_roster", "week": n[0], "status": n[2]}]
+    return "unconfirmed", []
+
+
+def _usable(mates: list[dict], view: _TeamView, ctx: ii.ImpactContext) -> list[dict]:
+    """Teammates who could be named: not out / doubtful / IR / suspended, availability known, still on the team."""
+    return [m for m in mates if m["healthy"] and m["gsis_id"] in ctx.status_of and not view.left(m["gsis_id"])]
+
+
+def _observed_gain(m: dict, unit: str) -> bool:
+    w, wo, delta = m["observed"]["with"], m["observed"]["without"], m["observed"]["delta_per_game"]
+    return bool(w and wo and delta is not None and w["games"] >= MIN_SUPPORT_GAMES
+                and wo["games"] >= MIN_SUPPORT_GAMES and delta >= MIN_GAIN[unit])
 
 
 def _effects_unavailable(mates: list[dict], n_without: int, unit: str, subject_rank: int | None,
                          subject_pos: str, view: _TeamView, ctx: ii.ImpactContext, wsk: bool) -> tuple[str, list]:
     """(outcome, named teammates) for an unavailable starter."""
-    usable = [m for m in mates if m["healthy"] and m["gsis_id"] in ctx.status_of]
-    supported = []
-    for m in usable:
-        w, wo, delta = m["observed"]["with"], m["observed"]["without"], m["observed"]["delta_per_game"]
-        if (w and wo and delta is not None and w["games"] >= MIN_SUPPORT_GAMES and wo["games"] >= MIN_SUPPORT_GAMES
-                and delta >= MIN_GAIN[unit]):
-            supported.append(_effect(m, "observed", ["observed_gain"], view, ctx, wsk))
+    usable = _usable(mates, view, ctx)
+    supported = [_effect(m, "observed", ["observed_gain"], view, ctx, wsk) for m in usable if _observed_gain(m, unit)]
     if supported:
         return "supported", supported
     if n_without >= MIN_SUPPORT_GAMES:
@@ -335,18 +394,16 @@ def _effects_unavailable(mates: list[dict], n_without: int, unit: str, subject_r
         if (est.get("share") or 0) >= HYPOTHESIS_SHARE and (est.get("extra_per_game") or 0) >= HYPOTHESIS_EXTRA:
             reasons[m["gsis_id"]].append("pro_rata_estimate")
     named = [_effect(m, "hypothesis", reasons[m["gsis_id"]], view, ctx, wsk) for m in usable if m["gsis_id"] in reasons]
-    return ("hypothesis" if named else "no_supported_beneficiary"), named
+    return ("hypothesis" if named else "thin_history"), named
 
 
-def _effects_returning(mates: list[dict], unit: str, view: _TeamView, ctx: ii.ImpactContext,
+def _effects_returning(mates: list[dict], n_without: int, unit: str, view: _TeamView, ctx: ii.ImpactContext,
                        wsk: bool) -> tuple[str, list]:
-    named = []
-    for m in mates:
-        w, wo, delta = m["observed"]["with"], m["observed"]["without"], m["observed"]["delta_per_game"]
-        if (w and wo and delta is not None and w["games"] >= MIN_SUPPORT_GAMES and wo["games"] >= MIN_SUPPORT_GAMES
-                and delta >= MIN_GAIN[unit]):
-            named.append(_effect(m, "observed", ["gained_while_out"], view, ctx, wsk))
-    return ("supported" if named else "no_supported_beneficiary"), named
+    named = [_effect(m, "observed", ["gained_while_out"], view, ctx, wsk)
+             for m in _usable(mates, view, ctx) if _observed_gain(m, unit)]
+    if named:
+        return "supported", named
+    return ("no_supported_beneficiary" if n_without >= MIN_SUPPORT_GAMES else "thin_history"), []
 
 
 def _effect(m: dict, basis: str, reasons: list[str], view: _TeamView, ctx: ii.ImpactContext, wsk: bool) -> dict:
@@ -372,22 +429,25 @@ def _scenario(kind: str, g: str, pos: str, extra: dict, view: _TeamView, ctx: ii
         absence = e["absence"]
         vacated = e["impact"]["vacated_per_game"] if pos != "QB" else None
     else:
-        certainty, evidence = _return_evidence(ctx, g, provider_label)
+        certainty, evidence = _return_evidence(ctx, g, provider_label, view.newest, extra["reserve"])
         absence = extra["absence"]
         vacated = None
     mates, n_without = ii._teammates(
         t, g, pos, team_of=ctx.team_of, pos_of=ctx.pos_of, depth=ctx.depth, status_of=ctx.status_of,
         people=ctx.people, attempts=ctx.attempts, espn=ctx.espn, teams_by_id=ctx.teams_by_id, vacated=vacated,
-        unit=unit, pool_positions=pool_positions, rosters=ctx.rosters)
+        unit=unit, pool_positions=pool_positions, rosters=ctx.rosters, limit=None)
 
     abstain = None
     if view.coverage["status"] != "complete":
         abstain = {"code": "coverage_" + view.coverage["status"], "text": view.coverage["reason"]}
     elif kind == "teammate_returning" and certainty == "unconfirmed":
+        why = ("his newest weekly roster puts him on a reserve list and this week's NFL report does not list him"
+               if extra["reserve"] else
+               f"no NFL report entry clearing him, no {provider_label} designation and no active or inactive status on "
+               "the newest weekly roster")
         abstain = {"code": "no_return_evidence",
-                   "text": "He missed the team's last game and nothing this week says he is back: no NFL report "
-                           f"entry clearing him and no clearing {provider_label} status. A missing designation is not "
-                           "a return."}
+                   "text": f"He missed the team's last game and nothing this week says he is back: {why}. A missing "
+                           "designation, or a provider's default active status, is not a return."}
     if abstain is not None:
         outcome, effects = "abstain", []
     elif kind == "teammate_unavailable":
@@ -398,7 +458,7 @@ def _scenario(kind: str, g: str, pos: str, extra: dict, view: _TeamView, ctx: ii
                                f"{'is no game' if n_without == 0 else 'is one game'} without him, so there is no "
                                "basis to name a beneficiary."}
     else:
-        outcome, effects = _effects_returning(mates, unit, view, ctx, wsk)
+        outcome, effects = _effects_returning(mates, n_without, unit, view, ctx, wsk)
     return {"kind": kind, "subject": {**subject, "absence": absence}, "certainty": certainty, "evidence": evidence,
             "unit": unit, "unit_label": ii._UNIT_LABEL[unit],
             "sample": {"team_games_with": len(with_weeks), "team_games_without": len(without_weeks),
@@ -415,20 +475,21 @@ def build_opportunity_tree(con, *, team_id: int | None = None, now: datetime | N
     ctx = ii.load_context(con, team_id=team_id, now=now)
     entries, _ = ii.impact_entries(ctx)
     provider = _provider(ctx.league)
-    provider_label = PROVIDERS[provider]
-    wsk = provider != "sleeper"
+    provider_label = PROVIDERS.get(provider, "the provider")
+    wsk = provider == "espn"          # only a provider known to report waivers vs free agents
+    newest = _newest_rosters(ctx)
     past = _past_games(con, ctx.season, ctx.week)
     routes, route_providers = _routes(con, ctx.season, ctx.week)
 
     by_team: dict[str, list] = defaultdict(list)
-    for kind, g, pos, extra in _subjects(ctx, entries):
+    for kind, g, pos, extra in _subjects(ctx, entries, newest):
         team = extra["entry"]["team"] if kind == "teammate_unavailable" else extra["team"]
         if team in ctx.teams:
             by_team[team].append((kind, g, pos, extra))
 
     teams = []
     for team, subjects in by_team.items():
-        view = _TeamView(ctx, team, past, routes)
+        view = _TeamView(ctx, team, past, routes, newest)
         scenarios = [_scenario(k, g, pos, x, view, ctx, wsk, provider_label) for k, g, pos, x in subjects]
         scenarios.sort(key=lambda s: (s["kind"] != "teammate_unavailable", s["subject"]["position"],
                                       s["subject"]["depth_rank"] or 99, s["subject"]["full_name"]))
@@ -468,6 +529,7 @@ def build_opportunity_tree(con, *, team_id: int | None = None, now: datetime | N
               "supported": sum(1 for s in all_s if s["outcome"] == "supported"),
               "hypothesis": sum(1 for s in all_s if s["outcome"] == "hypothesis"),
               "no_supported_beneficiary": sum(1 for s in all_s if s["outcome"] == "no_supported_beneficiary"),
+              "thin_history": sum(1 for s in all_s if s["outcome"] == "thin_history"),
               "abstained": sum(1 for s in all_s if s["outcome"] == "abstain")}
     notices = []
     if past is None:
@@ -480,8 +542,10 @@ def build_opportunity_tree(con, *, team_id: int | None = None, now: datetime | N
                                 "depth-chart hypothesis is made."})
     if not wsk:
         notices.append({"tone": "info", "code": "waiver_status_unknown",
-                        "text": f"{provider_label} does not report whether an unrostered player is on waivers, so "
-                                "whether adding one needs a claim is unknown."})
+                        "text": (f"{provider_label} does not report whether an unrostered player is on waivers, so "
+                                 "whether adding one needs a claim is unknown.") if provider == "sleeper" else
+                        ("The league's provider could not be read from its saved settings, so whether adding an "
+                         "unrostered player needs a claim is unknown.")})
     return {
         "version": TREE_VERSION, "season": ctx.season, "week": ctx.week, "generated_at": ctx.now.isoformat() + "Z",
         "league_context": {"available": bool(ctx.teams_rows), "league_name": ctx.league["name"],

@@ -14,9 +14,9 @@ in weeks 1-6, so a game without usage is a game he missed while on the team.
     DEN  returning starter WITH evidence. Den WR1 played 1-3, missed 4-6, listed on the week-7 NFL report with no
          designation (full practice). Den WR2 (MY team) 4 targets/g with him, 9 without: gained while he was out.
          Den TE 3 targets every game. Depth: WR1 1, WR2 2, TE 1.
-    MIA  NO depth chart. Mia RB1 played 1-4, missed 5-6, nothing this week says he is back (no report row, no ESPN
-         status): returning without evidence. Mia RB2 3 touches/g with him, 12 without. Mia WR1 ESPN OUT, played
-         1-6 (new absence, no history, no depth chart): abstains.
+    MIA  NO depth chart. Mia RB1 played 1-4, missed 5-6, no report row and no ESPN designation: his only evidence is
+         the week-6 weekly roster (ACT), so his return is "roster only". Mia RB2 3 touches/g with him, 12 without.
+         Mia WR1 ESPN OUT, played 1-6 (new absence, no history, no depth chart): abstains.
 """
 
 import json
@@ -72,8 +72,10 @@ DEPTH = (("KC", 101, "RB", 1), ("KC", 102, "RB", 2), ("KC", 103, "RB", 3),
          ("DEN", 301, "WR", 1), ("DEN", 302, "WR", 2), ("DEN", 303, "TE", 1))
 
 
-def build(con, *, provider=None):
-    settings = json.dumps({"provider": provider} if provider else {})
+def build(con, *, provider=None, settings_raw=None):
+    # The ESPN sync saves ESPN's settings object (no provider key); the Sleeper sync marks its own.
+    settings = settings_raw if settings_raw is not None else json.dumps(
+        {"provider": provider} if provider else {"name": "Tree League"})
     con.execute("""INSERT INTO leagues (league_id, season, name, current_week, final_scoring_period,
                    reg_season_matchups, scoring_items, settings_raw, synced_at)
                    VALUES (1, ?, 'Tree League', ?, 17, 14, '[]', ?, '2026-10-23 10:00:00')""",
@@ -227,10 +229,129 @@ def test_returning_starter_with_report_evidence_shows_who_gained_while_he_was_ou
     assert set(effects(s)) == {302}               # the TE's volume did not change
 
 
-def test_returning_starter_without_evidence_abstains(league):
+def test_a_weekly_roster_status_alone_is_weaker_roster_only_evidence(league):
+    s = scenario(get(league), 401)
+    assert s["kind"] == "teammate_returning" and s["certainty"] == "roster_only"
+    assert s["evidence"] == [{"source": "weekly_roster", "week": 6, "status": "ACT"}]
+    assert s["outcome"] == "supported" and set(effects(s)) == {402}
+
+
+def test_espn_default_active_is_not_return_evidence(league):
+    """ESPN writes ACTIVE for every healthy player: a starter who missed the last game is not 'cleared' by it."""
+    league.execute("DROP TABLE nfl_rosters_weekly")
+    league.execute("UPDATE fantasy_players SET injury_status = 'ACTIVE' WHERE espn_player_id = 401")
     s = scenario(get(league), 401)
     assert s["kind"] == "teammate_returning" and s["certainty"] == "unconfirmed" and s["evidence"] == []
     assert s["outcome"] == "abstain" and s["abstain"]["code"] == "no_return_evidence" and s["effects"] == []
+    assert "default active status" in s["abstain"]["text"]
+
+
+def _reserve(league, pid):
+    league.execute("UPDATE nfl_rosters_weekly SET status = 'RES' WHERE gsis_id = ? AND week = 6", [G[pid]])
+    league.execute("UPDATE fantasy_players SET injury_status = 'ACTIVE' WHERE espn_player_id = ?", [pid])
+
+
+def test_off_a_reserve_list_only_this_weeks_report_counts(league):
+    _reserve(league, 401)
+    s = scenario(get(league), 401)
+    assert s["certainty"] == "unconfirmed" and s["outcome"] == "abstain"
+    assert s["abstain"]["code"] == "no_return_evidence" and "reserve list" in s["abstain"]["text"]
+
+
+def test_off_a_reserve_list_with_a_report_listing_is_status_cleared(league):
+    _reserve(league, 401)
+    league.execute("INSERT INTO nfl_injuries VALUES (?, 'REG', 'MIA', ?, ?, 'RB', 'Mia RB1', NULL, 'Knee', "
+                   "'Full Participation in Practice')", [SEASON, CURRENT, G[401]])
+    s = scenario(get(league), 401)
+    assert s["certainty"] == "status_cleared" and [e["source"] for e in s["evidence"]] == ["nfl_report"]
+    assert s["outcome"] == "supported"
+
+
+def test_a_released_player_is_no_returning_scenario(league):
+    league.execute("UPDATE nfl_rosters_weekly SET status = 'CUT' WHERE gsis_id = ? AND week = 6", [G[301]])
+    body = get(league)
+    assert all(s["subject"]["espn_player_id"] != 301 for t in body["teams"] for s in t["scenarios"])
+
+
+def test_no_game_without_him_and_no_hypothesis_is_thin_history_not_spread_out(league):
+    league.execute("DELETE FROM player_week_usage WHERE gsis_id IN (?, ?)", [G[202], G[203]])
+    league.execute("DELETE FROM nfl_depth_charts WHERE gsis_id IN (?, ?)", [G[202], G[203]])
+    s = scenario(get(league), 201)
+    assert s["sample"]["team_games_without"] == 0
+    assert s["outcome"] == "thin_history" and s["effects"] == [] and s["abstain"] is None
+
+
+def test_a_return_after_one_missed_game_is_thin_history(league):
+    for w in (4, 5):
+        league.execute("INSERT INTO player_week_usage (season, week, gsis_id, team, position, offense_snaps, "
+                       "offense_pct, targets, carries, opportunities) VALUES (?, ?, ?, 'DEN', 'WR', 54, 0.9, 9, 0, 9)",
+                       [SEASON, w, G[301]])
+    s = scenario(get(league), 301)
+    assert s["sample"]["team_games_without"] == 1
+    assert s["outcome"] == "thin_history" and s["effects"] == []
+
+
+def test_a_qualifying_teammate_past_the_injury_pages_top_five_is_still_named(league):
+    """Five more DEN receivers with more recent volume than Den WR2 push him to 6th: still named on observed data."""
+    for i, pid in enumerate(range(304, 309)):
+        g = f"00-T{pid}"
+        league.execute("""INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, injury_status,
+                          availability_status, on_team_id, percent_owned, synced_at)
+                          VALUES (?, ?, 'WR', 'DEN', NULL, 'FREEAGENT', NULL, 5.0, '2026-10-23 10:00:00')""",
+                       [pid, f"Den Extra {i}"])
+        league.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_confidence) VALUES (?, ?, 'high')",
+                       [pid, g])
+        for w in WEEKS:
+            league.execute("INSERT INTO player_week_usage (season, week, gsis_id, team, position, offense_snaps, "
+                           "offense_pct, targets, carries, opportunities) VALUES (?, ?, ?, 'DEN', 'WR', 30, 0.5, 10, 0, "
+                           "10)", [SEASON, w, g])
+            league.execute("INSERT INTO nfl_rosters_weekly VALUES (?, ?, 'REG', 'DEN', ?, 'ACT')", [SEASON, w, g])
+    s = scenario(get(league), 301)
+    assert set(effects(s)) == {302}
+
+
+def test_a_teammate_who_left_the_team_is_never_named(league):
+    league.execute("UPDATE nfl_rosters_weekly SET status = 'CUT' WHERE gsis_id = ? AND week = 6", [G[102]])
+    body = get(league)
+    s = scenario(body, 101)
+    assert 102 not in effects(s) and s["outcome"] == "no_supported_beneficiary"
+    assert 102 not in {p["espn_player_id"] for p in team(body, "KC")["groups"][0]["peers"]}
+
+
+def test_a_return_never_names_a_teammate_who_is_out_himself(league):
+    league.execute("UPDATE fantasy_players SET injury_status = 'OUT' WHERE espn_player_id = 302")
+    s = scenario(get(league), 301)
+    assert 302 not in effects(s)
+
+
+def test_a_team_without_past_schedule_rows_is_unverified_not_complete(league):
+    league.execute("DELETE FROM nfl_schedules WHERE home_team = 'DEN' AND week < ?", [CURRENT])
+    body = get(league)
+    for name in ("DEN", "MIA"):
+        t = team(body, name)
+        assert t["coverage"]["status"] == "unverified"
+        assert all(s["abstain"]["code"] == "coverage_unverified" for s in t["scenarios"])
+    assert team(body, "KC")["coverage"]["status"] == "complete"
+
+
+def test_method_text_states_the_thresholds(league):
+    m = get(league)["method"]
+    assert "at least 2 games on each side" in m["observed"]
+    assert "3 carries + targets" in m["observed"] and "3 targets" in m["observed"]
+    assert "10 pass attempts" in m["observed"]
+    assert "at least 25% and 2 per game" in m["hypothesis"]
+
+
+def test_missing_settings_never_assume_waiver_status(tmp_path):
+    c = connect(tmp_path / "bad.duckdb")
+    init_db(c)
+    build(c, settings_raw="{}")            # nothing saved: neither ESPN's settings object nor a Sleeper mark
+    body = get(c)
+    assert body["league_context"]["provider"] == "unknown" and body["league_context"]["waiver_status_known"] is False
+    peers = {p["espn_player_id"]: p for p in team(body, "KC")["groups"][0]["peers"]}
+    assert peers[103]["ownership"]["claim"] == "available_claim_unknown"
+    assert any(n["code"] == "waiver_status_unknown" for n in body["notices"])
+    c.close()
 
 
 def test_questionable_after_missing_the_last_game_is_a_return_if_he_plays(league):
@@ -307,8 +428,8 @@ def test_sleeper_free_agents_are_never_no_claim_needed(tmp_path):
 
 def test_counts_and_team_order(league):
     body = get(league)
-    assert body["counts"] == {"teams": 4, "unavailable": 3, "returning": 2, "supported": 2, "hypothesis": 1,
-                              "no_supported_beneficiary": 0, "abstained": 2}
+    assert body["counts"] == {"teams": 4, "unavailable": 3, "returning": 2, "supported": 3, "hypothesis": 1,
+                              "no_supported_beneficiary": 0, "thin_history": 0, "abstained": 1}
     # Teams touching the selected roster first (KC: Ace is mine; DEN: WR2 is mine), then the rest.
     assert [t["team"] for t in body["teams"]] == ["DEN", "KC", "BUF", "MIA"]
 
@@ -343,3 +464,26 @@ def test_route_returns_the_contract_shape_and_errors(api):
     assert api.get("/api/injury-impact/opportunity-tree", params={"team_id": OTHER_TEAM}).json()[
         "league_context"]["my_team_id"] == OTHER_TEAM
     assert api.get("/api/injury-impact/opportunity-tree", params={"team_id": 99}).status_code == 404
+
+
+# ============================================================================= /v2: authorization before parameters
+
+from golden.golden import build_e2e_db  # noqa: E402
+from league_fixtures import publish_local  # noqa: E402
+from test_league_scope import client as v2_client, served  # noqa: E402,F401  (fixtures)
+from test_leagues_api import env  # noqa: E402,F401  (fixture)
+
+
+@pytest.fixture(scope="module")
+def e2e_db(tmp_path_factory):
+    return build_e2e_db(tmp_path_factory.mktemp("tree_v2") / "e2e.duckdb")
+
+
+def test_v2_hidden_or_unknown_league_is_404_whatever_the_team_id(pg, served, v2_client, e2e_db, tmp_path):
+    """A private league read anonymously, and an unknown league, answer the same 404 before `team_id` is parsed: a
+    malformed or out-of-range team never reveals that the league exists."""
+    pub = publish_local(pg, e2e_db, served, tmp_path / "w", visibility="private")
+    for lg in (pub.league_id, "lg_" + "z" * 24):
+        for q in ("team_id=abc", "team_id=9999999", ""):
+            r = v2_client.get(f"/v2/leagues/{lg}/api/injury-impact/opportunity-tree?{q}")
+            assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), (lg, q)

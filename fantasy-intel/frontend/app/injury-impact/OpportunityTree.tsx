@@ -1,12 +1,12 @@
 import Link from "@/components/LeagueLink";
-import { Badge, Notice } from "@/components/ui";
+import { Badge, Method, Notice } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
 import { Missing, num } from "@/lib/format";
 import { gameLabel, levelBadge } from "@/lib/injury-impact";
 import {
-  CERTAINTY_LABEL, claimText, eligibilityHref, evidenceText, OUTCOME_LABEL, personnelText, REASON_LABEL, sampleText,
-  SCENARIO_LABEL, sharePct, teamSummary, unitShort, type Effect, type OpportunityTreeResponse, type Peer, type Scenario,
-  type TreePerson, type TreeTeam,
+  CERTAINTY_LABEL, claimText, eligibilityHref, emptyEffectsText, evidenceText, OUTCOME_LABEL, personnelText, REASON_LABEL,
+  sampleText, SCENARIO_LABEL, sharePct, teamSummary, treeErrorText, unitShort, type Effect, type OpportunityTreeResponse,
+  type Peer, type Scenario, type TreePerson, type TreeTeam,
 } from "@/lib/opportunity-tree";
 import { plural } from "@/lib/plural";
 import { withTeam } from "@/lib/team-perspective";
@@ -122,7 +122,7 @@ function ScenarioBlock({ s, ctx }: { s: Scenario; ctx: Ctx }) {
     <article className={styles.scenario} aria-label={`${SCENARIO_LABEL[s.kind]}: ${s.subject.full_name}`}>
       <h4 className={styles.scenarioTitle}>
         <span>{SCENARIO_LABEL[s.kind]}</span>
-        <Badge value={CERTAINTY_LABEL[s.certainty]} tone={s.certainty === "unconfirmed" ? "warn" : ""} />
+        <Badge value={CERTAINTY_LABEL[s.certainty]} tone={s.certainty === "unconfirmed" || s.certainty === "roster_only" ? "warn" : ""} />
         <Badge value={o.text} tone={o.tone} />
       </h4>
       <Who id={s.subject.espn_player_id} name={s.subject.full_name} position={s.subject.position}
@@ -134,11 +134,7 @@ function ScenarioBlock({ s, ctx }: { s: Scenario; ctx: Ctx }) {
       {s.abstain ? (
         <p className={styles.none}><strong>Nobody named.</strong> {s.abstain.text}</p>
       ) : s.effects.length === 0 ? (
-        <p className={styles.none}>
-          {s.kind === "teammate_returning"
-            ? `No teammate's ${s.unit_label} changed enough while he was out to name.`
-            : `Over ${s.sample.team_games_without} ${plural(s.sample.team_games_without, "game")} without him no teammate gained enough to name: the volume spread out.`}
-        </p>
+        <p className={styles.none}>{emptyEffectsText(s)}</p>
       ) : (
         <ul className={styles.actionList}>{s.effects.map((e) => <EffectRow key={e.gsis_id} e={e} s={s} ctx={ctx} />)}</ul>
       )}
@@ -178,7 +174,7 @@ export async function OpportunityTree({ tree, team, prov }: {
 }) {
   const res = await tree;
   if (!res.ok) {
-    return <Notice tone="caution" title="Depth charts could not be loaded">{res.error}</Notice>;
+    return <Notice tone="caution" title="Depth charts could not be loaded">{treeErrorText(res)}</Notice>;
   }
   const data = res.data;
   const c = data.counts;
@@ -189,15 +185,23 @@ export async function OpportunityTree({ tree, team, prov }: {
         {c.teams === 0
           ? <>No team has an injured or returning starter with a real role in week {data.week}.</>
           : <>{c.teams} {plural(c.teams, "team")}: {c.unavailable} unavailable and {c.returning} returning {plural(c.unavailable + c.returning, "starter")}.
-            {" "}{c.supported} with an observed beneficiary, {c.hypothesis} with hypotheses only, {c.abstained} {plural(c.abstained, "abstains", "abstain")}.</>}
+            {" "}{c.supported} with an observed beneficiary, {c.hypothesis} with hypotheses only, {c.thin_history} with too few games,
+            {" "}{c.abstained} {plural(c.abstained, "abstains", "abstain")}.</>}
       </p>
       {data.notices.map((n) => <Notice key={n.code} tone={n.tone} title={NOTICE_TITLE[n.code] ?? "Data notice"}>{n.text}</Notice>)}
       {data.teams.map((t) => <TeamBlock key={t.team} t={t} ctx={ctx} />)}
       <p className={styles.subLine}>
-        {data.method.observed} {data.method.hypothesis} {data.method.abstain}
-        {" "}Usage through week {num(data.sources.usage_through_week, 0, "No usage synced")}.
+        Usage through week {num(data.sources.usage_through_week, 0, "No usage synced")}.
         {" "}{data.sources.route_providers.length > 0 ? `Route participation: ${data.sources.route_providers.join(", ")}.` : "Route participation: unavailable."}
       </p>
+      <Method title="How the opportunity tree is decided">
+        <div className={styles.method}>
+          <p>{data.method.observed}</p>
+          <p>{data.method.hypothesis}</p>
+          <p>{data.method.abstain}</p>
+          <p>{data.method.shares}</p>
+        </div>
+      </Method>
     </div>
   );
 }

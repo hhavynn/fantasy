@@ -1,6 +1,8 @@
 // Pure helpers for the opportunity tree on /injury-impact (issue #190): the response types, labels and the links to
 // waiver eligibility. No React and no `@/` imports, so they run under the unit-test runner. The contract is
 // docs/opportunity_tree.md and backend/app/analytics/opportunity_tree.py.
+import { addDropHref } from "./add-drop.ts";
+import type { ApiErrorKind } from "./api-errors.ts";
 import type { InjuryLevel, Roster, UsageSide } from "./injury-impact.ts";
 import { plural } from "./plural.ts";
 
@@ -41,13 +43,14 @@ export type Effect = TreePerson & {
   estimate: { share: number | null; extra_per_game: number | null } | null;
 };
 
-export type Certainty = "designated_out" | "if_he_sits" | "if_he_plays" | "status_cleared" | "unconfirmed";
-export type Outcome = "supported" | "hypothesis" | "no_supported_beneficiary" | "abstain";
+export type Certainty = "designated_out" | "if_he_sits" | "if_he_plays" | "status_cleared" | "roster_only" | "unconfirmed";
+export type Outcome = "supported" | "hypothesis" | "no_supported_beneficiary" | "thin_history" | "abstain";
 
 export type Evidence =
   | { source: "status"; level: InjuryLevel; sources: string[]; nfl_report_status: string | null; practice_status: string | null }
   | { source: "nfl_report"; week: number; report_status: string | null; practice_status: string | null }
-  | { source: "provider_status"; provider: string; status: string };
+  | { source: "provider_status"; provider: string; status: string }
+  | { source: "weekly_roster"; week: number; status: string };
 
 export type Scenario = {
   kind: "teammate_unavailable" | "teammate_returning";
@@ -80,14 +83,17 @@ export type OpportunityTreeResponse = {
   generated_at: string;
   league_context: {
     available: boolean; league_name: string | null; my_team_id: number | null; perspective: "query" | "owner_default";
-    provider: "espn" | "sleeper"; waiver_status_known: boolean;
+    provider: "espn" | "sleeper" | "unknown"; waiver_status_known: boolean;
   };
   sources: {
     usage_through_week: number | null; depth_chart_as_of: string | null; schedule_synced: boolean;
     weekly_rosters_synced: boolean; route_providers: string[];
   };
   method: { observed: string; hypothesis: string; abstain: string; shares: string; thresholds: Record<string, unknown> };
-  counts: { teams: number; unavailable: number; returning: number; supported: number; hypothesis: number; no_supported_beneficiary: number; abstained: number };
+  counts: {
+    teams: number; unavailable: number; returning: number; supported: number; hypothesis: number;
+    no_supported_beneficiary: number; thin_history: number; abstained: number;
+  };
   notices: { tone: "info" | "caution" | "negative"; code: string; text: string }[];
   teams: TreeTeam[];
 };
@@ -105,6 +111,7 @@ export const CERTAINTY_LABEL: Record<Certainty, string> = {
   if_he_sits: "If he sits",
   if_he_plays: "If he plays",
   status_cleared: "Status cleared, not confirmed",
+  roster_only: "Roster only, not confirmed",
   unconfirmed: "Return unconfirmed",
 };
 
@@ -112,6 +119,7 @@ export const OUTCOME_LABEL: Record<Outcome, { text: string; tone: "good" | "info
   supported: { text: "Observed", tone: "good" },
   hypothesis: { text: "Hypothesis only", tone: "warn" },
   no_supported_beneficiary: { text: "No supported beneficiary", tone: "" },
+  thin_history: { text: "Too few games", tone: "" },
   abstain: { text: "Abstains", tone: "" },
 };
 
@@ -144,7 +152,29 @@ export function evidenceText(e: Evidence): string {
   if (e.source === "nfl_report") {
     return [`Week ${e.week} NFL report: ${e.report_status ?? "no game designation"}`, e.practice_status].filter(Boolean).join(" · ");
   }
+  if (e.source === "weekly_roster") return `Week ${e.week} weekly roster: ${e.status} (weaker evidence than a report)`;
   return `${e.provider} status: ${e.status.toLowerCase().replaceAll("_", " ")}`;
+}
+
+/**
+ * What a scenario that names nobody says. "The volume spread out" only with at least `minGames` games without him (the
+ * backend's `no_supported_beneficiary`); with fewer there are too few games to observe a change.
+ */
+export function emptyEffectsText(s: Scenario, minGames = 2): string {
+  const n = s.sample.team_games_without;
+  if (s.outcome === "no_supported_beneficiary" && n >= minGames) {
+    return s.kind === "teammate_returning"
+      ? `No teammate's ${s.unit_label} changed enough over ${n} games without him to name.`
+      : `Over ${n} games without him no teammate gained enough to name: the volume spread out.`;
+  }
+  return n === 0 ? "No team game without him this season: too few games to observe a change."
+    : `Only ${n} ${plural(n, "game")} without him: too few games to observe a change.`;
+}
+
+/** The tree's error notice. Only the backend's own message (an HTTP error) is shown; an offline or unreadable answer
+ *  gets a generic line, so the backend address never reaches the page. */
+export function treeErrorText(res: { error: string; kind?: ApiErrorKind }): string {
+  return res.kind === "http" ? res.error : "The depth charts could not be loaded right now. Reload the page to try again.";
 }
 
 /** A personnel change as a factual sentence with its week. */
@@ -175,9 +205,10 @@ export function claimText(o: Ownership, roster: Roster, provider: string): { tex
 
 /** The add/drop check on the waivers page for a claimable player (it checks eligibility, claim rules and drops). */
 export function eligibilityHref(p: TreePerson): string | null {
-  if (p.ownership.claimable !== true || p.espn_player_id === null) return null;
-  const pos = p.position && ["QB", "RB", "WR", "TE"].includes(p.position) ? `pos=${p.position}&` : "";
-  return `/waivers?${pos}add=${p.espn_player_id}#add-drop`;
+  const id = p.espn_player_id;
+  if (p.ownership.claimable !== true || typeof id !== "number" || !Number.isSafeInteger(id)) return null;
+  const sp = p.position && ["QB", "RB", "WR", "TE"].includes(p.position) ? { pos: p.position } : {};
+  return addDropHref("/waivers", sp, { add: id, drop: null });
 }
 
 /** "62%" or null (the caller renders a muted dash with a reason). */

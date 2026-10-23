@@ -389,7 +389,10 @@ def _split_weeks(t: _Team, injured: str, rosters: _Rosters) -> tuple[list[int], 
 
 def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: dict, depth: dict,
                status_of: dict, people: dict, attempts: dict, espn: dict, teams_by_id: dict, vacated: float | None,
-               unit: str, pool_positions: tuple[str, ...], rosters: _Rosters) -> tuple[list[dict], int]:
+               unit: str, pool_positions: tuple[str, ...], rosters: _Rosters,
+               limit: int | None = MAX_TEAMMATES) -> tuple[list[dict], int]:
+    """(relevant teammates, team games without him). `limit` caps the list (this page shows MAX_TEAMMATES); the
+    opportunity tree passes None so a qualifying teammate past the cap is still considered."""
     with_weeks, without_weeks = _split_weeks(t, injured, rosters)
     recent_weeks = t.weeks[-POOL_WEEKS:]
     # The split uses each teammate's role in the last games the injured player DID play: after he has already
@@ -455,7 +458,7 @@ def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: 
         out.sort(key=key)
     relevant = [m for m in out if (m["recent_volume_per_game"] or 0) > 0 or (m["depth_rank"] or 99) <= 3
                 or (m["observed"]["without"] or {}).get("played")]
-    return relevant[:MAX_TEAMMATES], len(without_weeks)
+    return (relevant if limit is None else relevant[:limit]), len(without_weeks)
 
 
 def _qb_receivers(t: _Team, injured: str, *, team_of: dict, pos_of: dict, people: dict, attempts: dict,
