@@ -9,7 +9,7 @@ import { ownershipAvailable, type Provider } from "@/lib/labels";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
-import { addable, rosterStatus } from "@/lib/roster-status";
+import { nextSteps } from "@/lib/roster-status";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { PlayerListRow } from "./types";
@@ -77,7 +77,7 @@ export function ResultsTable({ rows, q, limit, provider = "espn" }: { rows: Play
           <tbody>
             {rows.map((p) => {
               const owner = ownerBadge(p.fantasy_team, p.availability_status, provider);
-              const held = rosterStatus(p.availability_status, p.fantasy_team, provider).kind;
+              const steps = nextSteps(p.availability_status, p.fantasy_team, provider);
               return (
                 <tr key={p.espn_player_id}>
                   <td>
@@ -97,11 +97,11 @@ export function ResultsTable({ rows, q, limit, provider = "espn" }: { rows: Play
                     <span className={styles.next}>
                       <CompareLink a={p.espn_player_id} aName={p.full_name} />
                       {/* Adds only for a player off every roster; trades only for a rostered one. Unknown gets neither. */}
-                      {addable(held) && (
+                      {steps.add && (
                         <TeamLink href={addDropHref("/waivers", {}, { add: p.espn_player_id, drop: null })} className={styles.nextLink}
                           aria-label={`Simulate adding ${p.full_name} on Waivers`}>Simulate add</TeamLink>
                       )}
-                      {held === "rostered" && (
+                      {steps.trade && (
                         <TeamLink href={`/trades/discover?mode=targeted&target=${p.espn_player_id}`} className={styles.nextLink}
                           aria-label={`Find trades for ${p.full_name}`}>Find trades</TeamLink>
                       )}

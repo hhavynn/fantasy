@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addable, injuryText, rosterStatus } from "./roster-status.ts";
+import { addable, injuryText, nextSteps, rosterStatus } from "./roster-status.ts";
 
 test("ESPN roster states: rostered by a named team, on waivers, or a free agent", () => {
   assert.deepEqual(rosterStatus("ONTEAM", "Team 1"), { kind: "rostered", text: "Team 1", title: "Rostered by Team 1" });
@@ -38,4 +38,20 @@ test("injury designations in words; ACTIVE and NORMAL mean none", () => {
   assert.equal(injuryText("QUESTIONABLE"), "Questionable");
   assert.equal(injuryText("PUP_LIST"), "Pup list");
   for (const s of [null, undefined, "", "ACTIVE", "NORMAL", " active "]) assert.equal(injuryText(s), null, String(s));
+});
+
+test("missing roster information never reads or acts as availability: no free wording, no Simulate add", () => {
+  for (const provider of ["espn", "sleeper", null] as const) {
+    for (const availability of [null, undefined, "", "OTHER", "ACTIVE"]) {
+      const s = rosterStatus(availability, null, provider);
+      assert.equal(s.text, "Roster status unknown", `${provider} ${availability}`);
+      assert.doesNotMatch(s.text, /free agent|not rostered|waivers/i);
+      assert.deepEqual(nextSteps(availability, null, provider), { add: false, trade: false }, `${provider} ${availability}`);
+    }
+  }
+  assert.deepEqual(nextSteps("FREEAGENT", null, "espn"), { add: true, trade: false });
+  assert.deepEqual(nextSteps("WAIVERS", null, "espn"), { add: true, trade: false });
+  assert.deepEqual(nextSteps("FREEAGENT", null, "sleeper"), { add: true, trade: false });
+  assert.deepEqual(nextSteps("ONTEAM", "Team 2", "espn"), { add: false, trade: true });
+  assert.deepEqual(nextSteps("ONTEAM", null, "sleeper"), { add: false, trade: true });
 });

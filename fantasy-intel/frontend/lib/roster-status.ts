@@ -41,6 +41,17 @@ export function addable(kind: RosterKind): boolean {
   return kind === "free" || kind === "waivers" || kind === "unrostered";
 }
 
+/**
+ * The next steps a search result offers: "Simulate add" only for a player the provider says is off every roster (free,
+ * on waivers, or unrostered on Sleeper), "Find trades" only for a rostered one. Missing or unknown roster information
+ * offers neither: it is never treated as availability.
+ */
+export function nextSteps(availability: string | null | undefined, owner: string | null | undefined,
+  provider: Provider | string | null | undefined = "espn"): { add: boolean; trade: boolean } {
+  const kind = rosterStatus(availability, owner, provider).kind;
+  return { add: addable(kind), trade: kind === "rostered" };
+}
+
 const INJURY_TEXT: Record<string, string> = {
   INJURY_RESERVE: "IR", OUT: "Out", DOUBTFUL: "Doubtful", QUESTIONABLE: "Questionable", PROBABLE: "Probable",
   SUSPENSION: "Suspended", DAY_TO_DAY: "Day to day",
