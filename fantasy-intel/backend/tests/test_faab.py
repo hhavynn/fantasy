@@ -386,21 +386,66 @@ def _ranged(rank, low, high):
 
 
 def test_more_ranged_claims_than_dollars_are_never_shown_below_the_minimum_bid():
-    """$5 left, minimum bid $1, eight claims at $1-$1: scaling would show $0 on every one. Instead each is marked not
-    fundable if every claim wins, and the plan says the eight cannot all be funded at the minimum."""
+    """$5 left, minimum bid $1, eight claims at $1-$1: scaling would show $0 on every one. The first five in plan order
+    keep the $1 minimum; the last three are marked not fundable if every claim wins, and the plan says so."""
     claims = [_ranged(r, 1, 1) for r in range(1, 9)]
     comb = combined(claims, [], 5, 1, "ESPN")
     assert comb["fits"] is False and comb["max_winners"] == 8 and comb["fundable_at_minimum"] is False
-    assert comb["unfundable_ranks"] == list(range(1, 9))
-    for c in claims:
+    assert comb["unfundable_ranks"] == [6, 7, 8]
+    for c in claims[:5]:
+        assert c["if_all_win"] == {"low": 1, "high": 1} and c["fundable_if_all_win"] is True and not c["notes"]
+    for c in claims[5:]:
         assert c["if_all_win"] is None and c["fundable_if_all_win"] is False
         assert [n["code"] for n in c["notes"]] == ["NOT_FUNDABLE_IF_ALL_WIN"]
-    # a top that still clears the minimum keeps a number, never below the minimum
+    # unfundable claims are chosen by plan order, not by size: a large later claim is the one left out
+    order = [_ranged(1, 1, 1), _ranged(2, 1, 1), _ranged(3, 50, 100)]
+    assert combined(order, [], 2, 1, "ESPN")["unfundable_ranks"] == [3]
+
+
+def test_the_minimum_is_reserved_for_every_winner_before_the_rest_is_shared():
+    """The review repro: $10 left, $1 minimum, one claim at $50-$100 and nine at $1-$1, no conflicts. All ten can be
+    funded at the minimum, so none is unfundable, and the large claim's top is $1 (the nine others need $9)."""
+    claims = [_ranged(1, 50, 100)] + [_ranged(r, 1, 1) for r in range(2, 11)]
+    comb = combined(claims, [], 10, 1, "ESPN")
+    assert comb["fits"] is False and comb["max_winners"] == 10 and comb["fundable_at_minimum"] is True
+    assert comb["unfundable_ranks"] == []
+    assert all(c["fundable_if_all_win"] and c["if_all_win"]["high"] >= 1 for c in claims)
+    assert sum(c["if_all_win"]["high"] for c in claims) <= 10
+    assert claims[0]["if_all_win"] == {"low": 1, "high": 1}
+    assert not any(n["code"] == "NOT_FUNDABLE_IF_ALL_WIN" for c in claims for n in c["notes"])
+    # with money left over after the minimums it is shared by each claim's excess over the minimum
     mixed = [_ranged(1, 4, 40), _ranged(2, 1, 1)]
     comb = combined(mixed, [], 5, 1, "ESPN")
-    assert mixed[0]["if_all_win"] == {"low": 4, "high": 4} and mixed[0]["fundable_if_all_win"] is True
-    assert mixed[1]["if_all_win"] is None and comb["unfundable_ranks"] == [2]
-    assert comb["fundable_at_minimum"] is True            # two winners at $1 fit in $5
+    assert mixed[0]["if_all_win"] == {"low": 4, "high": 4} and mixed[1]["if_all_win"] == {"low": 1, "high": 1}
+    assert comb["fundable_at_minimum"] is True and comb["unfundable_ranks"] == []
+
+
+@pytest.mark.parametrize("seed", range(300))
+def test_tops_that_fit_respect_the_minimum_and_the_budget_for_every_set_that_can_win(seed):
+    import random
+    from itertools import combinations as combos
+    rnd = random.Random(seed)
+    n = rnd.randint(1, 8)
+    min_bid = rnd.choice([0, 1, 2, 5])
+    claims = []
+    for r in range(1, n + 1):
+        hi = rnd.randint(min_bid, 60)
+        claims.append(_ranged(r, rnd.randint(min_bid, hi), hi))
+    ranks = list(range(1, n + 1))
+    conflicts = []
+    if n >= 3 and rnd.random() < .5:
+        conflicts.append({"kind": "shared_drop", "ranks": rnd.sample(ranks, 2), "player_id": 1})
+    remaining = rnd.randint(0, 80)
+    comb = combined(claims, conflicts, remaining, min_bid, "ESPN")
+    groups = [(set(g["ranks"]), g["capacity"]) for g in comb["exclusive_groups"]]
+    assert bool(comb["unfundable_ranks"]) <= (comb["fundable_at_minimum"] is False)
+    shown = {c["rank"]: c["if_all_win"] for c in claims if c["if_all_win"] is not None}
+    assert all(t["high"] >= min_bid and t["low"] <= t["high"] for t in shown.values())
+    if comb["fits"] is False:
+        for k in range(1, len(shown) + 1):
+            for s in combos(shown, k):
+                if all(len(set(s) & g) <= cap for g, cap in groups):
+                    assert sum(shown[r]["high"] for r in s) <= remaining
 
 
 def test_exclusive_claims_count_once_toward_funding_at_the_minimum():
@@ -424,8 +469,10 @@ def test_a_scaled_zero_top_with_an_unknown_minimum_says_zero_bids_are_unknown():
 def test_the_plan_marks_claims_it_cannot_fund_at_the_synced_minimum():
     out = faab([(301, 107), (302, 104)], spent=99, share=100, settings={"acquisitionSettings": {"minimumBid": 1}})
     assert [(c["range"]["low"], c["range"]["high"]) for c in out["claims"]] == [(1, 1), (1, 1)]
-    assert out["combined"]["fundable_at_minimum"] is False and out["combined"]["unfundable_ranks"] == [1, 2]
-    assert all(c["if_all_win"] is None and c["fundable_if_all_win"] is False for c in out["claims"])
+    assert out["combined"]["fundable_at_minimum"] is False and out["combined"]["unfundable_ranks"] == [2]
+    first, second = out["claims"]
+    assert first["if_all_win"] == {"low": 1, "high": 1} and first["fundable_if_all_win"] is True
+    assert second["if_all_win"] is None and second["fundable_if_all_win"] is False
 
 
 def test_the_waiver_priority_label_asserts_no_tie_break_rule():

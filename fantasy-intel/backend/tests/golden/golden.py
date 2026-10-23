@@ -93,8 +93,9 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         return {"claims": f"{adds[0]}:{d}:5,{adds[1]}:{d}:3,{adds[2]}"}
     if path == "/api/waivers/faab":
         # The player on waivers and a free agent, both dropping the owner's IR-slot occupant when there is one (which
-        # clears the fixture's IR block, so the guidance itself is reached: no gain, no bid needed, a shared drop);
-        # otherwise the claim plan's three claims without bids.
+        # clears the fixture's IR block, so the guidance itself is reached: no gain, no bid needed). Neither claim gets
+        # a range in this fixture, so the combined check records no exclusive group. Otherwise the claim plan's three
+        # claims without bids.
         opts = (client.get("/api/waivers/add-drop").json().get("options") or {}) if client is not None else {}
         adds = opts.get("add") or []
         waiver = next((o["espn_player_id"] for o in adds if o.get("availability_status") == "WAIVERS"), None)

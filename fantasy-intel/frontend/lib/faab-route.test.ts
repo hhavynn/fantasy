@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { api } from "./api.ts";
-import { FAAB_UNAVAILABLE, faabRouteResponse } from "./faab-route.ts";
+import { FAAB_SIGN_IN, FAAB_UNAVAILABLE, faabRouteResponse } from "./faab-route.ts";
 import type { FaabResponse } from "./faab.ts";
 
 const A = "lg_aaaaaaaaaaaaaaaa";
@@ -57,4 +57,12 @@ test("a good answer carries the league it was read from and the degraded flag", 
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(await res.json(), { contract: "waiver-faab/v1", scope: A, stale: true });
+});
+
+test("a refused sign-in is a 401 with fixed words, not the backend's", async () => {
+  globalThis.fetch = (async () => new Response(JSON.stringify({ detail: "Invalid token: kid abc" }), { status: 401 })) as typeof fetch;
+  const res = await faabRouteResponse(A, ok, (p) => api<FaabResponse>(p));
+  assert.equal(res.status, 401);
+  assert.equal(res.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await res.json(), { error: FAAB_SIGN_IN });
 });

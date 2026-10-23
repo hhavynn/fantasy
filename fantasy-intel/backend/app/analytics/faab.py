@@ -407,28 +407,46 @@ def combined(claims: list[dict], conflicts: list[dict], remaining: float | None,
     spend = _max_spend(ranged, exclusive)
     winners = _max_spend({r: 1 for r in ranged}, exclusive)       # the most ranged claims that can win together
     fits = spend <= remaining if remaining is not None else None
-    factor = remaining / spend if fits is False and spend else 1.0
-    unfundable = []
+    fundable = (winners * min_bid <= remaining) if min_bid is not None and remaining is not None else None
+    tops: dict[int, int] = {}       # rank -> the top that fits if every claim wins
+    unfundable: list[int] = []
+    if fits is False and min_bid is None:
+        # No known minimum: proportional scaling (a $0 top then says $0 bids are unknown).
+        tops = {r: math.floor(h * remaining / spend + 1e-9) for r, h in ranged.items()}
+    elif fits is False:
+        # Reserve the minimum for every claim that can win first, then share what is left by each range's excess over
+        # the minimum. When the minimum alone is more than the budget, the claims beyond what it covers are marked by
+        # plan order (the later claims), never by their size after scaling.
+        funded = sorted(ranged)
+        if not fundable:
+            funded = funded[:int(remaining // min_bid) if min_bid else len(funded)]
+            unfundable = [r for r in sorted(ranged) if r not in funded]
+        count = winners if fundable else len(funded)
+        surplus = remaining - count * min_bid
+        excess = {r: ranged[r] - min_bid for r in funded}
+        # The most excess the funded claims can take together, by the same exclusivity as the spend: any set of
+        # claims that can win together then stays within the budget.
+        most = _max_spend(excess, [([r for r in g if r in excess], cap) for g, cap in exclusive])
+        tops = {r: min_bid + (math.floor(excess[r] * surplus / most + 1e-9) if most > 0 else 0) for r in funded}
     for c in claims:
         if c["status"] != RANGE:
             continue
-        c["fundable_if_all_win"] = True
+        r = c["rank"]
+        c["fundable_if_all_win"] = r not in unfundable
         if fits is not False:
             c["if_all_win"] = {"low": c["range"]["low"], "high": c["range"]["high"]}
-            continue
-        hi = math.floor(c["range"]["high"] * factor + 1e-9)
-        if min_bid is not None and hi < min_bid:
-            c["if_all_win"], c["fundable_if_all_win"] = None, False
-            unfundable.append(c["rank"])
+        elif r in unfundable:
+            c["if_all_win"] = None
             c["notes"].append({"code": "NOT_FUNDABLE_IF_ALL_WIN",
-                               "message": f"If every claim wins, your {_money(remaining)} cannot cover the "
-                                          f"{_money(min_bid)} minimum bid on this one as well."})
-            continue
-        c["if_all_win"] = {"low": max(min_bid or 0, min(c["range"]["low"], hi)), "high": hi}
-        if hi == 0 and min_bid is None and not any(n["code"] == "ZERO_BID_UNKNOWN" for n in c["notes"]):
-            c["notes"].append({"code": "ZERO_BID_UNKNOWN",
-                               "message": f"Whether {provider} accepts a $0 bid is not in the synced settings."})
-    fundable = (winners * min_bid <= remaining) if min_bid is not None and remaining is not None else None
+                               "message": f"If every claim wins, your {_money(remaining)} covers the "
+                                          f"{_money(min_bid)} minimum bid on the earlier claims in your order only, "
+                                          "not on this one."})
+        else:
+            hi = min(tops[r], c["range"]["high"])
+            c["if_all_win"] = {"low": max(min_bid or 0, min(c["range"]["low"], hi)), "high": hi}
+            if hi == 0 and min_bid is None and not any(n["code"] == "ZERO_BID_UNKNOWN" for n in c["notes"]):
+                c["notes"].append({"code": "ZERO_BID_UNKNOWN",
+                                   "message": f"Whether {provider} accepts a $0 bid is not in the synced settings."})
     return {"ranged_claims": len(ranged), "high_total": sum(ranged.values()), "max_spend_if_won": spend,
             "remaining": remaining, "fits": fits, "complete": not unranged, "unranged_ranks": unranged,
             "exclusive_groups": [{"kind": kind, "ranks": g, "capacity": cap} for kind, g, cap in groups],
