@@ -1,0 +1,1258 @@
+// /api/league-analyzer?vs=1&horizon=week
+{
+ "body": {
+  "caveats": [
+   {
+    "code": "replacement_unknown",
+    "status": "partial",
+    "text": "No free agent at K has a projection in week 3, so the replacement level is unknown and points above replacement are not shown."
+   },
+   {
+    "code": "replacement_unknown",
+    "status": "partial",
+    "text": "No free agent at D/ST has a projection in week 3, so the replacement level is unknown and points above replacement are not shown."
+   }
+  ],
+  "compare": {
+   "a": {
+    "byes": {
+     "available": true,
+     "conflict_weeks": [],
+     "reason": null,
+     "schedule_missing_weeks": [],
+     "weeks": []
+    },
+    "is_mine": true,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 79.7,
+     "projected_per_week": 79.7
+    },
+    "name": "Team 2",
+    "needs": {
+     "available": true,
+     "note": "Stored need scores and the current roster snapshot from Manager scouting; current state, not a preference or a forecast.",
+     "positions": [
+      {
+       "comparison": "AT",
+       "healthy": 1,
+       "league_average": 1.0,
+       "need_score": 0.0,
+       "position": "QB",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 3,
+       "league_average": 2.0,
+       "need_score": 0.28,
+       "position": "RB",
+       "rostered": 4,
+       "starters_required": 3.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 4,
+       "league_average": 2.0,
+       "need_score": 0.0,
+       "position": "WR",
+       "rostered": 4,
+       "starters_required": 2.0
+      },
+      {
+       "comparison": "AT",
+       "healthy": 1,
+       "league_average": 1.0,
+       "need_score": 0.0,
+       "position": "TE",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 1,
+       "league_average": 0.5,
+       "need_score": 0.0,
+       "position": "K",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 1,
+       "league_average": 0.5,
+       "need_score": 0.0,
+       "position": "D/ST",
+       "rostered": 1,
+       "starters_required": 1.0
+      }
+     ],
+     "scoring_period": 3
+    },
+    "team_id": 2
+   },
+   "b": {
+    "byes": {
+     "available": true,
+     "conflict_weeks": [],
+     "reason": null,
+     "schedule_missing_weeks": [],
+     "weeks": []
+    },
+    "is_mine": false,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 73.7,
+     "projected_per_week": 73.7
+    },
+    "name": "Team 1",
+    "needs": {
+     "available": true,
+     "note": "Stored need scores and the current roster snapshot from Manager scouting; current state, not a preference or a forecast.",
+     "positions": [
+      {
+       "comparison": "AT",
+       "healthy": 1,
+       "league_average": 1.0,
+       "need_score": 0.0,
+       "position": "QB",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 3,
+       "league_average": 2.0,
+       "need_score": 0.28,
+       "position": "RB",
+       "rostered": 3,
+       "starters_required": 3.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 3,
+       "league_average": 2.0,
+       "need_score": 0.0,
+       "position": "WR",
+       "rostered": 3,
+       "starters_required": 2.0
+      },
+      {
+       "comparison": "AT",
+       "healthy": 1,
+       "league_average": 1.0,
+       "need_score": 0.0,
+       "position": "TE",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 1,
+       "league_average": 0.5,
+       "need_score": 0.0,
+       "position": "K",
+       "rostered": 1,
+       "starters_required": 1.0
+      },
+      {
+       "comparison": "ABOVE",
+       "healthy": 1,
+       "league_average": 0.5,
+       "need_score": 0.0,
+       "position": "D/ST",
+       "rostered": 1,
+       "starters_required": 1.0
+      }
+     ],
+     "scoring_period": 3
+    },
+    "team_id": 1
+   },
+   "caveats": [],
+   "leads": {
+    "a": 4,
+    "b": 1,
+    "even": 0
+   },
+   "positions": [
+    {
+     "a": {
+      "above_replacement": 4.0,
+      "bench": {
+       "best_bench": null,
+       "best_free_agent": 5.3,
+       "edge": 0.0,
+       "has_backup": false
+      },
+      "depth": 1,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 3,
+      "reason": null,
+      "score": 33.3,
+      "starters": [
+       {
+        "average_points": 9.3,
+        "espn_player_id": 102,
+        "name": "Bravo QB",
+        "position": "QB",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": -0.5
+     },
+     "b": {
+      "above_replacement": 3.0,
+      "bench": {
+       "best_bench": null,
+       "best_free_agent": 5.3,
+       "edge": 0.0,
+       "has_backup": false
+      },
+      "depth": 1,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "starters": [
+       {
+        "average_points": 8.3,
+        "espn_player_id": 101,
+        "name": "Alpha QB",
+        "position": "QB",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": -1.5
+     },
+     "count": 1,
+     "difference_per_slot": 1.0,
+     "leader": "a",
+     "slot": "QB",
+     "streamable": false
+    },
+    {
+     "a": {
+      "above_replacement": -3.5,
+      "bench": {
+       "best_bench": 6.3,
+       "best_free_agent": 11.3,
+       "edge": 0.0,
+       "has_backup": true
+      },
+      "depth": 3,
+      "of": 4,
+      "per_slot": 7.8,
+      "points": 15.6,
+      "rank": 2,
+      "reason": null,
+      "score": 72.2,
+      "starters": [
+       {
+        "average_points": 8.3,
+        "espn_player_id": 206,
+        "name": "Juliet RB",
+        "position": "RB",
+        "streamer": false,
+        "weeks": 1
+       },
+       {
+        "average_points": 7.3,
+        "espn_player_id": 205,
+        "name": "India RB",
+        "position": "RB",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 1.33
+     },
+     "b": {
+      "above_replacement": -0.5,
+      "bench": {
+       "best_bench": null,
+       "best_free_agent": 11.3,
+       "edge": 0.0,
+       "has_backup": false
+      },
+      "depth": 3,
+      "of": 4,
+      "per_slot": 10.8,
+      "points": 21.6,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "starters": [
+       {
+        "average_points": 11.3,
+        "espn_player_id": 202,
+        "name": "Foxtrot RB",
+        "position": "RB",
+        "streamer": false,
+        "weeks": 1
+       },
+       {
+        "average_points": 10.3,
+        "espn_player_id": 201,
+        "name": "Echo RB",
+        "position": "RB",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 4.33
+     },
+     "count": 2,
+     "difference_per_slot": -3.0,
+     "leader": "b",
+     "slot": "RB",
+     "streamable": false
+    },
+    {
+     "a": {
+      "above_replacement": 4.5,
+      "bench": {
+       "best_bench": 8.3,
+       "best_free_agent": 6.3,
+       "edge": 2.0,
+       "has_backup": true
+      },
+      "depth": 4,
+      "of": 4,
+      "per_slot": 10.8,
+      "points": 21.6,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "starters": [
+       {
+        "average_points": 11.3,
+        "espn_player_id": 307,
+        "name": "Sierra WR",
+        "position": "WR",
+        "streamer": false,
+        "weeks": 1
+       },
+       {
+        "average_points": 10.3,
+        "espn_player_id": 306,
+        "name": "Romeo WR",
+        "position": "WR",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 6.08
+     },
+     "b": {
+      "above_replacement": 0.5,
+      "bench": {
+       "best_bench": 5.3,
+       "best_free_agent": 6.3,
+       "edge": 0.0,
+       "has_backup": true
+      },
+      "depth": 3,
+      "of": 4,
+      "per_slot": 6.8,
+      "points": 13.6,
+      "rank": 2,
+      "reason": null,
+      "score": 63.0,
+      "starters": [
+       {
+        "average_points": 7.3,
+        "espn_player_id": 303,
+        "name": "Oscar WR",
+        "position": "WR",
+        "streamer": false,
+        "weeks": 1
+       },
+       {
+        "average_points": 6.3,
+        "espn_player_id": 302,
+        "name": "November WR",
+        "position": "WR",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 2.08
+     },
+     "count": 2,
+     "difference_per_slot": 4.0,
+     "leader": "a",
+     "slot": "WR",
+     "streamable": false
+    },
+    {
+     "a": {
+      "above_replacement": -3.0,
+      "bench": {
+       "best_bench": null,
+       "best_free_agent": 11.3,
+       "edge": 0.0,
+       "has_backup": false
+      },
+      "depth": 1,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 3,
+      "reason": null,
+      "score": 33.3,
+      "starters": [
+       {
+        "average_points": 8.3,
+        "espn_player_id": 402,
+        "name": "Victor TE",
+        "position": "TE",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": -0.5
+     },
+     "b": {
+      "above_replacement": -4.0,
+      "bench": {
+       "best_bench": null,
+       "best_free_agent": 11.3,
+       "edge": 0.0,
+       "has_backup": false
+      },
+      "depth": 1,
+      "of": 4,
+      "per_slot": 7.3,
+      "points": 7.3,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "starters": [
+       {
+        "average_points": 7.3,
+        "espn_player_id": 401,
+        "name": "Uniform TE",
+        "position": "TE",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": -1.5
+     },
+     "count": 1,
+     "difference_per_slot": 1.0,
+     "leader": "a",
+     "slot": "TE",
+     "streamable": false
+    },
+    {
+     "a": {
+      "above_replacement": null,
+      "bench": null,
+      "depth": 1,
+      "of": 4,
+      "per_slot": 10.3,
+      "points": 10.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "starters": [
+       {
+        "average_points": 10.3,
+        "espn_player_id": 502,
+        "name": "Zulu K",
+        "position": "K",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 5.65
+     },
+     "b": {
+      "above_replacement": null,
+      "bench": null,
+      "depth": 1,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 2,
+      "reason": null,
+      "score": 90.3,
+      "starters": [
+       {
+        "average_points": 9.3,
+        "espn_player_id": 501,
+        "name": "Yankee K",
+        "position": "K",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 4.65
+     },
+     "count": 1,
+     "difference_per_slot": 1.0,
+     "leader": "a",
+     "slot": "K",
+     "streamable": true
+    },
+    {
+     "a": {
+      "above_replacement": null,
+      "bench": null,
+      "depth": 1,
+      "of": 4,
+      "per_slot": 5.3,
+      "points": 5.3,
+      "rank": 2,
+      "reason": null,
+      "score": 63.9,
+      "starters": [
+       {
+        "average_points": 5.3,
+        "espn_player_id": -16002,
+        "name": "Bills D/ST",
+        "position": "D/ST",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 2.65
+     },
+     "b": {
+      "above_replacement": null,
+      "bench": null,
+      "depth": 1,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "starters": [
+       {
+        "average_points": 8.3,
+        "espn_player_id": -16012,
+        "name": "Chiefs D/ST",
+        "position": "D/ST",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 5.65
+     },
+     "count": 1,
+     "difference_per_slot": -3.0,
+     "leader": "b",
+     "slot": "D/ST",
+     "streamable": true
+    },
+    {
+     "a": {
+      "above_replacement": -2.0,
+      "bench": null,
+      "depth": 8,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "starters": [
+       {
+        "average_points": 9.3,
+        "espn_player_id": 305,
+        "name": "Quebec WR",
+        "position": "WR",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 6.65
+     },
+     "b": {
+      "above_replacement": -6.0,
+      "bench": null,
+      "depth": 7,
+      "of": 4,
+      "per_slot": 5.3,
+      "points": 5.3,
+      "rank": 2,
+      "reason": null,
+      "score": 57.0,
+      "starters": [
+       {
+        "average_points": 5.3,
+        "espn_player_id": 203,
+        "name": "Golf RB",
+        "position": "RB",
+        "streamer": false,
+        "weeks": 1
+       }
+      ],
+      "status": "ranked",
+      "vs_median": 2.65
+     },
+     "count": 1,
+     "difference_per_slot": 4.0,
+     "leader": "a",
+     "slot": "FLEX",
+     "streamable": false
+    }
+   ],
+   "rule": "Each side's starters, bench and bye weeks over the same horizon and the same lineup rules; a position where either side is unknown is not compared.",
+   "shared_conflict_weeks": []
+  },
+  "compare_team_id": 1,
+  "compatibility": {
+   "contract": "league-compatibility/v1",
+   "dimensions": {
+    "feature": {
+     "action": null,
+     "missing_input": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "missing_input": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "roster": {
+     "action": null,
+     "missing_input": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "missing_input": null,
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    }
+   },
+   "label": "Power rankings",
+   "status": "handled",
+   "tool": "power_rankings"
+  },
+  "contract": "league-analyzer/v1",
+  "empty": false,
+  "focus_team_id": 2,
+  "freshness": {
+   "league_synced_at": "<masked>",
+   "projections_synced_at": "<masked>"
+  },
+  "groups": [
+   {
+    "count": 1,
+    "eligible_positions": [
+     "QB"
+    ],
+    "league_best_per_slot": 11.3,
+    "league_median_per_slot": 9.8,
+    "replacement_note": null,
+    "replacement_per_slot": 5.3,
+    "slot": "QB",
+    "streamable": false,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 2,
+    "eligible_positions": [
+     "RB"
+    ],
+    "league_best_per_slot": 10.8,
+    "league_median_per_slot": 6.47,
+    "replacement_note": null,
+    "replacement_per_slot": 11.3,
+    "slot": "RB",
+    "streamable": false,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 2,
+    "eligible_positions": [
+     "WR"
+    ],
+    "league_best_per_slot": 10.8,
+    "league_median_per_slot": 4.72,
+    "replacement_note": null,
+    "replacement_per_slot": 6.3,
+    "slot": "WR",
+    "streamable": false,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 1,
+    "eligible_positions": [
+     "TE"
+    ],
+    "league_best_per_slot": 10.3,
+    "league_median_per_slot": 8.8,
+    "replacement_note": null,
+    "replacement_per_slot": 11.3,
+    "slot": "TE",
+    "streamable": false,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 1,
+    "eligible_positions": [
+     "K"
+    ],
+    "league_best_per_slot": 10.3,
+    "league_median_per_slot": 4.65,
+    "replacement_note": "No free agent at K has a projection in week 3, so the replacement level is unknown and points above replacement are not shown.",
+    "replacement_per_slot": null,
+    "slot": "K",
+    "streamable": true,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 1,
+    "eligible_positions": [
+     "D/ST"
+    ],
+    "league_best_per_slot": 8.3,
+    "league_median_per_slot": 2.65,
+    "replacement_note": "No free agent at D/ST has a projection in week 3, so the replacement level is unknown and points above replacement are not shown.",
+    "replacement_per_slot": null,
+    "slot": "D/ST",
+    "streamable": true,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   },
+   {
+    "count": 1,
+    "eligible_positions": [
+     "RB",
+     "WR",
+     "TE"
+    ],
+    "league_best_per_slot": 9.3,
+    "league_median_per_slot": 2.65,
+    "replacement_note": null,
+    "replacement_per_slot": 11.3,
+    "slot": "FLEX",
+    "streamable": false,
+    "teams_ranked": 4,
+    "unknown_teams": []
+   }
+  ],
+  "horizon": {
+   "key": "week",
+   "label": "This week",
+   "options": [
+    {
+     "key": "ros",
+     "label": "Rest of season"
+    },
+    {
+     "key": "week",
+     "label": "This week"
+    }
+   ],
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3
+   ]
+  },
+  "kdst_streaming": true,
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "last_regular_season_week": 14,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "message": null,
+  "method": [
+   "Each team's optimal lineup is re-optimized every week with the league's own slots; a slot group's points are what its starting slots get in that lineup (bench points never count).",
+   "Points above replacement per slot: the group's points per week divided by its number of starting slots, minus the best available free agent's projection for that slot (averaged over the same weeks). Positions with different scoring levels and slot counts become comparable this way; raw totals are shown only as evidence.",
+   "The score is league-relative: within each slot group the best ranked team is 100 and the worst 0. It is not comparable across leagues; ranks are.",
+   "A team is unknown at a group when a rostered player who could start there has no projection in a week of the horizon: that team is left out of the group's ranks instead of being ranked last, and the reason is shown.",
+   "Strongest and weakest positions leave out K and D/ST, which every team can stream from waivers.",
+   "Power rank is the Power rankings composite for the rest of the season, unchanged.",
+   "Compare mode adds the bench (best bench projection against the best free agent per position), bye weeks from the NFL schedule and the stored positional need scores. Nothing here is a win probability or a trade grade."
+  ],
+  "projection_source": "ESPN",
+  "teams": [
+   {
+    "abbrev": "T2",
+    "caveats": [],
+    "is_mine": true,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 79.7,
+     "projected_per_week": 79.7
+    },
+    "name": "Team 2",
+    "positions": {
+     "D/ST": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 5.3,
+      "points": 5.3,
+      "rank": 2,
+      "reason": null,
+      "score": 63.9,
+      "status": "ranked",
+      "vs_median": 2.65
+     },
+     "FLEX": {
+      "above_replacement": -2.0,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 6.65
+     },
+     "K": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 10.3,
+      "points": 10.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 5.65
+     },
+     "QB": {
+      "above_replacement": 4.0,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 3,
+      "reason": null,
+      "score": 33.3,
+      "status": "ranked",
+      "vs_median": -0.5
+     },
+     "RB": {
+      "above_replacement": -3.5,
+      "of": 4,
+      "per_slot": 7.8,
+      "points": 15.6,
+      "rank": 2,
+      "reason": null,
+      "score": 72.2,
+      "status": "ranked",
+      "vs_median": 1.33
+     },
+     "TE": {
+      "above_replacement": -3.0,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 3,
+      "reason": null,
+      "score": 33.3,
+      "status": "ranked",
+      "vs_median": -0.5
+     },
+     "WR": {
+      "above_replacement": 4.5,
+      "of": 4,
+      "per_slot": 10.8,
+      "points": 21.6,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 6.08
+     }
+    },
+    "power": {
+     "lineup_strength": 86.0,
+     "rank": 1,
+     "score": 70.0,
+     "unranked_reason": null
+    },
+    "record": {
+     "losses": 1,
+     "ties": 0,
+     "wins": 2
+    },
+    "strongest": [
+     "WR",
+     "FLEX"
+    ],
+    "team_id": 2,
+    "weakest": [
+     "TE",
+     "QB"
+    ]
+   },
+   {
+    "abbrev": "T1",
+    "caveats": [],
+    "is_mine": false,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 73.7,
+     "projected_per_week": 73.7
+    },
+    "name": "Team 1",
+    "positions": {
+     "D/ST": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 5.65
+     },
+     "FLEX": {
+      "above_replacement": -6.0,
+      "of": 4,
+      "per_slot": 5.3,
+      "points": 5.3,
+      "rank": 2,
+      "reason": null,
+      "score": 57.0,
+      "status": "ranked",
+      "vs_median": 2.65
+     },
+     "K": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 2,
+      "reason": null,
+      "score": 90.3,
+      "status": "ranked",
+      "vs_median": 4.65
+     },
+     "QB": {
+      "above_replacement": 3.0,
+      "of": 4,
+      "per_slot": 8.3,
+      "points": 8.3,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -1.5
+     },
+     "RB": {
+      "above_replacement": -0.5,
+      "of": 4,
+      "per_slot": 10.8,
+      "points": 21.6,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 4.33
+     },
+     "TE": {
+      "above_replacement": -4.0,
+      "of": 4,
+      "per_slot": 7.3,
+      "points": 7.3,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -1.5
+     },
+     "WR": {
+      "above_replacement": 0.5,
+      "of": 4,
+      "per_slot": 6.8,
+      "points": 13.6,
+      "rank": 2,
+      "reason": null,
+      "score": 63.0,
+      "status": "ranked",
+      "vs_median": 2.08
+     }
+    },
+    "power": {
+     "lineup_strength": 80.0,
+     "rank": 2,
+     "score": 59.2,
+     "unranked_reason": null
+    },
+    "record": {
+     "losses": 0,
+     "ties": 0,
+     "wins": 3
+    },
+    "strongest": [
+     "RB",
+     "WR"
+    ],
+    "team_id": 1,
+    "weakest": [
+     "TE",
+     "QB"
+    ]
+   },
+   {
+    "abbrev": "T3",
+    "caveats": [],
+    "is_mine": false,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 35.2,
+     "projected_per_week": 35.2
+    },
+    "name": "Team 3",
+    "positions": {
+     "D/ST": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -2.65
+     },
+     "FLEX": {
+      "above_replacement": -11.3,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -2.65
+     },
+     "K": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -4.65
+     },
+     "QB": {
+      "above_replacement": 5.0,
+      "of": 4,
+      "per_slot": 10.3,
+      "points": 10.3,
+      "rank": 2,
+      "reason": null,
+      "score": 66.7,
+      "status": "ranked",
+      "vs_median": 0.5
+     },
+     "RB": {
+      "above_replacement": -6.15,
+      "of": 4,
+      "per_slot": 5.15,
+      "points": 10.3,
+      "rank": 3,
+      "reason": null,
+      "score": 47.7,
+      "status": "ranked",
+      "vs_median": -1.32
+     },
+     "TE": {
+      "above_replacement": -2.0,
+      "of": 4,
+      "per_slot": 9.3,
+      "points": 9.3,
+      "rank": 2,
+      "reason": null,
+      "score": 66.7,
+      "status": "ranked",
+      "vs_median": 0.5
+     },
+     "WR": {
+      "above_replacement": -3.65,
+      "of": 4,
+      "per_slot": 2.65,
+      "points": 5.3,
+      "rank": 3,
+      "reason": null,
+      "score": 24.5,
+      "status": "ranked",
+      "vs_median": -2.07
+     }
+    },
+    "power": {
+     "lineup_strength": 38.0,
+     "rank": 3,
+     "score": 40.7,
+     "unranked_reason": null
+    },
+    "record": {
+     "losses": 2,
+     "ties": 0,
+     "wins": 1
+    },
+    "strongest": [
+     "QB",
+     "TE"
+    ],
+    "team_id": 3,
+    "weakest": [
+     "FLEX",
+     "WR"
+    ]
+   },
+   {
+    "abbrev": "T4",
+    "caveats": [],
+    "is_mine": false,
+    "lineup": {
+     "complete": true,
+     "known_per_week": 21.6,
+     "projected_per_week": 21.6
+    },
+    "name": "Team 4",
+    "positions": {
+     "D/ST": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -2.65
+     },
+     "FLEX": {
+      "above_replacement": -11.3,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -2.65
+     },
+     "K": {
+      "above_replacement": null,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 3,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -4.65
+     },
+     "QB": {
+      "above_replacement": 6.0,
+      "of": 4,
+      "per_slot": 11.3,
+      "points": 11.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 1.5
+     },
+     "RB": {
+      "above_replacement": -11.3,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -6.47
+     },
+     "TE": {
+      "above_replacement": -1.0,
+      "of": 4,
+      "per_slot": 10.3,
+      "points": 10.3,
+      "rank": 1,
+      "reason": null,
+      "score": 100.0,
+      "status": "ranked",
+      "vs_median": 1.5
+     },
+     "WR": {
+      "above_replacement": -6.3,
+      "of": 4,
+      "per_slot": 0.0,
+      "points": 0.0,
+      "rank": 4,
+      "reason": null,
+      "score": 0.0,
+      "status": "ranked",
+      "vs_median": -4.72
+     }
+    },
+    "power": {
+     "lineup_strength": 23.0,
+     "rank": 4,
+     "score": 22.5,
+     "unranked_reason": null
+    },
+    "record": {
+     "losses": 3,
+     "ties": 0,
+     "wins": 0
+    },
+    "strongest": [
+     "QB",
+     "TE"
+    ],
+    "team_id": 4,
+    "weakest": [
+     "WR",
+     "RB"
+    ]
+   }
+  ],
+  "units": {
+   "above_replacement": "projected points per starting slot per week above the best available free agent",
+   "points": "projected points per week from the group's starting slots (evidence, not a grade)",
+   "score": "league-relative score within the slot group: best ranked team 100, worst 0 (all equal: 50)"
+  },
+  "week": 3
+ },
+ "status": 200
+}

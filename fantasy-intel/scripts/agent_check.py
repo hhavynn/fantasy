@@ -154,6 +154,11 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/playoff_race", ["tests/test_playoff_race.py"]),
     ("api/projection_ranges", ["tests/test_projection_ranges.py"]),
     ("api/power_rankings", ["tests/test_power_rankings.py"]),
+    # League analyzer (issue #191) over team value, power rankings, the bye planner and manager scouting.
+    ("api/league_analyzer", ["tests/test_league_analyzer.py", "tests/test_league_analyzer_v2.py", "tests/test_golden_legacy.py",
+                             "tests/test_provider_copy.py", "tests/test_v2_authorization_matrix.py"]),
+    ("analytics/league_analyzer", ["tests/test_league_analyzer.py", "tests/test_golden_legacy.py",
+                                   "tests/test_league_scope_audit.py"]),
     ("api/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
                           "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("api/luck_lab", ["tests/test_luck_lab.py"]),

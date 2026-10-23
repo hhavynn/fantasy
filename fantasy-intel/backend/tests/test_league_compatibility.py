@@ -541,7 +541,7 @@ TOOL_ROUTES = ("/api/league-rules", "/api/league-compatibility", "/api/overview"
                "/api/waivers/claim-plan?team_id=1", "/api/waivers/faab?team_id=1", "/api/trades/options",
                "/api/schedule-intelligence/bye-planner?team_id=1",
                "/api/schedule-intelligence/kdst-streaming?team_id=1", "/api/rankings", "/api/power-rankings",
-               "/api/playoff-race")
+               "/api/playoff-race", "/api/league-analyzer?team_id=1&vs=2")
 
 
 # Pinned exceptions to "200": the only abstentions these imported files are expected to produce. A Sleeper league file

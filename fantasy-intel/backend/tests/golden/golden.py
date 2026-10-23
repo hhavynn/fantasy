@@ -137,7 +137,9 @@ def extra_cases(con) -> list[Case]:
                "ORDER BY l.team_id, l.espn_player_id LIMIT 1")
     thin = q(f"SELECT team_id FROM lineup_snapshots WHERE scoring_period = {latest} GROUP BY team_id "
              "ORDER BY count(*), team_id LIMIT 1")
-    out = [Case("api_trades_discover_summary__targeted_rb", "/api/trades/discover/summary?mode=targeted&target_position=RB")]
+    out = [Case("api_trades_discover_summary__targeted_rb", "/api/trades/discover/summary?mode=targeted&target_position=RB"),
+           # League analyzer (issue #191): the owner's team compared with team 1 over this week only.
+           Case("api_league_analyzer__compare_week", "/api/league-analyzer?vs=1&horizon=week")]
     if player is not None:
         out.append(Case("api_trades_discover_summary__targeted_player",
                         f"/api/trades/discover/summary?mode=targeted&target_player={player}"))
