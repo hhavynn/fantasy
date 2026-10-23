@@ -45,6 +45,8 @@ test("a position goal narrows the trades, states trade-offs and opens the same t
 });
 
 test("choosing a named player in the goal form keeps only trades that bring him in", async ({ page }) => {
+  // Two cold discovery summaries (about 7 s + 4 s locally, slower on CI's parallel workers) in the default 30 s budget.
+  test.slow();
   await page.goto("/trades/discover?mode=targeted&team=2");
   await loaded(page);
   const goal = page.getByRole("form", { name: "What you are looking for" });

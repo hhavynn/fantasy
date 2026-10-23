@@ -94,15 +94,19 @@
      "depth_target": 4,
      "fixed_slots": 2,
      "flex_slots_filled": 1,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 4.17,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.25,
      "starter_values": [
       5.0,
       5.0,
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 3.0,
@@ -131,13 +135,17 @@
      "depth_target": 1,
      "fixed_slots": 1,
      "flex_slots_filled": 0,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 5.0,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.0,
      "starter_values": [
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 1.0,
@@ -184,14 +192,18 @@
      "depth_target": 3,
      "fixed_slots": 2,
      "flex_slots_filled": 0,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 4.17,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.0,
      "starter_values": [
       5.0,
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 4.0,
@@ -220,13 +232,17 @@
      "depth_target": 1,
      "fixed_slots": 1,
      "flex_slots_filled": 0,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 5.0,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.0,
      "starter_values": [
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 1.0,
@@ -255,13 +271,17 @@
      "depth_target": 1,
      "fixed_slots": 1,
      "flex_slots_filled": 0,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 5.0,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.0,
      "starter_values": [
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 1.0,
@@ -290,13 +310,17 @@
      "depth_target": 1,
      "fixed_slots": 1,
      "flex_slots_filled": 0,
-     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+     "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup starter at the position (fixed + flex) and is left out when unknown (quality_gap_known false); shortage uses availability weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
      "league_avg_starter_value": 5.0,
      "quality_gap": 0.0,
+     "quality_gap_known": true,
      "shortage": 0.0,
      "starter_values": [
       5.0
      ],
+     "value_note": null,
+     "value_status": "complete",
+     "value_unknown": [],
      "weakest_starter_value": 5.0
     },
     "effective_available": 1.0,

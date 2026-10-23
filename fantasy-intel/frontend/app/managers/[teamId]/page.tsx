@@ -8,7 +8,8 @@ import { MovesTable } from "@/components/MovesTable";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
-import { date, num } from "@/lib/format";
+import { PartialMark, date, num } from "@/lib/format";
+import { needPartialReason } from "@/lib/waivers";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
@@ -184,7 +185,7 @@ async function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }
                 {d.needs.filter((n) => n.starters_required > 0).map((n) => (
                   <tr key={n.position}>
                     <td><Pos value={n.position} /></td>
-                    <td><Score value={n.need_score * 10} /></td>
+                    <td><Score value={n.need_score * 10} /><PartialMark why={needPartialReason(n.details)} /></td>
                     <td className="num">{n.healthy}</td><td className="num">{n.unavailable}</td><td className="num">{num(n.starter_value)}</td>
                   </tr>
                 ))}
