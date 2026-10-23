@@ -23,7 +23,8 @@ async function loaded(page: Page, url: string, header: RegExp) {
 
 async function openFilters(page: Page) {
   const box = page.locator("main details.filter-box");
-  if ((await box.getAttribute("open")) === null) await box.locator("summary").click();
+  const summary = box.locator("summary");
+  if ((await box.getAttribute("open")) === null && await summary.isVisible()) await summary.click();
 }
 
 test("every offense: observed beside assumed, the backtest worded as it came out", async ({ page }) => {
