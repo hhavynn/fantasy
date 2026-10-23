@@ -1,0 +1,167 @@
+// /api/weekly-recap/feedback
+{
+ "body": {
+  "available_weeks": [
+   1,
+   2
+  ],
+  "definitions": {
+   "archived_lineup": "The lineup that maximises the archived forecasts over the decision set in the league's starting slots the source covers (ties: lower player id). Rule decision-feedback.v1.",
+   "call": "For each filled slot s with starter x, the alternative y is the benched decision-set player eligible for s with the highest archived forecast. The call is 'start x over y'. A slot with no eligible benched player has no call.",
+   "coverage": "decision-set players / (decision-set players + players without a pregame forecast or known kickoff).",
+   "decision_set": "Players on your roster snapshot taken before the week's first kickoff, not in the IR slot, whose team plays that week and who have a forecast from the source archived before their own kickoff.",
+   "exclusions": "Missing data is never zero: players and calls without an archived input or a recorded outcome are excluded and counted by reason.",
+   "forecast_error": "error = actual - forecast per decision-set player with recorded points; MAE = mean |error|, bias = mean error. Your roster only.",
+   "forecast_gap": "forecast(x) - forecast(y) >= 0. A call with a gap under 3 points is a close call: a miss there is not a confident miss.",
+   "hit_rate": "correct / (correct + missed); pushes and excluded calls are left out. Null when no call is decided.",
+   "lineup": "archived = actual points of the archived lineup; best = the most points any lineup from the same decision set and slots scored; archive_shortfall = best - archived (>= 0). Only when every decision-set player has recorded points. yours = actual points of your final starters in those slots (only when all are recorded).",
+   "margin": "margin = actual(x) - actual(y), in league points, rounded to 0.01.",
+   "opportunity_cost": "lower = max(0, actual(y) - actual(x)): points lost against the archive's own alternative. upper = max(0, max over every eligible benched b of actual(b) - actual(x)): points lost against the best alternative in hindsight. lower <= upper. upper is unknown (null) when an eligible benched player has no recorded points.",
+   "verdict": "Correct if margin > 0, missed if margin < 0, push if margin = 0."
+  },
+  "exclusion_reasons": {
+   "bye": "no game that week",
+   "kickoff_unknown": "his kickoff is unknown, so no forecast can be shown to be pregame",
+   "no_pregame_forecast": "no forecast archived before his kickoff",
+   "outcome_missing": "the starter or the alternative has no recorded points for the week (unknown, not zero)",
+   "position_not_covered": "a position this source does not forecast, or no starting slot takes",
+   "reserve_slot": "in the IR slot at the roster snapshot (not startable)"
+  },
+  "feedback": {
+   "changed": [],
+   "watch": {
+    "above_forecast": [],
+    "below_forecast": [],
+    "notes": []
+   },
+   "worked": []
+  },
+  "league_name": "Fixture League",
+  "message": "No archived recommendations for this week.",
+  "rule_version": "decision-feedback.v1",
+  "schema": "decision-feedback.v1",
+  "scoring_periods": [
+   2
+  ],
+  "season": 2026,
+  "season_to_date": {
+   "totals": {
+    "calls": 0,
+    "correct": 0,
+    "excluded": 0,
+    "forecast_mae": null,
+    "forecast_n": 0,
+    "graded": 0,
+    "hit_rate": null,
+    "missed": 0,
+    "opportunity_cost_lower": null,
+    "opportunity_cost_upper": null,
+    "push": 0,
+    "weeks": 2,
+    "weeks_graded": 0
+   },
+   "weeks": [
+    {
+     "archive_shortfall": null,
+     "calls": 0,
+     "close_calls_missed": 0,
+     "correct": 0,
+     "coverage": null,
+     "decision_set": 0,
+     "excluded": 0,
+     "forecast_mae": null,
+     "forecast_n": 0,
+     "graded": 0,
+     "hit_rate": null,
+     "matchup_period": 1,
+     "missed": 0,
+     "opportunity_cost_lower": 0.0,
+     "opportunity_cost_upper": 0.0,
+     "push": 0,
+     "status": "no_archive",
+     "week": 1
+    },
+    {
+     "archive_shortfall": null,
+     "calls": 0,
+     "close_calls_missed": 0,
+     "correct": 0,
+     "coverage": null,
+     "decision_set": 0,
+     "excluded": 0,
+     "forecast_mae": null,
+     "forecast_n": 0,
+     "graded": 0,
+     "hit_rate": null,
+     "matchup_period": 2,
+     "missed": 0,
+     "opportunity_cost_lower": 0.0,
+     "opportunity_cost_upper": 0.0,
+     "push": 0,
+     "status": "no_archive",
+     "week": 2
+    }
+   ]
+  },
+  "selected_week": 2,
+  "source": {
+   "covered_positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE",
+    "K",
+    "D/ST"
+   ],
+   "is_default": true,
+   "key": "espn",
+   "label": "ESPN",
+   "unavailable_reason": null,
+   "versions": {}
+  },
+  "status": "no_archive",
+  "summary": {
+   "calls": 0,
+   "close_calls_missed": 0,
+   "correct": 0,
+   "excluded": 0,
+   "graded": 0,
+   "hit_rate": null,
+   "missed": 0,
+   "opportunity_cost_lower": 0.0,
+   "opportunity_cost_upper": 0.0,
+   "push": 0
+  },
+  "team": {
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "weeks": [
+   {
+    "calls": [],
+    "coverage": null,
+    "exclusions": {},
+    "forecast_error": null,
+    "lineup": null,
+    "players": [],
+    "reason": "No archived recommendations for this week. No roster snapshot of your team was archived between week 1's last kickoff and week 2's first kickoff.",
+    "roster_input": null,
+    "status": "no_archive",
+    "summary": {
+     "calls": 0,
+     "close_calls_missed": 0,
+     "correct": 0,
+     "excluded": 0,
+     "graded": 0,
+     "hit_rate": null,
+     "missed": 0,
+     "opportunity_cost_lower": 0.0,
+     "opportunity_cost_upper": 0.0,
+     "push": 0
+    },
+    "week": 2
+   }
+  ]
+ },
+ "status": 200
+}
