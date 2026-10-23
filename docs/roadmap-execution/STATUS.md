@@ -30,9 +30,9 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
-| #177 bye/kickoff planner | 2 | PR OPEN (BLOCKED) | PR #244 (d746861) | security review: isolation clean; 1 MEDIUM (exponential tied flex solve) → bipartite matching fix in progress; Codex clean |
+| #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (734c08c) | MEDIUM fixed: two-phase bipartite matching, per-request memo, 30-slot cap (8-flex case 0.17 s); reviewer re-check + CI running |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
-| #187 player profile tabs | 2 | PR OPEN | PR #245 (5eaa886) | review: no MEDIUM+; 3 LOW (Save allow-list, refocus scope, game-log asOf row) being fixed |
+| #187 player profile tabs | 2 | PR OPEN | PR #245 (0536fb8) | review: no MEDIUM+; 3 LOW fixed with tests; CI running |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
