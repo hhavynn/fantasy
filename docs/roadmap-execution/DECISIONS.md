@@ -183,6 +183,15 @@ Owner decision; supersedes the reviewer choice in D-10 (Codex quota has returned
   material findings, no conflicts. Claude's role: implementation, integration, coordination, fixing findings.
 - Transition: Claude reviews already running when this was decided (#283, #284) finish; none are restarted.
 
+## D-16 · 2026-10-23 · Merge-first execution; owner decisions on #277 budget and #147
+- Merge-first mode: each PR merges the moment its own gates pass (exact-head CI, Codex/independent review with no material
+  findings, no conflicts); one cohesive fix round per review; targeted local tests, CI as the full gate; no new large
+  features until the integration queue shrinks.
+- #277 beam work budget default stays 15,000 per opponent (owner decision; revisit only on evidence it is unsafe or
+  impractical). The exact search (stages A–C) is never budgeted; truncation is disclosed.
+- #147 (Shorts paper style) stays open, parked outside the roadmap integration queue.
+- Follow-up 1t approved: sign-out clears only app-owned account/league browser storage; test account switching.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
