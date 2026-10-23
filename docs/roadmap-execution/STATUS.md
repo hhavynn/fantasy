@@ -34,10 +34,10 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #186 player news | 2 | RESEARCH MERGED | PR #247 → 2d2c1c4 | NO-GO headlines; GO "Availability events" from nflverse (D-11); implementation not started |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
-| #178 add/drop simulator | 3 | PR OPEN | PR #249 (28e0bb1) | `GET .../waivers/add-drop`; q/a/s pass; security review running (incl. shared `_best_flex` tie cost) |
+| #178 add/drop simulator | 3 | PR OPEN | PR #249 (f4ef8e2) | security clean except MEDIUM shared-optimizer cost (pre-existing `_best_flex`, widened by add-only path); Codex P2 fixed; merges after `fix/lineup-flex-solver` |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
-| #181 K/DST streaming | 3 | IN PROGRESS | `feature/fi-181-kdst-streaming` from 8f57407 | one agent; polynomial DP planner; disjoint from #178 (waivers) |
+| #181 K/DST streaming | 3 | PR OPEN | PR #250 (dcef8df) | security clean; fixing MEDIUM hold_cell downgrade + Codex P2 partial-schedule coverage + 3 LOW |
 | #182 targeted trade discovery | 4 | NOT STARTED | — | |
 | #183 trade scenarios | 4 | NOT STARTED | — | |
 | #184 trade-market values | 4 | NOT STARTED | — | |
@@ -106,6 +106,9 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
   "(null)", and the ESPN_MY_TEAM_ID hint shown to users.
 
 ## Active wave
+
+**Now (2026-10-23 02:20Z):** #248 CI speed (fixing review HIGH: docs-only skips credential scan; MEDIUM: restore `always()` aggregates); `fix/lineup-flex-solver` (shared optimizer: polynomial, identical assignments, goldens unchanged); #249 and #250 fix rounds.
+
 
 **Wave 1** (parallel, isolated worktrees under `.worktrees/`, all from `5315c96`):
 - #169 rules: owns the new `/league-rules` page and endpoint, plus one entry in `lib/navigation.ts`.
