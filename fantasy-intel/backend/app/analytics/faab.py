@@ -101,7 +101,7 @@ LABELS = {
     "observed_bids": "League winning bids",
     "processing": "Claim processing days",
     "next_deadline": "Next claim deadline",
-    "waiver_priority": "Your waiver priority (FAAB tie-break)",
+    "waiver_priority": "Your waiver priority",
     "waiver_status": "Whether a player is on waivers",
 }
 
@@ -216,7 +216,7 @@ def capability_audit(provider: str, rules: dict, facts: dict | None, min_bid: in
                                               "provider before the deadline.")
     prio = rules.get("waiver_priority_any")
     row("waiver_priority", SUPPLIED if prio is not None else MISSING, prio, f"#{prio}" if prio is not None else None,
-        "The synced settings do not say how tied bids are broken." if prio is not None
+        "Whether it breaks tied FAAB bids is not in the synced settings." if prio is not None
         else "The synced team data does not include waiver priority.")
     row("waiver_status", SUPPLIED if waiver_status_known else NOT_SUPPLIED,
         reason=None if waiver_status_known else "The sync records every unrostered player as a free agent, so whether "
@@ -381,10 +381,15 @@ def _max_spend(highs: dict[int, int], groups: list[tuple[list[int], int]]) -> in
     return best
 
 
-def combined(claims: list[dict], conflicts: list[dict], remaining: float | None) -> dict:
+def combined(claims: list[dict], conflicts: list[dict], remaining: float | None, min_bid: int | None = None,
+             provider: str = "the provider") -> dict:
     """Several bids against one budget: the most the suggested ranges could spend together (claims that share a drop
     or an open spot cannot all win), whether that fits the remaining budget, and each range's top scaled to fit if not.
-    Claims without a range are not counted, and the total says so (an unknown bid is not 0)."""
+    Claims without a range are not counted, and the total says so (an unknown bid is not 0).
+
+    A scaled top is never shown below a known minimum bid: such a claim is marked not fundable if every claim wins
+    (`if_all_win` None, `fundable_if_all_win` False), and the plan says whether the claims that can win together could
+    all be funded at the minimum. With the minimum unknown, a scaled top of $0 carries the ZERO_BID_UNKNOWN note."""
     ranged = {c["rank"]: c["range"]["high"] for c in claims if c["status"] == RANGE}
     groups = []
     for k in conflicts:
@@ -397,18 +402,38 @@ def combined(claims: list[dict], conflicts: list[dict], remaining: float | None)
     if not ranged:
         return {"ranged_claims": 0, "high_total": None, "max_spend_if_won": None, "remaining": remaining,
                 "fits": None, "complete": not unranged, "unranged_ranks": unranged, "exclusive_groups": [],
-                "scaled": False}
-    spend = _max_spend(ranged, [(g, cap) for _, g, cap in groups])
+                "scaled": False, "max_winners": 0, "fundable_at_minimum": None, "unfundable_ranks": []}
+    exclusive = [(g, cap) for _, g, cap in groups]
+    spend = _max_spend(ranged, exclusive)
+    winners = _max_spend({r: 1 for r in ranged}, exclusive)       # the most ranged claims that can win together
     fits = spend <= remaining if remaining is not None else None
     factor = remaining / spend if fits is False and spend else 1.0
+    unfundable = []
     for c in claims:
-        if c["status"] == RANGE:
-            hi = math.floor(c["range"]["high"] * factor + 1e-9) if fits is False else c["range"]["high"]
-            c["if_all_win"] = {"low": min(c["range"]["low"], hi), "high": hi}
+        if c["status"] != RANGE:
+            continue
+        c["fundable_if_all_win"] = True
+        if fits is not False:
+            c["if_all_win"] = {"low": c["range"]["low"], "high": c["range"]["high"]}
+            continue
+        hi = math.floor(c["range"]["high"] * factor + 1e-9)
+        if min_bid is not None and hi < min_bid:
+            c["if_all_win"], c["fundable_if_all_win"] = None, False
+            unfundable.append(c["rank"])
+            c["notes"].append({"code": "NOT_FUNDABLE_IF_ALL_WIN",
+                               "message": f"If every claim wins, your {_money(remaining)} cannot cover the "
+                                          f"{_money(min_bid)} minimum bid on this one as well."})
+            continue
+        c["if_all_win"] = {"low": max(min_bid or 0, min(c["range"]["low"], hi)), "high": hi}
+        if hi == 0 and min_bid is None and not any(n["code"] == "ZERO_BID_UNKNOWN" for n in c["notes"]):
+            c["notes"].append({"code": "ZERO_BID_UNKNOWN",
+                               "message": f"Whether {provider} accepts a $0 bid is not in the synced settings."})
+    fundable = (winners * min_bid <= remaining) if min_bid is not None and remaining is not None else None
     return {"ranged_claims": len(ranged), "high_total": sum(ranged.values()), "max_spend_if_won": spend,
             "remaining": remaining, "fits": fits, "complete": not unranged, "unranged_ranks": unranged,
             "exclusive_groups": [{"kind": kind, "ranks": g, "capacity": cap} for kind, g, cap in groups],
-            "scaled": fits is False}
+            "scaled": fits is False, "max_winners": winners, "fundable_at_minimum": fundable,
+            "unfundable_ranks": unfundable}
 
 
 def league_spend(teams: list[dict], team_id: int | None, budget: float | None) -> dict:
@@ -443,7 +468,8 @@ def evaluate_faab(plan: dict, *, provider: str, provider_label: str, settings: d
     weeks = len(plan["evaluation"]["weeks"] or [])
     claims = [_claim(c, cap, remaining, weeks, share, min_bid, observed if cap["observed_bids"] == "available" else None,
                      provider_label) for c in plan["claims"]]
-    totals = combined(claims, plan["summary"]["conflicts"], remaining) if cap["guidance"] == "available" else None
+    totals = combined(claims, plan["summary"]["conflicts"], remaining, min_bid, provider_label) \
+        if cap["guidance"] == "available" else None
     return {
         "contract": CONTRACT,
         "submitted": False,

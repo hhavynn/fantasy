@@ -377,3 +377,58 @@ def test_the_sleeper_api_states_its_fields(tmp_path, monkeypatch):
     assert fields["waiver_status"]["status"] == "not_supplied"
     assert fields["acquisition_type"]["source"] == "settings.waiver_type (2 is FAAB)"
     assert "ESPN" not in json.dumps(d["capability"])
+
+
+# ---- review fixes: a scaled top never goes below a known minimum bid; the priority label claims no tie-break -------
+
+def _ranged(rank, low, high):
+    return {"rank": rank, "status": RANGE, "range": {"low": low, "high": high}, "notes": []}
+
+
+def test_more_ranged_claims_than_dollars_are_never_shown_below_the_minimum_bid():
+    """$5 left, minimum bid $1, eight claims at $1-$1: scaling would show $0 on every one. Instead each is marked not
+    fundable if every claim wins, and the plan says the eight cannot all be funded at the minimum."""
+    claims = [_ranged(r, 1, 1) for r in range(1, 9)]
+    comb = combined(claims, [], 5, 1, "ESPN")
+    assert comb["fits"] is False and comb["max_winners"] == 8 and comb["fundable_at_minimum"] is False
+    assert comb["unfundable_ranks"] == list(range(1, 9))
+    for c in claims:
+        assert c["if_all_win"] is None and c["fundable_if_all_win"] is False
+        assert [n["code"] for n in c["notes"]] == ["NOT_FUNDABLE_IF_ALL_WIN"]
+    # a top that still clears the minimum keeps a number, never below the minimum
+    mixed = [_ranged(1, 4, 40), _ranged(2, 1, 1)]
+    comb = combined(mixed, [], 5, 1, "ESPN")
+    assert mixed[0]["if_all_win"] == {"low": 4, "high": 4} and mixed[0]["fundable_if_all_win"] is True
+    assert mixed[1]["if_all_win"] is None and comb["unfundable_ranks"] == [2]
+    assert comb["fundable_at_minimum"] is True            # two winners at $1 fit in $5
+
+
+def test_exclusive_claims_count_once_toward_funding_at_the_minimum():
+    claims = [_ranged(1, 3, 3), _ranged(2, 3, 3), _ranged(3, 3, 3)]
+    comb = combined(claims, [{"kind": "shared_drop", "ranks": [1, 2], "player_id": 7}], 5, 2, "ESPN")
+    assert comb["max_winners"] == 2 and comb["fundable_at_minimum"] is True and comb["max_spend_if_won"] == 6
+    assert all(c["if_all_win"] is None or c["if_all_win"]["high"] >= 2 for c in claims)
+
+
+def test_a_scaled_zero_top_with_an_unknown_minimum_says_zero_bids_are_unknown():
+    claims = [_ranged(r, 2, 2) for r in (1, 2, 3)]
+    comb = combined(claims, [], 1, None, "Sleeper")
+    assert comb["fundable_at_minimum"] is None and comb["unfundable_ranks"] == []
+    for c in claims:
+        assert c["if_all_win"] == {"low": 0, "high": 0}
+        assert [n["code"] for n in c["notes"]] == ["ZERO_BID_UNKNOWN"] and "Sleeper" in c["notes"][0]["message"]
+    combined(claims, [], 1, None, "Sleeper")              # the note is never added twice
+    assert all(len(c["notes"]) == 1 for c in claims)
+
+
+def test_the_plan_marks_claims_it_cannot_fund_at_the_synced_minimum():
+    out = faab([(301, 107), (302, 104)], spent=99, share=100, settings={"acquisitionSettings": {"minimumBid": 1}})
+    assert [(c["range"]["low"], c["range"]["high"]) for c in out["claims"]] == [(1, 1), (1, 1)]
+    assert out["combined"]["fundable_at_minimum"] is False and out["combined"]["unfundable_ranks"] == [1, 2]
+    assert all(c["if_all_win"] is None and c["fundable_if_all_win"] is False for c in out["claims"])
+
+
+def test_the_waiver_priority_label_asserts_no_tie_break_rule():
+    row = field(faab([(301, 107)]), "waiver_priority")
+    assert row["label"] == "Your waiver priority" and "tie" not in row["label"].lower()
+    assert row["reason"] == "Whether it breaks tied FAAB bids is not in the synced settings."

@@ -111,6 +111,7 @@ function Combined({ c }: { c: NonNullable<FaabResponse["combined"]> }) {
         {c.remaining !== null && <> of your {money(c.remaining)}</>}
         {c.fits === false && ". That is more than you have, so each claim also shows a top that fits if all of them win"}
         {c.fits === true && ", which fits"}.
+        {c.fundable_at_minimum === false && <> Even at the minimum bid, your FAAB cannot cover all {c.max_winners} claims that could win together, so {plural(c.unfundable_ranks.length, "claim")} {list(c.unfundable_ranks)} {c.unfundable_ranks.length === 1 ? "shows" : "show"} no top for that case.</>}
         {!c.complete && <> {plural(c.unranged_ranks.length, "Claim")} {list(c.unranged_ranks)} {c.unranged_ranks.length === 1 ? "has" : "have"} no range and {c.unranged_ranks.length === 1 ? "is" : "are"} not counted.</>}
       </p>
       {c.exclusive_groups.map((g) => (
@@ -163,12 +164,14 @@ export function FaabClaimGuidance({ g, bid, minObserved }: { g: ClaimGuidance; b
   }
   const vs = bidVsRange(bid, g.range);
   const scaled = g.if_all_win && g.if_all_win.high < g.range.high ? g.if_all_win : null;
+  const unfundable = g.fundable_if_all_win === false;
   const obs = observedText(g.observed, minObserved);
   return (
     <div className={styles.details}>
       <p className={styles.reason} data-tone="info">
         <b>Heuristic range {rangeText(g.range)}</b> · {g.urgency ? URGENCY_LABEL[g.urgency] : null}
         {scaled && <> · up to {money(scaled.high)} if every claim wins</>}
+        {unfundable && <> · not fundable at the minimum bid if every claim wins</>}
         {vs && vs !== "within" && <> · your bid is {vs} it</>}
       </p>
       <p className={styles.muted}>

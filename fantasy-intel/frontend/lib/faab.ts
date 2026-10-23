@@ -77,7 +77,9 @@ export type ClaimGuidance = {
   status: GuidanceStatus;
   urgency: Urgency | null;
   range: BidRange | null;
-  if_all_win?: { low: number; high: number };
+  /** The range scaled so every claim could win within the budget; null when that would fall below the minimum bid. */
+  if_all_win?: { low: number; high: number } | null;
+  fundable_if_all_win?: boolean;
   reason: string | null;
   notes: { code: string; message: string }[];
   basis: { ros_gain: number | null; known_ros_gain: number | null; weeks: number; gain_per_week: number | null; share_pct: number };
@@ -106,6 +108,8 @@ export type FaabResponse = {
     ranged_claims: number; high_total: number | null; max_spend_if_won: number | null; remaining: number | null;
     fits: boolean | null; complete: boolean; unranged_ranks: number[];
     exclusive_groups: { kind: "shared_drop" | "open_spots"; ranks: number[]; capacity: number }[]; scaled: boolean;
+    /** The most ranged claims that can win together; whether they could all be funded at a known minimum bid. */
+    max_winners: number; fundable_at_minimum: boolean | null; unfundable_ranks: number[];
   } | null;
   assumptions: string[];
   limitations: string[];
