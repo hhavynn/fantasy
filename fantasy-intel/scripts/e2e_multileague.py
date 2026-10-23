@@ -9,6 +9,8 @@ multileague.spec.ts). One process runs everything the API needs and then serves 
     (scripts/build_e2e_sleeper.py); the viewer is a member of the private league with team 1 saved;
   * a fourth, public Sleeper league with DL and LB starting slots (build_e2e_sleeper.py --idp), the unsupported case of
     issue #253's journey (frontend/e2e/compat-journey-multileague.spec.ts); no other spec reads it;
+  * a public ESPN league whose published data is partial: the E2E league with ESPN's projection missing for every
+    other player (partial_copy), the partial-data state of the UX gates (frontend/e2e/ux-multileague.spec.ts);
   * the manifest (OUT/manifest.json): the league ids and the viewer's session cookie for the browser.
 
     cd backend && uv run python ../scripts/e2e_multileague.py OUT_DIR API_PORT AUTH_PORT
@@ -36,6 +38,24 @@ from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 
 KEY = ec.generate_private_key(ec.SECP256R1())
 VIEWER = str(uuid.UUID(int=0xE2E))
+
+
+def partial_copy(src: Path, dest: Path) -> Path:
+    """The E2E league with ESPN's weekly projection removed (NULL: unknown, never 0) for every other player, as a sync
+    that stored the roster and the schedule but only some projections leaves it: both the weekly points table and the
+    lineup snapshots (the projection the matchup shows per slot). Analytics derived at build time are left as built."""
+    import shutil
+
+    import duckdb
+
+    shutil.copyfile(src, dest)
+    con = duckdb.connect(str(dest))
+    try:
+        for table in ("espn_player_weekly_points", "lineup_snapshots"):
+            con.execute(f"UPDATE {table} SET projected_points = NULL WHERE espn_player_id % 2 = 0")
+    finally:
+        con.close()
+    return dest
 
 
 def serve_jwks(port: int) -> str:
@@ -106,6 +126,7 @@ def main() -> int:
     build_sleeper(sleeper_db)
     sleeper_idp_db = out / "e2e-sleeper-idp.duckdb"
     build_sleeper(sleeper_idp_db, idp=True)
+    partial_db = partial_copy(espn_db, out / "e2e-partial.duckdb")
     objects = out / "objects"
     leagues = {}
     with db.connect() as su:
@@ -117,6 +138,7 @@ def main() -> int:
                                          external_id="1190000000000000001")
         leagues["sleeper_idp"] = seed_league(su, provider="sleeper", visibility="public",
                                              name="Sleeper IDP Fixture League", external_id="1190000000000002531")
+        leagues["espn_partial"] = seed_league(su, visibility="public", name="Partial Data League", external_id="4999")
         seed_membership(su, VIEWER, leagues["espn_private"], "viewer")
         su.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '1')",
                    [VIEWER, leagues["espn_private"]])
@@ -134,6 +156,7 @@ def main() -> int:
                                  ("espn_private", espn_db, "2026-10-21T12:00:00"),
                                  ("sleeper", sleeper_db, "2026-10-21T12:00:00"),
                                  ("sleeper_idp", sleeper_idp_db, "2026-10-21T12:00:00"),
+                                 ("espn_partial", partial_db, "2026-10-21T12:00:00"),
                                  ("espn_stale", espn_db, "2026-10-14T12:00:00")):
             res = publish_league(src, DirWriter(objects), sync, leagues[kind], stamp=stamp)
             assert res.applied, kind
