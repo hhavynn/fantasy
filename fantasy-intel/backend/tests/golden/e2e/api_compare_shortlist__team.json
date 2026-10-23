@@ -1,0 +1,1410 @@
+// /api/compare/shortlist?ids=201%2C401%2C301%2C101&slot=FLEX&team_id=2
+{
+ "body": {
+  "as_of_week": 3,
+  "best_projected": {
+   "complete": true,
+   "considered": [
+    201,
+    401,
+    301
+   ],
+   "excluded": [
+    {
+     "espn_player_id": 101,
+     "reason": "not_eligible",
+     "text": "Alpha QB (QB) cannot start at FLEX."
+    }
+   ],
+   "gap": 3.0,
+   "leaders": [
+    201
+   ],
+   "slot": "FLEX",
+   "source": "espn",
+   "status": "leader",
+   "text": "Echo RB has the highest ESPN projection for week 3: 10.3, 3.0 ahead of the next player.",
+   "value": 10.3,
+   "week": 3
+  },
+  "completed_through_week": 2,
+  "disclaimer": "A shortlist of stored projections, usage and injury reports for one lineup slot. \"Best projected\" is the highest stored projection for the week, nothing more; it is not a start/sit verdict, a probability or a consensus.",
+  "final_week": 17,
+  "freshness": {
+   "espn_synced_at": "<masked>",
+   "nfl_synced_at": "<masked>"
+  },
+  "limitations": [
+   "Echo RB: ratings and usage trend were computed through week 7, which includes games from the current week; treat them as post-game.",
+   "Uniform TE: no nflverse usage record through week 2 (no nflverse match), so usage metrics are unavailable.",
+   "Mike WR: no nflverse usage record through week 2 (no nflverse match), so usage metrics are unavailable.",
+   "Alpha QB: no nflverse usage record through week 2 (no nflverse match), so usage metrics are unavailable."
+  ],
+  "players": [
+   {
+    "card": {
+     "availability": {
+      "espn_status": "ACTIVE",
+      "has_designation": false,
+      "label": "No designation reported",
+      "nfl_report": null,
+      "note": "No injury designation is listed. That is not confirmation he will play; reports can lag.",
+      "report_is_current": null
+     },
+     "player": {
+      "availability_status": "ONTEAM",
+      "espn_player_id": 201,
+      "fantasy_team": "Team 1",
+      "full_name": "Echo RB",
+      "gsis_id": "00-SYNRB01",
+      "match_confidence": "high",
+      "match_method": "espn_id:nfl_players",
+      "percent_owned": 50.0,
+      "position": "RB",
+      "pro_team": "KC"
+     },
+     "projection": {
+      "bye_weeks": [],
+      "bye_weeks_remaining": 0,
+      "games_remaining": 15,
+      "next_week": {
+       "espn": 10.3,
+       "is_home": true,
+       "on_bye": false,
+       "opponent": "NYJ",
+       "ours": null,
+       "ours_horizon": null,
+       "ours_origin": null,
+       "week": 3
+      },
+      "projection_synced_at": "<masked>",
+      "ros": {
+       "espn": 165.0,
+       "espn_weeks_available": 15,
+       "espn_weeks_expected": 15,
+       "ours": null,
+       "ours_available": null,
+       "ours_experimental": true,
+       "ours_reason": null,
+       "ours_weeks_available": null,
+       "ours_weeks_expected": null
+      },
+      "weeks": [
+       {
+        "espn": 10.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NYJ",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 3
+       },
+       {
+        "espn": 10.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NYG",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 4
+       },
+       {
+        "espn": 10.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NO",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 5
+       },
+       {
+        "espn": 10.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NE",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 6
+       },
+       {
+        "espn": 10.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "MIN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 7
+       },
+       {
+        "espn": 10.8,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "MIA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 8
+       },
+       {
+        "espn": 10.9,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LV",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 9
+       },
+       {
+        "espn": 11.0,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "LAC",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 10
+       },
+       {
+        "espn": 11.1,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 11
+       },
+       {
+        "espn": 11.2,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "JAX",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 12
+       },
+       {
+        "espn": 11.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "IND",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 13
+       },
+       {
+        "espn": 11.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "HOU",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 14
+       },
+       {
+        "espn": 11.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "GB",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 15
+       },
+       {
+        "espn": 11.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "DEN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 16
+       },
+       {
+        "espn": 11.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "DAL",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 17
+       }
+      ]
+     },
+     "recent_games": [
+      {
+       "carries": 16,
+       "league_points": 10.0,
+       "opponent": "OPP",
+       "ppr": 9.4,
+       "snap_share": 0.75,
+       "targets": 2,
+       "week": 2,
+       "xfp": 12.1
+      },
+      {
+       "carries": 19,
+       "league_points": 9.0,
+       "opponent": "OPP",
+       "ppr": 21.05,
+       "snap_share": 0.825,
+       "targets": 4,
+       "week": 1,
+       "xfp": 16.55
+      }
+     ],
+     "role": {
+      "depth_chart": null,
+      "evidence": [],
+      "opportunity_tier": "HIGH",
+      "role_trend": "FLAT"
+     },
+     "usage": {
+      "games": 2,
+      "metrics": {
+       "air_yards_pg": {
+        "applicable": false,
+        "value": null,
+        "why": "Air yards describe downfield receiving roles; not meaningful for a running back."
+       },
+       "carries_pg": {
+        "applicable": true,
+        "value": 17.5,
+        "why": null
+       },
+       "league_pts_pg": {
+        "applicable": true,
+        "value": 9.5,
+        "why": null
+       },
+       "ppr_pg": {
+        "applicable": true,
+        "value": 15.23,
+        "why": null
+       },
+       "snap_share": {
+        "applicable": true,
+        "value": 0.7875,
+        "why": null
+       },
+       "target_share": {
+        "applicable": true,
+        "value": 0.0882,
+        "why": null
+       },
+       "targets_pg": {
+        "applicable": true,
+        "value": 3.0,
+        "why": null
+       },
+       "xfp_pg": {
+        "applicable": true,
+        "value": 14.32,
+        "why": null
+       }
+      },
+      "ratings": {
+       "as_of_week": 7,
+       "basis": "xfp",
+       "opportunity": {
+        "legacy": false,
+        "scale": 100,
+        "value": 79.2
+       },
+       "production": {
+        "legacy": false,
+        "scale": 100,
+        "value": 70.8
+       },
+       "version": "ratings-100.v1"
+      },
+      "stability": {
+       "cv": null,
+       "games": 2,
+       "metric": null
+      },
+      "trend": {
+       "label": "FLAT",
+       "score": 0.002
+      },
+      "weeks": [
+       1,
+       2
+      ]
+     },
+     "weekly": [
+      {
+       "carries": 19,
+       "league_points": 9.0,
+       "opponent": "OPP",
+       "ppr": 21.05,
+       "snap_share": 0.825,
+       "targets": 4,
+       "week": 1,
+       "xfp": 16.55
+      },
+      {
+       "carries": 16,
+       "league_points": 10.0,
+       "opponent": "OPP",
+       "ppr": 9.4,
+       "snap_share": 0.75,
+       "targets": 2,
+       "week": 2,
+       "xfp": 12.1
+      }
+     ]
+    },
+    "eligible_slots": [
+     "RB",
+     "FLEX"
+    ],
+    "roster": "other_team",
+    "slot_eligible": true
+   },
+   {
+    "card": {
+     "availability": {
+      "espn_status": "ACTIVE",
+      "has_designation": false,
+      "label": "No designation reported",
+      "nfl_report": null,
+      "note": "No injury designation is listed. That is not confirmation he will play; reports can lag.",
+      "report_is_current": null
+     },
+     "player": {
+      "availability_status": "ONTEAM",
+      "espn_player_id": 401,
+      "fantasy_team": "Team 1",
+      "full_name": "Uniform TE",
+      "gsis_id": null,
+      "match_confidence": null,
+      "match_method": null,
+      "percent_owned": 50.0,
+      "position": "TE",
+      "pro_team": "KC"
+     },
+     "projection": {
+      "bye_weeks": [],
+      "bye_weeks_remaining": 0,
+      "games_remaining": 15,
+      "next_week": {
+       "espn": 7.3,
+       "is_home": true,
+       "on_bye": false,
+       "opponent": "NYJ",
+       "ours": null,
+       "ours_horizon": null,
+       "ours_origin": null,
+       "week": 3
+      },
+      "projection_synced_at": "<masked>",
+      "ros": {
+       "espn": 120.0,
+       "espn_weeks_available": 15,
+       "espn_weeks_expected": 15,
+       "ours": null,
+       "ours_available": null,
+       "ours_experimental": true,
+       "ours_reason": null,
+       "ours_weeks_available": null,
+       "ours_weeks_expected": null
+      },
+      "weeks": [
+       {
+        "espn": 7.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NYJ",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 3
+       },
+       {
+        "espn": 7.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NYG",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 4
+       },
+       {
+        "espn": 7.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NO",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 5
+       },
+       {
+        "espn": 7.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NE",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 6
+       },
+       {
+        "espn": 7.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "MIN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 7
+       },
+       {
+        "espn": 7.8,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "MIA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 8
+       },
+       {
+        "espn": 7.9,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LV",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 9
+       },
+       {
+        "espn": 8.0,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "LAC",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 10
+       },
+       {
+        "espn": 8.1,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 11
+       },
+       {
+        "espn": 8.2,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "JAX",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 12
+       },
+       {
+        "espn": 8.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "IND",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 13
+       },
+       {
+        "espn": 8.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "HOU",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 14
+       },
+       {
+        "espn": 8.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "GB",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 15
+       },
+       {
+        "espn": 8.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "DEN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 16
+       },
+       {
+        "espn": 8.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "DAL",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 17
+       }
+      ]
+     },
+     "recent_games": [
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      }
+     ],
+     "role": {
+      "depth_chart": null,
+      "evidence": [],
+      "opportunity_tier": null,
+      "role_trend": null
+     },
+     "usage": {
+      "games": 0,
+      "metrics": {
+       "air_yards_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "carries_pg": {
+        "applicable": false,
+        "value": null,
+        "why": "Carries are not a receiver role measure."
+       },
+       "league_pts_pg": {
+        "applicable": true,
+        "value": 9.5,
+        "why": null
+       },
+       "ppr_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "snap_share": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "target_share": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "targets_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "xfp_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       }
+      },
+      "ratings": {
+       "as_of_week": null,
+       "basis": null,
+       "opportunity": null,
+       "production": null,
+       "version": null
+      },
+      "stability": {
+       "cv": null,
+       "games": 0,
+       "metric": null
+      },
+      "trend": {
+       "label": null,
+       "score": null
+      },
+      "weeks": []
+     },
+     "weekly": [
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      }
+     ]
+    },
+    "eligible_slots": [
+     "TE",
+     "FLEX"
+    ],
+    "roster": "other_team",
+    "slot_eligible": true
+   },
+   {
+    "card": {
+     "availability": {
+      "espn_status": "ACTIVE",
+      "has_designation": false,
+      "label": "No designation reported",
+      "nfl_report": null,
+      "note": "No injury designation is listed. That is not confirmation he will play; reports can lag.",
+      "report_is_current": null
+     },
+     "player": {
+      "availability_status": "ONTEAM",
+      "espn_player_id": 301,
+      "fantasy_team": "Team 1",
+      "full_name": "Mike WR",
+      "gsis_id": null,
+      "match_confidence": null,
+      "match_method": null,
+      "percent_owned": 50.0,
+      "position": "WR",
+      "pro_team": "KC"
+     },
+     "projection": {
+      "bye_weeks": [],
+      "bye_weeks_remaining": 0,
+      "games_remaining": 15,
+      "next_week": {
+       "espn": 5.3,
+       "is_home": true,
+       "on_bye": false,
+       "opponent": "NYJ",
+       "ours": null,
+       "ours_horizon": null,
+       "ours_origin": null,
+       "week": 3
+      },
+      "projection_synced_at": "<masked>",
+      "ros": {
+       "espn": 90.0,
+       "espn_weeks_available": 15,
+       "espn_weeks_expected": 15,
+       "ours": null,
+       "ours_available": null,
+       "ours_experimental": true,
+       "ours_reason": null,
+       "ours_weeks_available": null,
+       "ours_weeks_expected": null
+      },
+      "weeks": [
+       {
+        "espn": 5.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NYJ",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 3
+       },
+       {
+        "espn": 5.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NYG",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 4
+       },
+       {
+        "espn": 5.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NO",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 5
+       },
+       {
+        "espn": 5.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NE",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 6
+       },
+       {
+        "espn": 5.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "MIN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 7
+       },
+       {
+        "espn": 5.8,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "MIA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 8
+       },
+       {
+        "espn": 5.9,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LV",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 9
+       },
+       {
+        "espn": 6.0,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "LAC",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 10
+       },
+       {
+        "espn": 6.1,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 11
+       },
+       {
+        "espn": 6.2,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "JAX",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 12
+       },
+       {
+        "espn": 6.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "IND",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 13
+       },
+       {
+        "espn": 6.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "HOU",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 14
+       },
+       {
+        "espn": 6.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "GB",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 15
+       },
+       {
+        "espn": 6.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "DEN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 16
+       },
+       {
+        "espn": 6.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "DAL",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 17
+       }
+      ]
+     },
+     "recent_games": [
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      }
+     ],
+     "role": {
+      "depth_chart": null,
+      "evidence": [],
+      "opportunity_tier": null,
+      "role_trend": null
+     },
+     "usage": {
+      "games": 0,
+      "metrics": {
+       "air_yards_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "carries_pg": {
+        "applicable": false,
+        "value": null,
+        "why": "Carries are not a receiver role measure."
+       },
+       "league_pts_pg": {
+        "applicable": true,
+        "value": 9.5,
+        "why": null
+       },
+       "ppr_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "snap_share": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "target_share": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "targets_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "xfp_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       }
+      },
+      "ratings": {
+       "as_of_week": null,
+       "basis": null,
+       "opportunity": null,
+       "production": null,
+       "version": null
+      },
+      "stability": {
+       "cv": null,
+       "games": 0,
+       "metric": null
+      },
+      "trend": {
+       "label": null,
+       "score": null
+      },
+      "weeks": []
+     },
+     "weekly": [
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      }
+     ]
+    },
+    "eligible_slots": [
+     "WR",
+     "FLEX"
+    ],
+    "roster": "other_team",
+    "slot_eligible": true
+   },
+   {
+    "card": {
+     "availability": {
+      "espn_status": "ACTIVE",
+      "has_designation": false,
+      "label": "No designation reported",
+      "nfl_report": null,
+      "note": "No injury designation is listed. That is not confirmation he will play; reports can lag.",
+      "report_is_current": null
+     },
+     "player": {
+      "availability_status": "ONTEAM",
+      "espn_player_id": 101,
+      "fantasy_team": "Team 1",
+      "full_name": "Alpha QB",
+      "gsis_id": null,
+      "match_confidence": null,
+      "match_method": null,
+      "percent_owned": 50.0,
+      "position": "QB",
+      "pro_team": "KC"
+     },
+     "projection": {
+      "bye_weeks": [],
+      "bye_weeks_remaining": 0,
+      "games_remaining": 15,
+      "next_week": {
+       "espn": 8.3,
+       "is_home": true,
+       "on_bye": false,
+       "opponent": "NYJ",
+       "ours": null,
+       "ours_horizon": null,
+       "ours_origin": null,
+       "week": 3
+      },
+      "projection_synced_at": "<masked>",
+      "ros": {
+       "espn": 135.0,
+       "espn_weeks_available": 15,
+       "espn_weeks_expected": 15,
+       "ours": null,
+       "ours_available": null,
+       "ours_experimental": true,
+       "ours_reason": null,
+       "ours_weeks_available": null,
+       "ours_weeks_expected": null
+      },
+      "weeks": [
+       {
+        "espn": 8.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NYJ",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 3
+       },
+       {
+        "espn": 8.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NYG",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 4
+       },
+       {
+        "espn": 8.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "NO",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 5
+       },
+       {
+        "espn": 8.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "NE",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 6
+       },
+       {
+        "espn": 8.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "MIN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 7
+       },
+       {
+        "espn": 8.8,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "MIA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 8
+       },
+       {
+        "espn": 8.9,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LV",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 9
+       },
+       {
+        "espn": 9.0,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "LAC",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 10
+       },
+       {
+        "espn": 9.1,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "LA",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 11
+       },
+       {
+        "espn": 9.2,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "JAX",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 12
+       },
+       {
+        "espn": 9.3,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "IND",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 13
+       },
+       {
+        "espn": 9.4,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "HOU",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "regular",
+        "week": 14
+       },
+       {
+        "espn": 9.5,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "GB",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 15
+       },
+       {
+        "espn": 9.6,
+        "is_home": false,
+        "on_bye": false,
+        "opponent": "DEN",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 16
+       },
+       {
+        "espn": 9.7,
+        "is_home": true,
+        "on_bye": false,
+        "opponent": "DAL",
+        "ours": null,
+        "ours_origin": null,
+        "phase": "playoff",
+        "week": 17
+       }
+      ]
+     },
+     "recent_games": [
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      }
+     ],
+     "role": {
+      "depth_chart": null,
+      "evidence": [],
+      "opportunity_tier": null,
+      "role_trend": null
+     },
+     "usage": {
+      "games": 0,
+      "metrics": {
+       "air_yards_pg": {
+        "applicable": false,
+        "value": null,
+        "why": "Receiving usage is not a QB role measure; passing volume (dropbacks) is not in the usage data."
+       },
+       "carries_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "league_pts_pg": {
+        "applicable": true,
+        "value": 9.5,
+        "why": null
+       },
+       "ppr_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "snap_share": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       },
+       "target_share": {
+        "applicable": false,
+        "value": null,
+        "why": "Receiving usage is not a QB role measure; passing volume (dropbacks) is not in the usage data."
+       },
+       "targets_pg": {
+        "applicable": false,
+        "value": null,
+        "why": "Receiving usage is not a QB role measure; passing volume (dropbacks) is not in the usage data."
+       },
+       "xfp_pg": {
+        "applicable": true,
+        "value": null,
+        "why": "No usage record"
+       }
+      },
+      "ratings": {
+       "as_of_week": null,
+       "basis": null,
+       "opportunity": null,
+       "production": null,
+       "version": null
+      },
+      "stability": {
+       "cv": null,
+       "games": 0,
+       "metric": null
+      },
+      "trend": {
+       "label": null,
+       "score": null
+      },
+      "weeks": []
+     },
+     "weekly": [
+      {
+       "carries": null,
+       "league_points": 9.0,
+       "opponent": "TEN",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 1,
+       "xfp": null
+      },
+      {
+       "carries": null,
+       "league_points": 10.0,
+       "opponent": "PIT",
+       "ppr": null,
+       "snap_share": null,
+       "targets": null,
+       "week": 2,
+       "xfp": null
+      }
+     ]
+    },
+    "eligible_slots": [
+     "QB"
+    ],
+    "roster": "other_team",
+    "slot_eligible": false
+   }
+  ],
+  "provider": "espn",
+  "scoring": {
+   "label": "PPR (1 pt per reception)",
+   "note": "ESPN league points and projections use this league's scoring. nflverse PPR per game and xFP are always full PPR (1 pt per reception), so they can differ from league points.",
+   "reception_points": 1.0,
+   "scoring_type": "H2H_POINTS",
+   "settings_synced": true
+  },
+  "slot": "FLEX",
+  "slots": [
+   {
+    "count": 1,
+    "positions": [
+     "QB"
+    ],
+    "slot": "QB"
+   },
+   {
+    "count": 2,
+    "positions": [
+     "RB"
+    ],
+    "slot": "RB"
+   },
+   {
+    "count": 2,
+    "positions": [
+     "WR"
+    ],
+    "slot": "WR"
+   },
+   {
+    "count": 1,
+    "positions": [
+     "TE"
+    ],
+    "slot": "TE"
+   },
+   {
+    "count": 1,
+    "positions": [
+     "K"
+    ],
+    "slot": "K"
+   },
+   {
+    "count": 1,
+    "positions": [
+     "D/ST"
+    ],
+    "slot": "D/ST"
+   },
+   {
+    "count": 1,
+    "positions": [
+     "RB",
+     "WR",
+     "TE"
+    ],
+    "slot": "FLEX"
+   }
+  ],
+  "source": "espn",
+  "team": {
+   "is_owner_default": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "unsupported_slots": []
+ },
+ "status": 200
+}
