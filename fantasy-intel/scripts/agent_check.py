@@ -451,6 +451,7 @@ class StepResult:
     log_file: str | None = None
     stdout: str = ""
     stderr: str = ""
+    timed_out: bool = False
 
 
 class VerificationRunner:
@@ -731,7 +732,7 @@ class VerificationRunner:
                 duration = time.time() - start_time
                 summary = f"TIMEOUT (exceeded {timeout}s limit)"
                 log_file = self._save_diagnostic(name, f"Command timed out after {timeout}s: {' '.join(safe_cmd)}\n--- STDOUT ---\n{out}\n--- STDERR ---\n{err}")
-                res = StepResult(name, target_display, "FAIL", duration, summary, log_file, out, err)
+                res = StepResult(name, target_display, "FAIL", duration, summary, log_file, out, err, timed_out=True)
                 self.results.append(res)
                 return res
 
@@ -1000,7 +1001,7 @@ class VerificationRunner:
                 if selected_quick:
                     title = f"Quick Backend ({len(selected_quick)} of {len(backend_tests)} affected files)"
                     res = self.run_backend_tests(selected_quick, title=title, timeout=QUICK_BUDGET_S)
-                    if (res is not None and res.status == "FAIL" and res.summary.startswith("TIMEOUT")
+                    if (res is not None and res.status == "FAIL" and res.timed_out
                             and not _pytest_reported_failure(res.stdout)):
                         # Running out of quick's budget with no failure seen so far is not a test failure: `affected`
                         # is the gate for these files. A failure printed before the timeout keeps the step FAIL.
@@ -1080,7 +1081,7 @@ class VerificationRunner:
             time_str = f"{r.duration:.1f}s"
             status_str = f"[{r.status}]"
             print(f"{r.name:<24} {r.target:<24} {status_str:<12} {time_str:<8} {r.summary}")
-            if r.status == "FAIL" and r.log_file:
+            if r.log_file and (r.status == "FAIL" or r.timed_out):
                 print(f"  ↳ Diagnostic log saved: {r.log_file}")
                 lines = [l for l in (r.stderr or r.stdout).splitlines() if "FAILED" in l or "Error:" in l or "error:" in l]
                 for l in lines[:3]:

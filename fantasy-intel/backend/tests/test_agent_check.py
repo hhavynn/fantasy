@@ -543,7 +543,7 @@ def test_quick_reports_a_budget_timeout_as_unverified_not_a_failure(monkeypatch)
     def fake_run(name, cmd, cwd=None, target="", timeout=300.0):
         timed_out = name.startswith("Quick Backend")
         res = StepResult(name, target, "FAIL" if timed_out else "PASS", timeout if timed_out else 0.1,
-                         f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed")
+                         f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed", timed_out=timed_out)
         runner.results.append(res)
         return res
 
@@ -575,7 +575,8 @@ def test_quick_keeps_fail_when_a_failure_was_printed_before_the_timeout(monkeypa
         timed_out = name.startswith("Quick Backend")
         res = StepResult(name, target, "FAIL" if timed_out else "PASS", 0.1,
                          f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed",
-                         stdout="....F...                                     [ 40%]\n...." if timed_out else "")
+                         stdout="....F...                                     [ 40%]\n...." if timed_out else "",
+                         timed_out=timed_out)
         runner.results.append(res)
         return res
 
@@ -592,3 +593,13 @@ def test_pytest_reported_failure_reads_progress_and_summary_lines():
     assert agent_check._pytest_reported_failure("FAILED tests/test_x.py::test_y - AssertionError")
     assert not agent_check._pytest_reported_failure("........  [ 50%]\n....s.")
     assert not agent_check._pytest_reported_failure("")
+
+
+def test_run_command_flags_a_real_timeout():
+    runner = VerificationRunner(mode="quick")
+    res = runner.run_command("Quick Backend (sleep)", [sys.executable, "-c", "import time; time.sleep(5)"],
+                             cwd=Path(tempfile.gettempdir()), target="sleep", timeout=0.5)
+    assert res.timed_out and res.status == "FAIL"
+    done = runner.run_command("Quick Backend (fail)", [sys.executable, "-c", "raise SystemExit(1)"],
+                              cwd=Path(tempfile.gettempdir()), target="fail", timeout=10)
+    assert not done.timed_out and done.status == "FAIL"
