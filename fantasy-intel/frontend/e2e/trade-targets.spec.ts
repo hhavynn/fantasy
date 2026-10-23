@@ -17,6 +17,8 @@ async function loaded(page: Page) {
 const analyzeLinks = (page: Page) => page.locator("main a:visible", { hasText: "Analyze →" });
 
 test("a position goal narrows the trades, states trade-offs and opens the same trade in the analyzer", async ({ page }) => {
+  // A cold discovery summary, then a cold analyzer render after the click: also past 30 s on CI's parallel workers.
+  test.slow();
   await page.goto("/trades/discover?mode=targeted&team=2&pos=RB");
   await loaded(page);
   await expect(page.getByRole("link", { name: "Targeted search" }).first()).toHaveAttribute("aria-current", "page");

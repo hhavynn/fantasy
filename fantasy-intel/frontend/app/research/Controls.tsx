@@ -1,16 +1,20 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Method } from "@/components/ui";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import { VOLUME_OPTIONS, gamesOptions, researchHref, WINDOWS, type ResearchState, type Slug } from "@/lib/research";
 import type { OpportunityResponse, ResearchPosition } from "@/lib/research-types";
 import styles from "./research.module.css";
 
-/** Pool filters as a plain GET form: works without JavaScript, and the result is a shareable URL. */
-export function Filters({ slug, r, state }: { slug: Slug; r: OpportunityResponse; state: ResearchState }) {
+/** Pool filters as a plain GET form: works without JavaScript, and the result is a shareable URL. On a league page it
+ *  stays in that league (`/l/<lg>/research/<slug>`). */
+export async function Filters({ slug, r, state }: { slug: Slug; r: OpportunityResponse; state: ResearchState }) {
   const f = r.filters;
   const d = r.defaults;
+  const action = withLeague(`/research/${slug}`, (await currentLeague())?.id);
   const keep = { view: state.view !== "opportunity" ? state.view : null, y: state.y !== "fpoe" ? state.y : null, sel: state.sel, cmp: state.cmp };
   return (
-    <form className={styles.filters} action={`/research/${slug}`} method="get" aria-label="Player pool filters">
+    <form className={styles.filters} action={action} method="get" aria-label="Player pool filters">
       {Object.entries(keep).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
       <label className={styles.field}>
         <span>Games</span>

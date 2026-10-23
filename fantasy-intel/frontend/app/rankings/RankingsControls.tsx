@@ -1,5 +1,7 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Tabs } from "@/components/ui";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import { rankingsHref, RANK_POSITIONS, type RankingsFilters } from "@/lib/rankings";
 import { sortHref, type SearchParams } from "@/lib/sort";
 import styles from "./rankings.module.css";
@@ -48,13 +50,15 @@ function Chips<T extends string>({ label, name, options, current, sp, param }: {
  * league's rosters, so it appears only when the backend says the league context is available.
  *
  * `sourceChoice` false (a league whose provider publishes no projections, Sleeper) drops the ESPN / Ours chips: the
- * page is always on Ours there.
+ * page is always on Ours there. On a league page the links and the search form stay in that league
+ * (`/l/<lg>/rankings`), with or without JavaScript.
  */
-export function RankingsControls({ sp, filters, leagueAvailable, sourceChoice = true }: {
+export async function RankingsControls({ sp, filters, leagueAvailable, sourceChoice = true }: {
   sp: SearchParams; filters: RankingsFilters; leagueAvailable: boolean; sourceChoice?: boolean;
 }) {
   const posHref = (p: string) => rankingsHref(sp, { pos: p === "ALL" ? null : p });
   const hidden = carried(sp);
+  const action = withLeague("/rankings", (await currentLeague())?.id);
   const hasFilters = filters.pos !== "ALL" || filters.status !== "all" || filters.q !== "";
   return (
     <div className={styles.controls}>
@@ -76,7 +80,7 @@ export function RankingsControls({ sp, filters, leagueAvailable, sourceChoice = 
             {leagueAvailable && <Chips label="Roster status" name="Roster" options={STATUSES} current={filters.status} sp={sp} param="status" />}
           </div>
         </details>
-        <form className={styles.search} action="/rankings" role="search">
+        <form className={styles.search} action={action} role="search">
           {hidden.map(([k, v], i) => <input key={`${k}-${i}`} type="hidden" name={k} value={v} />)}
           <label className={styles.searchLabel} htmlFor="rankings-q">Search</label>
           <input id="rankings-q" className={styles.input} type="search" name="q" defaultValue={filters.q} maxLength={60}
