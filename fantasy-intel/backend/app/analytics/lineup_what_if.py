@@ -253,7 +253,7 @@ def build_board(cap: dict) -> Board:
     return board
 
 
-def alternatives(board: Board, key: str, limit: int = MAX_ALTERNATIVES) -> list[dict]:
+def alternatives(board: Board, key: str, limit: int | None = MAX_ALTERNATIVES) -> list[dict]:
     """For each recommended starting slot that is not locked, the best `limit` bench players who could legally take it
     as a single move (apply_move: eligibility, kickoff locks, IR and taxi), with the projected lineup total's change
     against the recommendation (<= 0; None when either total is unknown, `known_delta` on known projections only) and
@@ -278,25 +278,36 @@ def alternatives(board: Board, key: str, limit: int = MAX_ALTERNATIVES) -> list[
                                     o["player_id"]))
         if options:
             out.append({"slot_id": slot.slot_id, "slot": slot.slot_type, "label": board.label(slot),
-                        "starter_id": board.baseline.get(slot.slot_id), "options": options[:limit]})
+                        "starter_id": board.baseline.get(slot.slot_id),
+                        "options": options if limit is None else options[:limit]})
     return out
 
 
 def add_alternatives(ev: dict, board: Board) -> dict:
-    """GET /api/start-sit: attach `alternatives` and grade a NO_CHANGE recommendation against the closest of them; the
-    summary carries the decision's strength. A next-week preview lists none."""
-    alts = [] if ev.get("is_future_preview") else alternatives(board, scenario_key(ev["scoring_period"], ev["team"]["id"]))
-    ev["alternatives"] = alts
+    """GET /api/start-sit: attach `alternatives` (the closest MAX_ALTERNATIVES per slot) and grade a NO_CHANGE
+    recommendation against every legal alternative, not only those shown: one whose total is unknown makes keeping the
+    lineup unverified. A league that also starts slots no engine fills is never graded clear or close (the full lineup
+    is not compared). The summary carries the decision's strength. A next-week preview lists none."""
+    key = scenario_key(ev["scoring_period"], ev["team"]["id"])
+    full = [] if ev.get("is_future_preview") else alternatives(board, key, limit=None)
+    ev["alternatives"] = [{**a, "options": a["options"][:MAX_ALTERNATIVES]} for a in full]
     summary = ev["summary"]
-    complete = summary.get("projections_complete", summary.get("projection_complete", False))
-    known = [o for a in alts for o in a["options"]]
-    best = None
-    if known:
-        best = sorted(known, key=lambda o: (o["delta"] is None, -(o["delta"] if o["delta"] is not None else 0.0),
-                                            o["player_id"]))[0]
+    every = [o for a in full for o in a["options"]]
+    unknown = next((o for o in sorted(every, key=lambda o: o["player_id"]) if o["delta"] is None), None)
+    known = sorted((o for o in every if o["delta"] is not None), key=lambda o: (-o["delta"], o["player_id"]))
+    best = unknown or (known[0] if known else None)
+    coverage = summary.get("lineup_coverage")
     for d in ev["decisions"]:
         if d["action"] == ACTION_NO_CHANGE and d["recommendation_strength"] is None:
-            d["recommendation_strength"] = no_change_strength(best, complete)
+            # with slots no engine fills the totals are partial by design; that case is named below, not as coverage
+            complete = summary.get("projections_complete", summary.get("projection_complete", False))
+            d["recommendation_strength"] = no_change_strength(best, bool(complete))
+        if coverage and d["recommendation_strength"] and d["recommendation_strength"]["label"] != "unverified":
+            slots = ", ".join(coverage.get("unsupported_slots") or []) or "slots no engine fills"
+            d["recommendation_strength"] = {
+                "label": "unverified",
+                "reason": f"Unverified: the league also starts {slots}, which no engine fills, so the full lineup is "
+                          "not compared."}
     summary["recommendation_strength"] = ev["decisions"][0]["recommendation_strength"] if ev["decisions"] else None
     return ev
 

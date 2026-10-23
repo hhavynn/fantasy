@@ -10,8 +10,9 @@ import json
 from app.analytics import forecast_backtest, start_sit_evaluation
 from app.analytics.lineup_what_if import add_alternatives, alternatives, build_board, scenario_key
 from app.analytics.start_sit import (
-    CLOSE_CALL_POINTS, STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED, load_start_sit_evaluation,
-    no_change_strength, recommendation_strength,
+    ACTION_NO_CHANGE, ACTION_SWAP, ACTIONABILITY_ACTIONABLE, ACTIONABILITY_LOCKED, ACTIONABILITY_NO_CHANGE,
+    ACTIONABILITY_UNCERTAIN, CLOSE_CALL_POINTS, STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED, StartSitDecision,
+    decision_strength, load_start_sit_evaluation, no_change_strength, recommendation_strength,
 )
 from test_lineup_what_if import NOW, con, lineup, what_if  # noqa: F401  (fixture)
 
@@ -111,3 +112,52 @@ def test_handoff_edge_cases_a_tie_is_close_and_a_measured_zero_is_known():
     assert recommendation_strength(0.0, [])["label"] == STRENGTH_CLOSE                          # a zero gain is known
     # a partial lineup (slots no engine fills) has no complete total: keeping it is unverified, never "clear"
     assert no_change_strength({"name": "X", "delta": -9.0}, False)["label"] == STRENGTH_UNVERIFIED
+
+
+def _decision(action=ACTION_SWAP, actionability=ACTIONABILITY_ACTIONABLE, gain=9.0, warnings=(), id="d1"):
+    return StartSitDecision(id=id, action=action, actionability=actionability, start_players=[], bench_players=[],
+                            target_slot="WR", projected_net_gain=gain, explanation="", warnings=list(warnings))
+
+
+def test_only_a_move_that_can_be_made_as_shown_is_graded_clear_or_close():
+    assert decision_strength(_decision(), False)["label"] == STRENGTH_CLEAR
+    locked = decision_strength(_decision(actionability=ACTIONABILITY_LOCKED, warnings=["Ann Lee has kicked off."]), False)
+    assert locked["label"] == STRENGTH_UNVERIFIED and "Ann Lee has kicked off." in locked["reason"]
+    # not actionable and no warning text: still never clear
+    bare = decision_strength(_decision(actionability=ACTIONABILITY_UNCERTAIN), False)
+    assert bare["label"] == STRENGTH_UNVERIFIED and "cannot be made as shown" in bare["reason"]
+    assert decision_strength(_decision(action=ACTION_NO_CHANGE, actionability=ACTIONABILITY_NO_CHANGE), False) is None
+
+
+def test_a_week_without_a_submitted_lineup_says_so_and_a_preview_says_it_is_a_preview():
+    note = _decision(action=ACTION_NO_CHANGE, actionability=ACTIONABILITY_NO_CHANGE, gain=None, id="future_preview_note")
+    assert "no submitted lineup this week" in decision_strength(note, False)["reason"]
+    assert "next-week preview" in decision_strength(note, True)["reason"]
+    assert decision_strength(note, False)["label"] == decision_strength(note, True)["label"] == STRENGTH_UNVERIFIED
+
+
+def _keep_lineup(ev: dict) -> dict:
+    """The fixture week as if the submitted lineup were already the recommendation (complete projections)."""
+    keep = {"id": "no_change", "action": ACTION_NO_CHANGE, "recommendation_strength": None}
+    return {**ev, "decisions": [keep], "summary": {**ev["summary"], "projections_complete": True}}
+
+
+def test_keeping_the_lineup_is_unverified_when_any_legal_alternative_is_unknown_even_past_the_shown_three(con):
+    ev, board = _evaluate(con)
+    out = add_alternatives(_keep_lineup(ev), board)
+    shown = {o["player_id"] for a in out["alternatives"] for o in a["options"]}
+    assert 14 not in shown                                                  # WR 14 ranks past the top 3 shown
+    strength = out["summary"]["recommendation_strength"]
+    assert strength["label"] == STRENGTH_UNVERIFIED and "unknown projected total" in strength["reason"]
+
+
+def test_a_league_that_starts_slots_no_engine_fills_is_never_graded_clear_or_close(con):
+    ev, board = _evaluate(con)
+    ev = _keep_lineup(ev)
+    ev["decisions"] = [{"id": "d1", "action": ACTION_SWAP, "recommendation_strength": recommendation_strength(9.0, [])},
+                       *ev["decisions"]]
+    ev["summary"]["lineup_coverage"] = {"status": "partial", "unsupported_slots": ["DL", "LB"]}
+    out = add_alternatives(ev, board)
+    for d in out["decisions"]:
+        assert d["recommendation_strength"]["label"] == STRENGTH_UNVERIFIED
+    assert "DL, LB, which no engine fills" in out["summary"]["recommendation_strength"]["reason"]

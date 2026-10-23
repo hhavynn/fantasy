@@ -69,6 +69,22 @@ def recommendation_strength(gain: float | None, unknowns: list[str]) -> dict:
     return {"label": STRENGTH_CLEAR, "reason": f"Clear: {gain:+.1f} pts, more than {margin}."}
 
 
+def decision_strength(d, is_future_preview: bool) -> dict | None:
+    """A decision's strength. A preview, or a week with no submitted lineup, is not a decision. A change is graded by its
+    own gain; any warning on a change that is not actionable (an unverified or kicked-off kickoff, an IR slot,
+    incomplete coverage) makes it unverified: certainty is only claimed for a move that can be made as shown. NO_CHANGE
+    returns None here: it is graded against the legal alternatives (lineup_what_if.add_alternatives)."""
+    if d.id == "future_preview_note":
+        return recommendation_strength(None, ["A next-week preview is not a decision yet." if is_future_preview
+                                              else "There is no submitted lineup this week to compare."])
+    if d.action == ACTION_NO_CHANGE:
+        return None
+    if d.actionability == ACTIONABILITY_ACTIONABLE:
+        return recommendation_strength(d.projected_net_gain, [])
+    return recommendation_strength(d.projected_net_gain,
+                                   d.warnings or ["This move cannot be made as shown in the lineup right now."])
+
+
 def no_change_strength(best: dict | None, complete: bool) -> dict:
     """The strength of keeping the submitted lineup: how close the best legal bench alternative comes (`best`: an
     alternatives option, delta <= 0 or None when unknown). With incomplete projections it is unverified."""
@@ -1147,14 +1163,7 @@ def load_start_sit_evaluation(
             "projected_net_gain": d.projected_net_gain,
             "explanation": d.explanation,
             "warnings": d.warnings,
-            # NO_CHANGE is graded against the legal alternatives (lineup_what_if.add_alternatives); a preview is not a
-            # decision; a change is graded by its own gain, unverified when its actionability is uncertain.
-            "recommendation_strength": (
-                recommendation_strength(None, ["A next-week preview is not a decision yet."])
-                if d.id == "future_preview_note" else None if d.action == ACTION_NO_CHANGE
-                else recommendation_strength(
-                    d.projected_net_gain,
-                    d.warnings if d.actionability == ACTIONABILITY_UNCERTAIN else [])),
+            "recommendation_strength": decision_strength(d, is_future_preview),
         }
         for d in decisions_objs
     ]

@@ -399,7 +399,7 @@ function Alternatives({ alternatives, sp }: { alternatives: SlotAlternatives[]; 
                 <li key={o.player_id}>
                   <PlayerLink id={o.player_id} name={o.name} /> {o.position && <Pos value={o.position} />}{" "}
                   {o.delta === null ? <Missing why="A projection in this lineup is missing" /> : <Delta value={o.delta} suffix=" pts" />}{" "}
-                  <Link href={whatIfHref("/start-sit", sp, o.whatif)} scroll={false}>Try it</Link>
+                  <Link href={whatIfHref("/start-sit", sp, o.whatif)} scroll={false} aria-label={`Try ${o.name} at ${a.label}`}>Try it</Link>
                 </li>
               ))}
             </ul>
