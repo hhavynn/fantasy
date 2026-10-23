@@ -15,18 +15,20 @@ excluded players). Every remaining package is evaluated by the same exact engine
 missing projections never 0), under a deterministic work budget counted in lineup totals and a wall-clock cap.
 
 A counteroffer qualifies when both teams' rest-of-season deltas are known and the smaller of the two is larger than in
-the original offer: the side the offer treats worse gains, measured on the same exact scale. Ties keep the first in a
-fixed order (larger smaller-side delta, larger combined delta, fewer edits, then player ids); a package whose effects
-on both teams equal a simpler one's is hidden. At most MAX_SHOWN are returned, and each is re-run through the full
-manual evaluator (trades.evaluate_trade), whose deltas and forced drops must match; one that does not is dropped and
-counted, never shown. Nothing here estimates whether a manager would accept."""
+the original offer: the side the offer treats worse gains, measured on the same exact scale. The order is fixed
+(larger smaller-side delta, larger combined delta, fewer players, fewer edits, then player ids), and a package whose
+effects on both teams equal a better-ranked or smaller one's is hidden. At most MAX_SHOWN are returned, and each is
+re-run through the full manual evaluator (trades.evaluate_trade, at most MANUAL_CHECKS runs), whose deltas and forced
+drops must match; one that does not is dropped and counted, never shown. Nothing here estimates whether a manager would accept."""
 
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass
 
-from .team_lineups import r
+from .lineup import unsupported_of
+from .team_lineups import lineup_relevant, r
 from .trade_discovery import DEFAULT_POSITIONS, DELTA_KEYS, EQUIVALENCE_KEYS, TradeSearch, _key
 from .trades import MAX_PLAYERS_PER_SIDE, LeagueState, TradeError, evaluate_trade, validate
 
@@ -38,6 +40,7 @@ SECOND_STEP_WIDTH = 4         # single edits a second addition is tried on (max_
 # them, plus the signals that order the candidates). The same unit and size as discovery's per-opponent beam budget.
 WORK_BUDGET = 15_000
 TIME_CAP_SECONDS = 6.0        # a safety net under hosted request limits; the work budget is the deterministic bound
+MANUAL_CHECKS = 2 * MAX_SHOWN  # full manual-evaluator re-checks per request (shown results plus a few mismatches)
 EDIT_ORDER = {"remove": 0, "swap": 1, "add": 2}
 NOTE = ("Each counteroffer changes the original offer by at most a few players and is evaluated exactly for both "
         "teams, the same computation as the manual analyzer. It is listed because the team the original offer treats "
@@ -74,6 +77,12 @@ def _check(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_s
         raise TradeError(f"excluded players must be on one of the two rosters: {unknown}")
     if c.locked & c.excluded:
         raise TradeError("a player cannot be both locked and excluded")
+    if c.excluded & offer:
+        raise TradeError(f"excluded players must not be in the offer: {sorted(c.excluded & offer)}")
+    seen = Counter(p.espn_player_id for t in (team_a, team_b) for p in state.rosters[t])
+    both = sorted(x for x, n in seen.items() if n > 1)
+    if both:
+        raise TradeError(f"players listed twice across the two rosters (stale roster data): {both}")
 
 
 class _Search:
@@ -118,7 +127,7 @@ class _Search:
     def _legal(self, a: tuple, b: tuple) -> bool:
         """Each side keeps 1..max_per_side players and adds at most max_added_per_side (locked players are never
         removed and excluded ones never added: edits() does not build such packages)."""
-        if not a or not b or len(a) > self.max_per_side or len(b) > self.max_per_side:
+        if not a or not b or len(a) > self.max_per_side or len(b) > self.max_per_side or set(a) & set(b):
             return False
         return max(self._added(a, b)) <= self.c.max_added_per_side
 
@@ -217,13 +226,13 @@ def counteroffers(state: LeagueState, team_a: int, team_b: int, a_sends, b_sends
     if o_status != "evaluated" or o_mine["ros_delta"] is None or o_theirs["ros_delta"] is None:
         why = {"excluded_invalid_roster": "The original offer leaves a roster that cannot be made legal.",
                "excluded_evaluation_unavailable": "The original offer's forced drops are too many to resolve exactly."
-               }.get(o_status, "A projection the original offer needs is missing for at least one evaluated week, "
-                               "so its impact is unknown and there is nothing exact to improve on.")
+               }.get(o_status, _unknown_reason(state, oa + ob))
         return {**out, "status": "original_unknown", "reason": why,
                 "original": {**base, "status": o_status,
                              **({"team_a": _side_out(o_mine, o_mine), "team_b": _side_out(o_theirs, o_theirs)}
                                 if o_status == "evaluated" else {})},
-                "results": [], "search": _search_out(s)}
+                "results": [], "search": {**_search_out(s), "exhaustive": False, "equivalent_hidden": 0,
+                                          "inconsistent_dropped": 0}}
     o_min = min(o_mine["ros_delta"], o_theirs["ros_delta"])
     original = {**base, "status": "evaluated", "team_a": _side_out(o_mine, o_mine),
                 "team_b": _side_out(o_theirs, o_theirs), "min_side_ros_delta": o_min}
@@ -265,8 +274,8 @@ def counteroffers(state: LeagueState, team_a: int, team_b: int, a_sends, b_sends
                 s.status["not_better"] += 1
                 continue
             s.status["qualified"] += 1
-            n = len(pkg_edits[(a, b)])
-            key = (-m, -(mine["ros_delta"] + theirs["ros_delta"]), n, a, b)
+            # equal values: the smaller package, then fewer edits, then ids (so an equivalent hides the bigger one)
+            key = (-m, -(mine["ros_delta"] + theirs["ros_delta"]), len(a) + len(b), len(pkg_edits[(a, b)]), a, b)
             found.append((key, (a, b), (mine, theirs)))
 
     exact[(oa, ob)] = (o_mine, o_theirs)
@@ -279,20 +288,23 @@ def counteroffers(state: LeagueState, team_a: int, team_b: int, a_sends, b_sends
             run(s.edits(*k, adds_only=True), k)
 
     found.sort(key=lambda z: z[0])
-    shown, equivalent, inconsistent = [], 0, 0
+    shown, equivalent, inconsistent, checks = [], 0, 0, 0
     for _, (a, b), (mine, theirs) in found:
         if any(_same((mine, theirs), prev) for _, prev in shown):
             equivalent += 1            # same effects as a simpler (earlier-ranked) counteroffer
             continue
-        if len(shown) >= c.limit:
+        if len(shown) >= c.limit or checks >= MANUAL_CHECKS:
             continue
+        checks += 1
         if not _manual_matches(state, s.A, s.B, a, b, mine, theirs, max_per_side):
             inconsistent += 1
             continue
         shown.append(((a, b), (mine, theirs)))
     results = [_result(s, a, b, mine, theirs, o_mine, o_theirs, pkg_edits[(a, b)])
                for (a, b), (mine, theirs) in shown]
-    search = {**_search_out(s), "equivalent_hidden": equivalent, "inconsistent_dropped": inconsistent}
+    search = {**_search_out(s), "equivalent_hidden": equivalent, "inconsistent_dropped": inconsistent,
+              "manual_checks": checks}
+    known = s.status["no_effect"] + s.status["not_better"] + s.status["qualified"]
     if results:
         status, reason = "found", None
     elif s.termination != "all_candidates_evaluated" and s.not_evaluated:
@@ -303,11 +315,31 @@ def counteroffers(state: LeagueState, team_a: int, team_b: int, a_sends, b_sends
         status = "no_legal_edit"
         reason = ("No package can be built from this offer under the constraints: every player is locked, no "
                   "roster has an allowed player to add, or the per-side limit is reached.")
+    elif inconsistent:
+        status = "none_verified"
+        reason = (f"{inconsistent} counteroffers qualified but the manual analyzer's evaluation did not match, so "
+                  "none is shown.")
+    elif known == 0:
+        status = "none_known"
+        reason = (f"Every one of the {s.evaluated} counteroffers evaluated has an unknown impact (a missing "
+                  "projection, a roster that cannot be made legal, or forced drops too many to resolve), so none "
+                  "can be compared with the offer.")
     else:
         status = "none_better"
-        reason = (f"None of the {s.evaluated} counteroffers evaluated improves the side the original offer treats "
-                  "worse; the original offer is the best balance within these limits.")
+        reason = (f"None of the {known} counteroffers with a known impact improves the side the original offer "
+                  "treats worse" + (f" ({s.evaluated - known} more have an unknown impact)" if s.evaluated > known
+                                    else "") + ".")
     return {**out, "status": status, "reason": reason, "original": original, "results": results, "search": search}
+
+
+def _unknown_reason(state: LeagueState, ids: tuple) -> str:
+    slots = unsupported_of(state.slots)
+    if slots and any(not lineup_relevant(p.position, state.slots)
+                     for t in state.rosters.values() for p in t if p.espn_player_id in ids):
+        return (f"The offer moves a player who can start only in {', '.join(slots)}, a slot no engine fills, so its "
+                "impact is unknown and there is nothing exact to improve on.")
+    return ("A projection the original offer needs is missing for at least one evaluated week, so its impact is "
+            "unknown and there is nothing exact to improve on.")
 
 
 def _stop_text(s: _Search) -> str:
@@ -317,7 +349,8 @@ def _stop_text(s: _Search) -> str:
 
 def _search_out(s: _Search) -> dict:
     return {"packages_evaluated": s.evaluated, "packages_not_evaluated": s.not_evaluated,
-            "termination": s.termination, "exhaustive": s.not_evaluated == 0,
+            # every generated package evaluated; the second addition is only tried on the best few, so never exhaustive
+            "termination": s.termination, "exhaustive": s.not_evaluated == 0 and s.c.max_added_per_side < 2,
             "work_spent": s.spent, "work_budget": s.c.work_budget,
             "unit": "lineup totals (exact package sides, forced-drop sets and ordering signals)",
             "statuses": dict(s.status), "seconds": round(time.perf_counter() - s.t0, 3),

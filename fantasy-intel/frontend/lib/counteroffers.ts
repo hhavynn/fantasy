@@ -22,12 +22,13 @@ export type Counteroffer = {
   analyzer_link: { ta: number; tb: number; a: number[]; b: number[] };
 };
 
-export type CounterofferStatus = "found" | "none_better" | "no_legal_edit" | "none_within_budget" | "original_unknown";
+export type CounterofferStatus = "found" | "none_better" | "none_known" | "none_verified" | "no_legal_edit"
+  | "none_within_budget" | "original_unknown";
 
 export type CounterofferSearch = {
   packages_evaluated: number; packages_not_evaluated: number; termination: "all_candidates_evaluated" | "work_budget" | "time_cap";
   exhaustive: boolean; work_spent: number; work_budget: number; stop_reason: string | null; scope: string;
-  equivalent_hidden?: number; inconsistent_dropped?: number;
+  equivalent_hidden?: number; inconsistent_dropped?: number; manual_checks?: number;
 };
 
 export type CounterofferResponse = {
@@ -85,6 +86,8 @@ export function statusTitle(s: CounterofferStatus, n: number): string {
   switch (s) {
     case "found": return `${n} ${plural(n, "counteroffer helps", "counteroffers help")} the side this offer treats worse`;
     case "none_better": return "No counteroffer within these limits does better";
+    case "none_known": return "No counteroffer with a known impact";
+    case "none_verified": return "No counteroffer passed the analyzer's check";
     case "no_legal_edit": return "No counteroffer can be built under these limits";
     case "none_within_budget": return "None found before the search limit";
     case "original_unknown": return "This offer's impact is unknown, so there is nothing exact to improve on";
@@ -94,6 +97,9 @@ export function statusTitle(s: CounterofferStatus, n: number): string {
 /** What the search covered, in one sentence. */
 export function coverageText(s: CounterofferSearch): string {
   const done = `${s.packages_evaluated} ${plural(s.packages_evaluated, "package")} evaluated exactly`;
+  if (s.packages_not_evaluated > 0) {
+    return `${done}; ${s.packages_not_evaluated} more not evaluated (${s.stop_reason ?? "search limit reached"}).`;
+  }
   if (s.exhaustive) return `${done}: every ${s.scope} within the limits.`;
-  return `${done}; ${s.packages_not_evaluated} more not evaluated (${s.stop_reason ?? "search limit reached"}).`;
+  return `${done}: ${s.scope}.`;
 }

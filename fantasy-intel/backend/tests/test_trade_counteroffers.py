@@ -2,6 +2,7 @@
 before evaluation when illegal, every result the exact two-team evaluation re-checked by the manual evaluator, a
 deterministic order and budget, and a zero-result answer that says why."""
 import random
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -93,9 +94,16 @@ def test_illegal_requests_are_refused_before_any_evaluation():
                      (([105], [204]), {"locked": frozenset({102})}),         # stale lock: not in the offer
                      (([105], [204]), {"excluded": frozenset({999})}),       # not on either roster
                      (([105], [204]), {"locked": frozenset({105}), "excluded": frozenset({105})}),
+                     (([105], [204]), {"excluded": frozenset({204})}),       # excluded, yet in the offer
                      (([105], [204]), {"max_added_per_side": 3}), (([105], [204]), {"limit": 4})):
         with pytest.raises(TradeError):
             counteroffers(st, 1, 2, *args, C(**kw))
+
+
+def test_a_player_on_both_rosters_is_refused_before_any_package_is_built():
+    st = two_teams(extra_a=[(299, "WR", 1)], extra_b=[(299, "RB", 30)])      # stale data: one id, two rosters
+    with pytest.raises(TradeError, match="twice"):
+        counteroffers(st, 1, 2, [299], [204])
 
 
 def test_a_missing_projection_is_unknown_never_a_counteroffer():
@@ -107,13 +115,20 @@ def test_a_missing_projection_is_unknown_never_a_counteroffer():
     res = counteroffers(st, 1, 2, [105], [204])
     assert res["status"] == "found" and res["search"]["statuses"]["excluded_missing_data"] >= 1
     assert all(209 not in x["team_b_sends"] for x in res["results"])
+    # Only that package can be built: its impact is unknown, which is not "no better".
+    others = {p.espn_player_id for t in st.rosters.values() for p in t} - {105, 204, 209}
+    only = counteroffers(st, 1, 2, [105], [204], C(locked=frozenset({105, 204}), excluded=frozenset(others)))
+    assert only["status"] == "none_known" and "unknown impact" in only["reason"]
+    assert only["search"]["statuses"]["excluded_missing_data"] == only["search"]["packages_evaluated"] == 1
 
 
 def test_an_unsupported_starting_slot_makes_the_offer_unknown():
     slots = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "P": 1})
     st = two_teams(extra_a=[(109, "P", 5)])
     st = type(st)(**{**st.__dict__, "slots": slots})
-    assert counteroffers(st, 1, 2, [109], [204])["status"] == "original_unknown"
+    res = counteroffers(st, 1, 2, [109], [204])
+    assert res["status"] == "original_unknown" and "P, a slot no engine fills" in res["reason"]
+    assert res["search"]["exhaustive"] is False
 
 
 def test_negative_projections_still_match_the_manual_evaluator():
@@ -130,7 +145,19 @@ def test_equivalent_counteroffers_show_only_the_simplest():
     res = counteroffers(st, 1, 2, [105], [204], C(max_added_per_side=2))
     effects = [(x["team_a"], x["team_b"]) for x in res["results"]]
     assert len(effects) == len(set(map(repr, effects)))
-    assert res["search"]["equivalent_hidden"] >= 1
+    assert res["search"]["equivalent_hidden"] >= 1 and res["search"]["exhaustive"] is False   # second step: a beam
+    # A benched 0.5-point RB adds nothing: swapping him out equals adding a second player, and the smaller one is shown.
+    tiny = counteroffers(two_teams(extra_a=[(100, "RB", 0.5)]), 1, 2, [100], [204])
+    assert tiny["results"] and all(len(x["team_a_sends"]) == 1 for x in tiny["results"])
+    assert tiny["search"]["equivalent_hidden"] >= 1
+
+
+def test_results_the_manual_evaluator_disputes_are_never_shown_and_the_rechecks_are_capped(monkeypatch):
+    calls = []
+    monkeypatch.setattr(co, "_manual_matches", lambda *a, **k: calls.append(1) and False)
+    res = counteroffers(two_teams(), 1, 2, [105], [204], C(max_added_per_side=2))
+    assert res["results"] == [] and res["status"] == "none_verified"
+    assert len(calls) == res["search"]["manual_checks"] == res["search"]["inconsistent_dropped"] == co.MANUAL_CHECKS
 
 
 def test_a_spent_budget_stops_the_search_deterministically_and_says_so():
@@ -194,6 +221,13 @@ def test_the_counteroffer_api_is_read_only_bounded_and_snapshot_checked(tmp_path
     again = api.post("/api/trades/counteroffers", json={**body, "data_version": data["data_version"]})
     assert again.status_code == 200
     assert api.post("/api/trades/counteroffers", json={**body, "data_version": "old"}).status_code == 409
+    import app.api.trade_discovery as api_mod
+    busy = threading.Semaphore(0)                                  # every slot taken: a quick 503, never a queue
+    monkeypatch.setattr(api_mod, "_COUNTER_SLOTS", busy)
+    monkeypatch.setattr(api_mod, "COUNTER_WAIT_SECONDS", 0.01)
+    assert api.post("/api/trades/counteroffers", json=body).status_code == 503
+    monkeypatch.undo()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
     for bad in ({"max_added_per_side": 3}, {"limit": 9}, {"positions": ["XX"]}, {"team_a_sends": list(range(11))},
                 {"team_b_sends": teams[ta][:1]}, {"locked": [123456789]}):
         assert api.post("/api/trades/counteroffers", json={**body, **bad}).status_code == 422, bad

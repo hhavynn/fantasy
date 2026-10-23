@@ -318,30 +318,35 @@ Nothing is submitted to the provider.
 roster, or swaps one unlocked player for another from the same roster. With `max_added_per_side` 2 (the cap; default 1)
 the four best single edits also get one more addition. Locked players (`locked`, the analyzer's "Keep in the deal") stay
 on their side; `excluded` players are never added; added players come from `positions` (default QB, RB, WR and TE, as in
-discovery). An edit that breaks the per-side limit, a lock or the cap is never built, and an illegal request (crossed
-owners, a duplicate, a lock not in the offer, an excluded id on neither roster) is a 422 before any evaluation.
+discovery). An edit that breaks the per-side limit, a lock or the cap, or puts one player on both sides, is never built. An
+illegal request (crossed owners, a duplicate in the offer, a player listed on both rosters, a lock not in the offer, an
+excluded id in the offer or on neither roster) is a 422 before any evaluation.
 
 **Exact, and checked twice.** Every package is the exact two-team evaluation of stage B (`TradeSearch._pair`: both
 optimal lineups every remaining week, forced drops, missing projections unknown and never 0). The ones shown are re-run
-through the manual evaluator (`trades.evaluate_trade`); a package whose deltas or forced drops differ is dropped and
-counted (`inconsistent_dropped`), never shown.
+through the manual evaluator (`trades.evaluate_trade`, at most six runs per request: `manual_checks`); a package whose
+deltas or forced drops differ is dropped and counted (`inconsistent_dropped`), never shown.
 
 **What qualifies, and the order.** Both teams' rest-of-season deltas must be known, and the smaller of the two must be
 larger than in the original offer. This is the same sign-based reading as the discovery categories: no threshold, no
-weight, no acceptance estimate. Ties go to the larger combined delta, then fewer edits, then player ids, so the answer is
-deterministic. A package whose effects on both teams equal a better-ranked one's is hidden (`equivalent_hidden`), and so
-is one that changes nothing (`no_effect`).
+weight, no acceptance estimate. Ties go to the larger combined delta, then fewer players, fewer edits and player ids,
+so the answer is deterministic. A package whose effects on both teams equal a better-ranked or smaller one's is hidden
+(`equivalent_hidden`), and so is one that changes nothing (`no_effect`).
 
 **Bounded.** The candidates are ordered by signals (each player's value to his own lineup and to the other team's) and
 evaluated under a work budget of 15,000 lineup totals (the beam's per-opponent budget, counted the same way, signals
 included) and a 6-second wall-clock cap. A search that stops says so (`termination`, `packages_not_evaluated`,
-`exhaustive: false`, `stop_reason`). On the synthetic FX-17 superflex league a 1-for-2 offer takes about 1,200 lineup
+`exhaustive: false`, `stop_reason`); with two additions per side the second addition is tried only on the best four
+single edits, so that search is never reported as exhaustive. A process runs at most two counteroffer searches at once;
+a request that cannot get a slot within a second is a 503, not a queue (a POST is never response-cached). On the synthetic FX-17 superflex league a 1-for-2 offer takes about 1,200 lineup
 totals (94 packages, 0.07 s), or 3,800 (236 packages, 0.14 s) with two additions per side.
 
 **When nothing is listed**, `status` and `reason` say why: `original_unknown` (the offer's own impact is unknown: a
-missing projection, an unsupported slot, or forced drops too many to resolve), `no_legal_edit` (everything is locked or
-nothing may be added), `none_better` (every package was evaluated and none helps the worse side) or `none_within_budget`
-(the search stopped first, and an unevaluated package may qualify).
+missing projection, a player who can start only in a slot no engine fills, or a roster that cannot be resolved),
+`no_legal_edit` (everything is locked or nothing may be added), `none_known` (every package built has an unknown impact),
+`none_verified` (packages qualified but the manual evaluator disagreed, so none is shown), `none_better` (no package with
+a known impact helps the worse side) or `none_within_budget` (the search stopped first, and an unevaluated package may
+qualify).
 
 **Snapshot.** The analyzer sends the data version its options were read on (`data_version`, the signal-provenance league
 snapshot); if the league data has changed since, the answer is a 409 asking for a fresh evaluation. Counteroffers use the

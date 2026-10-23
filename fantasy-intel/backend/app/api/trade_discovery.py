@@ -601,6 +601,11 @@ def discover_targets(p: DiscoverParams = Depends()):
                 "need_resolution": {"weakest": _weakest(con, state, r.team_id), "bye": _bye(con, state, r.team_id)},
                 "provenance": trade_provenance(con, r.lg, state)}
 
+COUNTER_SLOTS = 2                    # concurrent counteroffer searches per process
+COUNTER_WAIT_SECONDS = 1.0
+_COUNTER_SLOTS = threading.BoundedSemaphore(COUNTER_SLOTS)
+
+
 class CounterofferRequest(BaseModel):
     """An offer to repair (#214) and what a counteroffer may change. Every list is short and capped, so a request
     cannot widen the search."""
@@ -643,6 +648,10 @@ def trade_counteroffers(body: CounterofferRequest):
         c = CounterofferConstraints(
             locked=frozenset(body.locked), excluded=frozenset(body.excluded), max_added_per_side=body.max_added_per_side,
             limit=body.limit, **({"positions": tuple(sorted(set(body.positions)))} if body.positions is not None else {}))
+        # Each request is a fresh CPU-bound search (a POST is never response-cached): a few run at once per process,
+        # and one that cannot get a slot quickly is a 503 instead of a queue.
+        if not _COUNTER_SLOTS.acquire(timeout=COUNTER_WAIT_SECONDS):
+            raise HTTPException(503, "Counteroffer searches are busy right now. Try again in a moment.")
         try:
             res = counteroffers(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends, c,
                                 max_per_side=get_settings().trade_max_players_per_side)
@@ -650,6 +659,8 @@ def trade_counteroffers(body: CounterofferRequest):
             raise HTTPException(409, str(err))
         except TradeError as err:
             raise HTTPException(422, str(err))
+        finally:
+            _COUNTER_SLOTS.release()
         ids = set(res["original"]["team_a_sends"]) | set(res["original"]["team_b_sends"])
         for x in [res["original"], *res["results"]]:
             for side in ("team_a", "team_b"):

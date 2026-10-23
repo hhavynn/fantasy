@@ -59,7 +59,7 @@ export async function Counteroffers({ result, selection, locks }: {
   const offer = [...selection.a, ...selection.b];
   return (
     <Section title={TITLE} subtitle={SUBTITLE}
-      footnote={<>{coverageText(d.search)} {d.note}</>}>
+      footnote={<>{d.status === "original_unknown" ? null : `${coverageText(d.search)} `}{d.note}</>}>
       <ul className={styles.locks} aria-label="Players kept in every counteroffer">
         <li className={styles.muted}>Keep in the deal:</li>
         {offer.map((id) => {

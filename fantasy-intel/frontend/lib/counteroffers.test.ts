@@ -40,4 +40,7 @@ test("titles and coverage say what happened without hedges", () => {
   assert.equal(coverageText({ ...s, packages_evaluated: 1, packages_not_evaluated: 4, exhaustive: false, termination: "work_budget",
     stop_reason: "work budget of 60 lineup totals reached" }),
   "1 package evaluated exactly; 4 more not evaluated (work budget of 60 lineup totals reached).");
+  assert.equal(coverageText({ ...s, exhaustive: false, scope: "single edit of the offer, plus one more addition to the best few" }),
+    "28 packages evaluated exactly: single edit of the offer, plus one more addition to the best few.");
+  assert.equal(statusTitle("none_known", 0), "No counteroffer with a known impact");
 });
