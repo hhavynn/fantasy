@@ -57,6 +57,10 @@ test("without an NFL report every player is unknown, never healthy, and every it
   const sources = main.getByRole("region", { name: "Sources" });
   await expect(sources.getByText("NFL injury report (via nflverse)")).toBeVisible();
   await expect(sources.getByRole("link", { name: "dataset" }).first()).toHaveAttribute("href", /^https:\/\/github\.com\/nflverse\//);
+  // nflverse data is CC BY 4.0: credited, with the licence linked (#186)
+  await expect(sources.getByText(/data from nflverse \(CC BY 4\.0\), reformatted by Fantasy Intel/)).toHaveCount(1);
+  await expect(sources.getByRole("link", { name: "CC BY 4.0 licence" })).toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/");
+  await expect(sources.getByRole("link", { name: "nflverse", exact: true })).toHaveAttribute("href", "https://github.com/nflverse");
 
   const [scroll, width] = await page.evaluate(() => [document.scrollingElement!.scrollWidth, window.innerWidth]);
   expect(scroll, "no horizontal page scroll").toBeLessThanOrEqual(width);

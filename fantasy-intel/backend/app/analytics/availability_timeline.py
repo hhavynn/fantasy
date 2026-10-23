@@ -46,6 +46,10 @@ HISTORY_WEEKS = 3            # the window: the current week and the 3 before it
 NFLVERSE_INJURIES_URL = "https://github.com/nflverse/nflverse-data/releases/tag/injuries"
 NFLVERSE_ROSTERS_URL = "https://github.com/nflverse/nflverse-data/releases/tag/weekly_rosters"
 NFLVERSE_SCHEDULES_URL = "https://github.com/nflverse/nflverse-data/releases/tag/schedules"
+# nflverse data is CC BY 4.0: every source derived from it carries this credit and the licence (#186 decision memo).
+NFLVERSE_LICENSE = MappingProxyType({
+    "name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "source_url": "https://github.com/nflverse",
+    "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by Fantasy Intel."})
 
 # Constant tables are read-only (MappingProxyType): no module-level mutable state.
 DESIGNATED = MappingProxyType({QUESTIONABLE: "questionable", DOUBTFUL: "doubtful", OUT: "out", IR: "ir",
@@ -551,19 +555,24 @@ def _sources(facts: dict, feed_ret, provider_at, entries: list, covered: bool) -
          "available": facts["available"], "retrieved_at": _iso(feed_ret),
          "publication_time": "missing" if not rows else "available" if timed == rows else "partial" if timed else "missing",
          "text": "Game status, final practice participation and injury per player-week, with the provider's "
-                 "date_modified when published. Practice is one value per report row, not each practice day."},
+                 "date_modified when published. Practice is one value per report row, not each practice day.",
+         "license": dict(NFLVERSE_LICENSE)},
         {"key": "nfl_roster", "type": "official", "label": "NFL weekly roster (via nflverse)", "url": NFLVERSE_ROSTERS_URL,
          "available": None, "retrieved_at": None, "publication_time": "missing",
-         "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time."},
+         "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time.",
+         "license": dict(NFLVERSE_LICENSE)},
         {"key": "provider", "type": "provider", "label": "ESPN player status", "url": None,
          "available": provider_at is not None, "retrieved_at": _iso(provider_at), "publication_time": "missing",
-         "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced."},
+         "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced.",
+         "license": None},
         {"key": "news", "type": "third_party", "label": "Owner-curated news summaries", "url": None,
          "available": bool(entries), "retrieved_at": None, "publication_time": "date_only",
-         "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation."},
+         "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation.",
+         "license": None},
         {"key": "schedule", "type": "schedule", "label": "NFL schedule (via nflverse)", "url": NFLVERSE_SCHEDULES_URL,
          "available": covered, "retrieved_at": None, "publication_time": "scheduled",
-         "text": "This week's kickoffs, to mark reports modified after kickoff."},
+         "text": "This week's kickoffs, to mark reports modified after kickoff.",
+         "license": dict(NFLVERSE_LICENSE)},
     ]
 
 

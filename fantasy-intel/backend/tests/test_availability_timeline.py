@@ -298,6 +298,18 @@ def test_every_event_cites_a_source(league, news_file):
     assert body["sources"][0]["publication_time"] == "partial"     # two rows carry no date_modified
 
 
+def test_nflverse_sources_carry_the_cc_by_credit_and_others_none(league, news_file):
+    """nflverse data is CC BY 4.0: each source derived from it names the licence and the credit the page shows (#186);
+    ESPN's status and owner-curated summaries are not nflverse data and claim no licence."""
+    licences = {s["key"]: s["license"] for s in get(league, news_file)["sources"]}
+    for key in ("nfl_report", "nfl_roster", "schedule"):
+        assert licences[key] == {"name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/",
+                                 "source_url": "https://github.com/nflverse",
+                                 "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by "
+                                           "Fantasy Intel."}, key
+    assert licences["provider"] is None and licences["news"] is None
+
+
 def test_a_dropped_listing_is_a_change_not_a_clean_bill(league, news_file):
     cleared = player(get(league, news_file), 109)
     assert cleared["change"] == {"kind": "dropped_off_report", "from": "Questionable / LP", "to": None}
