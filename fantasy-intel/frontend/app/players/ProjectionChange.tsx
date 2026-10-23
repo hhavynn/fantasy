@@ -17,7 +17,7 @@ export async function ProjectionChange({ id }: { id: number }) {
   const res = await api<MoversResponse>(`/api/projections/movers?${profileMoversQuery(id)}`);
   const d = res.ok ? res.data : null;
   const c = profileChange(d, id);
-  const open = <Link href={c.href} prefetch={false}>Open in Projection movers</Link>;
+  const open = <Link href={c.href} prefetch={false} className={styles.textLink}>Open in Projection movers</Link>;
   if (c.kind === "unavailable") {
     return (
       <Section title={TITLE} subtitle={`${VIEW_NAME.ros}, the two latest stored forecasts`}>
