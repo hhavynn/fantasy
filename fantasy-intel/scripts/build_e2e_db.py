@@ -20,6 +20,7 @@ import _bootstrap  # noqa: F401
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
+import synthetic_pace  # noqa: E402
 import synthetic_research  # noqa: E402
 from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
@@ -91,6 +92,9 @@ def build(db_path: Path) -> dict:
         # Research Lab pool (WR/RB/TE usage) on top of the league fixture; written after analytics so the
         # ESPN-only pipeline leaves it alone.
         stats["research"] = synthetic_research.write(con, SEASON)
+        # Pace lab (issue #211): two finished synthetic seasons of team-week aggregates, drives and schedules, so the
+        # current season's pages read exactly what they read before.
+        stats["pace"] = synthetic_pace.write(con, (SEASON - 2, SEASON - 1))
         return stats
     finally:
         con.close()
