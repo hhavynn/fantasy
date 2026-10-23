@@ -19,9 +19,15 @@ export function authConfig(env: Record<string, string | undefined>): AuthConfig 
   return { url, key, signupsOpen: env.SIGNUPS_OPEN === "1" };
 }
 
-/** Where to go after signing in: an in-app path only (never another origin), else the leagues page. */
+/**
+ * Where to go after signing in: an in-app path only (never another origin), else the leagues page. URL parsers drop
+ * tabs and newlines and read `\` as `/`, so `/\t/evil.example` or `/\evil.example` would become `//evil.example`
+ * (another host): any control character or backslash is refused, not just a leading one.
+ */
 export function safeNext(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/leagues";
+  if (!value || value.length > 2048 || !value.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(value)) {
+    return "/leagues";
+  }
   return value;
 }
 

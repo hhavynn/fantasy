@@ -68,7 +68,7 @@ def world(pg):
     return {"pub": pub, "priv": priv}
 
 
-ALL_ROUTES = [("GET", "/v2/providers"), ("GET", "/v2/me"), ("GET", "/v2/leagues"), ("GET", f"/v2/leagues/{LID}"),
+ALL_ROUTES = [("GET", "/v2/providers"), ("GET", "/v2/signups"), ("GET", "/v2/me"), ("GET", "/v2/leagues"), ("GET", f"/v2/leagues/{LID}"),
               ("PUT", f"/v2/leagues/{LID}/pin"), ("DELETE", f"/v2/leagues/{LID}/pin"),
               ("PUT", f"/v2/leagues/{LID}/perspective"), ("DELETE", f"/v2/leagues/{LID}/perspective")]
 

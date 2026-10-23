@@ -22,8 +22,17 @@ test("a local Supabase needs SUPABASE_LOCAL=1, a loopback address, and never run
 
 test("after sign-in the redirect stays inside the site", () => {
   assert.equal(safeNext("/l/lg_abcdefghijklmnop/waivers"), "/l/lg_abcdefghijklmnop/waivers");
-  for (const bad of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "leagues"]) {
-    assert.equal(safeNext(bad), "/leagues", String(bad));
+  assert.equal(safeNext("/leagues?host=espn&step=details"), "/leagues?host=espn&step=details");
+  assert.equal(safeNext("/%2F%2Fevil.example"), "/%2F%2Fevil.example", "an encoded slash stays a path on this site");
+  for (const bad of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "leagues",
+    // The URL parser strips tabs and newlines and reads a backslash as a slash: each of these would leave the site.
+    "/\t/evil.example", "/\n/evil.example", "/\r//evil.example", "/\t\\evil.example", "/x\\..\\..\\evil", "/\u0000/evil",
+    "javascript:alert(1)", `/${"a".repeat(2048)}`]) {
+    assert.equal(safeNext(bad), "/leagues", JSON.stringify(bad));
+  }
+  // Whatever passes resolves to this origin.
+  for (const ok of ["/", "/terms", "/l/lg_abcdefghijklmnop/waivers?team=2#x", "/%5Cevil.example"]) {
+    assert.equal(new URL(safeNext(ok), "https://app.example").origin, "https://app.example", ok);
   }
 });
 
