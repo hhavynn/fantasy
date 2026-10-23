@@ -1,6 +1,7 @@
 // Pure logic for the command palette: the static page/action entries, result ranking and merging,
 // recent selections, and keyboard index wrap. No React and no `@/` imports, so it runs under the
 // unit-test runner.
+import type { ApiResult } from "./api.ts";
 import type { NavGroup } from "./navigation.ts";
 
 export type PaletteKind = "action" | "page" | "player";
@@ -185,6 +186,53 @@ export function parseRecents(raw: string | null): PaletteItem[] {
 
 /** The slim player shape `/api/search` returns. */
 export type SearchPlayer = { id: number; name: string; position: string | null; team: string | null; owner: string | null };
+
+const SEARCH_MAX_QUERY = 80;
+const SEARCH_LIMIT = 8;
+
+/**
+ * The browser's player-search URL (the app/api/search route handler). On a league page the caller wraps it in
+ * `leagueRouteHref` (lib/league-scope.ts) so the proxy hands the handler that league; a bare `/api/...` fetch is
+ * unscoped and would answer for the classic league.
+ */
+export function searchSrc(q: string): string {
+  return `/api/search?q=${encodeURIComponent(q)}`;
+}
+
+/**
+ * The backend path the search handler calls for the browser's query, or null for an empty one. Only the trimmed,
+ * capped query is forwarded. `api()` moves it to `/v2/leagues/<lg>/...` (with the visitor's token) when the proxy set
+ * the league header, so the handler never chooses a league itself.
+ */
+export function searchPath(params: URLSearchParams): string | null {
+  // Capped by code points, not UTF-16 units: a cut through an emoji would leave a lone surrogate, which
+  // encodeURIComponent rejects (a 500 instead of results).
+  const q = Array.from((params.get("q") ?? "").trim()).slice(0, SEARCH_MAX_QUERY).join("");
+  return q ? `/api/players?q=${encodeURIComponent(q)}&limit=${SEARCH_LIMIT}` : null;
+}
+
+/** The backend's player row as `GET /api/players` returns it (only the fields the pickers show). */
+export type SearchBackendPlayer = {
+  espn_player_id: number;
+  full_name: string | null;
+  position: string | null;
+  pro_team: string | null;
+  fantasy_team: string | null;
+};
+
+/**
+ * The search handler's response for a backend result (`null`: an empty query, no backend call). Never cacheable by a
+ * shared cache: the rows name a private league's managers, and the same URL answers per league and per visitor.
+ */
+export function searchResponse(res: ApiResult<SearchBackendPlayer[]> | null): Response {
+  const headers = { "Cache-Control": "private, no-store" };
+  if (res === null) return Response.json({ players: [] satisfies SearchPlayer[] }, { headers });
+  if (!res.ok) return Response.json({ players: [], error: res.kind ?? "unknown" }, { status: 502, headers });
+  const players: SearchPlayer[] = res.data
+    .filter((p) => p.full_name)
+    .map((p) => ({ id: p.espn_player_id, name: p.full_name as string, position: p.position, team: p.pro_team, owner: p.fantasy_team }));
+  return Response.json({ players }, { headers });
+}
 
 export function playerItem(p: SearchPlayer): PaletteItem {
   const meta = [p.position, p.team ?? "FA"].filter(Boolean).join(" · ");

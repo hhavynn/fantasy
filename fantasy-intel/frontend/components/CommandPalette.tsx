@@ -4,10 +4,11 @@ import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
-  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, wrapIndex,
+  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, searchSrc,
+  wrapIndex,
 } from "@/lib/palette";
 import { withTeam } from "@/lib/team-perspective";
-import { withLeague } from "@/lib/league-scope";
+import { leagueRouteHref, withLeague } from "@/lib/league-scope";
 import { useLeagueId } from "./useAppPathname";
 import { useTeam } from "./useTeam";
 import { useHiddenHrefs, useNavGroups } from "./NavVisibility";
@@ -91,7 +92,8 @@ export function CommandPalette() {
   );
 }
 
-type PlayerResult = { q: string; players: PaletteItem[]; failed: boolean };
+/** `key`: the league and query the players answer, so another league's results are never shown for the same text. */
+type PlayerResult = { key: string; players: PaletteItem[]; failed: boolean };
 
 function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | null }) {
   const league = useLeagueId();
@@ -102,12 +104,13 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [recents] = useState<PaletteItem[]>(readRecents);
-  const [result, setResult] = useState<PlayerResult>({ q: "", players: [], failed: false });
+  const [result, setResult] = useState<PlayerResult>({ key: "", players: [], failed: false });
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const q = query.trim();
-  const pending = q !== "" && result.q !== q;
-  const players = result.q === q ? result.players : NO_PLAYERS;
+  const key = `${league ?? ""} ${q}`;
+  const pending = q !== "" && result.key !== key;
+  const players = result.key === key ? result.players : NO_PLAYERS;
   const groups = useNavGroups();
   const pages = useMemo(() => pageItems(groups), [groups]);
   const hidden = useHiddenHrefs();
@@ -117,25 +120,26 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
   const activeIndex = Math.max(0, flat.findIndex((i) => i.id === activeId));
   const active = flat[activeIndex] ?? null;
 
-  // Player search: debounced, and a newer keystroke aborts the request still in flight.
+  // Player search: debounced, and a newer keystroke aborts the request still in flight. On a league page the request
+  // goes to /l/<lg>/api/search, so the results are that league's rosters, never the classic league's.
   useEffect(() => {
     if (!q) return;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        const res = await fetch(leagueRouteHref(searchSrc(q), league), { signal: ctrl.signal });
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { players: SearchPlayer[] };
-        setResult({ q, players: body.players.map(playerItem), failed: false });
+        setResult({ key, players: body.players.map(playerItem), failed: false });
       } catch {
-        if (!ctrl.signal.aborted) setResult({ q, players: [], failed: true });
+        if (!ctrl.signal.aborted) setResult({ key, players: [], failed: true });
       }
     }, DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q]);
+  }, [q, league, key]);
 
   // Lock page scroll while open (the stable gutter in globals.css keeps the layout from shifting).
   useEffect(() => {
