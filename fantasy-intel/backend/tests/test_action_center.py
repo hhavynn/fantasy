@@ -47,6 +47,7 @@ def _fresh_cache(monkeypatch):
     monkeypatch.setattr(action_center, "_CACHES", {})
     monkeypatch.setattr(action_center, "_POOLS", {})          # a slow league from another test never holds a worker
     monkeypatch.setattr(action_center, "_FLIGHTS", {})
+    monkeypatch.setattr(action_center, "_HOLDERS", {})
     monkeypatch.setattr(action_center, "_ADMISSION", {})
 
 

@@ -331,6 +331,7 @@ MODULE_CACHES = {
     "api/action_center.py:_POOLS": "thread pools; no data",
     "api/action_center.py:_ADMISSION": "a semaphore; no data",
     "api/action_center.py:_FLIGHTS": "in-flight builds per user, holding the league ids that user was authorized for",
+    "api/action_center.py:_HOLDERS": "the build holding each user's one admission slot, by verified user id; no league data",
     "api/deps.py:_MD_CONS": "connections per configured database name (operator setting)",
     "api/deps.py:_SNAP": "the snapshot cache and the classic deployment's single database",
     "api/deps.py:_LAYERED": "the per-process layered database registry; files are pinned per league and version",

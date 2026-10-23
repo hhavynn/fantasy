@@ -176,6 +176,7 @@ def test_action_center_lists_exactly_the_leagues_the_matrix_grants(client, leagu
 def test_portfolio_reads_exactly_the_leagues_the_matrix_grants(client, leagues, actor, monkeypatch):
     from app.api import action_center
     monkeypatch.setattr(action_center, "_FLIGHTS", {})
+    monkeypatch.setattr(action_center, "_HOLDERS", {})
     r = client.get("/v2/portfolio", headers=headers(actor))
     if actor == "anon":
         assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."})
