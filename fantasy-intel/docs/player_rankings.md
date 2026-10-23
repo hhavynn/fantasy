@@ -160,3 +160,28 @@ beyond what the data says.
 * Header: freshness line and the exact projection source; Ours shows the experimental / governance notice
   (`ProjectionNotice`).
 * `loading.tsx` skeleton; empty state for no league, no players, a filter with no match.
+
+## Source comparison (`/rankings/compare`, issue #189)
+
+`GET /api/rankings/compare` (contract `projection-compare/v1`, `app/analytics/projection_compare.py`) puts the league
+provider's projections and Fantasy Intel's own (Ours) side by side. It reuses `rank_pool` above, so both sources are
+ranked on the same pool, window and values as this page.
+
+- **Ranks.** Each source is ranked over the whole pool with `competition_ranks`, overall (QB, RB, WR and TE together)
+  and within the position, before any filter. `scope=position|overall` picks the one the gap uses.
+- **Gap.** Provider rank minus Ours rank (positive: Ours ranks him higher) and Ours minus provider points. It exists
+  only when both sources rank the player; otherwise `delta.status` names the missing side (`provider_missing`,
+  `ours_missing`, `neither_ranked`, `provider_not_published`, `ours_unavailable`). A missing rank is never 0.
+- **Sources.** `sources[]` says per league whether each source is eligible and has values. A provider that publishes
+  no projections (Sleeper) is not eligible and is labelled "Unavailable", never named as a source. Neither source is
+  an expert consensus.
+- **Large gaps.** At least 6 position ranks (15 overall), at least 1.0 point a week, and either source at 3.0 points a
+  week or more (the movers' relevance floor). Up to 20 on the returned page carry `explanation`: the Ours row's own
+  stored input contributions, flags, missing inputs and participation estimate with its run, and the movement between
+  the two newest stored forecasts of each source with `mover_evidence` ("recorded alongside", not a cause).
+- **Ranges.** From `projection_ranges.for_week` only: the served next-week Ours run (forecast horizon 0), RB, WR and TE.
+  Each range carries its horizon, basis and the measured coverage from the distribution report
+  (`projection_ranges.VALIDATION`). There is no rest-of-season range.
+- **Filters.** `position`, `horizon`, `scope`, `show` (`all | large | compared | missing`), `status`, `q`, `sort`
+  (`disagreement | delta | points | provider_rank | ours_rank | name`), `dir`, `limit`, `offset`; every one is in the
+  page URL and in the request, so the league-scoped response cache keys on all of them.

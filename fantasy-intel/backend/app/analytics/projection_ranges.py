@@ -47,6 +47,18 @@ POSITION_POLICY = {
     "K": {"served": False, "reason": "no point-distribution model for kickers"},
     "D/ST": {"served": False, "reason": "no point-distribution model for team defenses"},
 }
+# The measured 80% coverage behind each served position (docs/research/fantasy_point_distributions.md, sections 6 and
+# 18): the frozen 2023-24 confirmation run (rows, coverage) and the 2025-26 replay. Stated next to a range; never
+# recomputed here.
+VALIDATION_SOURCE = "docs/research/fantasy_point_distributions.md, sections 6 and 18"
+VALIDATION = {
+    "RB": {"confirmation": {"window": "2023-24", "rows": 3398, "coverage": 0.813},
+           "replay": {"window": "2025-26", "coverage": 0.810}},
+    "WR": {"confirmation": {"window": "2023-24", "rows": 5409, "coverage": 0.813},
+           "replay": {"window": "2025-26", "coverage": 0.807}},
+    "TE": {"confirmation": {"window": "2023-24", "rows": 3208, "coverage": 0.801},
+           "replay": {"window": "2025-26", "coverage": 0.791}},
+}
 DEFINITION = ("floor = 10th percentile, median = 50th, ceiling = 90th percentile of his points if he plays: 80% of "
               "outcomes land between floor and ceiling. The projection is the distribution's mean.")
 _COLUMNS = ("pin_id", "content_hash", "artifact_sha256", "version", "scoring_fingerprint", "trained_through_key",

@@ -28,6 +28,7 @@ from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
 from .api.player_compare import router as player_compare_router
 from .api.rankings import router as rankings_router
+from .api.projection_compare import router as projection_compare_router
 from .api.leagues_v2 import router as leagues_v2_router
 from .api.connect import router as connect_router
 from .api.kicker_projections import router as kicker_projections_router
@@ -98,6 +99,7 @@ app.include_router(projection_movers_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
 app.include_router(player_compare_router)
+app.include_router(projection_compare_router)
 app.include_router(rankings_router)
 app.include_router(leagues_v2_router)
 app.include_router(connect_router)
@@ -120,8 +122,8 @@ mount_legacy_routers(app, [
     router, manager_scouting_router, trade_discovery_router, luck_lab_router, schedule_intelligence_router,
     playoff_race_router, team_value_router, independent_projections_router, start_sit_router, matchup_router,
     projection_promotion_router, projection_performance_router, projection_movers_router, weekly_recap_router,
-    research_router, player_compare_router, rankings_router, kicker_projections_router, dst_projections_router,
-    injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
+    research_router, player_compare_router, projection_compare_router, rankings_router, kicker_projections_router,
+    dst_projections_router, injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
     transactions_router, add_drop_router, claim_plan_router, faab_router, trade_scenarios_router, trade_values_router,
 ], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router])
 app.middleware("http")(add_scope_headers)

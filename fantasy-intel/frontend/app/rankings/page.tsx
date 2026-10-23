@@ -110,7 +110,8 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
 
   return (
     <div className="stack">
-      <PageHeader eyebrow={`Players · Week ${data.week}`} title="Rankings" meta={QUESTION} />
+      <PageHeader eyebrow={`Players · Week ${data.week}`} title="Rankings" meta={QUESTION}
+        actions={<Link className="chip" href="/rankings/compare">Compare sources</Link>} />
 
       <RankingsControls sp={sp} filters={filters} leagueAvailable={data.league_context.available} sourceChoice={espnOn} />
 

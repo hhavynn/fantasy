@@ -142,6 +142,9 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/faab", ["tests/test_faab.py", "tests/test_golden_legacy.py", "tests/test_provider_copy.py",
                   "tests/test_v2_authorization_matrix.py"]),
     ("api/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py"]),
+    # Projection-source comparison (issue #189): over the rankings pool, movers and the distribution engine.
+    ("api/projection_compare", ["tests/test_projection_compare.py", "tests/test_golden_legacy.py",
+                                "tests/test_provider_copy.py", "tests/test_v2_authorization_matrix.py"]),
     ("api/rankings", ["tests/test_rankings.py"]),
     ("api/matchup", ["tests/test_matchup_api.py"]),
     ("api/schedule", ["tests/test_schedule_intelligence.py", "tests/test_sos_heatmap.py", "tests/test_golden_legacy.py"]),
@@ -170,6 +173,10 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/claim_plan", ["tests/test_claim_plan.py", "tests/test_faab.py", "tests/test_add_drop.py",
                               "tests/test_golden_legacy.py"]),
     ("analytics/faab", ["tests/test_faab.py", "tests/test_golden_legacy.py"]),
+    ("analytics/projection_compare", ["tests/test_projection_compare.py", "tests/test_golden_legacy.py",
+                                      "tests/test_provider_copy.py", "tests/test_league_scope_audit.py"]),
+    ("analytics/rankings", ["tests/test_rankings.py", "tests/test_projection_compare.py", "tests/test_golden_legacy.py"]),
+    ("analytics/projection_ranges", ["tests/test_projection_ranges.py", "tests/test_projection_compare.py"]),
     ("analytics/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py", "tests/test_kdst_streaming.py"]),
     # Strength-of-schedule heatmap (issue #188) over schedule intelligence's own evidence.
     ("analytics/sos_heatmap", ["tests/test_sos_heatmap.py", "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py",

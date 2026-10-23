@@ -1,0 +1,2135 @@
+// /api/rankings/compare
+{
+ "body": {
+  "contract": "projection-compare/v1",
+  "counts": {
+   "compared": 0,
+   "large": 0,
+   "matched": 28,
+   "neither_ranked": 0,
+   "ours_higher": 0,
+   "ours_missing": 28,
+   "pool": 28,
+   "provider_higher": 0,
+   "provider_missing": 0,
+   "returned": 28,
+   "shown": 28
+  },
+  "horizon": "week",
+  "largest": [],
+  "notes": [
+   "Neither column is an expert consensus. The provider column is the league provider's own projection as published; Ours is Fantasy Intel's own model."
+  ],
+  "players": [
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 104,
+    "explanation": null,
+    "full_name": "Delta QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "QB",
+    "pro_team": "PHI",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 4",
+     "fantasy_team_id": 4,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 1,
+       "overall_tied": true,
+       "position": 1,
+       "position_label": "QB1",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 11.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 202,
+    "explanation": null,
+    "full_name": "Foxtrot RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "BUF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 1,
+       "overall_tied": true,
+       "position": 1,
+       "position_label": "RB1",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 11.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 307,
+    "explanation": null,
+    "full_name": "Sierra WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "TB",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 1,
+       "overall_tied": true,
+       "position": 1,
+       "position_label": "WR1",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 11.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 209,
+    "explanation": null,
+    "full_name": "Waiver RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "KC",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 1,
+       "overall_tied": true,
+       "position": 1,
+       "position_label": "RB1",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 11.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 405,
+    "explanation": null,
+    "full_name": "Waiver TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "TE",
+    "pro_team": "DET",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 1,
+       "overall_tied": true,
+       "position": 1,
+       "position_label": "TE1",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 11.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 103,
+    "explanation": null,
+    "full_name": "Charlie QB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "QB",
+    "pro_team": "DET",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 6,
+       "overall_tied": true,
+       "position": 2,
+       "position_label": "QB2",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 10.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 306,
+    "explanation": null,
+    "full_name": "Romeo WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "LAC",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "SEA",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 6,
+       "overall_tied": true,
+       "position": 2,
+       "position_label": "WR2",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 10.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 404,
+    "explanation": null,
+    "full_name": "Xray TE",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "TE",
+    "pro_team": "PHI",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 4",
+     "fantasy_team_id": 4,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 6,
+       "overall_tied": true,
+       "position": 2,
+       "position_label": "TE2",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 10.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 102,
+    "explanation": null,
+    "full_name": "Bravo QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "QB",
+    "pro_team": "BUF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 11,
+       "overall_tied": true,
+       "position": 3,
+       "position_label": "QB3",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 9.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 201,
+    "explanation": null,
+    "full_name": "Echo RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "gsis_id": "00-SYNRB01",
+    "position": "RB",
+    "pro_team": "KC",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 6,
+       "overall_tied": true,
+       "position": 3,
+       "position_label": "RB3",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 10.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 208,
+    "explanation": null,
+    "full_name": "Lima RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "JAX",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "WAS",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 6,
+       "overall_tied": true,
+       "position": 3,
+       "position_label": "RB3",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 10.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 305,
+    "explanation": null,
+    "full_name": "Quebec WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LV",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "SF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 11,
+       "overall_tied": true,
+       "position": 3,
+       "position_label": "WR3",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 9.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 403,
+    "explanation": null,
+    "full_name": "Whiskey TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "TE",
+    "pro_team": "DET",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 11,
+       "overall_tied": true,
+       "position": 3,
+       "position_label": "TE3",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 9.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 101,
+    "explanation": null,
+    "full_name": "Alpha QB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "QB",
+    "pro_team": "KC",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 15,
+       "overall_tied": true,
+       "position": 4,
+       "position_label": "QB4",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 8.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 304,
+    "explanation": null,
+    "full_name": "Papa WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "PHI",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 15,
+       "overall_tied": true,
+       "position": 4,
+       "position_label": "WR4",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 8.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 402,
+    "explanation": null,
+    "full_name": "Victor TE",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "TE",
+    "pro_team": "BUF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 15,
+       "overall_tied": true,
+       "position": 4,
+       "position_label": "TE4",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 8.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 207,
+    "explanation": null,
+    "full_name": "Kilo RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "TB",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 11,
+       "overall_tied": true,
+       "position": 5,
+       "position_label": "RB5",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 9.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 303,
+    "explanation": null,
+    "full_name": "Oscar WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "DET",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 19,
+       "overall_tied": true,
+       "position": 5,
+       "position_label": "WR5",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 7.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 401,
+    "explanation": null,
+    "full_name": "Uniform TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "TE",
+    "pro_team": "KC",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 19,
+       "overall_tied": true,
+       "position": 5,
+       "position_label": "TE5",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 7.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 105,
+    "explanation": null,
+    "full_name": "Waiver QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "QB",
+    "pro_team": "PHI",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 25,
+       "overall_tied": true,
+       "position": 5,
+       "position_label": "QB5",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 5.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 206,
+    "explanation": null,
+    "full_name": "Juliet RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "LAC",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "SEA",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 15,
+       "overall_tied": true,
+       "position": 6,
+       "position_label": "RB6",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 8.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 302,
+    "explanation": null,
+    "full_name": "November WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "BUF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 22,
+       "overall_tied": true,
+       "position": 6,
+       "position_label": "WR6",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 6.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 309,
+    "explanation": null,
+    "full_name": "Waiver WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "BUF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "WAIVERS"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 22,
+       "overall_tied": true,
+       "position": 6,
+       "position_label": "WR6",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 6.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 205,
+    "explanation": null,
+    "full_name": "India RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LV",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "SF",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 19,
+       "overall_tied": true,
+       "position": 7,
+       "position_label": "RB7",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 7.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 204,
+    "explanation": null,
+    "full_name": "Hotel RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "PHI",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 22,
+       "overall_tied": true,
+       "position": 8,
+       "position_label": "RB8",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 6.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 301,
+    "explanation": null,
+    "full_name": "Mike WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "KC",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 25,
+       "overall_tied": true,
+       "position": 8,
+       "position_label": "WR8",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 5.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": true
+    },
+    "espn_player_id": 308,
+    "explanation": null,
+    "full_name": "Tango WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "JAX",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "WR",
+    "pro_team": "WAS",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 25,
+       "overall_tied": true,
+       "position": 8,
+       "position_label": "WR8",
+       "position_tied": true
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 5.3
+     }
+    }
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "bye_weeks": [],
+    "delta": {
+     "direction": null,
+     "large": false,
+     "points": null,
+     "points_per_week": null,
+     "rank": null,
+     "relevant": false,
+     "status": "ours_unavailable",
+     "tied": false
+    },
+    "espn_player_id": 203,
+    "explanation": null,
+    "full_name": "Golf RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "gsis_id": null,
+    "position": "RB",
+    "pro_team": "DET",
+    "range": {
+     "available": false,
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown."
+    },
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "sources": {
+     "ours": {
+      "origin": null,
+      "rank": {
+       "overall": null,
+       "overall_tied": false,
+       "position": null,
+       "position_label": null,
+       "position_tied": false
+      },
+      "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+      "status": "unavailable",
+      "value": null
+     },
+     "provider": {
+      "rank": {
+       "overall": 25,
+       "overall_tied": true,
+       "position": 9,
+       "position_label": "RB9",
+       "position_tied": false
+      },
+      "reason": null,
+      "status": "ok",
+      "value": 5.3
+     }
+    }
+   }
+  ],
+  "position": "ALL",
+  "provider": {
+   "key": "espn",
+   "name": "ESPN",
+   "publishes_projections": true
+  },
+  "q": "",
+  "ranges": {
+   "artifact": null,
+   "available": false,
+   "conditional_on": "appears",
+   "coverage": 0.8,
+   "definition": "floor = 10th percentile, median = 50th, ceiling = 90th percentile of his points if he plays: 80% of outcomes land between floor and ceiling. The projection is the distribution's mean.",
+   "horizon": "Week 3, the next-week forecast (forecast horizon 0)",
+   "levels": {
+    "ceiling": 0.9,
+    "floor": 0.1,
+    "median": 0.5
+   },
+   "positions": {
+    "D/ST": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    },
+    "K": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    },
+    "QB": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    },
+    "RB": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    },
+    "TE": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    },
+    "WR": {
+     "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+     "served": false,
+     "validation": null
+    }
+   },
+   "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+   "rest_of_season": {
+    "available": false,
+    "reason": "The distribution engine is validated for next-week forecasts only (forecast horizon 0), so it gives no rest-of-season range."
+   },
+   "run": null,
+   "validation_source": "docs/research/fantasy_point_distributions.md, sections 6 and 18",
+   "version": "ifpd-0.1.0",
+   "week": 3
+  },
+  "roster_status": "all",
+  "rosters_synced": true,
+  "scope": "position",
+  "season": 2026,
+  "show": "all",
+  "sort": {
+   "dir": "desc",
+   "key": "disagreement"
+  },
+  "sources": [
+   {
+    "available": true,
+    "description": "ESPN's own projection as published, in league scoring",
+    "eligible": true,
+    "key": "provider",
+    "kind": "provider",
+    "label": "ESPN projections",
+    "provider": "espn",
+    "provider_name": "ESPN",
+    "ranked": 28,
+    "reason": null,
+    "synced_at": "<masked>"
+   },
+   {
+    "available": false,
+    "description": null,
+    "eligible": true,
+    "experimental": false,
+    "governance_note": null,
+    "key": "ours",
+    "kind": "model",
+    "label": "Unavailable",
+    "model_version": null,
+    "model_versions": [],
+    "note": null,
+    "ranked": 0,
+    "reason": "No ifp-2.2.0 projection run is stored for week 3 yet",
+    "run_created_at": null,
+    "run_ids": []
+   }
+  ],
+  "thresholds": {
+   "explain_max": 20,
+   "large_rank": 6,
+   "min_points_per_week": 1.0,
+   "relevant_per_week": 3.0
+  },
+  "week": 3,
+  "window": {
+   "first": 3,
+   "label": "Week 3",
+   "last": 3,
+   "last_regular_season_week": 14,
+   "note": null,
+   "regular_season_only": true,
+   "weeks": [
+    3
+   ]
+  }
+ },
+ "status": 200
+}
