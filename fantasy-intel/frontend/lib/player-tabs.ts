@@ -119,6 +119,17 @@ export function leagueLogRows<T extends { scoring_period: number; actual_points:
     || (r.actual_points !== null && inRange(r.scoring_period, range)));
 }
 
+/** What a box-score week means (#254 S3): a Sleeper player-week Sleeper did not score, scored by Fantasy Intel. */
+export const BOX_SCORE_NOTE = "Fantasy Intel scored this week from the NFL box score in your league's scoring: the provider did not score it.";
+
+/**
+ * Weeks whose league points Fantasy Intel scored from the NFL box score (`actual_source` "box_score"). The player route
+ * names a row's source only when a player's rows mix sources, so an ESPN league or a provider-only player gives none.
+ */
+export function boxScoreWeeks(rows: readonly { scoring_period: number; actual_source?: string | null }[]): Set<number> {
+  return new Set(rows.filter((r) => r.actual_source === "box_score").map((r) => r.scoring_period));
+}
+
 /** "wk 4–8", "wk 5", or null for an empty list. */
 export function weekSpan(weeks: readonly number[]): string | null {
   if (weeks.length === 0) return null;

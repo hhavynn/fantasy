@@ -775,7 +775,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
                             for p in players if p["availability"] and p["availability"]["warnings"]],
         "injury_scenarios": injury_scenarios(state, window, team_a, team_b, a_sends, b_sends) if scenarios else [],
         "availability_note": AVAILABILITY_NOTE,
-        "projection_source": source_label(state.projection_source),
+        "projection_source": source_label(state.projection_source, state.projections),
         "trade_impact_source": "exact optimal-lineup simulation",
         "kdst_streaming": stream_summary(state.projections, window),
         "assumptions": assumptions(state),

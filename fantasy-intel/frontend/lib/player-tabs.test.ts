@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DEFAULT_TAB, PLAYER_TABS, inRange, leagueLogRows, parsePlayerTab, parseWeekWindow, profileHref, profileTabItems, readProfileState,
+  DEFAULT_TAB, PLAYER_TABS, boxScoreWeeks, inRange, leagueLogRows, parsePlayerTab, parseWeekWindow, profileHref, profileTabItems, readProfileState,
   weekSpan, weekWindowLabel, windowRange,
 } from "./player-tabs.ts";
 
@@ -86,4 +86,15 @@ test("leagueLogRows: a week window keeps the current week's projected row", () =
   assert.deepEqual(weeks(leagueLogRows(rows, null, { from: 5, to: 7 })), [5, 7]);
   // A week with no points and not the current week is not a row (missing is not 0).
   assert.ok(!weeks(leagueLogRows(rows, 8, null)).includes(6));
+});
+
+test("boxScoreWeeks: only rows Fantasy Intel scored from the box score (#254 S3)", () => {
+  const rows = [
+    { scoring_period: 3, actual_points: 12, actual_source: "provider" },
+    { scoring_period: 4, actual_points: 8, actual_source: "box_score" },
+    { scoring_period: 5, actual_points: null, actual_source: null },
+  ];
+  assert.deepEqual([...boxScoreWeeks(rows)], [4]);
+  // an ESPN league or a provider-only player: the route sends no source at all
+  assert.equal(boxScoreWeeks([{ scoring_period: 3, actual_points: 9 }]).size, 0);
 });

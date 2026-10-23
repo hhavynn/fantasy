@@ -8,7 +8,7 @@ import styles from "./players.module.css";
 import type { Detail } from "./types";
 import { providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
-import { inRange, type WeekRange } from "@/lib/player-tabs";
+import { boxScoreWeeks, inRange, type WeekRange } from "@/lib/player-tabs";
 
 const ptsTick = (v: number) => String(Math.round(v * 10) / 10);
 
@@ -98,6 +98,11 @@ export function LeaguePointsChart({ d, asOf, profile, range = null, trend = fals
   const actual = alignToAxis(rows, axis, (r) => r.actual);
   const projected = espn ? alignToAxis(rows, axis, (r) => r.projected) : axis.map(() => null);
   const title = trend ? "Recent form" : "Points by week";
+  // Weeks Fantasy Intel scored from the NFL box score (#254 S3): named under the chart, never passed off as the provider's
+  const boxed = [...boxScoreWeeks(d.league_points)].filter((w) => axis.includes(w)).sort((a, b) => a - b);
+  const boxNote = boxed.length > 0
+    ? ` ${boxed.length === 1 ? "Week" : "Weeks"} ${boxed.join(", ")} ${boxed.length === 1 ? "was" : "were"} scored by Fantasy Intel from the NFL box score in your league's scoring: ${provider} did not score ${boxed.length === 1 ? "it" : "them"}.`
+    : "";
   if (!hasData(actual) && !hasData(projected)) {
     return (
       <Section title={title}>
@@ -115,11 +120,11 @@ export function LeaguePointsChart({ d, asOf, profile, range = null, trend = fals
     <Section
       title={title}
       subtitle={trend ? `${provider} league points by week, in your league's scoring` : undefined}
-      footnote={trend
+      footnote={(trend
         ? `A gap is a week with no value (bye, inactive or not played), not a zero.${espn ? " The second line is ESPN's weekly projection for the same week." : ""}`
         : espn
           ? "No NFL usage data is stored for this player, so the usage charts are replaced by ESPN league points against ESPN's weekly projection. A gap is a week with no value, not a zero."
-          : `No NFL usage data is stored for this player, so the usage charts are replaced by ${provider} league points. A gap is a week with no value, not a zero.`}
+          : `No NFL usage data is stored for this player, so the usage charts are replaced by ${provider} league points. A gap is a week with no value, not a zero.`) + boxNote}
     >
       <div className={styles.chart}>
         <h3 className={styles.chartTitle}>{spec.title}</h3>

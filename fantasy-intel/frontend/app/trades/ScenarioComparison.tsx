@@ -4,6 +4,7 @@ import Link from "@/components/LeagueLink";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Delta, Notice, ProvenanceBadge, SkeletonTable, VisuallyHidden } from "@/components/ui";
 import { Missing } from "@/lib/format";
+import { projectionName, projectionWord } from "@/lib/labels";
 import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
 import { signedText } from "@/lib/trade-format";
@@ -68,7 +69,7 @@ export function ScenarioComparison({ scenarios, startWeek }: { scenarios: Scenar
 function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareResponse; scenarios: Scenario[]; startWeek: number | null }) {
   const ctx = useScenarios()!;
   const ev = res.evaluation;
-  const proj = res.projection_source ?? "Unavailable";
+  const proj = projectionName(res.projection_source ?? "Unavailable");
   const name = (id: number) => res.names[String(id)]?.name ?? `Player #${id}`;
   const team = (id: number | null) => (id === null ? "no roster" : res.teams.find((t) => t.team_id === id)?.name ?? `Team ${id}`);
   const last = ev.weeks[ev.weeks.length - 1];
@@ -203,7 +204,7 @@ function Change({ value, known, why }: { value: number | null; known?: number | 
 }
 
 function SideRow({ side, name, proj, phases, mine }: { side: ScenarioSide; name: (id: number) => string; proj: string; phases: Phases; mine: boolean }) {
-  const incomplete = `Incomplete: a rostered player has no ${proj} projection in ${side.weeks_incomplete.length > 0 ? weeksList(side.weeks_incomplete) : "a week"}`;
+  const incomplete = `Incomplete: a rostered player has no ${projectionWord(proj)}projection in ${side.weeks_incomplete.length > 0 ? weeksList(side.weeks_incomplete) : "a week"}`;
   const st = side.short_term;
   return (
     <tr data-mine={mine || undefined}>
@@ -215,7 +216,7 @@ function SideRow({ side, name, proj, phases, mine }: { side: ScenarioSide; name:
       <td className="num"><Change value={side.ros_delta} known={side.known_ros_delta} why={incomplete} /></td>
       <td className={styles.roster}>
         {side.forced_drops.length > 0 ? `Must drop ${side.forced_drops.map((d) => d.name ?? `Player #${d.espn_player_id}`).join(", ")}` : <span className={styles.muted}>No forced drop</span>}
-        {side.missing_players.length > 0 && <span className={styles.caveat}>No {proj} projection for {side.missing_players.map(name).join(", ")} in some weeks</span>}
+        {side.missing_players.length > 0 && <span className={styles.caveat}>No {projectionWord(proj)}projection for {side.missing_players.map(name).join(", ")} in some weeks</span>}
       </td>
     </tr>
   );

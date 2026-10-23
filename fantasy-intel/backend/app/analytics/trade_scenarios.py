@@ -228,7 +228,7 @@ def compare_scenarios(state: LeagueState, requests: list[ScenarioRequest], start
                     "invalid": sum(1 for x in rows if x["status"] == "invalid"),
                     "unavailable": sum(1 for x in rows if x["status"] == "unavailable")},
         # The source is named only when it supplied values; with no projections at all it is unavailable.
-        "projection_source": source_label(state.projection_source) if state.projections else None,
+        "projection_source": source_label(state.projection_source, state.projections) if state.projections else None,
         "trade_impact_source": "exact optimal-lineup simulation",
         "kdst_streaming": stream_summary(state.projections, window),
         "notes": [ALTERNATIVES_NOTE, SHARED_NOTE],

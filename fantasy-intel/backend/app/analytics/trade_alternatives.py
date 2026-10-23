@@ -656,7 +656,7 @@ def analyze(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_
         "pool": {"available_players_scored": len(board.pool),
                  "excluded_unprojected": dict(sorted(board.excluded_unprojected.items())),
                  "acquisition_types": dict(sorted(Counter(board.kind[p.espn_player_id] for p in board.pool).items()))},
-        "projection_source": source_label(state.projection_source),
+        "projection_source": source_label(state.projection_source, state.projections),
         "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS,
     }
 
