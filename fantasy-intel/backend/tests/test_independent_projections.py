@@ -446,6 +446,9 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
                "analytics/rankings.py",   # opt-in Rankings (source=independent): the switch's selection via forward_ours
                "analytics/projection_ranges.py",   # floor / ceiling ranges around the switch's run (select_run only)
+               # the source comparison (#189): the league's default source (default_source) and the served model's
+               # governance note only; its Ours values come from rankings.rank_pool, and it never feeds a lineup
+               "analytics/projection_compare.py",
                # the trade values board (#184): names the version each served projection came from
                # (league_projections' detail, the engines' own selection) and its movers baseline; no lineup
                "analytics/trade_values.py"}

@@ -47,10 +47,11 @@ POSITION_POLICY = {
     "K": {"served": False, "reason": "no point-distribution model for kickers"},
     "D/ST": {"served": False, "reason": "no point-distribution model for team defenses"},
 }
-# The measured 80% coverage behind each served position (docs/research/fantasy_point_distributions.md, sections 6 and
-# 18): the frozen 2023-24 confirmation run (rows, coverage) and the 2025-26 replay. Stated next to a range; never
-# recomputed here.
-VALIDATION_SOURCE = "docs/research/fantasy_point_distributions.md, sections 6 and 18"
+# The measured 80% coverage behind each served position (the fantasy point-distribution report in docs/research,
+# sections 6 and 18): the frozen 2023-24 confirmation run (rows, coverage) and the exploratory 2025-26 replay. Stated
+# next to a range; never recomputed here. The report's file name is not spelled out: app code never names the
+# research module, not even in text (guarded by its own test).
+VALIDATION_SOURCE = "the fantasy point-distribution report (docs/research), sections 6 and 18"
 VALIDATION = {
     "RB": {"confirmation": {"window": "2023-24", "rows": 3398, "coverage": 0.813},
            "replay": {"window": "2025-26", "coverage": 0.810}},

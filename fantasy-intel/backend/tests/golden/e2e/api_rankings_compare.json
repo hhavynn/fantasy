@@ -2067,7 +2067,7 @@
     "reason": "The distribution engine is validated for next-week forecasts only (forecast horizon 0), so it gives no rest-of-season range."
    },
    "run": null,
-   "validation_source": "docs/research/fantasy_point_distributions.md, sections 6 and 18",
+   "validation_source": "the fantasy point-distribution report (docs/research), sections 6 and 18",
    "version": "ifpd-0.1.0",
    "week": 3
   },

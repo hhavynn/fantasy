@@ -278,7 +278,7 @@ def test_ranges_come_from_the_distribution_engine_with_horizon_basis_and_coverag
         assert not r[QUINN]["range"]["available"] and "QB" in r[QUINN]["range"]["reason"]      # QB is held back
         assert not r[BRAVO]["range"]["available"]                  # WR, but the engine served no range for him
         assert body["ranges"]["rest_of_season"]["available"] is False
-        assert body["ranges"]["validation_source"].startswith("docs/research/fantasy_point_distributions.md")
+        assert body["ranges"]["validation_source"].startswith("the fantasy point-distribution report")
 
 
 def test_no_range_without_a_loaded_distribution(league):
