@@ -258,11 +258,12 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 1d. Tooling: `agent_check.py` backend step hard-coded 300 s (~line 1044) turns large `affected` selections into FAIL with no failures (seen on #258: direct run 756 passed in 6m05s).
 1e. Follow-up: waiver OP/FLEX picks compare position percentiles, not points (needs #254 basis); labelled in G5 PR.
 1g. Follow-up (security-adjacent, unreachable on self-hosted Next 16.4): `splitLeaguePath` lets `/l/<lg>//evil.example/x` rewrite to a protocol-relative path; reject rest paths starting `//` or containing `\`. Also e2e for forged `x-fi-league` on `/api/search` and `Cache-Control: private` on `trade-evidence/route.ts`.
-1h. In progress: league-scoped hrefs for server-rendered links and no-JS forms (`fix/league-scoped-server-links`).
+1h. Part 1 = PR #262 (security review approve, 3 LOW; main merged at b37e89d). Part 2 after it merges: Link → LeagueLink swap by section + a static guard (ESLint `no-restricted-imports` / no bare `action="/`), which also closes review LOW-2. Deferred items wait on #263 (trades/discover, TradeResult) and #179 (waivers/Evidence).
+1i. Follow-up (LOW, pre-existing): `/l/<lg>/<page>?league=clear` is rewritten into the league, but page builders (`perspectiveHref`, `rankingsHref`, …) carry `league=clear` into links, which then leave the league with that league's team id. Fix in proxy: drop `league` from a scoped rewrite's query.
 1f. Follow-up: `players/ProfileTabs.tsx:144` and `my-team/value/sections.tsx:452` print `waiver_score` without the partial flag (#260 scope limit).
-1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
+1a. DONE #261 (af57a57). Was: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
-4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
+4. #183 trade scenarios (P1) → PR #263 (b297e30): CI + security review running.
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
 6. #184 trade-market values (P1), then Phase 5 (#188, #189, #190, #200).
 Blocked or gated: #185, #199, #174, #203 (research-only), #198 (data rights), #222 (after #254), #227 group
@@ -285,6 +286,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #261 | 05:50 | 06:17 (0d64966) | approve (before final CI) | 06:17 (27 min) | 2 | 0 |
 | #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
 | #256 | 04:25 | 05:12 (99c96de, 3rd full CI) | 04:46 MEDIUM → re-check 05:00 → G1 remainder | 05:13 (48 min) | 3 | 0 |
 | #259 | 05:12 | 05:18 (46331f9) | 05:23 approve (Codex quota out) | 05:24 (12 min) | 1 | 0 |
@@ -324,6 +326,7 @@ conflicts.
 | #235 | 6164e84 | targeted 60 + s (623) | green | stale base, no file overlap with main → merged as is (D-07) |
 
 ## Lessons
+- Shared scratchpad: an agent's `rm -rf $S/tmp*/` (#183) also deleted 6 temp folders from other runs. Agents must delete only paths they created, by exact name (D-09); no wildcards in shared dirs.
 - CI (#248): the 6–8 min E2E outliers were apt `install-deps`, not the browser download; it now runs only when `ldd` or the Liberation Sans check finds something missing. Backend shards are the critical path now (~6 min).
 
 - `agent_check affected` used to miss the app-wide source audits; PR #236 adds them. Do not run full local suites
