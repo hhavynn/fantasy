@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ACTION_CENTER_CONTRACT, CARD_DECISIONS, applyLocks, buildActionCenter, buildCard, centerProblem, kickoffText, parseActionCenter, rankCards,
-  untilText, type CenterCard,
+  ACTION_CENTER_CONTRACT, CARD_DECISIONS, NO_PROJECTIONS, applyLocks, buildActionCenter, buildCard, centerProblem, kickoffText,
+  parseActionCenter, projectionSourceOf, projectionsNote, rankCards, sectionContext, untilText, type CenterCard,
 } from "./action-center.ts";
 import { buildActionItems, type RosterInput } from "./action-items.ts";
 
@@ -165,4 +165,30 @@ test("a busy server is an explicit try-again, never an error page or an all-clea
   assert.equal(broken.tone, "negative");
   assert.match(broken.body, /^Internal Server Error /);
   assert.equal(broken.retryHref, "/leagues#action-center");
+});
+
+test("a league whose week has no projections never reads as using a provider's projections", () => {
+  const withSource = (source: string | null) => {
+    const raw = ready(1);
+    (raw.start_sit as Record<string, unknown>).projection_source = source;
+    return buildCard(parse(payload([raw])).leagues[0]);
+  };
+  assert.equal(withSource("ESPN").projections, "ESPN projections");
+  assert.equal(withSource("Independent model").projections, "Independent model projections");
+  assert.equal(withSource(NO_PROJECTIONS).projections, "no projections for this week");
+  assert.equal(withSource(null).projections, null);
+  assert.equal(buildCard(parse(payload([ready(1, { startSit: false })])).leagues[0]).projections, null);
+  assert.equal(projectionsNote(undefined), null);
+});
+
+test("a week without projections is no projection source in the decision context, never ESPN", () => {
+  const ctx = (source: string) => {
+    const raw = ready(1);
+    (raw.start_sit as Record<string, unknown>).projection_source = source;
+    return sectionContext(parse(payload([raw])).leagues[0]);
+  };
+  assert.equal(ctx(NO_PROJECTIONS).projectionSource, null);
+  assert.equal(ctx("Independent model").projectionSource, "ours");
+  assert.equal(ctx("ESPN").projectionSource, "espn");
+  assert.equal(projectionSourceOf(NO_PROJECTIONS), null);
 });

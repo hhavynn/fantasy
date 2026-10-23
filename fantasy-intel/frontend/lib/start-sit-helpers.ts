@@ -76,6 +76,45 @@ export function lineupTotal(
   return { value: known ?? null, partial: true };
 }
 
+/** Start/Sit's projection source label when the week has no projection at all (backend start_sit.NO_PROJECTIONS). */
+export const NO_PROJECTIONS = "Unavailable";
+/** What a total shows (as a `Missing` reason) when the week has no projection. */
+export const NO_PROJECTIONS_TEXT = "No projections for this week";
+
+/**
+ * True when the week has nothing to recommend from: the backend says no projection exists, or no recommended starter has
+ * one. A total is then missing, never a measured 0.0.
+ */
+export function noProjections(
+  source: string | null | undefined,
+  rows: readonly { player_id: number | null; projected_points: number | null }[],
+): boolean {
+  return source === NO_PROJECTIONS || !rows.some((r) => r.player_id !== null && r.projected_points !== null);
+}
+
+/**
+ * A Start/Sit total (submitted or recommended) for display. When the week has no projection (`noProjections`) there is
+ * no total at all, never a 0.0 or a partial 0.0; otherwise lineupTotal's rule.
+ */
+export function projectedTotal(
+  hasLineup: boolean,
+  noProj: boolean,
+  complete: boolean,
+  total: number | null | undefined,
+  known: number | null | undefined,
+): TotalDisplay {
+  return noProj ? { value: null, partial: false } : lineupTotal(hasLineup, complete, total, known);
+}
+
+/**
+ * The page's "· … projections" meta text: whose projections, or that the week has none. `noProj` (this team's lineup
+ * has no projected starter while the league's source has numbers) keeps the source and says so for this team.
+ */
+export function projectionsMeta(source: string, noProj = false): string {
+  if (source === NO_PROJECTIONS) return "no projections";
+  return noProj ? `${source} projections, none for this team this week` : `${source} projections`;
+}
+
 export type VerdictTone = "info" | "caution" | "positive";
 
 export interface Verdict {

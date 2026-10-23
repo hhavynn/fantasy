@@ -54,6 +54,19 @@ MIN_SCHEDULED_GAMES_FOR_BYE = 12
 
 TEAMLESS_ABBRS = frozenset({None, "", "FA"})
 
+# The projection source label when no projection exists for the week (e.g. a league whose provider publishes none and
+# whose independent projections abstain): never a provider's name over empty numbers.
+NO_PROJECTIONS = "Unavailable"
+
+
+def projection_source_label(source: str, independent_available: bool, projections: dict) -> str:
+    """What the response names as its projection source: NO_PROJECTIONS whenever the week has no number at all (also
+    when a verified independent run exists but every one of its rows abstains), else the independent model when it is
+    shown, else ESPN."""
+    if not any(v is not None for v in projections.values()):
+        return NO_PROJECTIONS
+    return "Independent model" if source == "independent" and independent_available else "ESPN"
+
 
 @dataclass(frozen=True)
 class PlayerLock:
@@ -498,13 +511,31 @@ def optimize_lock_constrained_lineup(
 
     unc_known_total = sum(a.get("projected_points") or 0.0 for a in unconstrained_lineup if a.get("projected_points") is not None)
 
+    # An empty starting slot is a real (short-handed) 0 only when nobody who could fill it is unknown. When an eligible
+    # rostered player with an NFL team has no projection, the slot is empty because his number is missing: the lineup
+    # total is unknown, never a measured total (issue #253 G1; the rule team_lineups.project_week applies).
+    def unknown_fillers(lineup: list[dict], excluded: set) -> list[int]:
+        empty = {a["slot"] for a in lineup if a.get("player_id") is None}
+        if not empty:
+            return []
+        return sorted(p["espn_player_id"] for p in roster_players
+                      if p["espn_player_id"] not in excluded and projections.get(p["espn_player_id"]) is None
+                      and p.get("pro_team") not in TEAMLESS_ABBRS
+                      and any(eligible(slot, p.get("position")) for slot in empty))
+
+    rec_unknown = unknown_fillers(recommended_lineup, ir_ids | unavailable_ids | locked_starter_ids | locked_bench_ids)
+    unc_unknown = unknown_fillers(unconstrained_lineup, ir_ids | unavailable_ids)
+    if rec_unknown:
+        rec_complete = False
+    missing_projections = sorted(set(missing_projections) | set(rec_unknown) | set(unc_unknown))
+
     is_complete = actual_complete and rec_complete
 
     # No submitted lineup (a future-week preview or no snapshot) has no actual total: 0 would turn
     # the whole recommended lineup into a "gain".
     actual_total = round(actual_known_total, 2) if actual_complete and actual_starters else None
     recommended_total = round(rec_known_total, 2) if rec_complete else None
-    unconstrained_total = round(unc_known_total, 2) if is_complete else None
+    unconstrained_total = round(unc_known_total, 2) if is_complete and not unc_unknown else None
     projected_gain = (
         round(recommended_total - actual_total, 2)
         if (actual_total is not None and recommended_total is not None)
@@ -1113,7 +1144,7 @@ def load_start_sit_evaluation(
         ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
-        "projection_source": "Independent model" if source == "independent" and src["available"] else "ESPN",
+        "projection_source": projection_source_label(source, src["available"], projections),
         "projection_source_detail": describe(src),
         "summary": {
             "actual_projected_total": opt["actual_total"],

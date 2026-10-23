@@ -4,31 +4,37 @@
   "contract": "league-rules/v1",
   "engine_support": [
    {
+    "code": "flex_slots",
     "detail": "Filled by every projected lineup.",
     "rule": "Flex slot",
     "status": "handled"
    },
    {
+    "code": "provider_projections",
     "detail": "ESPN projects every player in this league's own scoring; those numbers are shown unmodified by default.",
     "rule": "Projections in this league's scoring",
     "status": "handled"
    },
    {
+    "code": "skill_projections",
     "detail": "Fantasy Intel's own projections are scored with this league's rules.",
     "rule": "Ours projections (QB, RB, WR, TE)",
     "status": "handled"
    },
    {
+    "code": "kicker_projections",
     "detail": "Kicker projections abstain: the league awards no points for field goals.",
     "rule": "Kicker projections",
     "status": "unsupported"
    },
    {
+    "code": "dst_projections",
     "detail": "D/ST projections abstain: the league scores no D/ST statistics.",
     "rule": "D/ST projections",
     "status": "unsupported"
    },
    {
+    "code": "lineup_lock",
     "detail": "Start/Sit locks each player at his own game's kickoff. ESPN's rule for this league is not in the synced settings, so that assumption is not verified.",
     "rule": "Lineup lock",
     "status": "unverified"
