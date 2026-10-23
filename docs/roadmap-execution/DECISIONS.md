@@ -116,6 +116,32 @@ Owner request: track #253 (P0) and #254 (P1) as a separate workstream. The combi
   deployment. Yahoo stays unavailable. Unsupported IDP slots, scoring overrides and missing data are disclosed. Missing
   is never zero. Independent scoring never poses as league-specific. No paid APIs, provider writes or scraping.
 
+## D-13 · 2026-10-23 · Continuous lane pipeline (throughput without weaker gates)
+Bottlenecks observed: the coordinator waited serially on CI, on reviews and on merges, with independent issues idle
+and up to one implementation agent active. It also posted repeated status messages about unchanged runs.
+- **Lanes.** Up to three delegated agents at once, when independent. A = integration and unblocking (usually the
+  coordinator itself: review fixes, conflicts, merges). B = the highest-value ready feature. C = a second independent
+  feature, a bounded fix or a read-only audit. Lanes are logical; capacity is reassigned as work finishes.
+- **Selection (STATUS "Work queue").** Order by priority (P0 > P1 > P2, adjusted for release impact), then:
+  dependencies merged, existing engines reusable, no file overlap with an active owner, research and licensing gates
+  clear, and review risk. When an agent finishes, the next ready item starts without asking the owner, within the
+  existing roadmap authorization. Provider integrations and writes, paid services, secrets and infrastructure still
+  need explicit authorization.
+- **CI and review are non-blocking.** Push, then keep working. Don't poll an unchanged run. Never re-run a SHA
+  without a diagnosed reason. Don't push a minor change that cancels a useful run. On a failure, read the failing job
+  first. Cancelled ≠ passed. Defer only the work that a pending merge would invalidate, and name that dependency.
+- **Stalls.** After about 15–20 min with no observable progress, inspect the real state (agent output, worktree
+  diff, CI) before calling it stalled. If blocked: name the blocker, keep other lanes moving, and fix simple
+  conflicts or tests in the owner's worktree. If an agent has stopped, take over from its handoff without losing work.
+  Escalate to the owner after about 30 min of verified inactivity or failed recovery.
+- **Reporting.** Report milestones only: a PR opens, a material review finding, a real CI blocker, a resolved
+  dependency, a merge, a stuck agent, or a queue change. STATUS updates stay compact; no summarizer agents.
+- **Shared resources.**
+  - One heavyweight local slot (D-08) and one Playwright slot (fixed ports), each assigned per agent in its brief.
+  - The disposable Postgres cluster (D-03, /tmp/fitestpg) is coordinator-owned; agents never stop or wipe it.
+- **Unchanged:** D-07 exact-head CI and merge rules, D-08, D-09, D-10 independent review, tenant isolation, the
+  credential scan, check integrity, provenance and missing ≠ zero, provider read-only terms.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.

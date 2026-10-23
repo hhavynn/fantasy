@@ -222,10 +222,22 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 
 ## Active wave
 
-**Now (2026-10-23 03:20Z):** #248, #250, #251, #252 merged. #249 agent merging main (waivers/page.tsx conflict) + 422
-test; then CI and merge.
-**Next after #249:** #253 (P0) in the priority slot: read-only gap inventory + FX-17 fixtures + D-12 contract. Second
-slot, disjoint files: #180 claim planner, then #179, then Phase 4 trades #182–#184. #254 follows #253's gap inventory.
+**Lanes (D-13), 2026-10-23 03:25Z:**
+| Lane | Item | Owner | Worktree | Slots |
+|---|---|---|---|---|
+| A | #249 (#178) at fe45d45: CI running; merge on green (review MEDIUM resolved by #252) | coordinator | `.worktrees/fi-178-add-drop-sim` (agent idle) | none |
+| B | #182 targeted trade discovery | agent | `.worktrees/fi-182-trade-discovery` | heavyweight + Playwright |
+| C | #253 phase 1: read-only gap inventory (local commit, no PR) | agent | `.worktrees/fi-253-compat` | targeted tests only |
+
+**Work queue (ready, in order; re-ranked when an item finishes):**
+1. #253 phase 2: FX-17 fixtures + D-12 diagnostic contract (P0). Needs phase-1 inventory + #249 merged.
+2. #180 claim planner (P1). Reuses #178 `evaluate_add_drop`, so needs #249 merged; owns `app/waivers/*` after #178.
+3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
+4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
+5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
+6. #184 trade-market values (P1), then Phase 5 (#188, #189, #190, #200).
+Blocked or gated: #185, #199, #174, #203 (research-only), #198 (data rights), #222 (after #254), #227 group
+prerequisites (see table).
 
 
 **Wave 1** (parallel, isolated worktrees under `.worktrees/`, all from `5315c96`):
@@ -236,6 +248,14 @@ slot, disjoint files: #180 claim planner, then #179, then Phase 4 trades #182–
 
 **Wave 2 (next):** #201 perf (backend cache/single-flight + timing), #167 onboarding (`app/leagues/*`), then #165
 weekly hub using the #168 contract. #170 runs after these, alone, because it owns Nav/layout/globals.
+
+## Throughput (D-13 measurements)
+Baseline from GitHub timestamps, PRs #230–#252 (22 merged): open→merge mean 33 min, median 29 min; 22 merges in a
+5.4 h span (first to last merge). Per-PR split of waiting on CI vs review vs merge was not recorded before D-13.
+From now on, log per merged PR: opened, CI green on final head, review done, merged; plus reruns and parallel-caused
+conflicts.
+| PR | Opened | CI green (final head) | Review done | Merged | Reruns | Parallel conflicts |
+|---|---|---|---|---|---|---|
 
 ## Verification receipts (merged)
 `q`=quick, `a`=affected, `s`=security tier, `L`=full local suite, CI=exact-SHA GitHub CI.
