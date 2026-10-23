@@ -164,7 +164,10 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
         figures={<>
           <VerdictFigure label={named ? `Best projected (${src})` : "Best projected"} value={best.value === null ? DASH : best.value.toFixed(1)} note={bestPlayer ? playerName(bestPlayer.card) : best.leaders.length > 1 ? "Tied" : "None"} emphasis />
           <VerdictFigure label="Gap to the next player" value={best.gap === null ? DASH : best.gap.toFixed(1)} note={best.gap === null ? "No other player to compare" : "Projected points"} />
-          <VerdictFigure label="Players compared" value={`${best.considered.length} of ${r.players.length}`} note={best.excluded.length ? `${best.excluded.length} left out, reasons below` : "All of them"} />
+          {best.common_slot === false
+            ? <VerdictFigure label="Players compared" value={DASH} note="Pick a slot: they never share one" />
+            : <VerdictFigure label="Players compared" value={`${best.considered.length} of ${r.players.length}`}
+                             note={best.excluded.length ? `${best.excluded.length} left out, reasons below` : "All of them"} />}
         </>}
       >
         <p>{best.text}</p>

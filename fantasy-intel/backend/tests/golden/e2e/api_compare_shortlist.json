@@ -3,6 +3,7 @@
  "body": {
   "as_of_week": 3,
   "best_projected": {
+   "common_slot": true,
    "complete": true,
    "considered": [
     201,

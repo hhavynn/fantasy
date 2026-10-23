@@ -142,7 +142,8 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None,
         else:
             considered.append((float(nw[field]), e))
     missing = [x for x in excluded if x["reason"] == "no_projection"]
-    out = {"source": field, "source_label": label, "week": week, "slot": slot, "leaders": [], "value": None, "gap": None,
+    out = {"source": field, "source_label": label, "week": week, "slot": slot, "common_slot": common_slot,
+           "leaders": [], "value": None, "gap": None,
            "considered": [e["espn_player_id"] for _, e in considered], "excluded": excluded,
            "complete": not missing, "status": "none", "text": ""}
     if not common_slot:

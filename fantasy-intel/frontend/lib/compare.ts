@@ -786,6 +786,8 @@ export type BestProjected = {
   source_label: string;
   week: number;
   slot: string | null;
+  /** False when no slot is chosen and no league slot takes every listed player (QB and K): nobody is ranked. */
+  common_slot: boolean;
   leaders: number[];
   value: number | null;
   gap: number | null;
@@ -880,18 +882,24 @@ export function shortlistPairs<T>(items: readonly T[]): [T, T][] {
   return out;
 }
 
-/** The pair view for two shortlist players, carrying the shortlist so the page can link back to it. */
+/**
+ * The pair view for two shortlist players, carrying the shortlist (ids, slot, start pick) so the page can link back to
+ * it. Never the team: the pair view is league-wide, and a `team=` in its URL would pin the rail and every propagated
+ * link to that team. The way back takes the team the viewer is analyzing when they click it (`TeamLink`), which is the
+ * shortlist's own team unless they changed it in the rail on the pair view.
+ */
 export function pairFromShortlistHref(a: number, b: number, state: ShortlistState): string {
-  const back = shortlistHref(state).replace(/^\/compare\?/, "");
+  const back = shortlistHref({ ...state, team: null }).replace(/^\/compare\?/, "");
   return `${compareHref(a, b)}&${back}`;
 }
 
-/** Whether a pair-view URL came from a shortlist (it carries `ids`), and the shortlist link back. */
+/** Whether a pair-view URL came from a shortlist (it carries `ids`), and the shortlist link back, without a team (see
+ *  pairFromShortlistHref): render it with `TeamLink`. */
 export function shortlistBackHref(sp: SearchParamsLike | null | undefined): string | null {
   if (!sp || sp.ids === undefined) return null;
   const p = parseShortlistParams(sp);
   if (p.ids.length === 0) return null;
-  return shortlistHref({ ids: p.ids, slot: p.slot, start: p.start, team: firstParam(sp.team) ?? null });
+  return shortlistHref({ ids: p.ids, slot: p.slot, start: p.start });
 }
 
 /** The shortlist that holds the pair being viewed (or nothing yet): the way from the pair view to the shortlist. */
@@ -1022,11 +1030,15 @@ export function startPickNote(r: ShortlistResponse, start: number | null): strin
   }
   const cell = nextWeekCell(p.card, best.source);
   if (cell.kind === "bye") return `Your pick, ${name}, is on bye in week ${best.week}.`;
-  if (cell.kind !== "value" || best.value === null) {
+  // "no projection" only when the pick's own number is missing
+  if (cell.kind !== "value") {
     return `Your pick, ${name}, has no ${best.source_label === "Unavailable" ? "" : `${src} `}projection to compare with.`;
   }
-  const own = best.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
-  const gap = finite(own) ? best.value - own : null;
+  const own = `Your pick, ${name}, is projected ${cell.text} (${src})`;
+  if (best.common_slot === false) return `${own}. These players never share a lineup slot, so no one is best projected to compare with; pick a slot.`;
+  if (best.value === null) return `${own}. No player who can fill the slot is best projected to compare with.`;
+  const mine = best.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
+  const gap = finite(mine) ? best.value - mine : null;
   return gap === null ? null : `Your pick, ${name}, is projected ${gap.toFixed(1)} points below the best projected (${src}).`;
 }
 
@@ -1038,6 +1050,7 @@ export function bestHeadline(r: ShortlistResponse): string {
     return p ? playerName(p.card) : `Player ${id}`;
   });
   const where = b.slot ? ` at ${b.slot}` : "";
+  if (b.common_slot === false) return "These players never share a lineup slot: pick a slot to compare them";
   if (b.status === "none" || names.length === 0) return `No best projected${where} for week ${b.week}`;
   if (names.length > 1) return `${names.join(" and ")} are tied for best projected${where}`;
   if (b.status === "incomplete") return `${names[0]} is best projected${where} of the players with a projection`;

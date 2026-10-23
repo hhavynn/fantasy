@@ -1,6 +1,7 @@
 import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { EmptyState, Glossary, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { providerName } from "@/lib/labels";
@@ -40,7 +41,7 @@ function Shell({ a, b, meta, back, children }: {
   return (
     <div className="stack">
       <PageHeader eyebrow="Players" title={TITLE} meta={meta ?? META}
-                  actions={back ? <Link className="chip" href={back}><span aria-hidden="true">← </span>Back to the shortlist</Link> : undefined}>
+                  actions={back ? <TeamLink className="chip" href={back}><span aria-hidden="true">← </span>Back to the shortlist</TeamLink> : undefined}>
         <CompareModes mode="pair" a={a?.id} b={b?.id} />
         <ComparePicker a={a} b={b} />
       </PageHeader>

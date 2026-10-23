@@ -123,3 +123,32 @@ test("the rail, the page picker, the URL and the API agree on the shortlist's te
   await expect(rail).toHaveValue("1");
   await expect(table).toHaveAttribute("data-team-id", "1", { timeout: 20_000 });
 });
+
+// Review of #282 (Codex P2, second round): a pair opened from a non-default team's shortlist carries no team= (the pair
+// view is league-wide), so the rail stays free: changing it there moves the rail, the nav links and the way back.
+test("a pair opened from a team's shortlist leaves the rail free, and the way back follows it", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop-1440", "the rail is the wide-desktop layout");
+  await page.goto(`${FOUR}&team=1`);
+  await expect(grid(page)).toHaveAttribute("data-team-id", "1", { timeout: 20_000 });
+  const rail = page.getByRole("complementary", { name: "Workspace" }).getByRole("combobox", { name: "Team" });
+  await expect(rail).toHaveValue("1");
+
+  await page.getByRole("region", { name: "Open a pair in the full comparison" }).getByRole("link", { name: "Echo RB vs Uniform TE" }).click();
+  await expect(page).toHaveURL(/\/compare\?a=201&b=401&ids=201,401,301,101&slot=FLEX$/);
+  await expect(page.getByRole("region", { name: "Projection comparison" })).toBeVisible({ timeout: 20_000 });
+  await expect(rail).toHaveValue("1");                                   // the team last analyzed, from the shortlist
+  const back = page.getByRole("link", { name: /Back to the shortlist/ });
+  await expect(back).toHaveAttribute("href", /team=1/);
+
+  await rail.selectOption("3");
+  await expect(rail).toHaveValue("3");
+  await expect(page).toHaveURL(/\/compare\?a=201&b=401&ids=201,401,301,101&slot=FLEX$/);   // the pair view stays as it is
+  const sections = page.getByRole("complementary", { name: "Workspace" }).getByRole("navigation", { name: "Sections" });
+  await expect(sections.getByRole("link", { name: "My team", exact: true })).toHaveAttribute("href", "/?team=3");
+  await expect(back).toHaveAttribute("href", /team=3/);
+
+  await back.click();
+  await expect(page).toHaveURL(/\/compare\?ids=201%2C401%2C301%2C101&slot=FLEX&team=3$/);
+  await expect(grid(page)).toHaveAttribute("data-team-id", "3", { timeout: 20_000 });
+  await expect(rail).toHaveValue("3");
+});

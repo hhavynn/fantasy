@@ -37,7 +37,7 @@ function shortlist(): ShortlistResponse {
     slots: [{ slot: "WR", count: 2, positions: ["WR"] }, { slot: "FLEX", count: 1, positions: ["RB", "WR", "TE"] }],
     unsupported_slots: [], slot: "FLEX", team: { team_id: 3, name: "Team Three", is_owner_default: true }, players,
     best_projected: {
-      source: "espn", source_label: "ESPN", week: pair.as_of_week, slot: "FLEX", leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
+      source: "espn", source_label: "ESPN", week: pair.as_of_week, slot: "FLEX", common_slot: true, leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
       excluded: [
         { espn_player_id: 13, reason: "not_eligible", text: "Charlie QB (QB) cannot start at FLEX." },
         { espn_player_id: 14, reason: "no_projection", text: "Delta TE has no ESPN projection." },
@@ -103,12 +103,16 @@ test("adding and removing players", () => {
 test("every pair opens the existing two-player view, with the way back", () => {
   assert.deepEqual(shortlistPairs([1, 2, 3]), [[1, 2], [1, 3], [2, 3]]);
   assert.equal(shortlistPairs([1, 2, 3, 4]).length, 6);
-  const href = pairFromShortlistHref(1, 3, { ids: [1, 2, 3], slot: "FLEX", team: "4" });
-  assert.equal(href, "/compare?a=1&b=3&ids=1,2,3&slot=FLEX&team=4");
+  // the pair URL never carries the shortlist's team (#282 review): the pair view is league-wide, and a team= there
+  // would pin the rail and every propagated link; the back link takes the analyzed team via TeamLink
+  const href = pairFromShortlistHref(1, 3, { ids: [1, 2, 3], slot: "FLEX", start: 3, team: "4" });
+  assert.equal(href, "/compare?a=1&b=3&ids=1,2,3&slot=FLEX&start=3");
+  assert.doesNotMatch(href, /team=/);
   const sp = Object.fromEntries(new URL(href, "http://x").searchParams);
   assert.equal(isShortlistView(sp), false);
   assert.deepEqual(parseCompareParams(sp), { a: 1, b: 3, errors: [] });
-  assert.equal(shortlistBackHref(sp), "/compare?ids=1,2,3&slot=FLEX&team=4");
+  assert.equal(shortlistBackHref(sp), "/compare?ids=1,2,3&slot=FLEX&start=3");
+  assert.equal(shortlistBackHref({ ...sp, team: "4" }), "/compare?ids=1,2,3&slot=FLEX&start=3");    // an old link's team is not reused
   assert.equal(shortlistBackHref({ a: "1", b: "2" }), null);
   assert.equal(shortlistFromPair(1, 2), "/compare?ids=1,2");
   assert.equal(shortlistFromPair(null, undefined), "/compare?ids=");
@@ -211,4 +215,21 @@ test("row source hints name a source only when the row has its numbers (#175 rev
   r.players[1].card.projection!.ros!.ours = 98.2;
   assert.equal(shortlistSourceHint(r, "next"), "Ours");
   assert.equal(shortlistSourceHint(r, "ros"), "Ours");
+});
+
+test("players who never share a slot: no best projected, said so, and a pick's own number is kept (#282 review)", () => {
+  const r = shortlist();
+  r.slot = null;
+  for (const p of r.players) p.slot_eligible = null;
+  r.best_projected = { ...r.best_projected, slot: null, common_slot: false, status: "none", leaders: [], value: null,
+                       gap: null, considered: [], excluded: [], complete: true };
+  assert.equal(bestHeadline(r), "These players never share a lineup slot: pick a slot to compare them");
+  // Alpha WR has a real 14.2: never "has no ESPN projection"
+  assert.equal(startPickNote(r, 11),
+    "Your pick, Alpha WR, is projected 14.2 (ESPN). These players never share a lineup slot, so no one is best projected to compare with; pick a slot.");
+  // only a pick whose own number is missing says so
+  assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no ESPN projection to compare with.");
+  // a common slot with nobody ranked (everyone else unprojected): the pick's number, and why there is no comparison
+  r.best_projected.common_slot = true;
+  assert.equal(startPickNote(r, 12), "Your pick, Bravo RB, is projected 12.0 (ESPN). No player who can fill the slot is best projected to compare with.");
 });

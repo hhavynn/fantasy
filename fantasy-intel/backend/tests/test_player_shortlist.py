@@ -112,6 +112,7 @@ def test_no_slot_ranks_players_who_share_a_slot(w):
     out = sl.shortlist(w, [ACE, ZED])                    # WR and RB: both FLEX
     assert [p["slot_eligible"] for p in out["players"]] == [None, None]
     assert out["best_projected"]["leaders"] == [ZED] and out["best_projected"]["status"] == "leader"
+    assert out["best_projected"]["common_slot"] is True
 
 
 def test_no_slot_and_no_shared_slot_names_no_one(w):
@@ -120,7 +121,7 @@ def test_no_slot_and_no_shared_slot_names_no_one(w):
     for ids in ([ACE, QUINN], [QUINN, KICKER]):
         best = sl.shortlist(w, ids)["best_projected"]
         assert (best["status"], best["leaders"], best["value"], best["considered"]) == ("none", [], None, [])
-        assert best["text"] == sl.NO_COMMON_SLOT
+        assert best["text"] == sl.NO_COMMON_SLOT and best["common_slot"] is False and best["excluded"] == []
     # with the slot chosen the eligible player is still ranked
     assert sl.shortlist(w, [ACE, QUINN], slot="QB")["best_projected"]["leaders"] == [QUINN]
     # a league that starts OP: a QB and a WR do share a slot
