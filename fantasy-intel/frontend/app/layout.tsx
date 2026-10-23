@@ -10,6 +10,7 @@ import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
+import { isFirstSync } from "@/lib/api-errors";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { currentLeague } from "@/lib/league-scope.server";
 import { NavVisibility } from "@/components/NavVisibility";
@@ -83,7 +84,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const s = status?.data;
   // A status read the backend answered from the league's previous files (lib/api.ts `stale`) marks the pill stale.
   const degraded = status?.ok === true && status.stale === true;
-  const sync = computeSyncSummary(s ?? null, undefined, profile.provider, degraded);
+  // A just-added league answers 409 "first sync in progress" until its first sync publishes: up, not offline.
+  const firstSync = status?.ok === false && isFirstSync(status.status, status.error);
+  const sync = computeSyncSummary(s ?? null, undefined, profile.provider, degraded, firstSync);
   const teams: RailTeams | null = teamsRes?.ok && teamsRes.data.teams.length > 0
     ? {
       league: league?.id ?? null,
@@ -119,7 +122,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <CommandPalette provider={profile.provider} providerLeague={league?.id ?? null} />
               {showSwitch && <ProjectionSwitch value={projection} className="topbar-proj" />}
               <ThemeSwitch className="topbar-theme" />
-              {classicRetired ? null : <SyncPill status={s ?? null} provider={profile.provider} degraded={degraded} />}
+              {classicRetired ? null : <SyncPill status={s ?? null} provider={profile.provider} degraded={degraded} firstSync={firstSync} />}
               <AccountMenu />
               <MobileNav projection={showSwitch ? projection : undefined} sync={classicRetired ? undefined : { state: sync.state, text: sync.text }} />
             </div>
