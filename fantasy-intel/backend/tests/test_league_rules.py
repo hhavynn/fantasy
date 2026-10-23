@@ -341,3 +341,29 @@ def test_dst_tables_and_check_match_the_research_model():
         want = research.resolve_dst_scoring(items or None)
         assert ok == want.supported
         assert [u["stat_id"] for u in unmodeled] == [u["stat_id"] for u in want.unmodeled]
+
+
+def test_espn_blank_slot_22_is_a_bench_slot_as_the_parser_stores_it():
+    """Issue #253 G12: ESPN's blank-labelled slot (id 22) is a non-starter for the parser (constants.NON_STARTER_SLOTS)
+    and the provider adapter, so the rules page counts it as bench, never as an unrecognised starter, and waiver
+    capacity counts it as an active spot instead of becoming unknown. Whether ESPN ever sends a count for it is
+    unverified, so it stays listed under unmapped."""
+    from app.analytics.reserve_slots import active_capacity
+    from app.analytics.waiver_roster import roster_constraints
+    from app.espn.constants import NON_STARTER_SLOTS
+
+    plain = build_league_rules(espn_row(ef.league_payload()))
+    raw = ef.league_payload()
+    raw["settings"]["rosterSettings"]["lineupSlotCounts"]["22"] = 1
+    row = espn_row(raw)
+    out = build_league_rules(row)
+    counts = row["roster_slots"] if isinstance(row["roster_slots"], dict) else json.loads(row["roster_slots"])
+    assert 22 in NON_STARTER_SLOTS and counts[""] == 1
+    assert out["roster"]["starters"] == plain["roster"]["starters"]               # 9, no "(1 unrecognised)"
+    assert out["roster"]["bench"] == plain["roster"]["bench"] + 1
+    blank = slots(out)["?"]
+    assert blank["kind"] == "bench" and blank["engine"]["status"] == HANDLED
+    assert not any(r["code"] == "unfilled_slots" for r in out["engine_support"])
+    assert [u["key"] for u in out["unmapped"] if u["area"] == "Roster slot"] == ["(blank label)"]
+    constraints = roster_constraints(row)
+    assert constraints["capacity"] == active_capacity(counts) == 13

@@ -341,3 +341,30 @@ def test_a_partly_loaded_schedule_week_is_not_planned():
     w9 = out["weeks"][0]
     assert w9["planned"] is False and w9["reason"].startswith("The NFL schedule for week 9 is incomplete (T3, T4")
     assert w9["candidates_with_game"] == 8 and w9["projected_candidates"] == 3     # unknowns stay in the denominator
+
+
+def test_a_two_kicker_league_streams_the_slot_its_weaker_kicker_holds():
+    """Issue #253 G9: with two K slots the plan streams the slot the weaker incumbent holds (the stronger one keeps the
+    other), so a free agent better than the backup but worse than the starter is added, which a one-slot plan never
+    does; the position reports slot_coverage partial. Roster fewer kickers than slots: the streamed slot is empty."""
+    weeks = [9, 10]
+    sched = _synthetic(weeks, ["T0", "T1", "T2", "T3", "T4", "T5"])
+    roster = [RosterPlayer(1, "K", "T0", "Starter K"), RosterPlayer(2, "K", "T1", "Backup K")]
+    fas = [RosterPlayer(100 + i, "K", f"T{2 + i}", f"FA{i}") for i in range(4)]
+    proj = {1: {w: 9.0 for w in weeks}, 2: {w: 3.0 for w in weeks},
+            **{p.espn_player_id: {w: 5.0 for w in weeks} for p in fas}}
+    one = _plan(roster, fas, proj, sched, weeks)
+    assert [w["action"] for w in one["weeks"]] == ["hold", "hold"] and "slot_coverage" not in one
+    two = plan_position("K", weeks, free_agents=fas, roster=roster, statuses={}, proj=proj, sched=sched,
+                        provider="espn", models={}, max_moves=None, cost=0.0, phase_of=lambda w: "regular",
+                        slot_count=2)
+    assert [w["hold"]["player"]["espn_player_id"] for w in two["weeks"]] == [2, 2]       # the backup's slot
+    assert [w["action"] for w in two["weeks"]] == ["add", "keep"]
+    assert two["plan"]["gain_vs_hold"] == 4.0                                               # 2 x (5 - 3)
+    cov = two["slot_coverage"]
+    assert (cov["status"], cov["code"], cov["slots"], cov["planned_slots"]) == ("partial", "streaming_slots", 2, 1)
+    assert all(any("Streams 1 of your 2 K slots" in r for r in w["reasons"]) for w in two["weeks"])
+    alone = plan_position("K", weeks, free_agents=fas, roster=roster[:1], statuses={}, proj=proj, sched=sched,
+                          provider="espn", models={}, max_moves=0, cost=0.0, phase_of=lambda w: "regular",
+                          slot_count=2)
+    assert [w["hold"]["state"] for w in alone["weeks"]] == [EMPTY, EMPTY] and alone["plan"]["hold_points"] == 0.0

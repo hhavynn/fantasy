@@ -16,6 +16,10 @@ Matrix rows (`MATRIX`; docs: fantasy-intel/docs/compatibility/253-gap-inventory.
   M7  FX-17 on Sleeper with a 3-player taxi squad (taxi rows are Sleeper-only; the ESPN builders reject them)
   M8  individual defensive player (IDP) slots on ESPN (LB, DL) and Sleeper (DL, LB, IDP_FLEX)
   M8p punter and head coach slots on ESPN (P, HC): players ESPN stores and projects, but no engine values
+  M9  two kickers and two D/ST on ESPN (M1 with K x2, D/ST x2): K and D/ST streaming covers one slot each (G9)
+
+`Row.sleeper_settings` adds invented Sleeper league settings (e.g. the `reserve_allow_*` IR rules, G7); which of those
+keys real Sleeper leagues carry is UNVERIFIED, so no matrix row carries them and tests build such rows themselves.
 
 Builders return raw provider payloads, shaped exactly like the responses the real sync code parses (the ESPN fixture
 league `espn_fixture.league_payload()` is the template, as in tests/test_league_rules.py), so tests run the real import:
@@ -99,6 +103,7 @@ class Row:
     sleeper_scoring: dict = field(default_factory=lambda: dict(SLEEPER_HALF_PPR))
     tied: bool = False                # every player projects the same: ties break by id
     free_agents: bool = True          # False: a sparse pool, nobody on waivers
+    sleeper_settings: dict = field(default_factory=dict)    # extra Sleeper `settings` keys (invented, see above)
 
 
 MATRIX = {
@@ -115,6 +120,7 @@ MATRIX = {
     "M6": Row("M6", "espn", STANDARD, espn_items=espn_scoring(pass_td=6.0)),
     "M6s": Row("M6s", "sleeper", STANDARD, sleeper_scoring=dict(SLEEPER_UNMAPPED)),
     "M7": Row("M7", "sleeper", {**FX17, "TAXI": 3}, teams=6),
+    "M9": Row("M9", "espn", {**STANDARD, "K": 2, "D/ST": 2}),
 }
 RESERVE = ("BE", "IR", "TAXI")        # slots whose players do not start
 
@@ -148,15 +154,15 @@ def league_players(row: Row) -> list[Player]:
         for slot, count in row.slots.items():
             if slot in RESERVE:
                 continue
-            for _ in range(count):
+            for k in range(count):
                 if slot == "FLEX":
                     pos = FLEX_FILL[flex_i % len(FLEX_FILL)]
                     flex_i += 1
                 else:
                     pos = FILL[slot]
                 i += 1
-                if pos == "D/ST":
-                    team = PRO_TEAMS[t - 1]
+                if pos == "D/ST":                 # a second D/ST slot takes a defense no team's first one uses
+                    team = PRO_TEAMS[t - 1 + k * row.teams]
                     out.append(Player(-16000 - team, pos, team, t, slot))
                 else:
                     out.append(Player(70_000 + t * 100 + i, pos, next_team(), t, slot))
@@ -300,7 +306,7 @@ def sleeper_payloads(row: Row):
     league.update(league_id="1180000000000025301", name=f"Compat {row.id}", total_rosters=row.teams,
                   roster_positions=positions, scoring_settings=dict(row.sleeper_scoring))
     league["settings"] = {**league["settings"], "num_teams": row.teams, "reserve_slots": row.slots.get("IR", 0),
-                          "taxi_slots": row.slots.get("TAXI", 0)}
+                          "taxi_slots": row.slots.get("TAXI", 0), **row.sleeper_settings}
     users = [{"user_id": f"70000000000253{t:02d}", "display_name": f"compat{t}", "metadata": {"team_name": f"C{t}"},
               "is_owner": t == 1} for t in range(1, row.teams + 1)]
     rosters = []

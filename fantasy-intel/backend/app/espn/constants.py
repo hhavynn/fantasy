@@ -9,7 +9,9 @@ SLOT_MAP: dict[int, str] = {
 }
 BENCH_SLOT = 20
 IR_SLOT = 21
-NON_STARTER_SLOTS = {BENCH_SLOT, IR_SLOT, 22}
+BLANK_SLOT = 22                        # ESPN's blank-labelled slot: stored as a non-starter, like the bench
+BLANK_SLOT_LABEL = SLOT_MAP[BLANK_SLOT]  # "" in leagues.roster_slots
+NON_STARTER_SLOTS = {BENCH_SLOT, IR_SLOT, BLANK_SLOT}
 
 # player.defaultPositionId -> position (different id space from lineup slots!)
 DEFAULT_POSITION_MAP: dict[int, str] = {

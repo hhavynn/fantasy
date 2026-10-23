@@ -268,14 +268,14 @@ waivers `scoring.partial` (xFP is full PPR).
 | **G2** | P1 (bug) | Start/Sit: a starter in a slot no engine fills (IDP, P, HC) is counted in `actual_total` but cannot appear in the recommendation, so `projected_gain` is understated (negative). | `start_sit.py:266-281`, `:474-487`; verified (probe): actual 38, recommended 30, gain -8 | slots `{QB, RB, LB}`, all projected, LB starter: assert gain 0 or the tool abstains |
 | **G3** | P1 | Every full-lineup total (team_lineups, trades, discovery, team value, power rankings, playoff race, add/drop) silently omits slot labels outside FIXED+FLEX and reports `projection_complete` True. Only the league-rules page discloses it ("Starting slots no engine fills"). | `lineup.py:39-46`; `team_lineups.py:111-113`, `:208-245`; verified (probe) | `project_week` with slots from `{QB:1, LB:1}`: total 20, complete True |
 | **G4** | P1 | Sleeper IDP: IDP players are never written to `fantasy_players` and IDP starters get bench id 20, so roster queries that join `fantasy_players` drop them. `active_capacity` still counts IDP slots, so trades and add/drop may see a free spot that does not exist. | `write.py:321-326`, `:340-345`; `trade_data.py:220-229`, `:267`; from code, UNVERIFIED end to end | M8 Sleeper: full roster with 1 rostered DL, receive 2-for-1, assert a forced drop (or a roster `unsupported` diagnostic) |
-| **G6** | P2 | Sleeper waiver add/drop legality is always UNKNOWN (`settings_complete = bool(rosterSettings)`). This is a conservative abstention, but nothing on the rules page or the diagnostic says so. | `waiver_roster.py:31`, `:91`; pinned around in `test_sleeper_taxi.py:171-173` | M3: every waiver row's move status is `UNKNOWN` |
-| **G7** | P2 | IR eligibility uses ESPN statuses (`IR`, `INJURY_RESERVE`, `OUT`) for Sleeper leagues; Sleeper's `reserve_allow_*` settings are not read. Which settings real leagues carry is UNVERIFIED. | `waiver_roster.py:88`; branch `ir_slot_eligible` | M7: an IR occupant who is `DOUBTFUL` in a league allowing doubtful players blocks adds |
-| **G9** | P2 | kdst_streaming plans one slot per position even when the league starts 2 K or 2 D/ST. | `kdst_streaming.py:23`, `:84`, `:538-551` | M9: `slots` is 2 but the plan is single-slot, so it should report `partial` |
+| **G6** | P2 | Sleeper waiver add/drop legality is always UNKNOWN (`settings_complete = bool(rosterSettings)`). This is a conservative abstention, but nothing on the rules page or the diagnostic says so. **Surfaced (section 10):** the abstention is kept; the rules page has a `roster_restrictions` row (unverified) and the waivers diagnostic cites it. | `waiver_roster.py:31`, `:91`; pinned around in `test_sleeper_taxi.py:171-173` | M3: every waiver row's move status is `UNKNOWN` |
+| **G7** | P2 | IR eligibility uses ESPN statuses (`IR`, `INJURY_RESERVE`, `OUT`) for Sleeper leagues; Sleeper's `reserve_allow_*` settings are not read. Which settings real leagues carry is UNVERIFIED. **Fixed (section 10):** the settings are read when synced; a status they do not decide is unverified, never ESPN's rule. | `waiver_roster.py:88`; branch `ir_slot_eligible` | M7: an IR occupant who is `DOUBTFUL` in a league allowing doubtful players blocks adds |
+| **G9** | P2 | kdst_streaming plans one slot per position even when the league starts 2 K or 2 D/ST. **Fixed as partial (section 10):** the plan streams the slot the weakest incumbent holds and reports `slot_coverage` partial. | `kdst_streaming.py:23`, `:84`, `:538-551` | M9: `slots` is 2 but the plan is single-slot, so it should report `partial` |
 | **G10** | P2 | One abstaining family (for example unsupported Sleeper kicker scoring) makes every team-week with a teamed K incomplete in team_lineups-based tools. The abstention is correct, but the cause is not named per tool. | `team_lineups.py:225-229`; verified (probe) for one team-week | M6 Sleeper with an unsupported K key: team value and trades are all known-only, and the diagnostic must cite `kicker_projections` |
 | **G11** | P3 | ESPN position = `defaultPositionId`; `eligible_slots` is ignored (Sleeper: `fantasy_positions` ignored). Frequency is UNVERIFIED. | `parse.py:207`, `:211` | a player with `eligibleSlots` [RB, WR] cannot fill WR |
-| **G12** | P3 | A blank ESPN slot (id 22) is counted as an unrecognised starter by league_rules but as a non-starter by the parser and adapter. | `league_rules.py:207-212` vs `constants.py:12` | `lineupSlotCounts {"22": 1}`: rules starters +1 |
+| **G12** | P3 | A blank ESPN slot (id 22) is counted as an unrecognised starter by league_rules but as a non-starter by the parser and adapter. **Fixed (section 10):** a bench slot on the rules page and in waiver capacity. | `league_rules.py:207-212` vs `constants.py:12` | `lineupSlotCounts {"22": 1}`: rules starters +1 |
 | **G13** | P1 (test debt) | No OP, multi-QB or 3-FLEX coverage in start_sit, what-if, waivers, trade_discovery, add_drop, kdst or action center. | test inventory above | M2 matrix |
-| **G14** | P3 | `engine_support` has no stable code, and what-if keys on the English rule text. | `lineup_what_if.py:360` | rename the rule text and what-if loses the lock rule silently |
+| **G14** | P3 | `engine_support` has no stable code, and what-if keys on the English rule text. **Fixed** (backend in phase 2, section 8.1; the rules page's `EngineRule` type and row keys and a rename test in section 10). | `lineup_what_if.py:360` | rename the rule text and what-if loses the lock rule silently |
 
 ### Phase 3 status: G2, G3 and G4 (unsupported-slot integrity)
 
@@ -415,10 +415,10 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
 | G3: full-lineup totals omit unfilled slots | `unfilled_slots`, roster `partial` (totals tools, waivers, bye planner) | #253 follow-up |
 | G4: Sleeper IDP players missing from the player data | `players_missing`: import `partial`, roster `unsupported` for capacity tools, `partial` for others | #253 follow-up |
 | G5: waiver lineup math treats a missing value as 0 and compares percentiles | `missing_value`, feature `partial` (waivers) | fixed in #260 (missing value unknown, never 0); the finding stays `partial` for the percentile basis and unknown players |
-| G6: Sleeper waiver legality always unknown | `roster_restrictions`, roster `unverified` (waivers) | #180 agent |
-| G7: ESPN IR statuses applied to Sleeper | `ir_eligibility`, roster `partial` (waivers, add/drop) | #180 agent |
+| G6: Sleeper waiver legality always unknown | `roster_restrictions`, roster `unverified` (waivers) | surfaced in section 10 (abstention kept; rules page row `roster_restrictions`) |
+| G7: ESPN IR statuses applied to Sleeper | `ir_eligibility`, roster `partial` (waivers, add/drop) | fixed in section 10 (`handled` when the league's `reserve_allow_*` settings decide every status) |
 | G8: sparse-pool replacement level 0 | `replacement_level`, feature `partial` (trade discovery) | the #182 agent owns trade code; diagnostic only here |
-| G9: one streaming slot for 2+ K or D/ST | `streaming_slots`, roster `partial` (kdst_streaming) | #253 follow-up |
+| G9: one streaming slot for 2+ K or D/ST | `streaming_slots`, roster `partial` (kdst_streaming) | section 10: the planner streams the weakest incumbent's slot and reports `slot_coverage` partial; still partial |
 | G10: one missing family makes lineup totals known-only | `projection_coverage`, scoring `partial`; `totals_known_only`, feature `unverified` | #253 diagnostic; scoring fix #254 |
 | S2: waiver values are full-PPR usage percentiles | `player_value_basis`, scoring `partial` with refs `ppr` / `te_premium` | #254 (the waiver warning was widened in #260) |
 
@@ -427,7 +427,8 @@ Other follow-ups:
 - `team_lineups.source_label` should say there are no projections when the league's default source (Ours) has no
   verified run (S8 outside Start/Sit; it also reaches the add/drop and trade engines, which other agents own).
 
-- G11 and G12 (dual eligibility, blank ESPN slot 22) are not yet reported by the diagnostic.
+- G11 (dual eligibility) is not yet reported by the diagnostic. G12 (blank ESPN slot 22) is fixed in section 10, so
+  there is nothing left to report for it.
 - The action center card shows "no projections for this week" for the new `"Unavailable"` label
   (`frontend/lib/action-center.ts` `projectionsNote`), shipped in this PR. `sectionContext` still maps any other label
   to `espn` in the decision context, which no wording reads today (`lib/weekly-decisions.ts` only types it).
@@ -476,11 +477,33 @@ on the league pages are now underlined (`app/leagues/leagues.module.css`).
    follow-up 1p, branch `fix/trade-discovery-budget` (a disclosed search budget). That fix also decides what the
    diagnostic reports for `trade_discovery` on such leagues (`handled` today).
 2. Team value's trade preview: 19 s on FX-17, the same search; covered by follow-up 1p.
-3. Still open from section 8.3 and the triage table: G6/G7 (Sleeper waiver legality and IR rules, #180 owner), G8
-   (sparse replacement level, diagnostic only), G9 (2 K or 2 D/ST streamed as one slot), G10 (one abstaining family
-   makes totals known-only, named by the diagnostic), G11/G12, and `team_lineups.source_label` naming "Ours" with no
+3. Still open from section 8.3 and the triage table: G8
+   (sparse replacement level, diagnostic only), G10 (one abstaining family
+   makes totals known-only, named by the diagnostic), G11, and `team_lineups.source_label` naming "Ours" with no
    Ours run. Scoring fidelity (S1b, S2 basis, S3) stays with #254. **#254 phase 2:** S1b closed for the kicker
    re-score and the Sleeper box score, S3 per-row `actual_source`, and `team_lineups.source_label` "Unavailable" for
    every caller outside the trade evaluation and trade alternatives (`254-scoring-support.md` section 7).
 4. The `league-compatibility/v1` diagnostic has no page of its own. The League rules page already discloses slot and
    rule support; a per-tool table there is optional (issue #253 step 5: "only if necessary").
+
+---
+
+## 10. Follow-up: G6, G7, G9, G12 and G14 (deferred gaps)
+
+On `origin/main` at `bea50d3`. Paths are relative to `fantasy-intel/backend/`. All fixtures are synthetic.
+
+| Gap | Change | Diagnostic (D-12) | Test |
+|---|---|---|---|
+| G6 | The abstention is kept: Sleeper syncs no roster restrictions, so `plan_roster_move` still leaves every waiver move `UNKNOWN`. `league_rules.engine_support` gains a `roster_restrictions` row (`unverified`) whenever the synced settings carry no `rosterSettings`, the exact condition `waiver_roster.roster_constraints` uses. | waivers `roster`: `roster_restrictions` `unverified`, now read from the rules row (`refs` names it) | `test_league_compatibility.py::test_sleeper_waiver_legality_abstains_and_the_rules_page_and_diagnostic_say_why` |
+| G7 | `reserve_slots.ir_rules` reads a Sleeper league's `reserve_allow_out/_na/_cov/_dnr/_doubtful/_sus` settings. Sleeper's own IR designation (IR, and PUP/NFI, which the import folds into `INJURY_RESERVE`) is always admitted and a healthy player never is. `ir_slot_eligible` returns `None` for a status the settings do not decide: a missing key, or OUT when the out, not-active, COVID and did-not-report settings disagree (the import records all four as OUT). The waiver planner then abstains with its own summary, add/drop notes `IR_ELIGIBILITY_UNKNOWN` (claim plan: unverified), and ESPN's fixed statuses are never applied to Sleeper. ESPN is unchanged. The settings now count as read on the rules page (no longer listed under unmapped). | rules row `ir_eligibility` (Sleeper with IR slots): `handled` when every status is decided, else `partial` with `undecided_statuses`; waivers and add/drop `roster` cite it | `::test_sleeper_ir_rules_come_from_the_league_settings_and_abstain_when_absent` (M7a/b/c rows with invented settings, M3 without) |
+| G9 | In a league starting N > 1 kickers or D/ST, the planner streams the last slot: each week the N - 1 best known incumbents keep the other slots and the hold is the N-th best (empty when fewer than N are rostered). Each such position carries `slot_coverage` `{status: partial, code: streaming_slots, slots, planned_slots: 1, reason}`; the reason is also added to `notes`, and each planned week's reasons say "Streams 1 of your N K slots". A one-slot league's response is unchanged. | kdst_streaming `roster`: `streaming_slots` `partial` (wording updated) | `test_kdst_streaming_planner.py::test_a_two_kicker_league_streams_the_slot_its_weaker_kicker_holds`, `test_league_compatibility.py::test_two_kickers_and_two_defenses_are_streamed_as_one_slot_each_and_reported_partial` (new matrix row M9) |
+| G12 | ESPN's blank-labelled slot (`""`, id 22) is a bench slot on the rules page (not a starter, not unfilled) and an active spot in waiver capacity, as the parser and adapter store it. It stays listed under unmapped, since ESPN does not document it. | no finding: the slot is no longer unfilled | `test_league_rules.py::test_espn_blank_slot_22_is_a_bench_slot_as_the_parser_stores_it` |
+| G14 | Backend fixed in phase 2. The frontend `EngineRule` type gains `code` and the rules page keys its rows on it. | n/a | `test_lineup_what_if.py::test_the_lock_rule_is_found_by_its_code_not_its_text` |
+
+**UNVERIFIED.** Which `reserve_allow_*` keys real Sleeper leagues carry, their 0/1 meaning, and whether Sleeper always
+admits PUP and NFI players to IR. Whether ESPN ever sends a non-zero count for slot 22. Both are read conservatively: an
+undecided status abstains, and slot 22 is what the parser already makes of it.
+
+**Still open:** G8 (trade replacement level; the trade-discovery PR owns it), G10 (team_lineups, #254 phase 3), G11
+(parser position eligibility; its own PR). The K/D/ST page does not render `slot_coverage` yet (the reason reaches it
+through the week reasons and notes); a planner for every slot is a later change.

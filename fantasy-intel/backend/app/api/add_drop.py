@@ -21,6 +21,7 @@ from ..analytics.start_sit import detect_player_locks
 from ..analytics.trade_data import load_league_state
 from ..analytics.trades import with_streaming
 from ..analytics.waiver_data import waiver_rules
+from ..analytics.waiver_roster import ir_rules, object_value
 from ..db.connection import fetch_dicts
 from .deps import db
 from .perspective import resolve_team
@@ -110,7 +111,8 @@ def load_simulation(con, team_id: int | None, ids: list[int], check: Callable[[d
     ctx = AddDropContext(provider=provider, team_row=team_row, rules=waiver_rules(lg), waivers=rules["waivers"],
                          directory=directory, locks=locks, lock_week=int(lg["current_week"]), games=games,
                          covered=covered, evaluated_at=now.isoformat(),
-                         waiver_status_known=rules["source"]["provider"] != "sleeper")
+                         waiver_status_known=rules["source"]["provider"] != "sleeper",
+                         ir_rules=ir_rules(object_value(lg.get("settings_raw"))))
     return Simulation(lg, perspective, tid, state, ctx)
 
 
