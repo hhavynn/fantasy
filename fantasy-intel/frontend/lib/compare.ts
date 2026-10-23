@@ -769,7 +769,17 @@ export const MIN_SHORTLIST = 2;
 export const ENGINE_SLOTS = ["QB", "RB", "WR", "TE", "K", "D/ST", "RB/WR", "WR/TE", "FLEX", "OP"] as const;
 
 export type RosterStatus = "this_team" | "other_team" | "free_agent" | "waivers" | "unknown";
-export type BestStatus = "leader" | "close" | "only" | "incomplete" | "none";
+/**
+ * The best-projected verdict, one explicit state from the backend (analytics/player_shortlist.py). The page renders
+ * from it alone (`verdictView`, `startPickNote`), never from a combination of the other fields.
+ */
+export type VerdictState =
+  | "single_leader" | "tied" | "only" | "incomplete_single" | "incomplete_tied"           // ranked: `leaders` set
+  | "no_common_slot" | "slots_unknown" | "none_eligible" | "none_projected";              // unranked: no leaders
+export const VERDICT_STATES: readonly VerdictState[] = [
+  "single_leader", "tied", "only", "incomplete_single", "incomplete_tied",
+  "no_common_slot", "slots_unknown", "none_eligible", "none_projected",
+];
 
 export type ShortlistSlot = { slot: string; count: number; positions: string[] };
 
@@ -786,15 +796,12 @@ export type BestProjected = {
   source_label: string;
   week: number;
   slot: string | null;
-  /** False when no slot is chosen and no league slot takes every listed player (QB and K): nobody is ranked. */
-  common_slot: boolean;
+  state: VerdictState;
   leaders: number[];
   value: number | null;
   gap: number | null;
   considered: number[];
   excluded: { espn_player_id: number; reason: "not_eligible" | "bye" | "no_projection"; text: string }[];
-  complete: boolean;
-  status: BestStatus;
   text: string;
 };
 
@@ -1011,50 +1018,112 @@ export function isBestProjected(r: Pick<ShortlistResponse, "best_projected">, id
   return r.best_projected.leaders.includes(id);
 }
 
+/** One figure of the verdict. */
+export type VerdictFigureView = { label: string; value: string; note: string };
+
+export type VerdictView = {
+  tone: "info" | "caution";
+  headline: string;
+  best: VerdictFigureView;
+  gap: VerdictFigureView;
+  compared: VerdictFigureView;
+};
+
+function leaderNames(r: ShortlistResponse): string[] {
+  return r.best_projected.leaders.map((id) => {
+    const p = r.players.find((x) => x.card.player.espn_player_id === id);
+    return p ? playerName(p.card) : `Player ${id}`;
+  });
+}
+
 /**
- * How the viewer's start pick stands against the best projected, from the backend's numbers only: the same player,
- * a gap in projected points, or why there is nothing to compare. Null without a pick.
+ * The verdict's headline, tone and figures, by state and nothing else. It names who is best projected, never who to
+ * start, and keeps "of the players with a projection" on every incomplete state, tied or not.
+ */
+export function verdictView(r: ShortlistResponse): VerdictView {
+  const b = r.best_projected;
+  const names = leaderNames(r);
+  const where = b.slot ? ` at ${b.slot}` : "";
+  const named = b.source_label !== "Unavailable";
+  const value = b.value === null ? DASH : b.value.toFixed(1);
+  const best: VerdictFigureView = { label: named ? `Best projected (${b.source_label})` : "Best projected", value, note: "None" };
+  const gap: VerdictFigureView = {
+    label: "Gap to the next player", value: b.gap === null ? DASH : b.gap.toFixed(1),
+    note: b.gap === null ? "No other player to compare" : "Projected points",
+  };
+  const compared: VerdictFigureView = {
+    label: "Players compared", value: `${b.considered.length} of ${r.players.length}`,
+    note: b.excluded.length ? `${b.excluded.length} left out, reasons below` : "All of them",
+  };
+  const ranked = (headline: string, tone: VerdictView["tone"], note: string): VerdictView =>
+    ({ tone, headline, best: { ...best, note }, gap, compared });
+  const unranked = (headline: string, comparedNote?: string): VerdictView =>
+    ({ tone: "caution", headline, best, gap, compared: comparedNote ? { ...compared, value: DASH, note: comparedNote } : compared });
+  switch (b.state) {
+    case "single_leader":
+      return ranked(`${names[0]} is best projected${where} for week ${b.week}`, "info", names[0]);
+    case "only":
+      return ranked(`${names[0]} is the only player${where} with a projection for week ${b.week}`, "info", names[0]);
+    case "tied":
+      return ranked(`${names.join(" and ")} are tied for best projected${where}`, "info", "Tied");
+    case "incomplete_single":
+      return ranked(`${names[0]} is best projected${where} of the players with a projection`, "caution", names[0]);
+    case "incomplete_tied":
+      return ranked(`${names.join(" and ")} are tied for best projected${where} of the players with a projection`, "caution", "Tied");
+    case "no_common_slot":
+      return unranked("These players never share a lineup slot: pick a slot to compare them", "Pick a slot: they never share one");
+    case "slots_unknown":
+      return unranked("Not ranked: this league's lineup slots are not synced", "Lineup slots not synced");
+    case "none_eligible":
+      return unranked(`No player here can fill ${b.slot ?? "the slot"}`);
+    case "none_projected":
+      return unranked(`No best projected${where} for week ${b.week}`);
+  }
+}
+
+/**
+ * How the viewer's start pick stands against the best projected, by state, from the backend's numbers only: the same
+ * player, a gap in projected points, or why there is nothing to compare. "No projection" only when the pick's own
+ * number is missing. Null without a pick.
  */
 export function startPickNote(r: ShortlistResponse, start: number | null): string | null {
   if (start === null) return null;
   const p = r.players.find((x) => x.card.player.espn_player_id === start);
   if (!p) return null;
   const name = playerName(p.card);
-  const best = r.best_projected;
-  const src = best.source_label;
+  const b = r.best_projected;
+  const src = b.source_label;
+  const incomplete = b.state === "incomplete_single" || b.state === "incomplete_tied";
+  const among = incomplete ? " of the players with a projection" : "";
   if (p.slot_eligible === false) return `Your pick, ${name}, cannot start at ${r.slot}.`;
-  if (best.leaders.includes(start)) {
-    return best.leaders.length > 1
-      ? `Your pick, ${name}, is among the players tied for the best ${src} projection.`
-      : `Your pick, ${name}, is also the best projected (${src}).`;
+  if (b.leaders.includes(start)) {
+    return b.leaders.length > 1
+      ? `Your pick, ${name}, is among the players tied for the best ${src} projection${among}.`
+      : `Your pick, ${name}, is also the best projected (${src})${among}.`;
   }
-  const cell = nextWeekCell(p.card, best.source);
-  if (cell.kind === "bye") return `Your pick, ${name}, is on bye in week ${best.week}.`;
-  // "no projection" only when the pick's own number is missing
-  if (cell.kind !== "value") {
-    return `Your pick, ${name}, has no ${best.source_label === "Unavailable" ? "" : `${src} `}projection to compare with.`;
-  }
+  const cell = nextWeekCell(p.card, b.source);
+  if (cell.kind === "bye") return `Your pick, ${name}, is on bye in week ${b.week}.`;
+  if (cell.kind !== "value") return `Your pick, ${name}, has no ${src === "Unavailable" ? "" : `${src} `}projection to compare with.`;
   const own = `Your pick, ${name}, is projected ${cell.text} (${src})`;
-  if (best.common_slot === false) return `${own}. These players never share a lineup slot, so no one is best projected to compare with; pick a slot.`;
-  if (best.value === null) return `${own}. No player who can fill the slot is best projected to compare with.`;
-  const mine = best.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
-  const gap = finite(mine) ? best.value - mine : null;
-  return gap === null ? null : `Your pick, ${name}, is projected ${gap.toFixed(1)} points below the best projected (${src}).`;
+  switch (b.state) {
+    case "no_common_slot":
+      return `${own}. These players never share a lineup slot, so no one is best projected to compare with; pick a slot.`;
+    case "slots_unknown":
+      return `${own}. This league's lineup slots are not synced, so there is no ranking to compare with.`;
+    case "none_eligible":
+    case "none_projected":
+      return `${own}. No player who can fill the slot is best projected to compare with.`;
+    default: {
+      const mine = b.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
+      if (b.value === null || !finite(mine)) return own + ".";
+      return `Your pick, ${name}, is projected ${(b.value - mine).toFixed(1)} points below the best projected (${src})${among}.`;
+    }
+  }
 }
 
-/** The verdict headline from the best-projected block (who, never "start"). */
+/** The verdict headline (`verdictView`): who is best projected, never who to start. */
 export function bestHeadline(r: ShortlistResponse): string {
-  const b = r.best_projected;
-  const names = b.leaders.map((id) => {
-    const p = r.players.find((x) => x.card.player.espn_player_id === id);
-    return p ? playerName(p.card) : `Player ${id}`;
-  });
-  const where = b.slot ? ` at ${b.slot}` : "";
-  if (b.common_slot === false) return "These players never share a lineup slot: pick a slot to compare them";
-  if (b.status === "none" || names.length === 0) return `No best projected${where} for week ${b.week}`;
-  if (names.length > 1) return `${names.join(" and ")} are tied for best projected${where}`;
-  if (b.status === "incomplete") return `${names[0]} is best projected${where} of the players with a projection`;
-  return `${names[0]} is best projected${where} for week ${b.week}`;
+  return verdictView(r).headline;
 }
 
 /** True when the payload has the player list and best-projected block the shortlist page reads. */
@@ -1062,5 +1131,5 @@ export function isShortlistResponse(x: unknown): x is ShortlistResponse {
   if (!x || typeof x !== "object") return false;
   const r = x as Partial<ShortlistResponse>;
   return Array.isArray(r.players) && r.players.every((p) => !!p?.card?.player) && !!r.best_projected
-    && Array.isArray(r.best_projected.leaders) && Array.isArray(r.slots);
+    && Array.isArray(r.best_projected.leaders) && VERDICT_STATES.includes(r.best_projected.state) && Array.isArray(r.slots);
 }

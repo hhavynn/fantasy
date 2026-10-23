@@ -9,10 +9,10 @@ import {
 import { api } from "@/lib/api";
 import {
   type CompareCard, type IdLike, type RowUnit, type SearchParamsLike, type ShortCell, type ShortlistPlayer,
-  type ShortlistResponse, MAX_SHORTLIST, MIN_SHORTLIST, bestHeadline, byeText, compareHref, injuryCell,
+  type ShortlistResponse, MAX_SHORTLIST, MIN_SHORTLIST, byeText, compareHref, injuryCell,
   isBestProjected, isShortlistResponse, metricCell, nextOpponentText, nextWeekCell, pairFromShortlistHref,
   parseShortlistParams, playerName, projectionSourceLine, rosCell, rosterShort, rosterText, shortlistFromPair,
-  shortlistHref, shortlistPairs, shortlistSourceHint, startPickNote, trendCell, unknownShortlistId, withoutPlayer, DASH,
+  shortlistHref, shortlistPairs, shortlistSourceHint, startPickNote, trendCell, verdictView, unknownShortlistId, withoutPlayer, DASH,
 } from "@/lib/compare";
 import { cx } from "@/lib/cx";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -152,22 +152,19 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
     </>
   );
   const pick = startPickNote(r, start);
-  const bestPlayer = best.leaders.length === 1 ? r.players.find((p) => p.card.player.espn_player_id === best.leaders[0]) : null;
+  const view = verdictView(r);
 
   return (
     <Shell state={state} meta={meta} actions={teamPicker(r.team?.team_id ?? null)}>
       {urlNotice}
       <Verdict
-        tone={best.status === "none" || best.status === "incomplete" ? "caution" : "info"}
+        tone={view.tone}
         eyebrow={`Week ${best.week} · ${slot ? `${slot} slot` : "any slot"} · ${named ? `${src} projections` : "no projections"}`}
-        headline={bestHeadline(r)}
+        headline={view.headline}
         figures={<>
-          <VerdictFigure label={named ? `Best projected (${src})` : "Best projected"} value={best.value === null ? DASH : best.value.toFixed(1)} note={bestPlayer ? playerName(bestPlayer.card) : best.leaders.length > 1 ? "Tied" : "None"} emphasis />
-          <VerdictFigure label="Gap to the next player" value={best.gap === null ? DASH : best.gap.toFixed(1)} note={best.gap === null ? "No other player to compare" : "Projected points"} />
-          {best.common_slot === false
-            ? <VerdictFigure label="Players compared" value={DASH} note="Pick a slot: they never share one" />
-            : <VerdictFigure label="Players compared" value={`${best.considered.length} of ${r.players.length}`}
-                             note={best.excluded.length ? `${best.excluded.length} left out, reasons below` : "All of them"} />}
+          <VerdictFigure label={view.best.label} value={view.best.value} note={view.best.note} emphasis />
+          <VerdictFigure label={view.gap.label} value={view.gap.value} note={view.gap.note} />
+          <VerdictFigure label={view.compared.label} value={view.compared.value} note={view.compared.note} />
         </>}
       >
         <p>{best.text}</p>

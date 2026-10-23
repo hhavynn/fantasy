@@ -77,8 +77,7 @@ def test_flex_shortlist_reuses_the_lab_cards_and_the_lineup_engines_eligibility(
     assert next(s for s in out["slots"] if s["slot"] == "FLEX")["positions"] == ["RB", "WR", "TE"]
     assert out["unsupported_slots"] == ["LB"] and any("LB" in x for x in out["limitations"])
     best = out["best_projected"]
-    assert (best["status"], best["leaders"], best["value"], best["gap"], best["complete"]) == \
-        ("leader", [WALLY], 10.0, 2.0, True)
+    assert (best["state"], best["leaders"], best["value"], best["gap"]) == ("single_leader", [WALLY], 10.0, 2.0)
     assert best["source"] == "espn" and best["source_label"] == "ESPN" and best["considered"] == [ACE, ZED, WALLY]
     assert best["excluded"] == [{"espn_player_id": QUINN, "reason": "not_eligible",
                                  "text": "Quinn QB (QB) cannot start at FLEX."}]
@@ -96,7 +95,7 @@ def test_inapplicable_and_missing_metrics_are_none_never_zero(w):
 
 def test_a_missing_projection_makes_best_projected_incomplete_not_a_zero(w):
     best = sl.shortlist(w, [ACE, NOVA], slot="WR")["best_projected"]
-    assert best["status"] == "incomplete" and best["complete"] is False and best["leaders"] == [ACE]
+    assert best["state"] == "incomplete_single" and best["leaders"] == [ACE]
     assert best["excluded"][0]["espn_player_id"] == NOVA and best["excluded"][0]["reason"] == "no_projection"
     assert "best of those that do" in best["text"]
 
@@ -105,14 +104,13 @@ def test_projections_within_the_edge_are_a_tie(w):
     w.execute("UPDATE espn_player_weekly_points SET projected_points = 9.7 WHERE espn_player_id = ? "
               "AND scoring_period = ?", [ZED, CURRENT])
     best = sl.shortlist(w, [ZED, WALLY, ACE], slot="FLEX")["best_projected"]
-    assert best["status"] == "close" and best["leaders"] == [WALLY, ZED] and best["gap"] == 4.0   # to Ace, the first non-leader
+    assert best["state"] == "tied" and best["leaders"] == [WALLY, ZED] and best["gap"] == 4.0   # to Ace, the first non-leader
 
 
 def test_no_slot_ranks_players_who_share_a_slot(w):
     out = sl.shortlist(w, [ACE, ZED])                    # WR and RB: both FLEX
     assert [p["slot_eligible"] for p in out["players"]] == [None, None]
-    assert out["best_projected"]["leaders"] == [ZED] and out["best_projected"]["status"] == "leader"
-    assert out["best_projected"]["common_slot"] is True
+    assert out["best_projected"]["leaders"] == [ZED] and out["best_projected"]["state"] == "single_leader"
 
 
 def test_no_slot_and_no_shared_slot_names_no_one(w):
@@ -120,8 +118,8 @@ def test_no_slot_and_no_shared_slot_names_no_one(w):
     nobody is best projected and the page asks for a slot."""
     for ids in ([ACE, QUINN], [QUINN, KICKER]):
         best = sl.shortlist(w, ids)["best_projected"]
-        assert (best["status"], best["leaders"], best["value"], best["considered"]) == ("none", [], None, [])
-        assert best["text"] == sl.NO_COMMON_SLOT and best["common_slot"] is False and best["excluded"] == []
+        assert (best["state"], best["leaders"], best["value"], best["considered"]) == ("no_common_slot", [], None, [])
+        assert best["text"] == sl.NO_COMMON_SLOT and best["excluded"] == []
     # with the slot chosen the eligible player is still ranked
     assert sl.shortlist(w, [ACE, QUINN], slot="QB")["best_projected"]["leaders"] == [QUINN]
     # a league that starts OP: a QB and a WR do share a slot
@@ -129,9 +127,10 @@ def test_no_slot_and_no_shared_slot_names_no_one(w):
     assert sl.shortlist(w, [ACE, QUINN])["best_projected"]["leaders"] == [QUINN]
 
 
-def test_share_a_slot_without_synced_slots_needs_one_position():
-    assert sl.share_a_slot(["WR", "WR"], []) and not sl.share_a_slot(["WR", "RB"], [])
-    assert not sl.share_a_slot([None, None], [])
+def test_share_a_slot_without_synced_slots_is_known_only_for_one_position():
+    """Review round 3: unsynced slots and mixed positions are unknown (None), never "they never share a slot"."""
+    assert sl.share_a_slot(["WR", "WR"], []) is True
+    assert sl.share_a_slot(["WR", "RB"], []) is None and sl.share_a_slot([None, None], []) is None
     assert sl.share_a_slot(["WR", "RB", "TE"], ["QB", "FLEX"]) and not sl.share_a_slot(["QB", "K"], ["QB", "K", "OP"])
 
 
@@ -139,7 +138,7 @@ def test_independent_source_ranks_on_the_model_and_names_it(w):
     out = sl.shortlist(w, [ACE, ZED], slot="FLEX", source="independent")
     best = out["best_projected"]
     assert out["source"] == "independent" and best["source"] == "ours" and best["source_label"] == "Fantasy Intel"
-    assert best["value"] == ours_value(CURRENT, ZED) and best["status"] == "close"       # 16.3 vs 16.1
+    assert best["value"] == ours_value(CURRENT, ZED) and best["state"] == "tied"       # 16.3 vs 16.1
     assert "Fantasy Intel" in best["text"] and "ESPN" not in best["text"]
 
 
@@ -151,7 +150,7 @@ def test_bye_is_left_out_with_its_reason():
          "next_week": {"on_bye": False, "espn": 0.0, "ours": None}},
     ], "espn", 9, "WR")
     assert best["excluded"] == [{"espn_player_id": 1, "reason": "bye", "text": "A is on bye in week 9."}]
-    assert best["status"] == "only" and best["leaders"] == [2] and best["value"] == 0.0 and best["complete"]
+    assert best["state"] == "only" and best["leaders"] == [2] and best["value"] == 0.0
     assert "with an ESPN projection" in best["text"]                                     # review L4
 
 
@@ -160,7 +159,7 @@ def test_nobody_with_a_projection_names_no_leader():
         {"espn_player_id": 1, "name": "A", "position": "WR", "slot_eligible": True, "next_week": None},
         {"espn_player_id": 2, "name": "B", "position": "QB", "slot_eligible": False, "next_week": None},
     ], "espn", 6, "WR")
-    assert best["status"] == "none" and best["leaders"] == [] and best["value"] is None and not best["complete"]
+    assert best["state"] == "none_projected" and best["leaders"] == [] and best["value"] is None
     assert best["text"].startswith("No player who can fill WR has a projection")
     # a source with no value for anyone is never named (D-14): "Unavailable", and the text names none
     assert best["source_label"] == "Unavailable" and "ESPN" not in best["text"]
@@ -173,7 +172,7 @@ def test_a_source_with_values_only_for_an_ineligible_player_is_still_named():
         {"espn_player_id": 2, "name": "B", "position": "WR", "slot_eligible": True,
          "next_week": {"on_bye": False, "espn": None, "ours": None}},
     ], "espn", 6, "WR")
-    assert best["source_label"] == "ESPN" and best["status"] == "none"
+    assert best["source_label"] == "ESPN" and best["state"] == "none_projected"
     assert sl.best_projected([], "ours", 6, None)["source_label"] == "Unavailable"
 
 
@@ -258,5 +257,53 @@ def test_a_slot_nobody_can_fill_says_so():
     entries = [{"espn_player_id": i, "name": n, "position": "WR", "slot_eligible": False,
                 "next_week": {"on_bye": False, "espn": 9.0, "ours": None}} for i, n in ((1, "A"), (2, "B"))]
     best = sl.best_projected(entries, "espn", 6, "D/ST")
-    assert best["text"] == "No player here can fill D/ST, so none is best projected." and best["status"] == "none"
+    assert best["text"] == "No player here can fill D/ST, so none is best projected." and best["state"] == "none_eligible"
     assert sl._a("Fantasy Intel") == "a Fantasy Intel" and sl._a("ESPN") == "an ESPN"
+
+
+def _e(pid, pos="WR", *, elig=True, proj=10.0, bye=False, window=True):
+    nw = {"on_bye": bye, "espn": None if bye else proj, "ours": None} if window else None
+    return {"espn_player_id": pid, "name": f"P{pid}", "position": pos, "slot_eligible": elig, "next_week": nw}
+
+
+# Review round 3: the verdict is one explicit state. Every state, with what each one names.
+STATE_MATRIX = [
+    # (case, entries, slot, shared, state, leaders)
+    ("one clear leader", [_e(1, proj=12), _e(2, proj=9)], "WR", True, "single_leader", [1]),
+    ("tied at the top", [_e(1, proj=12), _e(2, proj=11.8), _e(3, proj=5)], "WR", True, "tied", [1, 2]),
+    ("only one can play", [_e(1, proj=12), _e(2, bye=True), _e(3, pos="QB", elig=False)], "WR", True, "only", [1]),
+    ("only one projected, one missing", [_e(1, proj=12), _e(2, proj=None)], "WR", True, "incomplete_single", [1]),
+    ("leader, one missing", [_e(1, proj=12), _e(2, proj=9), _e(3, proj=None)], "WR", True, "incomplete_single", [1]),
+    ("tied, one missing", [_e(1, proj=12), _e(2, proj=11.8), _e(3, proj=None)], "WR", True, "incomplete_tied", [1, 2]),
+    ("no window counts as missing", [_e(1, proj=12), _e(2, window=False)], "WR", True, "incomplete_single", [1]),
+    ("no shared slot", [_e(1, "QB"), _e(2, "K")], None, False, "no_common_slot", []),
+    ("slots not synced", [_e(1, "QB"), _e(2, "WR")], None, None, "slots_unknown", []),
+    ("slot nobody fills", [_e(1, elig=False), _e(2, elig=False)], "D/ST", True, "none_eligible", []),
+    ("nobody projected", [_e(1, proj=None), _e(2, bye=True)], "WR", True, "none_projected", []),
+    ("eligible ones all on bye", [_e(1, bye=True), _e(2, pos="QB", elig=False)], "WR", True, "none_projected", []),
+]
+
+
+@pytest.mark.parametrize("case, entries, slot, shared, state, leaders", STATE_MATRIX, ids=[c[0] for c in STATE_MATRIX])
+def test_every_verdict_state(case, entries, slot, shared, state, leaders):
+    best = sl.best_projected(entries, "espn", 6, slot, shared=shared)
+    assert best["state"] == state and best["leaders"] == leaders
+    assert (state in sl.RANKED_STATES) == bool(leaders) and state in sl.RANKED_STATES + sl.UNRANKED_STATES
+    assert (best["value"] is None) == (not leaders)
+    if state.startswith("incomplete"):
+        assert "best of those that do" in best["text"]
+    if state in ("no_common_slot", "slots_unknown"):
+        assert best["considered"] == [] and best["excluded"] == []
+    if state == "slots_unknown":
+        assert "not synced" in best["text"] and "pick a slot" not in best["text"].lower()
+
+
+def test_states_cover_the_matrix():
+    assert {c[4] for c in STATE_MATRIX} == set(sl.RANKED_STATES + sl.UNRANKED_STATES)
+
+
+def test_unsynced_slots_and_mixed_positions_are_slots_unknown(w):
+    w.execute("UPDATE leagues SET roster_slots = NULL")
+    best = sl.shortlist(w, [ACE, QUINN])["best_projected"]
+    assert best["state"] == "slots_unknown" and best["text"] == sl.SLOTS_UNKNOWN
+    assert sl.shortlist(w, [ACE, WALLY])["best_projected"]["state"] == "single_leader"      # one position: compared

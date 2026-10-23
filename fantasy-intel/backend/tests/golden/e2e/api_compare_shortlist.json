@@ -3,8 +3,6 @@
  "body": {
   "as_of_week": 3,
   "best_projected": {
-   "common_slot": true,
-   "complete": true,
    "considered": [
     201,
     401,
@@ -24,7 +22,7 @@
    "slot": "FLEX",
    "source": "espn",
    "source_label": "ESPN",
-   "status": "leader",
+   "state": "single_leader",
    "text": "Echo RB has the highest ESPN projection for week 3: 10.3, 3.0 ahead of the next player.",
    "value": 10.3,
    "week": 3

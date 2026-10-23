@@ -7,7 +7,8 @@ import {
   metricCell, nextWeekCell, pairFromShortlistHref, parseCompareParams, parseShortlistParams, rosCell, rosterShort,
   rosterText, shortlistBackHref, shortlistFromPair, shortlistHref, shortlistPairs, startPickNote, trendCell,
   shortlistSourceHint, unknownShortlistId, withPlayer, withoutPlayer,
-  type CompareCard, type CompareResponse, type ShortlistResponse,
+  VERDICT_STATES, verdictView,
+  type CompareCard, type CompareResponse, type ShortlistResponse, type VerdictState,
 } from "./compare.ts";
 
 const pair = JSON.parse(readFileSync(new URL("./fixtures/compare.synthetic.json", import.meta.url), "utf8")) as CompareResponse;
@@ -37,12 +38,12 @@ function shortlist(): ShortlistResponse {
     slots: [{ slot: "WR", count: 2, positions: ["WR"] }, { slot: "FLEX", count: 1, positions: ["RB", "WR", "TE"] }],
     unsupported_slots: [], slot: "FLEX", team: { team_id: 3, name: "Team Three", is_owner_default: true }, players,
     best_projected: {
-      source: "espn", source_label: "ESPN", week: pair.as_of_week, slot: "FLEX", common_slot: true, leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
+      source: "espn", source_label: "ESPN", week: pair.as_of_week, slot: "FLEX", state: "incomplete_single", leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
       excluded: [
         { espn_player_id: 13, reason: "not_eligible", text: "Charlie QB (QB) cannot start at FLEX." },
         { espn_player_id: 14, reason: "no_projection", text: "Delta TE has no ESPN projection." },
       ],
-      complete: false, status: "incomplete", text: "…",
+      text: "…",
     },
     limitations: [], disclaimer: "…", freshness: { espn_synced_at: null, nfl_synced_at: null },
   };
@@ -170,29 +171,119 @@ test("roster status reads relative to the selected team", () => {
 
 // ---------------------------------------------------------------------------- best projected --
 
-test("the headline names who is best projected, never who to start", () => {
+test("the payload guard requires a known verdict state", () => {
   const r = shortlist();
   assert.ok(isShortlistResponse(r));
   assert.equal(isShortlistResponse({ players: [] }), false);
+  assert.equal(isShortlistResponse({ ...r, best_projected: { ...r.best_projected, state: "leader" } }), false);
   assert.equal(isBestProjected(r, 11), true);
   assert.equal(isBestProjected(r, 13), false);
-  assert.equal(bestHeadline(r), "Alpha WR is best projected at FLEX of the players with a projection");
-  r.best_projected.status = "leader";
-  assert.equal(bestHeadline(r), `Alpha WR is best projected at FLEX for week ${r.as_of_week}`);
-  r.best_projected.leaders = [11, 12];
-  assert.equal(bestHeadline(r), "Alpha WR and Bravo RB are tied for best projected at FLEX");
-  r.best_projected.leaders = [];
-  r.best_projected.status = "none";
-  assert.doesNotMatch(bestHeadline(r), /start/i);
 });
 
-test("the start pick is the viewer's, compared with best projected from the backend's numbers only", () => {
+/** The fixture's verdict in one state: Alpha WR 14.2 and Bravo RB 12.0 are FLEX-eligible and projected, Charlie QB
+ *  cannot start at FLEX, Delta TE has no projection. `slot: null` makes the "Any" cases. */
+function inState(state: VerdictState, over: Partial<ShortlistResponse["best_projected"]> = {}, slot: string | null = "FLEX"): ShortlistResponse {
+  const r = shortlist();
+  r.slot = slot;
+  if (slot === null) for (const p of r.players) p.slot_eligible = null;
+  const ranked = ["single_leader", "tied", "only", "incomplete_single", "incomplete_tied"].includes(state);
+  r.best_projected = {
+    ...r.best_projected, state, slot, leaders: ranked ? [11] : [], value: ranked ? 14.2 : null, gap: ranked ? 2.2 : null,
+    considered: ranked ? [11, 12] : [], excluded: ranked ? r.best_projected.excluded : [], ...over,
+  };
+  return r;
+}
+
+// Review round 3: one row per state, with everything the page says for it. The page renders from `state` alone.
+const VERDICTS: {
+  state: VerdictState; over?: Partial<ShortlistResponse["best_projected"]>; slot?: string | null;
+  headline: string; tone: "info" | "caution"; bestNote: string; compared: [string, string];
+  pickAlpha: string; pickBravo: string;
+}[] = [
+  {
+    state: "single_leader", headline: "Alpha WR is best projected at FLEX for week 3", tone: "info", bestNote: "Alpha WR",
+    compared: ["2 of 4", "2 left out, reasons below"],
+    pickAlpha: "Your pick, Alpha WR, is also the best projected (ESPN).",
+    pickBravo: "Your pick, Bravo RB, is projected 2.2 points below the best projected (ESPN).",
+  },
+  {
+    state: "only", over: { considered: [11], gap: null }, headline: "Alpha WR is the only player at FLEX with a projection for week 3",
+    tone: "info", bestNote: "Alpha WR", compared: ["1 of 4", "2 left out, reasons below"],
+    pickAlpha: "Your pick, Alpha WR, is also the best projected (ESPN).",
+    pickBravo: "Your pick, Bravo RB, is projected 2.2 points below the best projected (ESPN).",
+  },
+  {
+    state: "tied", over: { leaders: [11, 12] }, headline: "Alpha WR and Bravo RB are tied for best projected at FLEX", tone: "info",
+    bestNote: "Tied", compared: ["2 of 4", "2 left out, reasons below"],
+    pickAlpha: "Your pick, Alpha WR, is among the players tied for the best ESPN projection.",
+    pickBravo: "Your pick, Bravo RB, is among the players tied for the best ESPN projection.",
+  },
+  {
+    state: "incomplete_single", headline: "Alpha WR is best projected at FLEX of the players with a projection", tone: "caution",
+    bestNote: "Alpha WR", compared: ["2 of 4", "2 left out, reasons below"],
+    pickAlpha: "Your pick, Alpha WR, is also the best projected (ESPN) of the players with a projection.",
+    pickBravo: "Your pick, Bravo RB, is projected 2.2 points below the best projected (ESPN) of the players with a projection.",
+  },
+  {
+    // Codex round 3: tied leaders with a missing projection keep the qualification
+    state: "incomplete_tied", over: { leaders: [11, 12] },
+    headline: "Alpha WR and Bravo RB are tied for best projected at FLEX of the players with a projection", tone: "caution",
+    bestNote: "Tied", compared: ["2 of 4", "2 left out, reasons below"],
+    pickAlpha: "Your pick, Alpha WR, is among the players tied for the best ESPN projection of the players with a projection.",
+    pickBravo: "Your pick, Bravo RB, is among the players tied for the best ESPN projection of the players with a projection.",
+  },
+  {
+    state: "no_common_slot", slot: null, headline: "These players never share a lineup slot: pick a slot to compare them", tone: "caution",
+    bestNote: "None", compared: [DASH, "Pick a slot: they never share one"],
+    pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). These players never share a lineup slot, so no one is best projected to compare with; pick a slot.",
+    pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). These players never share a lineup slot, so no one is best projected to compare with; pick a slot.",
+  },
+  {
+    // Codex round 3: unsynced slots are not "never share", and the page never asks for a slot it cannot offer
+    state: "slots_unknown", slot: null, headline: "Not ranked: this league's lineup slots are not synced", tone: "caution",
+    bestNote: "None", compared: [DASH, "Lineup slots not synced"],
+    pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). This league's lineup slots are not synced, so there is no ranking to compare with.",
+    pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). This league's lineup slots are not synced, so there is no ranking to compare with.",
+  },
+  {
+    state: "none_eligible", headline: "No player here can fill FLEX", tone: "caution", bestNote: "None", compared: ["0 of 4", "All of them"],
+    pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). No player who can fill the slot is best projected to compare with.",
+    pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). No player who can fill the slot is best projected to compare with.",
+  },
+  {
+    state: "none_projected", headline: "No best projected at FLEX for week 3", tone: "caution", bestNote: "None", compared: ["0 of 4", "All of them"],
+    pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). No player who can fill the slot is best projected to compare with.",
+    pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). No player who can fill the slot is best projected to compare with.",
+  },
+];
+
+test("the verdict table covers every state", () => {
+  assert.deepEqual(VERDICTS.map((v) => v.state).sort(), [...VERDICT_STATES].sort());
+});
+
+for (const v of VERDICTS) {
+  test(`verdict state ${v.state}: headline, tone, figures and start pick`, () => {
+    const r = inState(v.state, v.over, v.slot === undefined ? "FLEX" : v.slot);
+    r.as_of_week = 3;
+    r.best_projected.week = 3;
+    const view = verdictView(r);
+    assert.equal(view.headline, v.headline);
+    assert.equal(bestHeadline(r), v.headline);
+    assert.equal(view.tone, v.tone);
+    assert.equal(view.best.note, v.bestNote);
+    assert.deepEqual([view.compared.value, view.compared.note], v.compared);
+    assert.doesNotMatch(view.headline, /\bstart\b/i);                   // never a start verdict
+    assert.equal(startPickNote(r, 11), v.pickAlpha);
+    assert.equal(startPickNote(r, 12), v.pickBravo);
+    // never "no projection" for a pick that has one; only Delta TE (missing) says so
+    assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no ESPN projection to compare with.");
+    if (v.slot !== null) assert.equal(startPickNote(r, 13), "Your pick, Charlie QB, cannot start at FLEX.");
+  });
+}
+
+test("start pick basics: none, unknown and an empty source", () => {
   const r = shortlist();
   assert.equal(startPickNote(r, null), null);
-  assert.equal(startPickNote(r, 11), "Your pick, Alpha WR, is also the best projected (ESPN).");
-  assert.equal(startPickNote(r, 12), "Your pick, Bravo RB, is projected 2.2 points below the best projected (ESPN).");
-  assert.equal(startPickNote(r, 13), "Your pick, Charlie QB, cannot start at FLEX.");
-  assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no ESPN projection to compare with.");
   assert.equal(startPickNote(r, 99), null);
   r.best_projected.source_label = "Unavailable";            // no player has a number: no source is named
   r.best_projected.value = null;
@@ -215,21 +306,4 @@ test("row source hints name a source only when the row has its numbers (#175 rev
   r.players[1].card.projection!.ros!.ours = 98.2;
   assert.equal(shortlistSourceHint(r, "next"), "Ours");
   assert.equal(shortlistSourceHint(r, "ros"), "Ours");
-});
-
-test("players who never share a slot: no best projected, said so, and a pick's own number is kept (#282 review)", () => {
-  const r = shortlist();
-  r.slot = null;
-  for (const p of r.players) p.slot_eligible = null;
-  r.best_projected = { ...r.best_projected, slot: null, common_slot: false, status: "none", leaders: [], value: null,
-                       gap: null, considered: [], excluded: [], complete: true };
-  assert.equal(bestHeadline(r), "These players never share a lineup slot: pick a slot to compare them");
-  // Alpha WR has a real 14.2: never "has no ESPN projection"
-  assert.equal(startPickNote(r, 11),
-    "Your pick, Alpha WR, is projected 14.2 (ESPN). These players never share a lineup slot, so no one is best projected to compare with; pick a slot.");
-  // only a pick whose own number is missing says so
-  assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no ESPN projection to compare with.");
-  // a common slot with nobody ranked (everyone else unprojected): the pick's number, and why there is no comparison
-  r.best_projected.common_slot = true;
-  assert.equal(startPickNote(r, 12), "Your pick, Bravo RB, is projected 12.0 (ESPN). No player who can fill the slot is best projected to compare with.");
 });

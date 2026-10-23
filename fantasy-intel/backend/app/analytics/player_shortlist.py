@@ -8,7 +8,8 @@ the league's synced starting slots), so a player can fill a slot here exactly wh
 Nothing is estimated. "Best projected" is the highest stored projection for the current week among the players who
 can fill the chosen slot, from the source the page shows (ESPN's, or the Fantasy Intel model when it is selected):
 - a player on bye, not eligible for the slot, or without a projection is left out, each with the reason;
-- when an eligible player has no projection the result is `incomplete`: the best of those that have one, said so;
+- when an eligible player has no projection the state is `incomplete_single` or `incomplete_tied`: the best of those
+  that have one, said so;
 - players within NEXT_WEEK_EDGE points of the top are all leaders (`close`), never a fake winner.
 Which player to start is the viewer's call; the API never names one.
 """
@@ -104,11 +105,12 @@ def _a(src: str) -> str:
     return f"{'an' if src[:1] in 'AEIOU' else 'a'} {src}"
 
 
-def share_a_slot(positions: list[str | None], labels: list[str]) -> bool:
-    """Whether one starting slot of the league takes every position listed. Without synced slots only players of
-    the same position are known to compete for one."""
+def share_a_slot(positions: list[str | None], labels: list[str]) -> bool | None:
+    """Whether one starting slot of the league takes every position listed: True or False from the league's synced
+    slots. Without synced slots, players of one (known) position certainly compete for one slot (True); for mixed
+    positions it is unknown (None), never guessed either way."""
     if not labels:
-        return len(set(positions)) == 1 and positions[0] is not None
+        return True if len(set(positions)) == 1 and positions[0] is not None else None
     return any(all(eligible(s, p) for p in positions) for s in labels)
 
 
@@ -119,13 +121,36 @@ def source_label(entries: list[dict], field: str) -> str:
     return _source_name(field) if has else NO_PROJECTIONS
 
 
-def best_projected(entries: list[dict], field: str, week: int, slot: str | None, *, common_slot: bool = True) -> dict:
+# The verdict, one explicit state (the page renders from it alone, never from a combination of fields):
+#   ranked states, with one or more `leaders`:
+#     single_leader      one player has the top projection and every eligible player has a projection
+#     tied               several players within CLOSE_GAP of the top, every eligible player projected
+#     only               one player has a projection; every other one is on bye or cannot fill the slot
+#     incomplete_single  one leader among the players with a projection; an eligible player has none
+#     incomplete_tied    several tied leaders among the players with a projection; an eligible player has none
+#   unranked states, no `leaders`:
+#     no_common_slot     no slot chosen, and no slot of this league takes every listed player: pick a slot
+#     slots_unknown      no slot chosen, mixed positions, and the league's lineup slots are not synced
+#     none_eligible      the chosen slot takes none of the players
+#     none_projected     nobody who can fill the slot has a projection for the week (bye or missing)
+RANKED_STATES = ("single_leader", "tied", "only", "incomplete_single", "incomplete_tied")
+UNRANKED_STATES = ("no_common_slot", "slots_unknown", "none_eligible", "none_projected")
+SLOTS_UNKNOWN = ("This league's lineup slots are not synced, so whether these players compete for one slot is "
+                 "unknown and none is ranked. Players of one position are still compared.")
+
+
+def best_projected(entries: list[dict], field: str, week: int, slot: str | None, *, shared: bool | None = True) -> dict:
     """The best-projected block from each player's {espn_player_id, name, position, slot_eligible, next_week}.
-    `common_slot` False (no slot chosen and no league slot takes every player, e.g. QB and K): no player is named."""
+    `shared`: whether the players compete for one slot (True when a slot is chosen; share_a_slot otherwise)."""
     src = _source_name(field)
-    label = source_label(entries, field)
+    out = {"source": field, "source_label": source_label(entries, field), "week": week, "slot": slot, "state": "",
+           "leaders": [], "value": None, "gap": None, "considered": [], "excluded": [], "text": ""}
+    if shared is not True:
+        out.update(state="no_common_slot" if shared is False else "slots_unknown",
+                   text=NO_COMMON_SLOT if shared is False else SLOTS_UNKNOWN)
+        return out
     considered: list[tuple[float, dict]] = []
-    excluded: list[dict] = []
+    excluded: list[dict] = out["excluded"]
     for e in entries:
         pid, name, nw = e["espn_player_id"], e["name"], e["next_week"]
         if e["slot_eligible"] is False:
@@ -141,20 +166,15 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None,
                              "text": f"{name} has no {src} projection for week {week}."})
         else:
             considered.append((float(nw[field]), e))
-    missing = [x for x in excluded if x["reason"] == "no_projection"]
-    out = {"source": field, "source_label": label, "week": week, "slot": slot, "common_slot": common_slot,
-           "leaders": [], "value": None, "gap": None,
-           "considered": [e["espn_player_id"] for _, e in considered], "excluded": excluded,
-           "complete": not missing, "status": "none", "text": ""}
-    if not common_slot:
-        out.update(considered=[], text=NO_COMMON_SLOT)
-        return out
+    out["considered"] = [e["espn_player_id"] for _, e in considered]
+    missing = any(x["reason"] == "no_projection" for x in excluded)
     if not considered:
         if slot is not None and all(e["slot_eligible"] is False for e in entries):
-            out["text"] = f"No player here can fill {slot}, so none is best projected."
+            out.update(state="none_eligible", text=f"No player here can fill {slot}, so none is best projected.")
         else:
-            out["text"] = (f"No player who can fill {'the slot' if slot is None else slot} has a projection for "
-                           f"week {week}, so none is best projected.")
+            out.update(state="none_projected",
+                       text=(f"No player who can fill {'the slot' if slot is None else slot} has a projection for "
+                             f"week {week}, so none is best projected."))
         return out
     considered.sort(key=lambda t: (-t[0], t[1]["espn_player_id"]))
     top = considered[0][0]
@@ -163,21 +183,22 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None,
     out.update(leaders=[e["espn_player_id"] for e in leaders], value=round(top, 2),
                gap=None if not rest else round(top - rest[0], 2))
     names = " and ".join(e["name"] for e in leaders)
+    tied = len(leaders) > 1
     if len(considered) == 1:
-        out["status"] = "only" if not missing else "incomplete"
-        out["text"] = f"{names} is the only player here with {_a(src)} projection for week {week} ({top:.1f})."
-    elif len(leaders) > 1:
-        out["status"] = "close"
-        out["text"] = (f"{names} are within {CLOSE_GAP} points of each other at the top ({src}, week {week}); "
-                       "the projections do not separate them.")
+        text = f"{names} is the only player here with {_a(src)} projection for week {week} ({top:.1f})."
+    elif tied:
+        text = (f"{names} are within {CLOSE_GAP} points of each other at the top ({src}, week {week}); "
+                "the projections do not separate them.")
     else:
-        out["status"] = "leader"
-        out["text"] = (f"{names} has the highest {src} projection for week {week}: {top:.1f}, "
-                       f"{out['gap']:.1f} ahead of the next player.")
+        text = (f"{names} has the highest {src} projection for week {week}: {top:.1f}, "
+                f"{out['gap']:.1f} ahead of the next player.")
     if missing:
-        out["status"] = "incomplete"
-        out["text"] += (" Not every player who can fill the slot has a projection, so this is the best of those that "
-                        "do, not of the whole shortlist.")
+        out["state"] = "incomplete_tied" if tied else "incomplete_single"
+        text += (" Not every player who can fill the slot has a projection, so this is the best of those that do, not "
+                 "of the whole shortlist.")
+    else:
+        out["state"] = "tied" if tied else ("only" if len(considered) == 1 else "single_leader")
+    out["text"] = text
     return out
 
 
@@ -260,6 +281,6 @@ def shortlist(con, ids: list[int], *, slot: str | None = None, team: dict | None
         "players": players,
         "best_projected": best_projected(
             entries, field, as_of, slot,
-            common_slot=slot is not None or share_a_slot([e["position"] for e in entries], labels)),
+            shared=True if slot is not None else share_a_slot([e["position"] for e in entries], labels)),
         "limitations": limitations, "disclaimer": DISCLAIMER, "freshness": pc._freshness(con),
     }
