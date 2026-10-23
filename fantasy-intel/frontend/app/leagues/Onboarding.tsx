@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Badge, Notice, VisuallyHidden } from "@/components/ui";
 import { DEMO_LABEL } from "@/lib/demo-league";
 import { providerName } from "@/lib/labels";

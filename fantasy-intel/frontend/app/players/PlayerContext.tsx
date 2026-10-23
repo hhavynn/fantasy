@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Badge, Section } from "@/components/ui";
 import { int, num, pct, when } from "@/lib/format";
 import { FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";

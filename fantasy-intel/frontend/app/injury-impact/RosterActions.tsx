@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { gameLabel, levelBadge, levelLabel, rosterActions, waiversHref, type InjuryEntry, type RosterAction } from "@/lib/injury-impact";

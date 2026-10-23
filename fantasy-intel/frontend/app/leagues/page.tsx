@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";

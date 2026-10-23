@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { ShareBar } from "@/components/matchup/ShareBar";
 import { Delta, Section } from "@/components/ui";
 import { num } from "@/lib/format";

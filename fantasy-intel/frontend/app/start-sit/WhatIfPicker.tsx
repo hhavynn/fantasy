@@ -29,7 +29,7 @@ export function WhatIfPicker({ slotLabel, options, carried }: {
     start(() => router.push(leagueHref(whatIfHref("/start-sit", new URLSearchParams(carried), value)), { scroll: false }));
   };
   return (
-    <form className={styles.picker} action="/start-sit" method="get" onSubmit={submit} aria-busy={pending || undefined}>
+    <form className={styles.picker} action={leagueHref("/start-sit")} method="get" onSubmit={submit} aria-busy={pending || undefined}>
       {carried.map(([k, v], i) => <input key={`${k}-${i}`} type="hidden" name={k} value={v} />)}
       <label htmlFor={`${id}-move`} className={styles.pickerLabel}>Move into {slotLabel}</label>
       <select id={`${id}-move`} name={WHATIF_PARAM} defaultValue="" className={styles.pickerSelect} required>

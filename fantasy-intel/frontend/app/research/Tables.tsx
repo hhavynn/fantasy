@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Section, SortableTh, TrendArrow, VisuallyHidden } from "@/components/ui";
 import { sortRows, type SortState } from "@/lib/sort";

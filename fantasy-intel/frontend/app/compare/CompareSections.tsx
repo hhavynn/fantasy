@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Notice, Section, TrendArrow } from "@/components/ui";
 import { cx } from "@/lib/cx";

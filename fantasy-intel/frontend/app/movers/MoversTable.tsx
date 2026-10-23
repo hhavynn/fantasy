@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Delta, EmptyState, Section, SortableTh, VisuallyHidden } from "@/components/ui";
 import { Missing } from "@/lib/format";

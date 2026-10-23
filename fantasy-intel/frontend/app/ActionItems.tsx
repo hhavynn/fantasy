@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Notice, ProvenanceBadge, Section, ToneIcon, Verdict } from "@/components/ui";
 import { joinNames } from "@/lib/action-items";
 import type { SignalProvenance } from "@/lib/signal-provenance";

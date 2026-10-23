@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Badge, Notice, PageHeader, Pos, Section, Verdict, VerdictFigure } from "@/components/ui";

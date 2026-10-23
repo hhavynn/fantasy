@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Delta } from "@/components/ui";
 import { Missing } from "@/lib/format";
 import { barWidth, componentValueText, movementText, ordinal, type PrComponentKey, type PrTeam } from "@/lib/power-rankings";

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { BackendProblem } from "@/components/BackendProblem";

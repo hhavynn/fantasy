@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { CompareLink } from "@/components/CompareLink";
 import { Badge, Sparkline } from "@/components/ui";
 import { Missing, num, pct } from "@/lib/format";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { OriginTag } from "@/components/ProjectionNotice";
