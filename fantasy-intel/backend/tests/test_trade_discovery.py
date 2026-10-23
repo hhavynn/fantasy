@@ -572,6 +572,25 @@ def test_work_budget_stops_the_exact_search_and_says_so():
     assert roomy["search"]["termination"] == full["search"]["termination"]
 
 
+def test_concurrent_calls_on_a_shared_search_keep_their_own_budget():
+    """The API serves one cached search to parallel requests: each call's work, cutoff and results equal a fresh
+    search's, however the calls interleave."""
+    from concurrent.futures import ThreadPoolExecutor
+    st = synthetic_league(n_teams=4, weeks=range(12, 18), roster=SMALL_ROSTER, seed=3)
+    budget = TS(st, 1).top("combined", limit=10)["search"]["work_used"] // 4
+    calls = [(sort, cat) for sort in SORTS for cat in (None, "MUTUAL_PROJECTED_IMPROVEMENT")] * 4
+    want = {}
+    for sort, cat in calls:
+        s = TS(st, 1, max_work=budget).top(sort, cat, limit=10)
+        want[sort, cat] = ([r["key"] for r in s["results"]], s["search"]["work_used"], s["search"]["termination"])
+    shared = TS(st, 1, max_work=budget)
+    with ThreadPoolExecutor(8) as pool:
+        got = list(pool.map(lambda sc: (sc, shared.top(*sc, limit=10)), calls))
+    assert any(t == "work_budget" for _, _, t in want.values())
+    for sc, s in got:
+        assert ([r["key"] for r in s["results"]], s["search"]["work_used"], s["search"]["termination"]) == want[sc], sc
+
+
 def test_beam_work_budget_stops_each_manager_and_names_them():
     st = synthetic_league(n_teams=3, weeks=range(12, 18), roster=SMALL_ROSTER, seed=4)
     free = TS(st, 1, shapes=("2-for-2", "3-for-1"))

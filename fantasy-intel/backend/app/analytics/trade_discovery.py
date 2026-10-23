@@ -56,10 +56,12 @@ which is a weight or a new valuation:
 
 from __future__ import annotations
 
+import threading
 import time
 from bisect import insort
 from collections import Counter
 from dataclasses import dataclass, replace
+from functools import wraps
 from itertools import combinations
 
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total, separable, unsupported_of
@@ -132,6 +134,17 @@ class TradeTarget:
     @property
     def key(self) -> tuple:
         return (self.player, self.position)
+
+
+def _serialized(method):
+    """Run under the search's lock. The API serves cached searches to concurrent requests: one call at a time keeps each
+    top() call's ledger its own and each recorded cost free of another call's work (a re-entrant lock, so top() may
+    evaluate, and a later call reuses what an earlier one cached)."""
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return run
 
 
 def _target_key(target: TradeTarget | None) -> tuple:
@@ -352,6 +365,7 @@ class TradeSearch:
         self.cost: dict[str, int] = {}               # work each exact evaluation (and beam package) cost, by key
         self._ledger: dict[str, int] | None = None    # the evaluations the running top() call has charged
         self._spent = 0
+        self._lock = threading.RLock()
         # Positions that may be traded (players elsewhere stay on rosters and can still be forced drops).
         self.positions = None if positions is None else tuple(sorted(set(positions)))
         self.shapes = [s for s in SHAPES if s in requested]
@@ -511,6 +525,7 @@ class TradeSearch:
                 "weekly_known_deltas": [r(x) for x in d],
                 "forced_drops": drops}
 
+    @_serialized
     def evaluate(self, c: tuple) -> dict | None:
         """Exact row for a candidate; None when it does not qualify. Cached with its status
         (qualified, not_qualified, excluded_missing_data, excluded_invalid_roster)."""
@@ -583,6 +598,7 @@ class TradeSearch:
         return None
 
     # ---- larger shapes: bounded beam expansion (heuristic coverage, exact rows)
+    @_serialized
     def _pair(self, shape: str, opp: int, sends: tuple, receives: tuple):
         """Exact both-side comparison of any package (cached); (mine, theirs, status)."""
         key = _key(shape, opp, sends, receives)
@@ -597,6 +613,7 @@ class TradeSearch:
             self.cost["pair:" + key] = self.T.work - w0
         return self.pairs[key]
 
+    @_serialized
     def beam(self, target: TradeTarget | None = None) -> dict:
         """Candidate generation for HEURISTIC_SHAPES, per opponent:
 
@@ -751,6 +768,7 @@ class TradeSearch:
         if sort == "focus_gain" and not self.focus:
             raise TradeError("focus_gain needs focus weeks")
 
+    @_serialized
     def top(self, sort: str = "my_gain", category: str | None = None, opponent: int | None = None,
             limit: int = DEFAULT_LIMIT, include_redundant: bool = False, target: TradeTarget | None = None) -> dict:
         self._check_sort(sort)
