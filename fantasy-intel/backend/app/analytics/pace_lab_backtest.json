@@ -1,0 +1,267 @@
+{
+ "data": {
+  "fingerprint_sha256": "c80488fc2ce79d2e0b0a0505bcf00ee376406712de4c7f65a3fcd7b1165c08a6",
+  "games": 3742,
+  "ingest_nflreadpy_version": "0.1.5",
+  "ingested_at": "2026-10-23 16:46:03.436142",
+  "nflreadpy_version": "0.1.5",
+  "overtime_recorded": true,
+  "seasons_stored": [
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025
+  ]
+ },
+ "neutral_pass_rate": {
+  "best_baseline": "team_to_date",
+  "by_season": {
+   "2019": {
+    "league_rate": 0.0721,
+    "n": 479,
+    "shrunk_team": 0.0692,
+    "team_to_date": 0.0743
+   },
+   "2020": {
+    "league_rate": 0.0788,
+    "n": 480,
+    "shrunk_team": 0.0715,
+    "team_to_date": 0.0742
+   },
+   "2021": {
+    "league_rate": 0.0788,
+    "n": 512,
+    "shrunk_team": 0.0748,
+    "team_to_date": 0.078
+   },
+   "2022": {
+    "league_rate": 0.0792,
+    "n": 510,
+    "shrunk_team": 0.0729,
+    "team_to_date": 0.0755
+   },
+   "2023": {
+    "league_rate": 0.0771,
+    "n": 512,
+    "shrunk_team": 0.0753,
+    "team_to_date": 0.0792
+   },
+   "2024": {
+    "league_rate": 0.0739,
+    "n": 512,
+    "shrunk_team": 0.0695,
+    "team_to_date": 0.0731
+   },
+   "2025": {
+    "league_rate": 0.0738,
+    "n": 512,
+    "shrunk_team": 0.0728,
+    "team_to_date": 0.077
+   }
+  },
+  "comparisons": {
+   "shrunk_team": {
+    "league_rate": {
+     "high": -0.003,
+     "low": -0.0049,
+     "mean": -0.004
+    },
+    "team_to_date": {
+     "high": -0.0022,
+     "low": -0.0053,
+     "mean": -0.0036
+    }
+   }
+  },
+  "models": {
+   "league_rate": {
+    "bias": 0.0076,
+    "mae": 0.0763,
+    "rmse": 0.0965
+   },
+   "shrunk_team": {
+    "bias": 0.0077,
+    "mae": 0.0723,
+    "rmse": 0.0917
+   },
+   "team_to_date": {
+    "bias": 0.0072,
+    "mae": 0.0759,
+    "rmse": 0.097
+   }
+  },
+  "n": 3517,
+  "verdicts": {
+   "shrunk_team": "improves"
+  },
+  "weight_total": 120657.0
+ },
+ "overtime_unknown_targets": 0,
+ "plays": {
+  "best_baseline": "league_mean",
+  "by_season": {
+   "2019": {
+    "league_mean": 6.3656,
+    "matchup_additive": 6.3704,
+    "n": 462,
+    "script_mixture": 6.3768,
+    "shrunk_team": 6.2636,
+    "team_to_date": 6.5951
+   },
+   "2020": {
+    "league_mean": 6.5752,
+    "matchup_additive": 6.7938,
+    "n": 460,
+    "script_mixture": 6.8122,
+    "shrunk_team": 6.6626,
+    "team_to_date": 7.117
+   },
+   "2021": {
+    "league_mean": 6.5183,
+    "matchup_additive": 6.6575,
+    "n": 472,
+    "script_mixture": 6.714,
+    "shrunk_team": 6.5941,
+    "team_to_date": 7.0944
+   },
+   "2022": {
+    "league_mean": 6.256,
+    "matchup_additive": 6.3164,
+    "n": 470,
+    "script_mixture": 6.2662,
+    "shrunk_team": 6.2057,
+    "team_to_date": 6.5524
+   },
+   "2023": {
+    "league_mean": 6.5173,
+    "matchup_additive": 6.7009,
+    "n": 486,
+    "script_mixture": 6.7348,
+    "shrunk_team": 6.5389,
+    "team_to_date": 7.0546
+   },
+   "2024": {
+    "league_mean": 6.3264,
+    "matchup_additive": 6.6062,
+    "n": 480,
+    "script_mixture": 6.5673,
+    "shrunk_team": 6.4116,
+    "team_to_date": 7.0079
+   },
+   "2025": {
+    "league_mean": 6.6099,
+    "matchup_additive": 6.6237,
+    "n": 484,
+    "script_mixture": 6.6236,
+    "shrunk_team": 6.5476,
+    "team_to_date": 6.9183
+   }
+  },
+  "comparisons": {
+   "matchup_additive": {
+    "league_mean": {
+     "high": 0.2213,
+     "low": 0.0365,
+     "mean": 0.1289
+    },
+    "team_to_date": {
+     "high": -0.1809,
+     "low": -0.4794,
+     "mean": -0.3249
+    }
+   },
+   "script_mixture": {
+    "league_mean": {
+     "high": 0.222,
+     "low": 0.0359,
+     "mean": 0.1326
+    },
+    "team_to_date": {
+     "high": -0.2168,
+     "low": -0.4393,
+     "mean": -0.3213
+    }
+   },
+   "shrunk_team": {
+    "league_mean": {
+     "high": 0.079,
+     "low": -0.0595,
+     "mean": 0.008
+    },
+    "team_to_date": {
+     "high": -0.3263,
+     "low": -0.5838,
+     "mean": -0.4458
+    }
+   }
+  },
+  "models": {
+   "league_mean": {
+    "bias": -0.0295,
+    "mae": 6.4531,
+    "rmse": 8.0425
+   },
+   "matchup_additive": {
+    "bias": -0.0319,
+    "mae": 6.582,
+    "rmse": 8.2352
+   },
+   "script_mixture": {
+    "bias": -0.0053,
+    "mae": 6.5857,
+    "rmse": 8.2398
+   },
+   "shrunk_team": {
+    "bias": -0.0295,
+    "mae": 6.4611,
+    "rmse": 8.0809
+   },
+   "team_to_date": {
+    "bias": -0.034,
+    "mae": 6.907,
+    "rmse": 8.6687
+   }
+  },
+  "n": 3314,
+  "verdicts": {
+   "matchup_additive": "worse",
+   "script_mixture": "worse",
+   "shrunk_team": "no clear difference"
+  },
+  "weight_total": null
+ },
+ "range_coverage": {
+  "conditional_on_script": {
+   "inside": 2545,
+   "n": 3120,
+   "nominal": 0.8,
+   "share": 0.8157
+  },
+  "pregame_mixture": {
+   "inside": 2584,
+   "n": 3120,
+   "nominal": 0.8,
+   "share": 0.8282
+  }
+ },
+ "run_at": "2026-10-23T16:46:27Z",
+ "seasons": [
+  2019,
+  2020,
+  2021,
+  2022,
+  2023,
+  2024,
+  2025
+ ],
+ "skipped": {
+  "no_prior_team_game": 16,
+  "overtime": 188,
+  "week_1": 224
+ },
+ "spec_sha256": "2e20c7edede8e6641db29c2150772331617f2a2168b2fd56a7e0a953a61b0d6e",
+ "version": "pace-bt-0.1.0"
+}
