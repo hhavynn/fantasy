@@ -1,0 +1,59 @@
+// /api/injury-impact/opportunity-tree?team_id=2
+{
+ "body": {
+  "counts": {
+   "abstained": 0,
+   "hypothesis": 0,
+   "no_supported_beneficiary": 0,
+   "returning": 0,
+   "supported": 0,
+   "teams": 0,
+   "unavailable": 0
+  },
+  "generated_at": "<masked>",
+  "league_context": {
+   "available": true,
+   "league_name": "Fixture League",
+   "my_team_id": 2,
+   "perspective": "query",
+   "provider": "espn",
+   "waiver_status_known": true
+  },
+  "method": {
+   "abstain": "Abstain: nobody is named when the team's usage misses a game it played, the schedule is not synced, the team has no depth chart and the history is thin, or a return has no pregame evidence.",
+   "hypothesis": "Hypothesis: with fewer than 2 games without the starter there is no observed relationship, so the next healthy player on the team's depth chart or the pro-rata split can only be a hypothesis. A depth chart, a coach's statement or a pro-rata rule is not a confirmed role change.",
+   "observed": "Observed: team games this season split by whether the starter played, while each teammate was on the team and not on a reserve list. A teammate is named only with at least 2 games on each side and a change of at least the unit's threshold per game.",
+   "shares": "Shares are over the games each player played among the team's last 3: snap share (snap counts), route share (only where an external route provider supplied values) and touch share (his carries + targets over the team's skill-player carries + targets in those games).",
+   "thresholds": {
+    "hypothesis_extra": 2.0,
+    "hypothesis_share": 0.25,
+    "min_gain": {
+     "pass_attempts": 10.0,
+     "targets": 3.0,
+     "touches": 3.0
+    },
+    "min_support_games": 2,
+    "recent_games": 3
+   }
+  },
+  "notices": [
+   {
+    "code": "no_depth_charts",
+    "text": "No depth charts are synced: groups are ordered by recent snap share, and no depth-chart hypothesis is made.",
+    "tone": "caution"
+   }
+  ],
+  "season": 2026,
+  "sources": {
+   "depth_chart_as_of": null,
+   "route_providers": [],
+   "schedule_synced": true,
+   "usage_through_week": 3,
+   "weekly_rosters_synced": false
+  },
+  "teams": [],
+  "version": "opportunity-tree.v1",
+  "week": 3
+ },
+ "status": 200
+}
