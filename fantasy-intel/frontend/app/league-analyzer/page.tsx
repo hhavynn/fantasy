@@ -1,6 +1,6 @@
 import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
-import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { ChooseTeam, needsTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, Method, Notice, PageHeader, Section, Verdict, VerdictFigure } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -33,6 +33,11 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
   const view = readView(sp);
   const [res, league] = await Promise.all([api<LeagueAnalyzer>(apiPath(selectedTeamId(sel), view)), currentLeague()]);
   if (!res.ok) {
+    // A shared compare link opened by a visitor without a team (anonymous, public league): ask for one, never call the
+    // compared team unknown.
+    if (needsTeam(res)) {
+      return <div className="stack">{header()}<ChooseTeam path={PATH} sp={sp} what="how it compares with another team" /></div>;
+    }
     if (isUnknownTeam(res, sel) || (res.status === 404 && /team/i.test(res.error ?? ""))) {
       return <div className="stack">{header()}<UnknownTeam path={PATH} sel={sel} detail={res.error} /></div>;
     }

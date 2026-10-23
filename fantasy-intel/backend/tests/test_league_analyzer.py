@@ -69,8 +69,9 @@ def test_strongest_and_weakest_leave_out_streamable_k_and_dst(race):
     for t in res["teams"]:
         assert not {"K", "D/ST"} & set(t["strongest"] + t["weakest"])
         assert len(t["strongest"]) == 2 and len(t["weakest"]) == 2
-        ranks = {g: t["positions"][g]["rank"] for g in t["strongest"] + t["weakest"]}
-        assert max(ranks[g] for g in t["strongest"]) <= min(ranks[g] for g in t["weakest"])
+        # ordered by the league-relative score, so a rank among fewer ranked teams never reads as stronger
+        scores = {g: t["positions"][g]["score"] for g in t["strongest"] + t["weakest"]}
+        assert min(scores[g] for g in t["strongest"]) >= max(scores[g] for g in t["weakest"])
 
 
 def test_power_context_is_the_power_rankings_composite_unchanged(race):
@@ -246,7 +247,8 @@ def test_team_ids_must_be_this_leagues_and_distinct(race):
         la.build_league_analyzer(race, {}, vs=1)               # the default focus is team 1 (is_mine)
     nobody = replace(race, teams=[{**t, "is_mine": False} for t in race.teams])
     assert la.build_league_analyzer(nobody, {})["focus_team_id"] is None
-    with pytest.raises(NotFound):
+    # the page's needsTeam() contract: a visitor without a team is asked to pick one, never told the team is unknown
+    with pytest.raises(NotFound, match="No team is marked as yours"):
         la.build_league_analyzer(nobody, {}, vs=2)
 
 

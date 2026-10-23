@@ -47,3 +47,6 @@ def test_public_league_matrix_answers_anonymous_visitors_without_a_team(pg, serv
     body = res.json()
     assert body["teams"] and body["compare"] is None
     assert res.headers["cache-control"] == "private, no-store"
+    # a shared compare link opened without a team: the dashboard's needsTeam() answer (pick a team), not "unknown team"
+    shared = client.get(f"/v2/leagues/{pub.league_id}/api/league-analyzer?vs=1")
+    assert shared.status_code == 404 and "No team is marked as yours" in shared.json()["detail"]

@@ -315,7 +315,8 @@ def build_league_analyzer(race: RaceData, extras: dict | None = None, team_id: i
     for t in team_ids:
         m = meta[t]
         ranked = [(g, c) for g, c in cells[t].items() if c["status"] == RANKED and g not in STREAM_POSITIONS]
-        order = sorted(ranked, key=lambda gc: (gc[1]["rank"], -(gc[1]["score"] or 0), groups.index(gc[0])))
+        # league-relative score first (rank alone reads "3rd of 4" like "3rd of 12"), then rank, then lineup order
+        order = sorted(ranked, key=lambda gc: (-(gc[1]["score"] or 0), gc[1]["rank"], groups.index(gc[0])))
         legality = roster_legality(state, t)
         caveats = []
         if projections[t] is None:
