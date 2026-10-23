@@ -32,7 +32,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (766044f) | MEDIUM fixed + re-check RESOLVED; e2e league-boundary race fix ported from #245; CI running |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
-| #187 player profile tabs | 2 | PR OPEN | PR #245 (2e267dc) | review LOWs fixed; e2e: league-boundary race (from #241) + photo-CDN 404 stub fixed; CI running |
+| #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
@@ -127,6 +127,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #245 | 2e267dc | fe 686 + player-tabs/ux-gates e2e + multileague 2 locally | green | D-10 correctness review, Codex stalled |
 | #246 | 625b7ca | test_agent_check 40 (real run_command timeout) | green | Codex P2 + D-10 review LOWs fixed |
 | #241 | 248ea21 | action_center 25, a 689, s 627, fe 665 + combined 95 after #242 merge | green | D-10 review + re-check |
 | #243 | 6153556 | a 106 + s 623; test fails on main | green | D-10 review: no collisions (9.4k fuzz) |
