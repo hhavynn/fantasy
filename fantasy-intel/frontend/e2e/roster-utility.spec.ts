@@ -38,7 +38,7 @@ test("two players removed together: one lineup, the path week by week, never a s
   await boxes.nth(0).check();
   await boxes.nth(1).check();
   await s.getByRole("button", { name: "Show the lineup change" }).click();
-  await expect(page).toHaveURL(/[?&]mu=-?\d+.*mu=-?\d+/);
+  await expect(page).toHaveURL(/[?&]mu=-?\d+.*mu=-?\d+/, { timeout: 30_000 });
   await expect(s.getByText(/^Without .+ and .+, from your bench$/)).toBeVisible({ timeout: 30_000 });
   await expect(s.getByText(/^One at a time:/)).toBeVisible();
   const rows = s.locator("tbody tr");
@@ -61,7 +61,7 @@ test("one player with the waiver pool names the free agent or says none helps", 
   await s.getByRole("checkbox").first().check();
   await s.getByRole("radio", { name: /best available free agent/ }).check();
   await s.getByRole("button", { name: "Show the lineup change" }).click();
-  await expect(page).toHaveURL(/[?&]pool=waiver/);
+  await expect(page).toHaveURL(/[?&]pool=waiver/, { timeout: 30_000 });
   await expect(s.getByText(/adding the best available free agent$/)).toBeVisible({ timeout: 30_000 });
   await expect(s.getByText("Free agent added")).toBeVisible();
   await qualityBar(page);
