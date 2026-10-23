@@ -16,14 +16,27 @@ export function providerName(provider: Provider | string | null | undefined): "E
   return normalizeProvider(provider) === "sleeper" ? "Sleeper" : "ESPN";
 }
 
+export type ProjectionName = "ESPN" | "Ours" | typeof NO_PROJECTIONS;
+
 /**
  * The projection a source or a backend label means: "Ours" for Fantasy Intel's own model (the switch value "ours",
- * the API source "independent", or a label such as "Ours" / "Fantasy Intel's own projections …"), else "ESPN".
+ * the API source "independent", or a label such as "Ours" / "Fantasy Intel's own projections …"), "Unavailable" when
+ * the backend names none (the response holds no projected number, #254), else "ESPN". A source is never named over
+ * numbers it did not supply.
  */
-export function projectionName(sourceOrLabel: string | null | undefined): "ESPN" | "Ours" {
+export function projectionName(sourceOrLabel: string | null | undefined): ProjectionName {
   const v = (sourceOrLabel ?? "").trim().toLowerCase();
+  if (v === NO_PROJECTIONS.toLowerCase()) return NO_PROJECTIONS;
   if (v === "ours" || v === "independent" || v.startsWith("ours") || v.includes("fantasy intel") || v.includes("(ours)")) return "Ours";
   return "ESPN";
+}
+
+/**
+ * A projection name as the word before a noun: "ESPN " / "Ours ", or nothing for "Unavailable", so copy reads
+ * "no projection" and "projected weeks", never "no Unavailable projection".
+ */
+export function projectionWord(name: string): string {
+  return name === NO_PROJECTIONS ? "" : `${name} `;
 }
 
 /** Ownership and percent-started numbers come from ESPN only. */

@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from statistics import mean
 
-from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
+from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_gain, lineup_slots, lineup_total
@@ -40,6 +40,9 @@ BASIS_TEXT = {
     "xfp": "recent expected-fantasy-points (xFP) percentile",
     "targets+carries": "recent targets+carries percentile (xFP unavailable)",
     "espn_points": "recent ESPN league-points percentile (no NFL usage data)",
+    # A Sleeper league scores a player-week Sleeper did not score from the NFL box score (#254 S3, actual_source)
+    "box_score_points": ("recent league-points percentile, including weeks Fantasy Intel scored from the NFL box score "
+                         "(no NFL usage data)"),
     "unavailable": "no usage or scoring data",
 }
 
@@ -59,7 +62,7 @@ class PlayerValue:
     production: float | None
     trend_label: str | None
     classification: str | None
-    basis: str                      # xfp | targets+carries | espn_points | unavailable
+    basis: str                      # xfp | targets+carries | espn_points | box_score_points | unavailable
     gsis_id: str | None = None
     games: int | None = None
     extras: dict = field(default_factory=dict)
@@ -501,9 +504,12 @@ def load_values(con, season: int, current_week: int) -> dict[int, PlayerValue]:
             r["role_trend"], r["market_signal"], r["opportunity_basis"] or "unavailable", r["gsis_id"], r["games"],
             opportunity_100=r.get("opportunity_score_100"), production_100=r.get("production_score_100"),
             value_100=r.get("value_score_100"))
-    # Fallback: recent ESPN league points percentile within position.
-    pts = fetch_dicts(con, """
-        SELECT p.espn_player_id, fp.position, avg(p.actual_points) AS ppg, count(*) AS n
+    # Fallback: recent league points percentile within position. A Sleeper league's rows name their source
+    # (#254 S3): a player whose recent weeks include Fantasy Intel's box-score scoring says so.
+    box = ("count(*) FILTER (WHERE p.actual_source = 'box_score')"
+           if "actual_source" in table_columns(con, "espn_player_weekly_points") else "0")
+    pts = fetch_dicts(con, f"""
+        SELECT p.espn_player_id, fp.position, avg(p.actual_points) AS ppg, count(*) AS n, {box} AS box_score_weeks
         FROM (SELECT *, row_number() OVER (PARTITION BY espn_player_id ORDER BY scoring_period DESC) rn
               FROM espn_player_weekly_points
               WHERE season = ? AND actual_points IS NOT NULL AND scoring_period < ?) p
@@ -511,14 +517,19 @@ def load_values(con, season: int, current_week: int) -> dict[int, PlayerValue]:
         WHERE rn <= 3 GROUP BY 1, 2 HAVING count(*) >= 2
     """, [season, current_week])
     by_pos: dict[str, dict[int, float]] = defaultdict(dict)
+    box_weeks: dict[int, int] = {}
     for r in pts:
         by_pos[r["position"]][r["espn_player_id"]] = r["ppg"]
+        box_weeks[r["espn_player_id"]] = r["box_score_weeks"]
     for pos, d in by_pos.items():
         pct100 = percentile_scores_100(d)
         for pid, pct in percentile_scores(d).items():
             if pid not in values or values[pid].value is None:
-                values[pid] = PlayerValue(pid, pos, pct, None, pct, None, None, "espn_points",
-                                          extras={"recent_league_ppg": round(d[pid], 2)},
+                boxed = box_weeks.get(pid, 0)
+                values[pid] = PlayerValue(pid, pos, pct, None, pct, None, None,
+                                          "box_score_points" if boxed else "espn_points",
+                                          extras={"recent_league_ppg": round(d[pid], 2),
+                                                  **({"recent_box_score_weeks": boxed} if boxed else {})},
                                           production_100=round(pct100[pid], 1), value_100=round(pct100[pid], 1))
     return values
 

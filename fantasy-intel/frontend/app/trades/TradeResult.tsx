@@ -7,7 +7,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Delta, Method, Notice, Pos, ProvenanceBadge, Section, Stat, StatStrip, TrendArrow, Verdict as VerdictBand, VerdictFigure } from "@/components/ui";
 import { label, num, signed } from "@/lib/format";
-import { projectionName, providerName, type Provider } from "@/lib/labels";
+import { projectionName, projectionWord, providerName, type Provider } from "@/lib/labels";
 import { signalsOf } from "@/lib/signal-provenance";
 import { resultText, resultTone, signedText } from "@/lib/trade-format";
 import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
@@ -27,7 +27,7 @@ type TradeSide = TradeSideV3;
 const projOf = (r: TradeResult) => projectionName(r.projection_source);
 const whyOf = (r: TradeResult) => {
   const slots = r.team_a.deltas.unsupported_slots;
-  return `Incomplete: a rostered player with an NFL team has no ${projOf(r)} projection that week`
+  return `Incomplete: a rostered player with an NFL team has no ${projectionWord(projOf(r))}projection that week`
     + (slots?.length ? `, or the trade moves a player who can start only in ${slotList(slots)} (no engine fills it)` : "");
 };
 const TAXI_NOTE = "Taxi-squad players are inactive on their current roster (they never start and use no active roster "
@@ -158,7 +158,7 @@ function Verdict({ r }: { r: TradeResult }) {
       title="Who gets what"
       actions={<Badge value={resultText(r.result.label, an, bn, projOf(r))} tone={tone} />}
       footnote={<>
-        Lineup-point deltas are the change in each team&apos;s projected starting points versus no trade ({projOf(r)} projections, exact optimal-lineup
+        Lineup-point deltas are the change in each team&apos;s projected starting points versus no trade ({projectionWord(projOf(r))}projections, exact optimal-lineup
         simulation). Combined {signedText(r.result.combined_ros_delta)} · smaller side {signedText(r.result.min_side_ros_delta)}. {r.result.note}
       </>}
     >
@@ -245,7 +245,7 @@ function RosterNotices({ r, pv }: { r: TradeResult; pv: string }) {
       ))}
       {sides.filter((s) => s.incomplete.missing_weeks.length > 0).map((s) => (
         <Notice key={`inc-${s.team_id}`} tone="caution" title={`${s.team_name}: incomplete projections`}>
-          No {projOf(r)} projection for {names(r, s.incomplete.missing_players)} in {plural(s.incomplete.missing_weeks.length, "week")} {s.incomplete.missing_weeks.join(", ")}.
+          No {projectionWord(projOf(r))}projection for {names(r, s.incomplete.missing_players)} in {plural(s.incomplete.missing_weeks.length, "week")} {s.incomplete.missing_weeks.join(", ")}.
           Those weeks have no canonical total; missing is never treated as 0.
         </Notice>
       ))}
@@ -267,7 +267,7 @@ function WeeklyDelta({ r }: { r: TradeResult }) {
   return (
     <Section
       title="Weekly lineup change"
-      footnote={`Bars are the change in projected starting points that week versus no trade. A dash is a week without a complete ${projOf(r)} projection: missing, not zero.`}
+      footnote={`Bars are the change in projected starting points that week versus no trade. A dash is a week without a complete ${projectionWord(projOf(r))}projection: missing, not zero.`}
     >
       <div className={styles.charts}>
         {[r.team_a, r.team_b].map((s) => (
@@ -491,7 +491,7 @@ function PlayerContext({ r, pv }: { r: TradeResult; pv: string }) {
         <table>
           <thead>
             <tr>
-              <th>Player</th><th>To</th><th className="num">{proj} ROS</th><th className="num">{proj} playoffs</th>
+              <th>Player</th><th>To</th><th className="num">{projectionWord(proj)}ROS</th><th className="num">{projectionWord(proj)}playoffs</th>
               <th className="num" title="Optimal lineup with him minus without him, on his current team">Lineup value now</th>
               <th>Opportunity</th><th>Role trend</th><th>Production vs xFP</th><th>Market</th><th>Injury</th><th>Context</th>
             </tr>
@@ -504,8 +504,8 @@ function PlayerContext({ r, pv }: { r: TradeResult; pv: string }) {
                 <tr key={p.espn_player_id}>
                   <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></td>
                   <td>{p.to_team_id === A.team_id ? an : bn}</td>
-                  <td className="num">{num(i?.ros_projected_points, 1, `Incomplete ${proj} coverage`)}</td>
-                  <td className="num">{num(i?.playoff_projected_points, 1, `Incomplete ${proj} coverage`)}</td>
+                  <td className="num">{num(i?.ros_projected_points, 1, `Incomplete ${projectionWord(proj)}coverage`)}</td>
+                  <td className="num">{num(i?.playoff_projected_points, 1, `Incomplete ${projectionWord(proj)}coverage`)}</td>
                   <td className="num" title={`starts ${mv.weeks_started.length} of ${mv.weeks_expected} weeks`}>
                     {num(mv.roster_marginal_lineup_points, 1, why)} <span className="faint">({mv.weeks_started.length}/{mv.weeks_expected} starts)</span>
                     {mv.ir_activation_sensitivity && <div className="faint">IR · if activated {signed(mv.ir_activation_sensitivity.lineup_points_upside)}</div>}
@@ -613,7 +613,7 @@ function IrSensitivity({ r }: { r: TradeResult }) {
         <table>
           <thead>
             <tr>
-              <th>Team</th><th>Player</th><th>{projOf(r)} projected weeks</th><th>Would start</th>
+              <th>Team</th><th>Player</th><th>{projectionWord(projOf(r))}projected weeks</th><th>Would start</th>
               <th className="num">Upside before trade</th><th className="num">Upside after trade</th><th>Open active spot</th>
             </tr>
           </thead>

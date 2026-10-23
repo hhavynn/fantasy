@@ -143,6 +143,7 @@ export const BASIS_LABEL: Record<string, string> = {
   xfp: "xFP (expected fantasy points)",
   "targets+carries": "targets + carries (xFP unavailable)",
   espn_points: "ESPN league points only",
+  box_score_points: "league points, partly scored by Fantasy Intel from the NFL box score",
   unavailable: "no usage data",
 };
 

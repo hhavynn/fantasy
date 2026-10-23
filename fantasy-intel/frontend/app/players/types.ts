@@ -21,7 +21,8 @@ export type Detail = {
     reasons: string[]; as_of_week: number;
   } | null;
   weekly: UsageWeek[];
-  league_points: { scoring_period: number; actual_points: number | null; projected_points: number | null }[];
+  /** `actual_source` only when a player's rows mix sources (#254 S3): "provider" or "box_score". */
+  league_points: { scoring_period: number; actual_points: number | null; projected_points: number | null; actual_source?: string | null }[];
   forward_projection: ForwardProjection | null;
   injuries: Injury[];
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;

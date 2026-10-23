@@ -213,7 +213,42 @@ def test_team_lineup_tools_never_name_ours_over_a_state_without_numbers(league):
     assert labels == {"Unavailable"}
 
 
+def test_trade_tools_never_name_ours_over_a_state_without_numbers(league):
+    """#254 phase 3 (item 1): trade evaluation, trade vs. free agency and the scenario comparison name their source
+    from the values they used, as the other team_lineups tools do."""
+    from app.analytics import trade_alternatives, trade_scenarios, trades
+    state = load_league_state(league("M3"))   # Sleeper: no provider projections and no Ours run stored
+    a_team, b_team = sorted(state.rosters)[:2]
+    a = next(p.espn_player_id for p in state.rosters[a_team] if not p.reserved)
+    b = next(p.espn_player_id for p in state.rosters[b_team] if not p.reserved)
+    assert trades.evaluate_trade(state, a_team, b_team, [a], [b])["projection_source"] == "Unavailable"
+    assert trade_alternatives.analyze(state, a_team, b_team, [a], [b])["projection_source"] == "Unavailable"
+    scenarios = trade_scenarios.parse_scenarios(f"{a_team}:{b_team}:{a}:{b}")
+    assert trade_scenarios.compare_scenarios(state, scenarios)["projection_source"] in (None, "Unavailable")
+
+
 # ---- S3: each actual-points row names the source that supplied it -----------------------------------------------------
+
+def test_the_waiver_fallback_names_box_score_weeks(tmp_path):
+    """#254 phase 3 (item 2): a player valued by the league-points fallback whose recent weeks include Fantasy Intel's
+    box-score scoring says so; Sleeper-scored and ESPN rows keep the provider basis."""
+    from app.analytics.waivers import BASIS_TEXT, load_values
+    con = duckdb.connect(str(tmp_path / "w.duckdb"))
+    init_db(con)
+    con.executemany("INSERT INTO fantasy_players (espn_player_id, full_name, position) VALUES (?, ?, 'WR')",
+                    [(1, "Mixed"), (2, "Sleeper only"), (3, "ESPN file")])
+    rows = [(1, 3, 12.0, "provider"), (1, 4, 8.0, "box_score"), (2, 3, 10.0, "provider"), (2, 4, 6.0, "provider"),
+            (3, 3, 9.0, None), (3, 4, 7.0, None)]
+    con.executemany("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, "
+                    "actual_source) VALUES (2026, ?, ?, ?, ?)", rows)
+    values = load_values(con, 2026, 5)
+    assert values[1].basis == "box_score_points" and values[1].extras["recent_box_score_weeks"] == 1
+    assert "box score" in BASIS_TEXT["box_score_points"]
+    for pid in (2, 3):
+        assert values[pid].basis == "espn_points" and "recent_box_score_weeks" not in values[pid].extras
+    con.execute("ALTER TABLE espn_player_weekly_points DROP COLUMN actual_source")   # an older league file
+    assert {v.basis for v in load_values(con, 2026, 5).values()} == {"espn_points"}
+
 
 def test_sleeper_actual_points_name_their_source_per_row(tmp_path):
     from app.api.routes import league_points_sources
