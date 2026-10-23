@@ -214,8 +214,8 @@ still shows a misleading number. "Blocking" means a fix or a gate ships before t
 | G8 sparse replacement level 0 → PAR inflated | no | low (rare in practice) | very sparse superflex | yes, short term | defer: #182-area follow-up |
 | G6, G7, G9, G10 | no | low | specific formats | yes | defer with diagnostics (#253 follow-ups) |
 | G11, G12, G14 | no | low | rare | yes | defer (#253 follow-ups) |
-| Trade-evidence fetch without `/l/<lg>/` (from #180) | under investigation | — | league-scoped trade discovery page | — | #182 agent investigating the tenant boundary; fix + regression tests in #182 |
-| CommandPalette `/api/search` without `/l/<lg>/` | under investigation | — | all league pages | — | same investigation; separate PR unless confirmed exposure |
+| Trade-evidence fetch without `/l/<lg>/` (from #180) | **no exposure**: the backend authorizes by path only; the classic path serves the operator's own league or 404 | wrong-league display | league trade-discovery page | — | fixed in #182 (229cc42) + tenant-boundary tests (f52ff56) |
+| `/api/search` without `/l/<lg>/` (CommandPalette, ComparePicker) | no exposure (same analysis) | wrong-league search results | all league pages | — | bounded fix after #182 merges (reuses `leagueRouteHref`) |
 | `league_scope._response_key` sorts repeated params (order-dependent queries share an entry) | under review (within one scope?) | medium for order-dependent routes | none after #255's workaround | — | #255 reviewer assessing; separate security-file PR |
 
 **Likely file overlap:** #253 → `analytics/league_rules.py`, `api/league_rules.py`, `app/league-rules/*`, new synthetic
@@ -247,12 +247,12 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
 | A | #180 → PR #255 (57bd830): affected 623 + security 627 + e2e 16 pass; CI + security review running | coordinator | `.worktrees/fi-180-claim-planner` | released |
-| B | #182: investigating trade-evidence tenant boundary (+ regression tests); then heavyweight | agent | `.worktrees/fi-182-trade-discovery` | queued after #253 |
+| B | #182: boundary verified (routing bug, no exposure; f52ff56 tests); awaiting slot | agent | `.worktrees/fi-182-trade-discovery` | queued after #253 |
 | C | #253 phase 2: adding G1 ordinary-league tests + S1 label + S8 check, then affected/security/PR | agent | `.worktrees/fi-253-compat` | holds heavyweight |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
-1a. Bounded fix: `components/CommandPalette.tsx` fetches `/api/search` without `/l/<lg>/` (same wrong-league class as TradeEvidence, fixed in #182). Reuses `leagueRouteHref()` added by #182, so it starts after #182 merges.
+1a. Bounded fix: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
