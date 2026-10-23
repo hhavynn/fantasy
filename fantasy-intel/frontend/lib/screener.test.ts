@@ -66,7 +66,8 @@ test("form rows add two blanks but never pass the cap", () => {
 });
 
 test("values keep their unit and missing stays missing", () => {
-  assert.equal(formatValue(71.25, "percent"), "71.3%");
+  assert.equal(formatValue(71.25, "percent"), "71.25%");
+  assert.equal(formatValue(21.96, "percent"), "21.96%");   // never "22.0%": the filter compares two decimals
   assert.equal(formatValue(5.333, "per_game"), "5.33");
   assert.equal(formatValue(-2.5, "points_per_game"), "-2.50");
   assert.equal(formatValue(0, "per_game"), "0.00");       // a measured zero is a number
@@ -103,5 +104,8 @@ test("weeks, counts and carried params read plainly", () => {
   assert.equal(countsSentence({ pool: 40, below_min_games: 3, below_min_routes: 0, routes_unknown: 0, matched: 7, not_matched: 25,
     incomplete: 5, ownership_unknown: 2, ownership_excluded: 0, shown: 7 }),
   "7 of 40 players matched; 3 below the minimum games; 5 could not be decided (missing data).");
+  assert.equal(countsSentence({ pool: 40, below_min_games: 0, below_min_routes: 0, routes_unknown: 0, matched: 7, not_matched: 33,
+    incomplete: 0, ownership_unknown: 1, ownership_excluded: 3, shown: 4 }),
+  "4 of 40 players matched; 3 more matched but left out by the ownership filter.");   // the page's "Matched" figure
   assert.deepEqual(carried({ sort: "xfp_pg", dir: "asc", limit: "25", fm: "x" }), [["sort", "xfp_pg"], ["dir", "asc"]]);
 });

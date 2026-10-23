@@ -44,7 +44,9 @@ function OwnershipCell({ r }: { r: ScreenRow }) {
     const team = o.team_name ?? (o.team_id !== null ? `Team ${o.team_id}` : "a team");
     return <span title={`Rostered by ${team}`}>{o.is_mine ? "Your roster" : team}</span>;
   }
-  return <span className={styles.available}>{o.label}</span>;
+  // Styled as available only on the backend's own word (`available`); any other state reads as unknown.
+  if (o.available === true) return <span className={styles.available}>{o.label}</span>;
+  return <span className={styles.unknown} title={o.reason ?? "Ownership is unknown"}>{o.label}</span>;
 }
 
 /** The matched players, sorted by the backend (sort links reload the page with ?sort=&dir=). */

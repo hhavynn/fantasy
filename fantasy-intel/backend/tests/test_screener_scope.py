@@ -6,7 +6,7 @@ from test_league_scope import MARK, client, e2e, e2e_b, served  # noqa: F401  (f
 from test_leagues_api import bearer, env  # noqa: F401  (fixtures)
 
 NOT_FOUND = (404, {"detail": "League not found."})
-HOSTILE = ("", "?f=1:xfp_pg:gte:1;DROP%20TABLE%20x", "?to=99&limit=0", "?pos=QB&f=9:nope:eq:x", "?owner=" + "a" * 40)
+HOSTILE = ("", "?f=1:xfp_pg:gte:1;DROP%20TABLE%20x", "?to=99&limit=0", "?pos=QB&f=9:nope:eq:x", "?owner=" + "a" * 40, "?season=abc")
 RB1 = "00-SYNRB01"            # synthetic research RB mapped to the fixture league's player 201 (tests/synthetic_research.py)
 
 

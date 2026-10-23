@@ -241,11 +241,12 @@ export type ScreenResponse = Omit<MetricsResponse, "presets"> & {
 
 // ---- display ------------------------------------------------------------------------------------------------------
 
-/** A metric value in its unit: "71.25%" for shares, "5.33" for per-game numbers. Null stays null (the page shows —). */
+/** A metric value in its unit: "71.25%" for shares, "5.33" for per-game numbers. Null stays null (the page shows —).
+ * Two decimals for every unit, the precision the backend filters on (limits.rounding), so a value shown as "22.00%" is
+ * one that passes "≥ 22" and "21.96%" visibly does not. */
 export function formatValue(v: number | null | undefined, unit: Unit): string | null {
   if (v === null || v === undefined || Number.isNaN(v)) return null;
-  const digits = unit === "percent" ? 1 : 2;
-  return `${v.toFixed(digits)}${unit === "percent" ? "%" : ""}`;
+  return `${v.toFixed(2)}${unit === "percent" ? "%" : ""}`;
 }
 
 /** The filter as words: "Target share ≥ 22%". */
@@ -295,11 +296,12 @@ export function weeksText(weeks: readonly number[]): string {
 
 /** One sentence on what the screen covered and dropped, from the backend's counts. */
 export function countsSentence(c: NonNullable<ScreenResponse["counts"]>): string {
-  const parts = [`${c.matched} of ${c.pool} ${plural(c.pool, "player")} matched`];
+  // The same number as the page's "Matched" figure: players left out by the ownership filter are counted apart.
+  const parts = [`${c.matched - c.ownership_excluded} of ${c.pool} ${plural(c.pool, "player")} matched`];
   if (c.below_min_games) parts.push(`${c.below_min_games} below the minimum games`);
   if (c.below_min_routes) parts.push(`${c.below_min_routes} below the minimum routes`);
   if (c.incomplete) parts.push(`${c.incomplete} could not be decided (missing data)`);
-  if (c.ownership_excluded) parts.push(`${c.ownership_excluded} left out by the ownership filter`);
+  if (c.ownership_excluded) parts.push(`${c.ownership_excluded} more matched but left out by the ownership filter`);
   return `${parts.join("; ")}.`;
 }
 
