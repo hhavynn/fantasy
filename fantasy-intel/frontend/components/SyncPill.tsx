@@ -16,8 +16,8 @@ export function SyncPill({ status, provider = "espn", degraded = false, firstSyn
     <SyncPopover state={s.state} text={s.text}>
       {s.firstSync ? (
         <div className="sync-callout warn">
-          <b>This league is still syncing for the first time.</b> Its pages fill in once the first sync finishes.{" "}
-          <Link href="/leagues" prefetch={false}>See its progress</Link>
+          <b>This league has no synced data yet.</b> Its pages fill in once its first sync finishes.{" "}
+          <Link href="/leagues" prefetch={false}>See where its sync stands</Link>
         </div>
       ) : s.state === "offline" && isLocalRun() ? (
         <div className="sync-callout bad">

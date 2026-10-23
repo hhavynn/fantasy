@@ -173,7 +173,7 @@ test("a never-synced league explains its first sync instead of showing an error"
   await expect(page.locator("main")).not.toContainText(/The backend returned an error/);
   await expect(page.locator("main")).toContainText("still syncing for the first time");
   await expect(page.getByText("Backend offline")).toHaveCount(0);
-  await expect(page.getByText("First sync in progress").first()).toBeAttached();
+  await expect(page.getByText("No league data yet").first()).toBeAttached();
 });
 
 test("league switching works from the keyboard and re-renders the header for the new league", async ({ page, context }) => {

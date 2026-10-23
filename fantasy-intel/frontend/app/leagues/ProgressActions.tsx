@@ -36,9 +36,10 @@ export function ProgressActions({ leagueId, polling, canRetry, pinned = false, m
     router.refresh();
   });
 
+  // A member stays a member: say so here (the league stays listed). Anyone else's league leaves the list: back to it.
   const remove = () => start(async () => {
     const r = await unpinLeague(leagueId);
-    if (!r.ok) { setResult(r); return; }
+    if (!r.ok || member) { setResult(r.ok ? { ok: true, message: "Unpinned (you are still a member)." } : r); return; }
     router.push(leagueHref("/leagues"));
   });
 

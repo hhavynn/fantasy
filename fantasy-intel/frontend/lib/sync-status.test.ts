@@ -28,7 +28,7 @@ test("backend unreachable (null input) is offline", () => {
 test("a league whose first sync has not published is not offline (the API's 409, backend up)", () => {
   const r = computeSyncSummary(null, NOW, "espn", false, true);
   assert.equal(r.state, "stale");
-  assert.equal(r.text, "First sync in progress");
+  assert.equal(r.text, "No league data yet");
   assert.equal(r.firstSync, true);
   assert.equal(computeSyncSummary(null, NOW, "espn", false, false).text, "Backend offline");
 });

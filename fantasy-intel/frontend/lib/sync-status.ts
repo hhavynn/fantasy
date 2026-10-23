@@ -36,8 +36,9 @@ export type SyncSummary = {
   firstSync?: true;
 };
 
-/** The pill's text while a just-added league's first sync has not published yet. */
-export const FIRST_SYNC_TEXT = "First sync in progress";
+/** The pill's text for a league with no published data yet. The API's 409 comes whether its first sync is queued, running
+ *  or has failed, so the pill says only what is true in every case; the progress steps say which. */
+export const FIRST_SYNC_TEXT = "No league data yet";
 
 /** The pill's text when the backend served older files and nothing else is wrong. */
 export const DEGRADED_TEXT = "Showing older data";
