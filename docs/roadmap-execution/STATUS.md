@@ -61,10 +61,10 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | MERGED | PR #249 → 17d26e2 (2026-10-23) | security MEDIUM resolved by #252; Codex P2 fixed; LineupTooLargeError 422 test |
 | #180 claim planner | 3 | MERGED | PR #255 → e11ff5d (2026-10-23) | review MEDIUM×2 (open-spot/position limits = Codex P2; Sleeper waiver status) + 3 LOW fixed |
-| #179 FAAB intelligence | 3 | IN PROGRESS | `feature/fi-179-faab-intelligence` from c6ecf8c | capability-gated; owns waiver files after #260 |
+| #179 FAAB intelligence | 3 | PR #264 (review: 1 MEDIUM + 2 LOW + Codex P2 being fixed) | `feature/fi-179-faab-intelligence` from c6ecf8c | capability-gated; owns waiver files after #260 |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | MERGED | PR #258 → 386e546 (2026-10-23) | Codex P1×2 + P2, review MEDIUM + 2 LOW fixed; evidence fetch league-scoped (no exposure) |
-| #183 trade scenarios | 4 | IN PROGRESS | `feature/fi-183-trade-scenarios` from 386e546 | |
+| #183 trade scenarios | 4 | MERGED | #263 → 042e229 | |
 | #184 trade-market values | 4 | NOT STARTED | — | |
 | #185 draft-pick valuation | 4 | RESEARCH-ONLY | — | |
 | #188 SOS heatmaps | 5 | NOT STARTED | — | |
@@ -258,12 +258,13 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 1d. Tooling: `agent_check.py` backend step hard-coded 300 s (~line 1044) turns large `affected` selections into FAIL with no failures (seen on #258: direct run 756 passed in 6m05s).
 1e. Follow-up: waiver OP/FLEX picks compare position percentiles, not points (needs #254 basis); labelled in G5 PR.
 1g. Follow-up (security-adjacent, unreachable on self-hosted Next 16.4): `splitLeaguePath` lets `/l/<lg>//evil.example/x` rewrite to a protocol-relative path; reject rest paths starting `//` or containing `\`. Also e2e for forged `x-fi-league` on `/api/search` and `Cache-Control: private` on `trade-evidence/route.ts`.
-1h. Part 1 = PR #262 (security review approve, 3 LOW; main merged at b37e89d). Part 2 after it merges: Link → LeagueLink swap by section + a static guard (ESLint `no-restricted-imports` / no bare `action="/`), which also closes review LOW-2. Deferred items wait on #263 (trades/discover, TradeResult) and #179 (waivers/Evidence).
+1h. Part 1 DONE #262 (f35dacc). Part 2 IN PROGRESS (`fix/league-links-part2`): Link → LeagueLink swap by section + a static guard (ESLint `no-restricted-imports` / no bare `action="/`), which also closes review LOW-2. Deferred items wait on #263 (trades/discover, TradeResult) and #179 (waivers/Evidence).
+1j. Follow-up (LOW-MEDIUM): `app/api/waiver-claim-plan/route.ts` and `trade-evidence/route.ts` forward offline `api()` errors containing the internal API_URL; #263/#264 fixed their own routes (`compareRouteError` pattern). Unify into one helper.
 1i. Follow-up (LOW, pre-existing): `/l/<lg>/<page>?league=clear` is rewritten into the league, but page builders (`perspectiveHref`, `rankingsHref`, …) carry `league=clear` into links, which then leave the league with that league's team id. Fix in proxy: drop `league` from a scoped rewrite's query.
 1f. Follow-up: `players/ProfileTabs.tsx:144` and `my-team/value/sections.tsx:452` print `waiver_score` without the partial flag (#260 scope limit).
 1a. DONE #261 (af57a57). Was: `/api/search` callers (`CommandPalette.tsx:126`, `compare/ComparePicker.tsx:82`) and `TradeBuilder.tsx:66` `router.push('/trades?…')` lack `/l/<lg>/` (wrong-league display, no exposure). Reuses `leagueRouteHref()` from #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
-4. #183 trade scenarios (P1) → PR #263 (b297e30): CI + security review running.
+4. DONE #183 trade scenarios → #263 (042e229).
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
 6. #184 trade-market values (P1), then Phase 5 (#188, #189, #190, #200).
 Blocked or gated: #185, #199, #174, #203 (research-only), #198 (data rights), #222 (after #254), #227 group
@@ -286,6 +287,8 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #263 | 06:12 | 06:39 (2e70562) | 06:20 5 LOW + Codex 3×P2 → re-check approve 06:38 | 06:40 (28 min) | 2 | 0 |
+| #262 | 06:08 | 06:36 (0d75df5; e2e budget fix) | 06:19 approve, 3 LOW | 06:36 (28 min) | 3 | 0 |
 | #261 | 05:50 | 06:17 (0d64966) | approve (before final CI) | 06:17 (27 min) | 2 | 0 |
 | #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
 | #256 | 04:25 | 05:12 (99c96de, 3rd full CI) | 04:46 MEDIUM → re-check 05:00 → G1 remainder | 05:13 (48 min) | 3 | 0 |
