@@ -1,12 +1,12 @@
 import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
-import { ChooseTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, Method, Notice, PageHeader, Section, Verdict, VerdictFigure } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { when } from "@/lib/format";
 import { projectionsPhrase } from "@/lib/labels";
 import {
-  apiPath, errorState, knownView, ordinal, PATH, rankText, readView, signedText, viewHref, type LaErrorState, type LaTeam,
+  apiPath, errorState, knownView, ordinal, PATH, PICK_TEAM_RESET, rankText, readView, signedText, viewHref, type LaErrorState, type LaTeam,
   type LaView, type LeagueAnalyzer,
 } from "@/lib/league-analyzer";
 import { withLeague } from "@/lib/league-scope";
@@ -114,7 +114,13 @@ function AnalyzerError({ res, state, sel, sp, asked }: { res: Failed; state: LaE
         </Notice>
       );
     case "no_own_team":
-      return <ChooseTeam path={PATH} sp={sp} what="how it compares with another team" />;
+      // the shared comparison (`vs`) survives the pick; the usual team-specific params are still dropped
+      return (
+        <>
+          <TeamPerspective path={PATH} sp={sp} current={null} reset={PICK_TEAM_RESET} />
+          <Notice tone="info" title="Pick a team">Pick a team above to see how it compares with team {asked.vs ?? "—"}.</Notice>
+        </>
+      );
     case "not_synced":
       return (
         <Section>

@@ -79,6 +79,8 @@ export type LeagueAnalyzer = {
   caveats: LaCaveat[];
 };
 
+import { TEAM_SPECIFIC_PARAMS } from "./team-perspective.ts";
+
 export type Horizon = "ros" | "week";
 export const PATH = "/league-analyzer";
 /** Positions trade discovery can target (its targeted lens takes QB, RB, WR, TE). */
@@ -205,6 +207,10 @@ export function leadsText(c: Pick<LaCompare, "a" | "b" | "leads">, plural: (n: n
 }
 
 // ---------- Error and empty states ----------
+
+/** Params dropped when a visitor without a team picks one from a shared compare link: the usual team-specific ones,
+ *  except `vs`, so the comparison the link was shared for survives the pick. */
+export const PICK_TEAM_RESET: readonly string[] = TEAM_SPECIFIC_PARAMS.filter((p) => p !== "vs");
 
 /** Every way the analyzer can fail to show a matrix, decided from the API's X-FI-Error-Code (never from its wording). */
 export type LaErrorState =

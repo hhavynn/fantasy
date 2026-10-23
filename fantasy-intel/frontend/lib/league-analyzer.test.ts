@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  apiPath, errorState, knownView, leadsText, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
+  apiPath, errorState, knownView, leadsText, PICK_TEAM_RESET, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
   viewHref, visibleGroups, type LaCell, type LaGroup, type LaTeam,
 } from "./league-analyzer.ts";
 import { plural } from "./plural.ts";
+import { perspectiveHref } from "./team-perspective.ts";
 
 const cell = (rank: number | null, status: LaCell["status"] = rank === null ? "unknown" : "ranked"): LaCell => ({
   status, points: null, per_slot: null, above_replacement: null, vs_median: null, score: null, rank, of: 3, reason: null,
@@ -100,4 +101,11 @@ test("every failure state comes from the route's error code, never from its word
     [{ status: 404, code: "something_new" }, 2, { kind: "backend" }],
   ];
   for (const [res, team, want] of cases) assert.deepEqual(errorState(res, team, view), want, JSON.stringify(res));
+});
+
+test("picking a team from a shared compare link keeps the comparison", () => {
+  const sp = { vs: "1", horizon: "week", offset: "2" };
+  assert.equal(perspectiveHref("/league-analyzer", sp, 2, PICK_TEAM_RESET), "/league-analyzer?vs=1&horizon=week&team=2");
+  assert.ok(!PICK_TEAM_RESET.includes("vs") && PICK_TEAM_RESET.includes("offset"));
+  assert.equal(perspectiveHref("/league-analyzer", sp, 2), "/league-analyzer?horizon=week&team=2", "the default reset still drops vs");
 });
