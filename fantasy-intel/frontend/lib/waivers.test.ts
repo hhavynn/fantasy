@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { competitionRank, pickTopClaims, trendRank, withParams } from "./waivers.ts";
+import { competitionRank, knownWaiverScore, needPartialReason, pickTopClaims, trendRank, waiverScoreGap, withParams } from "./waivers.ts";
 
 type Row = { id: string; recommendation: string; components: { decision?: { actionable?: boolean } | null } };
 const row = (id: string, recommendation: string, actionable?: boolean): Row => ({
@@ -58,4 +58,19 @@ test("withParams: updates one param, keeps the rest, and drops nulls", () => {
 
 test("withParams: repeated params survive and undefined values are skipped", () => {
   assert.equal(withParams({ a: ["1", "2"], b: undefined }, { c: "3" }), "?a=1&a=2&c=3");
+});
+
+test("a waiver score missing its lineup-gain term is unknown, never a measured number", () => {
+  const partial = { waiver_score: 3.2, components: { roster: { fit_status: "partial", value_unknown: [{ name: "Cand QB" }] } } };
+  assert.equal(knownWaiverScore(partial), null);
+  assert.match(waiverScoreGap(partial), /Cand QB/);
+  assert.equal(knownWaiverScore({ waiver_score: 3.2, components: { roster: { fit_status: "complete" } } }), 3.2);
+  assert.equal(knownWaiverScore({ waiver_score: 3.2, components: {} }), 3.2);   // older rows carry no status
+});
+
+test("a need without its starter-quality term is marked partial with the stored reason", () => {
+  assert.equal(needPartialReason({ value_status: "complete" }), null);
+  assert.equal(needPartialReason(undefined), null);
+  assert.equal(needPartialReason({ value_status: "partial", value_note: "no value for P2" }), "no value for P2");
+  assert.match(needPartialReason({ value_status: "partial" }) ?? "", /shortage only/);
 });

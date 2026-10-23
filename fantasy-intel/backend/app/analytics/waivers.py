@@ -398,7 +398,7 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     stream = evaluate_streaming(pos, ctx.get("streaming", {}), required=int(my_state.get("roster_slots", {}).get(pos, 0))) if pos in ("K", "D/ST") else None
     stream_benefit = bool(stream and stream["category"] in ("SHORT_TERM_STREAMER", "MULTIWEEK_HOLD"))
     if stream_benefit:
-        utility["ranking_utility"] = max(utility["ranking_utility"], stream["gain"])
+        utility["ranking_utility"] = max(utility["ranking_utility"] or 0, stream["gain"])   # a measured stream gain
     alternative = None
     for choice in ctx.get("alternatives", []):
         alt_cand = choice["player"]
@@ -412,8 +412,9 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
             points = alt_cand["projections"].get(w)
             if points is not None and stream.get("incumbent_points") is not None:
                 alt_stream_gain = points - stream["incumbent_points"]
-        if ((alt_utility["meaningful"] or alt_stream_gain >= 1)
-                and max(alt_utility["ranking_utility"], alt_stream_gain) >= utility["ranking_utility"] - 0.5):
+        # Comparable only against a known benefit: an unknown one is not 0.
+        if (utility["ranking_utility"] is not None and (alt_utility["meaningful"] or alt_stream_gain >= 1)
+                and max(alt_utility["ranking_utility"] or 0, alt_stream_gain) >= utility["ranking_utility"] - 0.5):
             alternative = choice["resource"]
             break
     resource = resource_diagnostics(c.get("availability_status"), ctx.get("rules", {"is_faab": False}),

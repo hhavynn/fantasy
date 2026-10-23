@@ -1,8 +1,15 @@
 import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, Pos, TrendArrow } from "@/components/ui";
-import { label, num } from "@/lib/format";
+import { Badge, Pos, Score, TrendArrow } from "@/components/ui";
+import { Missing, label, num } from "@/lib/format";
+import { knownWaiverScore, waiverScoreGap } from "@/lib/waivers";
 import { ACTIONS } from "./helpers";
 import type { WaiverRow } from "./types";
+
+/** The waiver score, or a muted dash when it lacks its lineup-gain term (unknown, never shown as measured). */
+export function WaiverScore({ row, label: name }: { row: WaiverRow; label?: string }) {
+  const v = knownWaiverScore(row);
+  return v === null ? <Missing why={waiverScoreGap(row)} /> : <Score value={v} label={name} />;
+}
 
 /** The move the analysis recommends, as a short label ("Add now", "No legal move identified"). */
 export function actionLabel(row: WaiverRow): string | null {

@@ -43,7 +43,11 @@ def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float
     return {"meaningful": bool(starter or stash), "starter_gain": gain, "depth_gain": depth_gain,
             "unknown_value_ids": [p["espn_player_id"] for p in unknown],
             "stash": bool(stash and not starter), "forward": forward, "summary": summary,
-            "ranking_utility": round(max(0, gain or 0, forward_mean or 0) + (2 * need if starter or stash else 0) + (1 if stash else 0), 3)}
+            # None when no evidence exists (no historical gain, no forward gain, no stash): an unknown benefit ranks
+            # after every known one (api/routes.py WAIVER_ORDER), never among real ~0 gains.
+            "ranking_utility": (None if gain is None and forward_mean is None and not stash else
+                                round(max(0, gain or 0, forward_mean or 0) + (2 * need if starter or stash else 0)
+                                      + (1 if stash else 0), 3))}
 
 
 def resource_diagnostics(status: str, league: dict, team: dict, *, meaningful: bool, alternative: dict | None = None) -> dict:

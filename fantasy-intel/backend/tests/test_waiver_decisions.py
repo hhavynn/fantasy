@@ -278,3 +278,34 @@ def test_known_lineup_gain_is_labelled_as_percentile_value_not_points():
     cand = player(99, "RB", 7)
     u = acquisition_utility(st, cand, plan_roster_move(st, cand), need=0.0, opportunity=None)
     assert u["starter_gain"] == 5 and "position-percentile" in u["summary"] and "not fantasy points" in u["summary"]
+
+
+def test_unknown_benefit_has_no_ranking_utility_while_a_real_zero_gain_ranks_zero():
+    st = state([player(1, "RB", 5), player(2, "RB", 3)], {"RB": 1, "BE": 2})
+    unknown = player(99, "RB", None)
+    assert acquisition_utility(st, unknown, plan_roster_move(st, unknown), need=0.0,
+                               opportunity=None)["ranking_utility"] is None      # old code: 0, among real ~0 gains
+    zero = player(98, "RB", 1)                                                  # known, does not start: gain 0
+    assert acquisition_utility(st, zero, plan_roster_move(st, zero), need=0.0, opportunity=None)["ranking_utility"] == 0
+
+
+def test_waiver_order_ranks_unknown_benefit_after_every_known_row_stably():
+    import json
+    import duckdb
+    from app.api.routes import WAIVER_ORDER
+
+    def comp(rank, actionable=False):
+        return json.dumps({"decision": {"actionable": actionable, "utility": {"ranking_utility": rank}}})
+    con = duckdb.connect()
+    con.execute("CREATE TABLE w (espn_player_id INTEGER, recommendation VARCHAR, waiver_score DOUBLE, components JSON)")
+    con.executemany("INSERT INTO w VALUES (?, ?, ?, ?)", [
+        (1, "WAIT", 9.0, comp(None)),          # unknown benefit, high legacy score: still after every known row
+        (2, "IGNORE", 1.0, comp(0.0)),         # a measured zero gain
+        (3, "WAIT", 5.0, comp(0.4)),
+        (4, "CLAIM", 6.0, comp(2.0, True)),
+        (5, "WAIT", 9.0, comp(None)),          # ties with 1 except the id: stable
+        (6, "IGNORE", 0.5, comp(0.0)),
+    ])
+    order = [r[0] for r in con.execute(f"SELECT espn_player_id FROM w ORDER BY {WAIVER_ORDER}").fetchall()]
+    assert order == [4, 3, 2, 6, 1, 5]
+    con.close()

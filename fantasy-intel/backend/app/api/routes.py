@@ -408,6 +408,16 @@ def _route_summary(weekly: list[dict]) -> dict | None:
     }
 
 
+# Actionable moves first, then by demonstrated benefit. A row whose benefit is unknown (ranking_utility null: a player
+# without a historical value and no forward evidence) ranks after every known one, never among real ~0 gains (#253 G5);
+# the remaining keys keep the order stable.
+_RANKING = "try_cast(w.components->'decision'->'utility'->>'ranking_utility' AS DOUBLE)"
+WAIVER_ORDER = f"""coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false) DESC,
+                     {_RANKING} IS NULL, {_RANKING} DESC,
+                     CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END,
+                     w.waiver_score DESC, w.espn_player_id"""
+
+
 @router.get("/waivers")
 def waivers(position: str | None = None, recommendation: str | None = None,
             limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL",
@@ -452,10 +462,7 @@ def waivers(position: str | None = None, recommendation: str | None = None,
             LEFT JOIN player_context pc ON pc.gsis_id = m.gsis_id AND pc.season = w.season
             LEFT JOIN fantasy_players d ON d.espn_player_id = w.suggested_drop_id
             WHERE w.league_id = ? AND w.season = ? {where}
-            ORDER BY coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false) DESC,
-                     coalesce(try_cast(w.components->'decision'->'utility'->>'ranking_utility' AS DOUBLE), 0) DESC,
-                     CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END,
-                     w.waiver_score DESC, w.espn_player_id
+            ORDER BY {WAIVER_ORDER}
             LIMIT ? OFFSET ?
         """, params)
         computed_at = meta["computed_at"] if meta else None
