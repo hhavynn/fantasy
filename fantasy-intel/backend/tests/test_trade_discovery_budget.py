@@ -146,6 +146,36 @@ def test_forced_drops_are_the_same_with_the_incremental_hooks(cfg):
     assert n > 100
 
 
+def test_the_solve_cap_refuses_the_same_rosters_with_and_without_the_hooks(monkeypatch):
+    """MAX_DROP_SOLVES charges the single-removal costs as len(pool) solves on both paths, so discovery (single_bound)
+    never lists a trade whose forced drops the evaluator (exact singles) refuses as EvaluationUnavailable."""
+    refused = agreed = 0
+    for st, ts, a, pre, incoming in _drop_cases(1, lineup_slots(cf.STANDARD), n=60):
+        T = ts.T
+        rt = T.removal_total([p.espn_player_id for p in pre if not p.reserved])
+
+        def outcome(hooks, rt=rt, T=T, st=st, a=a, pre=pre, incoming=incoming):
+            def total(ps):
+                return rt([p.espn_player_id for p in ps if not p.reserved])
+            try:
+                extra = (rt.dropping, rt.bound) if hooks else ()
+                return _choice(trades.choose_forced_drops(pre, st.rosters[a], st, incoming, total, T.negative, *extra))
+            except trades.EvaluationUnavailable:
+                return "unavailable"
+        plain = trades.choose_forced_drops(pre, st.rosters[a], st, incoming,
+                                           lambda ps, rt=rt: rt([p.espn_player_id for p in ps if not p.reserved]),
+                                           T.negative)
+        with monkeypatch.context() as m:
+            m.setattr(trades, "MAX_DROP_SOLVES", plain["solves"] - 1)       # the evaluator needs one solve too many
+            assert outcome(False) == outcome(True) == "unavailable"
+            refused += 1
+        with monkeypatch.context() as m:
+            m.setattr(trades, "MAX_DROP_SOLVES", plain["solves"])           # just enough for both
+            assert outcome(False) == outcome(True) != "unavailable"
+            agreed += 1
+    assert refused > 20 and agreed > 20
+
+
 def test_the_evaluator_still_resolves_forced_drops_on_project_team_totals():
     """trades.resolve_roster searches on LineupTotals now; its choice is what the project_team search gave,
     including weeks with a negative projection (assign_lineup's rule, exact_negative)."""

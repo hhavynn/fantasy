@@ -244,6 +244,10 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
     else:
         single = {p.espn_player_id: max(0.0, full - total_without((p,))) for p in pool}
         solves = len(pool)
+    # The MAX_DROP_SOLVES cap charges the single-removal costs as len(pool) solves however they were obtained, so the
+    # evaluator (exact singles) and discovery (`single_bound`) abstain on the same rosters: a row discovery lists is never
+    # one the evaluator refuses. `solves` itself stays the solves actually made (discovery's work budget counts them).
+    charged = len(pool) if single_bound is not None and not negative else 0
     sets = 0
     # Players no engine values (they start only in IDP/P/HC slots) would always look free to drop: they are candidates
     # only when no other legal drop exists, and the choice is then flagged (`unvalued_drop`).
@@ -295,7 +299,7 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
             if not negative and best_total is not None and lb > full - best_total + DROP_EPS:
                 break
             solves += 1
-            if solves > MAX_DROP_SOLVES:
+            if solves + charged > MAX_DROP_SOLVES:
                 raise EvaluationUnavailable(f"exact forced-drop resolution needs more than {MAX_DROP_SOLVES:,} lineup "
                                             "solves; evaluation unavailable (no approximate result is substituted)")
             combo = tuple(cands[i] for i in idx)
