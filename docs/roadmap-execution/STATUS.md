@@ -31,10 +31,10 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (766044f) | MEDIUM fixed + re-check RESOLVED; e2e league-boundary race fix ported from #245; CI running |
-| #186 player news | 2 | NOT STARTED | — | source licensing gate first |
+| #186 player news | 2 | RESEARCH | `research/fi-186-news-sources` | go/no-go licensing memo (cheaper model, D-08) |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
-| #178 add/drop simulator | 3 | NOT STARTED | — | |
+| #178 add/drop simulator | 3 | IN PROGRESS | `feature/fi-178-add-drop-sim` from 82ecade | one agent; reuses trade lineup evaluator; no provider writes |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | NOT STARTED | — | |
