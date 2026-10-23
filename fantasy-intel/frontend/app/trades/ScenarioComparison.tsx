@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Delta, Notice, ProvenanceBadge, SkeletonTable, VisuallyHidden } from "@/components/ui";
 import { Missing } from "@/lib/format";

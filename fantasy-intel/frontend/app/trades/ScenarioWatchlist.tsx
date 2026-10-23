@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useState } from "react";
 import { Method, Section } from "@/components/ui";
 import { plural } from "@/lib/plural";
