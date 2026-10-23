@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { applyTheme, expectAccessible, expectNoBrokenValues, expectNoSidewaysScroll, expectStructure, useTheme } from "./ux";
 
 // "Your decisions" on the weekly recap (issue #194) against the synthetic league (scripts/build_e2e_db.py). The fixture
 // stores its roster snapshot after the played weeks kicked off, so no week has an archive taken before kickoff: the
@@ -53,4 +54,18 @@ test("the forecast source is a URL-backed switch that keeps the week", async ({ 
   await expect(f.getByRole("navigation", { name: "Forecast source" }).getByRole("link", { name: "Ours" }))
     .toHaveAttribute("aria-current", "page");
   await expect(f.getByText("No archived recommendations for this week").first()).toBeVisible();
+});
+
+test("meets the quality bar (structure, broken values, axe, no sideways scroll) in both themes", async ({ page }) => {
+  test.setTimeout(120_000);
+  await useTheme(page, "dark");
+  await open(page, "?week=2");
+  await feedback(page).getByText("How decision feedback is graded").click();       // the open method is checked too
+  await expectStructure(page);
+  await expectNoBrokenValues(page);
+  for (const theme of ["dark", "light"] as const) {
+    await applyTheme(page, theme);
+    await expectNoSidewaysScroll(page);
+    await expectAccessible(page, theme);
+  }
 });
