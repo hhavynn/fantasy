@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useTransition, type FormEvent } from "react";
+import { useLeagueHref } from "@/components/useAppPathname";
 import { WHATIF_PARAM, whatIfHref } from "@/lib/what-if";
 import styles from "./what-if.module.css";
 
@@ -17,13 +18,15 @@ export function WhatIfPicker({ slotLabel, options, carried }: {
   carried: [string, string][];
 }) {
   const router = useRouter();
+  const leagueHref = useLeagueHref();
   const id = useId();
   const [pending, start] = useTransition();
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const value = new FormData(e.currentTarget).get(WHATIF_PARAM);
     if (typeof value !== "string" || !value) return;
-    start(() => router.push(whatIfHref("/start-sit", new URLSearchParams(carried), value), { scroll: false }));
+    // On a league page the scenario stays in that league (/l/<lg>/start-sit).
+    start(() => router.push(leagueHref(whatIfHref("/start-sit", new URLSearchParams(carried), value)), { scroll: false }));
   };
   return (
     <form className={styles.picker} action="/start-sit" method="get" onSubmit={submit} aria-busy={pending || undefined}>

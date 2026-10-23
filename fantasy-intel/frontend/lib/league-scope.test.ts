@@ -125,3 +125,35 @@ test("route-handler fetches from a league page stay in that league (the trade ev
   assert.equal(leagueRouteHref("/apiary", LG), "/apiary");
   assert.equal(leagueRouteHref("https://example.com/api/x", LG), "https://example.com/api/x");
 });
+
+test("client navigations from a league page stay in that league end to end", async () => {
+  const { toQuery } = await import("./trade-builder.ts");
+  const { withTeam } = await import("./team-perspective.ts");
+  const { compareHref, swapHref } = await import("./compare.ts");
+  const { whatIfHref } = await import("./what-if.ts");
+  const evaluate = withTeam(`/trades?${toQuery({ ta: 1, tb: 4, a: [204], b: [208, 311], sw: null })}`, "1");
+  const hrefs = [
+    evaluate,                                                              // TradeBuilder "Evaluate"
+    compareHref(204, 311), swapHref(204, 311), "/compare",                  // ComparePicker pick, swap, clear
+    "/luck-lab?team=2&schedule=5", "/luck-lab",                              // ScheduleSelector
+    whatIfHref("/start-sit", new URLSearchParams("team=1&week=7"), "3:204"), // WhatIfPicker
+  ];
+  for (const href of hrefs) {
+    const scoped = withLeague(href, LG);
+    assert.equal(scoped, `/l/${LG}${href}`, href);
+    // proxy.ts serves it for that league, whatever league the last-viewed cookie names ...
+    const url = new URL(scoped, "http://x");
+    assert.deepEqual(proxyDecision({ enabled: true, pathname: url.pathname, search: url.search, cookie: "lg_" + "z".repeat(24) }),
+      { kind: "rewrite", path: href, league: LG }, href);
+    // ... while the bare href follows that cookie (another tab's league), which is the drift this prevents.
+    const bare = new URL(href, "http://x");
+    assert.equal(proxyDecision({ enabled: true, pathname: bare.pathname, search: bare.search, cookie: "lg_" + "z".repeat(24) }).kind,
+      "redirect", href);
+    // The classic site keeps the unprefixed href.
+    assert.equal(withLeague(href, null), href);
+  }
+  // The evaluated trade keeps the analyzed team and every side's players.
+  const e = new URL(withLeague(evaluate, LG), "http://x").searchParams;
+  assert.equal(e.get("team"), "1");
+  assert.deepEqual(e.getAll("a"), ["204"]);
+});

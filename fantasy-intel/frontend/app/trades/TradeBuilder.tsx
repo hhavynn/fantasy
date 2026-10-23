@@ -16,6 +16,7 @@ import type { OptionPlayer, OptionTeam } from "@/lib/trade-types";
 import { TeamLink } from "@/components/TeamLink";
 import { useTeam } from "@/components/useTeam";
 import { withTeam } from "@/lib/team-perspective";
+import { splitLeaguePath, withLeague } from "@/lib/league-scope";
 import styles from "./builder.module.css";
 import { RosterPicker } from "./RosterPicker";
 
@@ -63,7 +64,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
     if (!canEvaluate(sel, maxPerSide)) return;
     setShowStale(false);
     scrollToResult.current = true;
-    startTransition(() => router.push(withTeam(`/trades?${toQuery(sel)}`, team), { scroll: false }));
+    startTransition(() => router.push(withLeague(withTeam(`/trades?${toQuery(sel)}`, team), splitLeaguePath(window.location.pathname).league), { scroll: false }));
   };
 
   // Arriving on a link that already carries an evaluation (from Discovery, My Team Value or a shared URL): show the verdict,
