@@ -30,7 +30,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
-| #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (766044f) | MEDIUM fixed + re-check RESOLVED; e2e league-boundary race fix ported from #245; CI running |
+| #177 bye/kickoff planner | 2 | MERGED | PR #244 → 8f57407 | bye/coverage planner; security MEDIUM (exponential solve) fixed via bipartite matching |
 | #186 player news | 2 | RESEARCH DONE | PR #247 (memo) | NO-GO headlines; GO "Availability events" from nflverse (D-11); implementation not started |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
@@ -127,6 +127,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #244 | 766044f | bye_planner 17 + a 546 + s 627 + fe + bye-planner e2e 6 | green | security review + re-check; Codex clean |
 | #245 | 2e267dc | fe 686 + player-tabs/ux-gates e2e + multileague 2 locally | green | D-10 correctness review, Codex stalled |
 | #246 | 625b7ca | test_agent_check 40 (real run_command timeout) | green | Codex P2 + D-10 review LOWs fixed |
 | #241 | 248ea21 | action_center 25, a 689, s 627, fe 665 + combined 95 after #242 merge | green | D-10 review + re-check |
