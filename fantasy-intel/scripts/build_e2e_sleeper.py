@@ -5,6 +5,12 @@ Intel's own projections for the weeks to come (sealed runs; Sleeper publishes no
 pipeline. Half-PPR, a superflex and a TE premium, so nothing is ESPN-shaped. Every number is an invented test input.
 
     cd backend && uv run python ../scripts/build_e2e_sleeper.py [path]   # default: ../data/e2e-sleeper.duckdb
+    cd backend && uv run python ../scripts/build_e2e_sleeper.py PATH --idp     # the unsupported-slot variant
+
+The `--idp` variant (issue #253's E2E journey, frontend/e2e/compat-journey-multileague.spec.ts) is the same league
+plus a DL and an LB starting slot, each team starting one Sleeper-only defensive player. No engine fills those slots and
+the sync stores no IDP player, so the site must call lineup totals partial and roster legality unverified. The default
+build is unchanged.
 
 Serve it with FANTASY_DB_PATH=<path> ESPN_SEASON=2026.
 """
@@ -46,6 +52,27 @@ SCORING = {
     "pts_allow_28_34": -1, "pts_allow_35p": -4,
 }
 NAMES = {1: "Sleeper Alpha", 2: "Sleeper Bravo", 3: "Sleeper Charlie", 4: "Sleeper Delta"}
+# The --idp variant: its own league id and name, two IDP starting slots (after DEF, as Sleeper lists them) and IDP
+# scoring keys, which the skill, kicker and D/ST models do not read.
+IDP_LEAGUE_ID = "1190000000000002531"
+IDP_SLOTS = ["DL", "LB"]
+IDP_SCORING = {"idp_tkl": 1.0, "idp_sack": 3.0}
+
+
+def idp_ids(tid: int) -> list[str]:
+    """Team `tid`'s defensive starters, one per IDP slot: made-up Sleeper ids with no ESPN id."""
+    return [f"95{tid}{i:02d}" for i in range(1, len(IDP_SLOTS) + 1)]
+
+
+def roster_positions(idp: bool = False) -> list[str]:
+    if not idp:
+        return ROSTER_POSITIONS
+    n = ROSTER_POSITIONS.index("BN")
+    return [*ROSTER_POSITIONS[:n], *IDP_SLOTS, *ROSTER_POSITIONS[n:]]
+
+
+def scoring(idp: bool = False) -> dict:
+    return {**SCORING, **IDP_SCORING} if idp else SCORING
 
 
 def sleeper_id(espn_id: int) -> str:
@@ -63,7 +90,7 @@ def round_robin(team_ids: list[int], periods: int) -> dict[int, list[tuple[int, 
     return out
 
 
-def players() -> dict[str, dict]:
+def players(idp: bool = False) -> dict[str, dict]:
     out = {}
     for pid, (name, pos, team) in PLAYERS.items():
         s = sleeper_id(pid)
@@ -71,6 +98,12 @@ def players() -> dict[str, dict]:
         out[s] = {"player_id": s, "full_name": name, "position": POSITIONS[pos], "fantasy_positions": [POSITIONS[pos]],
                   "team": code, "status": "Active", "active": True, "espn_id": None if pid < 0 else pid,
                   "injury_status": "Questionable" if pid == 202 else None}
+    if idp:
+        for tid in TEAMS:
+            for s, pos in zip(idp_ids(tid), IDP_SLOTS):
+                out[s] = {"player_id": s, "full_name": f"Sleeper {pos} {tid}", "position": pos, "fantasy_positions": [pos],
+                          "team": nflverse_team(sorted(t for t in PRO_TEAM_MAP if t)[tid]), "status": "Active",
+                          "active": True, "espn_id": None, "injury_status": None}
     return out
 
 
@@ -89,11 +122,13 @@ def starters(entries: list[int]) -> tuple[list[str], list[str]]:
     return line, [sleeper_id(p) for p in entries if p not in used]
 
 
-def payloads() -> SleeperPayloads:
+def payloads(idp: bool = False) -> SleeperPayloads:
     rosters, lines = [], {}
     for tid in TEAMS:
         entries = [pid for pid, _ in ROSTERS[tid]]
         line, bench = starters(entries)
+        if idp:                 # the IDP slots follow DEF, so their starters follow the others in `starters`
+            line = [*line, *idp_ids(tid)]
         lines[tid] = (line, [*[s for s in line if s != "0"], *bench])
         rosters.append({"roster_id": tid, "owner_id": f"7000000000000001{tid:02d}", "co_owners": None,
                         "players": lines[tid][1], "starters": line, "reserve": None, "taxi": None,
@@ -142,21 +177,22 @@ def payloads() -> SleeperPayloads:
                "status_updated": 1757700000000, "created": 1757650000000, "roster_ids": [4],
                "adds": {sleeper_id(309): 4}, "drops": None, "leg": 2, "creator": "700000000000000104",
                "settings": {"waiver_bid": 7}}]}
-    league = {"league_id": LEAGUE_ID, "name": "Sleeper Fixture League", "season": str(SEASON), "status": "in_season",
-              "sport": "nfl", "season_type": "regular", "total_rosters": len(TEAMS),
-              "roster_positions": ROSTER_POSITIONS, "scoring_settings": SCORING, "previous_league_id": None,
+    league = {"league_id": IDP_LEAGUE_ID if idp else LEAGUE_ID,
+              "name": "Sleeper IDP Fixture League" if idp else "Sleeper Fixture League", "season": str(SEASON),
+              "status": "in_season", "sport": "nfl", "season_type": "regular", "total_rosters": len(TEAMS),
+              "roster_positions": roster_positions(idp), "scoring_settings": scoring(idp), "previous_league_id": None,
               "draft_id": None, "bracket_id": None,
               "settings": {"playoff_week_start": REGULAR_PERIODS + 1, "playoff_teams": 4, "start_week": 1,
                            "waiver_type": 2, "waiver_budget": 100, "trade_deadline": 11, "playoff_round_type": 0,
                            "reserve_slots": 1}}
     state = {"week": CURRENT, "season": str(SEASON), "season_type": "regular", "display_week": CURRENT, "leg": CURRENT}
     return SleeperPayloads(league=league, users=users, rosters=rosters, state=state, matchups=matchups,
-                           transactions=tx, players=players())
+                           transactions=tx, players=players(idp))
 
 
-def projections(con) -> dict:
+def projections(con, idp: bool = False) -> dict:
     """Sealed Ours, K and D/ST runs in the league's scoring for weeks CURRENT..FINAL (horizon = weeks ahead)."""
-    items, _, _ = to_scoring_items(SCORING)
+    items, _, _ = to_scoring_items(scoring(idp))
     skill_fp = resolve_skill_scoring(items).fingerprint
     ks = resolve_kicker_scoring(items)
     dst_fp, _ = dst_store.scoring_fingerprint(items)
@@ -207,19 +243,19 @@ def projections(con) -> dict:
     return counts
 
 
-def build(db_path: Path) -> dict:
+def build(db_path: Path, idp: bool = False) -> dict:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     for p in (db_path, db_path.with_suffix(db_path.suffix + ".wal")):
         p.unlink(missing_ok=True)
     con = connect(db_path)
     try:
         init_db(con)
-        stats = {"sleeper": write_sleeper(con, payloads())}
+        stats = {"sleeper": write_sleeper(con, payloads(idp))}
         nfl.write(con, SEASON, nfl.schedule(18), set(range(1, CURRENT)))
         nfl.record_fetch(con)
         # the viewer's saved team (on the site this is the signed-in member's perspective)
         con.execute("UPDATE fantasy_teams SET is_mine = (team_id = 1)")
-        stats["projections"] = projections(con)
+        stats["projections"] = projections(con, idp)
         stats["analytics"] = run_analytics(con, SEASON)
         stats["research"] = synthetic_research.write(con, SEASON)
         return stats
@@ -228,8 +264,9 @@ def build(db_path: Path) -> dict:
 
 
 def main() -> int:
-    db_path = Path(sys.argv[1] if len(sys.argv) > 1 else _bootstrap.BACKEND.parent / "data" / "e2e-sleeper.duckdb").resolve()
-    stats = build(db_path)
+    args = [a for a in sys.argv[1:] if a != "--idp"]
+    db_path = Path(args[0] if args else _bootstrap.BACKEND.parent / "data" / "e2e-sleeper.duckdb").resolve()
+    stats = build(db_path, idp="--idp" in sys.argv[1:])
     print(json.dumps({"db_path": str(db_path), "stats": stats}, indent=2, default=str))
     return 0
 
