@@ -151,14 +151,19 @@ in `analytics/marginal_utility.py` (#216 PR 1) on the same league state, streami
 * **Jointly, never summed.** Several players are removed together and evaluated as one lineup. The answer also lists
   each one's single removal and says whether the joint loss differs from their sum (one can be the other's backfill).
 * **Explicit replacement.** `bench` (default): the rest of the roster moves up. `waiver` (one player at a time): plus
-  the best fully projected free agent whose availability is synced (ESPN `FREEAGENT` or `WAIVERS`). A free agent of
-  unknown availability is never assumed addable and is counted (`waiver_availability`); with none known the pool is
+  the best fully projected free agent whose availability is known (`FREEAGENT` or `WAIVERS`: ESPN's synced status;
+  Sleeper infers `FREEAGENT` from not being rostered) and whose addition keeps every position within the league's roster
+  limit once the removed players are gone. The league state already loads only such free agents, so the availability
+  filter is defensive; anyone excluded is counted (`waiver_availability`), and with no free agent loaded the pool is
   `unknown_pool` and no replacement is assumed. A hypothetical acquisition is the trade analyzer's question, not this
   page's.
 * **Unknown is not 0.** A week with a missing projection has no delta, and neither does any total that contains it (the
   known part is shown marked). Players in IR or taxi slots start no lineup, and the answer says so.
-* **Labelled.** Every answer names its unit, the projections it used, the evaluated weeks, and that lineup locks and
-  weeks after the final fantasy week are not modelled.
+* **K and D/ST streaming.** With streaming on (the page's default), a removed K or D/ST can be replaced by that week's
+  waiver streamer even in the bench pool; the answer then says so and shows the streaming note.
+* **Labelled.** Every answer names its unit, the projections it used, the baseline it changes, the evaluated weeks, and
+  that lineup locks and weeks after the final fantasy week are not modelled. When the page narrows a question (more
+  than three players chosen, or a free-agent replacement asked for several players) it says so.
 
 On the page, the "Roster utility" section is a plain GET form (`mu` repeated for the players, `pool`); the answer
 streams in under it with the replacement path week by week. It is read-only, and the route is served per league under

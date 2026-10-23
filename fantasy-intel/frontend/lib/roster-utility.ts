@@ -26,7 +26,10 @@ export type RosterUtility = {
   single_deltas?: Record<string, number | null>; sum_of_single_deltas?: number | null; nonadditive?: boolean | null;
   nonadditive_note?: string;
   waiver_candidates?: { scored: number; excluded_unprojected: number; excluded_rostered: number };
-  waiver_availability?: { free_agents: number; availability_synced: number; excluded_unknown_availability: number };
+  waiver_availability?: { free_agents: number; availability_known: number; excluded_unknown_availability: number;
+    excluded_position_limit: number };
+  baseline: { ros_projected_starting_points: number | null; ros_known_starting_points: number; projection_complete: boolean };
+  streaming: { enabled: boolean; note?: string };
   team: { team_id: number; name: string; is_mine: boolean };
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;
 };
@@ -67,8 +70,25 @@ export function pathText(r: Pick<RosterUtility, "names">, w: Pick<UtilityWeek, "
   return `${left} out; ${entered} in`;
 }
 
-/** The question asked, in words. */
-export function questionText(r: Pick<RosterUtility, "names" | "asset_ids" | "pool">): string {
+/** K and D/ST waiver streamers have these ids in a lineup path (team_lineups.STREAMER_IDS). */
+export const STREAMER_IDS = [10 ** 12 + 1, 10 ** 12 + 2];
+
+/** A weekly K/D/ST stream filled in somewhere along the path (a waiver fill-in, even from the bench pool). */
+export function usesStream(c: { weeks: Pick<UtilityWeek, "entered_lineup">[] } | null): boolean {
+  return !!c && c.weeks.some((w) => w.entered_lineup.some((id) => STREAMER_IDS.includes(id)));
+}
+
+/** The question asked, in words: who fills in names the stream when a K/D/ST streamer does. */
+export function questionText(r: Pick<RosterUtility, "names" | "asset_ids" | "pool">, streamed = false): string {
   const who = r.asset_ids.map((id) => nameOf(r, id)).join(" and ");
-  return r.pool === "waiver" ? `Without ${who}, adding the best available free agent` : `Without ${who}, from your bench`;
+  if (r.pool === "waiver") return `Without ${who}, adding the best available free agent`;
+  return streamed ? `Without ${who}, from your bench or a weekly K/D/ST waiver stream` : `Without ${who}, from your bench`;
+}
+
+/** What the page changed about the question asked, in words (empty when nothing). */
+export function adjustments(asked: { ids: number; pool: RosterPool }, used: { ids: number; pool: RosterPool }): string[] {
+  const out: string[] = [];
+  if (asked.ids > used.ids) out.push(`Only the first ${used.ids} chosen players are evaluated (at most ${MAX_ASSETS}, on this roster).`);
+  if (asked.pool !== used.pool) out.push("A free-agent replacement is evaluated for one player at a time, so this answer uses your bench.");
+  return out;
 }

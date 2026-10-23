@@ -47,6 +47,11 @@ test("two players removed together: one lineup, the path week by week, never a s
   const text = (await s.innerText()).toLowerCase();
   for (const word of ["trade value", "guarantee", "probability"]) expect(text, word).not.toContain(word);
   await qualityBar(page);
+  // A free-agent replacement is one player at a time: asked for two, the page answers from the bench and says so.
+  const url = new URL(page.url());
+  url.searchParams.set("pool", "waiver");
+  await page.goto(url.toString());
+  await expect(s.getByText(/one player at a time, so this answer uses your bench/)).toBeVisible({ timeout: 30_000 });
 });
 
 test("one player with the waiver pool names the free agent or says none helps", async ({ page }) => {

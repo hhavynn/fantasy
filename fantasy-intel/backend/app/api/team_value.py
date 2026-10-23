@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.marginal_utility import MarginalUtilityError, marginal_utility
 from ..analytics.playoff_race import NotSynced, load_race_data
-from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, source_label
-from ..analytics.team_value import NotFound, build_team_value, load_team_value_inputs
+from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, source_label, without
+from ..analytics.team_value import NotFound, _position_legal, build_team_value, load_team_value_inputs
 from ..analytics.trades import with_streaming
 from .deps import db
 from .signal_provenance import trade_provenance
@@ -15,8 +15,9 @@ from .signal_provenance import trade_provenance
 router = APIRouter(prefix="/api", tags=["team value"])
 
 MAX_ASSETS = 3              # players removed together in one roster-utility question
-# Free agents a waiver replacement may come from: those whose provider availability is synced. One of unknown
-# availability is never assumed addable (#216: no free replacement when waiver eligibility is unknown).
+# Free agents a waiver replacement may come from: those whose provider availability is known (ESPN's synced status;
+# Sleeper infers FREEAGENT from not being rostered). The league state already loads only these, so this is a defensive
+# filter: one of unknown availability is never assumed addable (#216: no free replacement when eligibility is unknown).
 ADDABLE = ("FREEAGENT", "WAIVERS")
 ROUTE_POOLS = ("bench", "waiver")    # a hypothetical acquisition is the trade analyzer's question, not this page's
 
@@ -65,9 +66,13 @@ def my_team_marginal(ids: list[int] = Query(..., max_length=MAX_ASSETS), team_id
         availability = None
         if pool == "waiver" and state.free_agents:
             known = [p for p in state.free_agents if state.free_agent_status.get(p.espn_player_id) in ADDABLE]
-            availability = {"free_agents": len(state.free_agents), "availability_synced": len(known),
-                            "excluded_unknown_availability": len(state.free_agents) - len(known)}
-            free_agents = known or None           # none with known availability: the pool is unknown, not empty
+            # A legal replacement only: adding him keeps every position within the league's roster limit once the
+            # removed players are gone (the rule the page's own free-agent suggestions use).
+            legal = _position_legal(known, without(roster, ids), roster, state)
+            availability = {"free_agents": len(state.free_agents), "availability_known": len(known),
+                            "excluded_unknown_availability": len(state.free_agents) - len(known),
+                            "excluded_position_limit": len(known) - len(legal)}
+            free_agents = legal if known else None   # none with known availability: the pool is unknown, not empty
         try:
             res = marginal_utility(roster, state.slots, window, state.projections, ids,
                                    projection_source=source_label(state.projection_source, state.projections),

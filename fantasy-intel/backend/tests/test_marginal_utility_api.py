@@ -80,7 +80,7 @@ def test_the_waiver_pool_takes_only_free_agents_whose_availability_is_synced(api
     known = [p for p in state.free_agents if state.free_agent_status.get(p.espn_player_id) in ("FREEAGENT", "WAIVERS")]
     if known:
         assert body["status"] in ("evaluated", "partial_pool") and body["change"] is not None
-        assert body["waiver_availability"]["availability_synced"] == len(known)
+        assert body["waiver_availability"]["availability_known"] == len(known)
     else:
         assert body["status"] == "unknown_pool"
     # No availability synced for anyone: the pool is unknown, never a free replacement.
@@ -103,3 +103,22 @@ def test_bad_requests_are_refused(api):
     assert client.get(PATH, params={"ids": ids[:2], "pool": "waiver"}).status_code == 422   # one player at a time
     assert client.get(PATH, params={"ids": [123456789]}).status_code == 422     # not on this roster
     assert client.get(PATH, params={"ids": ids[:1], "team_id": 999}).status_code == 404
+
+
+def test_a_waiver_replacement_keeps_the_league_position_limits(api, monkeypatch):
+    client, db_path = api
+    race, state = _state(db_path)
+    tid = _mine(race)
+    roster = state.rosters[tid]
+    fa = next((p for p in state.free_agents if p.position in ("RB", "WR", "TE", "QB")), None)
+    if fa is None:
+        pytest.skip("no skill-position free agent in the fixture")
+    removed = next(p for p in roster if not p.reserved and p.position != fa.position)
+    held = sum(1 for p in roster if p.position == fa.position)
+    real = playoff_race.load_race_data
+    # The roster is full at the free agent's position: removing a player at another position frees no spot there.
+    monkeypatch.setattr("app.api.team_value.load_race_data", lambda con: replace(
+        r := real(con), state=replace(r.state, position_limits={fa.position: held})))
+    body = client.get(PATH, params={"ids": [removed.espn_player_id], "pool": "waiver"}).json()
+    assert body["waiver_availability"]["excluded_position_limit"] >= 1
+    assert body["replacement"] is None or body["replacement"]["position"] != fa.position

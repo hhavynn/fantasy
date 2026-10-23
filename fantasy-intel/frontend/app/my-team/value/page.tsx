@@ -5,7 +5,7 @@ import { api, requestLeague } from "@/lib/api";
 import { projectionName, providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { withLeague } from "@/lib/league-scope";
-import { effectivePool, parseAssets, parsePool, utilityQuery, type RosterUtility } from "@/lib/roster-utility";
+import { adjustments, effectivePool, parseAssets, parsePool, utilityQuery, type RosterUtility } from "@/lib/roster-utility";
 import { parseSort, type SortState } from "@/lib/sort";
 import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
@@ -119,7 +119,8 @@ async function Dashboard({ d, phase, trades, sort, sp }: {
   const partial = [ov.phases.regular, ov.phases.playoff].some((s) => phaseState(s) === "incomplete");
   // Roster utility (#216): asked only when players are chosen (`mu`), for exactly the team this page shows.
   const chosen = parseAssets(ids(sp.mu), d.players!.map((p) => p.espn_player_id));
-  const pool = effectivePool(chosen, parsePool(one(sp.pool)));
+  const asked = { ids: new Set(ids(sp.mu)).size, pool: parsePool(one(sp.pool)) };
+  const pool = effectivePool(chosen, asked.pool);
   const utility = chosen.length > 0
     ? api<RosterUtility>(`/api/my-team/value/marginal?${utilityQuery(chosen, pool, String(d.team.team_id))}`)
     : null;
@@ -176,7 +177,8 @@ async function Dashboard({ d, phase, trades, sort, sp }: {
 
       <SlotStrength d={d} phase={phase} />
       <MarginalTable d={d} phase={phase} sort={sort} sp={sp} words={words} />
-      <RosterUtilitySection players={d.players!} sp={sp} action={action} chosen={chosen} pool={pool} result={utility} />
+      <RosterUtilitySection players={d.players!} sp={sp} action={action} chosen={chosen} pool={pool} result={utility}
+        notices={adjustments(asked, { ids: chosen.length, pool })} />
       <BenchSection d={d} words={words} />
       <SlotGaps d={d} />
       <WaiverMoves d={d} words={words} />
