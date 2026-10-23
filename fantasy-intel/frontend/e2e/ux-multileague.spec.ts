@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import {
-  DOCUMENT_404, applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
+  applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
   expectNoSidewaysScroll, expectStructure, open, stubPhotos, useTheme, type Theme,
 } from "./ux";
 
@@ -41,6 +41,9 @@ const MATRIX = [
   { kind: "espn_private", signedIn: true, widths: [320, 390, 1440] },
   { kind: "sleeper", signedIn: false, widths: [320, 1440] },
 ] as const;
+
+// Colours fade for 120ms on a theme switch; reduced motion makes the switch instant, so axe never samples mid-fade.
+test.use({ reducedMotion: "reduce" });
 
 test.beforeEach(async ({ page }) => {
   await stubPhotos(page);
@@ -144,6 +147,11 @@ for (const width of [320, 1440]) {
   });
 }
 
+/** A well-formed league id that was never created. */
+const UNKNOWN_LEAGUE = "lg_NeverCreatedLeague0000";
+/** The 404 notice a refused league read shows: the local/e2e developer copy, or the hosted visitor copy. */
+const SIGNED_OUT_ANSWER = /The backend returned an error \(404\)|This could not be loaded/;
+
 // The states beside a ready league (issue #202): a page that does not exist under a league, a signed-out visitor on a
 // private league and a league whose published data is partial (pages say what is missing in words, never a NaN or an
 // error box). The private league answers a signed-out visitor exactly as a league that does not exist ("League not
@@ -154,25 +162,32 @@ for (const width of [320, 1440]) {
 
     test(`not found under a league (${width}px)`, async ({ page, context }) => {
       await signIn(context);
-      const errors = collectErrors(page);
+      const errors = collectErrors(page, { documentMayBe404: true });
       await useTheme(page, "light");
       await open(page, `/l/${manifest().leagues.espn_private}/no-such-page`, 404);
       await expect(page.locator("main h1")).toHaveText("Page not found");
       await expectStructure(page);
       await expectNoBrokenValues(page);
       await bothThemes(page, true);
-      expect(errors.filter((e) => !DOCUMENT_404.test(e)), "console errors").toEqual([]);
+      expect(errors, "console errors").toEqual([]);
     });
 
     test(`a signed-out visitor on a private league (${width}px)`, async ({ page }) => {
+      test.slow();
       const errors = collectErrors(page);
       await useTheme(page, "light");
       for (const p of ["", "/waivers"]) {
-        await open(page, `/l/${manifest().leagues.espn_private}${p}`);
+        // The answer for a league id that was never created, to compare with.
+        const unknown = await page.goto(`/l/${UNKNOWN_LEAGUE}${p}`, { waitUntil: "networkidle" });
+        const unknownText = await page.locator("main").innerText();
+        const res = await page.goto(`/l/${manifest().leagues.espn_private}${p}`, { waitUntil: "load" });
+        expect(res?.status(), "same HTTP status as a league that does not exist").toBe(unknown?.status());
+        await open(page, `/l/${manifest().leagues.espn_private}${p}`, unknown?.status());
+        expect(await page.locator("main").innerText(), "same page as a league that does not exist").toBe(unknownText);
         await expect(page.locator("main")).toContainText("League not found");
         await expect(page.locator("body")).not.toContainText("Private Fixture League");
-        await expect(page.locator("main")).not.toContainText("Echo RB");
-        await expectStructure(page, { problem: true });
+        await expect(page.locator("body")).not.toContainText("Echo RB");
+        await expectStructure(page, { problem: SIGNED_OUT_ANSWER });
         await expectNoBrokenValues(page);
         await bothThemes(page, true);
       }
@@ -180,6 +195,7 @@ for (const width of [320, 1440]) {
     });
 
     test(`a league with partial data says what is missing (${width}px)`, async ({ page }) => {
+      test.slow();
       const errors = collectErrors(page);
       await useTheme(page, "light");
       for (const p of ["", "/start-sit", "/matchup", "/waivers"]) {

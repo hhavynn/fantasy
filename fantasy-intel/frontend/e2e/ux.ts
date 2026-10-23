@@ -21,14 +21,17 @@ export async function stubPhotos(page: Page) {
   await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
 }
 
-/** Chromium's console line for a document that answered 404: expected on the not-found page, and nothing else. */
-export const DOCUMENT_404 = /^console: Failed to load resource: the server responded with a status of 404 \(Not Found\)$/;
+const RESOURCE_404 = /^Failed to load resource: the server responded with a status of 404 \(Not Found\)$/;
 
-/** Console errors and uncaught exceptions, collected for the whole test. */
-export function collectErrors(page: Page): string[] {
+/** Console errors and uncaught exceptions, collected for the whole test. `documentMayBe404`: Chromium's line for the
+ *  page's own document answering 404 (the not-found page) is expected and dropped, only when it names that document;
+ *  a 404 of any other resource on the page still counts. */
+export function collectErrors(page: Page, { documentMayBe404 = false }: { documentMayBe404?: boolean } = {}): string[] {
   const errors: string[] = [];
   page.on("console", (msg) => {
-    if (msg.type() === "error") errors.push(`console: ${msg.text()}`);
+    if (msg.type() !== "error") return;
+    if (documentMayBe404 && RESOURCE_404.test(msg.text()) && msg.location().url === page.url()) return;
+    errors.push(`console: ${msg.text()}${msg.location().url ? ` (${msg.location().url})` : ""}`);
   });
   page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
   return errors;
@@ -63,10 +66,10 @@ export function routeKey(page: Page): string {
   return u.pathname.replace(/^\/l\/[^/]+/, "/l/:league") + u.search;
 }
 
-/** One h1, inside main; the banner, main and the section navigation are landmarks; main is not empty. `problem: true`
- *  is for a page whose expected answer is a backend refusal (a private league for a signed-out visitor): the error
- *  notice is then the content, and the caller asserts what it says. */
-export async function expectStructure(page: Page, { problem = false }: { problem?: boolean } = {}) {
+/** One h1, inside main; the banner, main and the section navigation are landmarks; main is not empty. `problem` is
+ *  for a page whose expected answer is one backend refusal (a private league for a signed-out visitor answers 404):
+ *  main must show that notice, and any other failure text still fails. */
+export async function expectStructure(page: Page, { problem }: { problem?: RegExp } = {}) {
   await expect(page.locator("h1"), "exactly one h1").toHaveCount(1);
   await expect(page.locator("main h1"), "the h1 is in main").toHaveCount(1);
   await expect(page.getByRole("banner"), "one banner landmark (the app bar)").toHaveCount(1);
@@ -76,7 +79,13 @@ export async function expectStructure(page: Page, { problem = false }: { problem
   const sections = page.getByRole("navigation", { name: "Sections" }).filter({ visible: true }).first();
   await expect(sections, "the section navigation is visible").toBeVisible();
   expect(await sections.getByRole("link").count(), "section links in the visible navigation").toBeGreaterThanOrEqual(5);
-  if (!problem) await expect(page.locator("main"), "no backend or render error").not.toContainText(FAILURE_TEXT);
+  if (!problem) {
+    await expect(page.locator("main"), "no backend or render error").not.toContainText(FAILURE_TEXT);
+    return;
+  }
+  await expect(page.locator("main"), "the expected refusal").toContainText(problem);
+  const rest = (await page.locator("main").innerText()).replace(new RegExp(problem.source, "g"), "");
+  expect(rest, "no other backend or render error").not.toMatch(FAILURE_TEXT);
 }
 
 /**

@@ -42,7 +42,8 @@ VIEWER = str(uuid.UUID(int=0xE2E))
 
 def partial_copy(src: Path, dest: Path) -> Path:
     """The E2E league with ESPN's weekly projection removed (NULL: unknown, never 0) for every other player, as a sync
-    that stored the roster and the schedule but only some projections leaves it."""
+    that stored the roster and the schedule but only some projections leaves it: both the weekly points table and the
+    lineup snapshots (the projection the matchup shows per slot). Analytics derived at build time are left as built."""
     import shutil
 
     import duckdb
@@ -50,7 +51,8 @@ def partial_copy(src: Path, dest: Path) -> Path:
     shutil.copyfile(src, dest)
     con = duckdb.connect(str(dest))
     try:
-        con.execute("UPDATE espn_player_weekly_points SET projected_points = NULL WHERE espn_player_id % 2 = 0")
+        for table in ("espn_player_weekly_points", "lineup_snapshots"):
+            con.execute(f"UPDATE {table} SET projected_points = NULL WHERE espn_player_id % 2 = 0")
     finally:
         con.close()
     return dest
