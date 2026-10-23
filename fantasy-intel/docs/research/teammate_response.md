@@ -25,7 +25,9 @@ manager could use instead?**
 ## Pre-registration (fixed before the first run)
 
 `DECISION_RULE` in the module, written before the first run (see the timeline for exactly what that rests on). Reports
-now carry its SHA-256 (`decision_rule_sha256`, `d4024b44…`) and the checked-out commit (`git_sha`).
+now carry its SHA-256 (`decision_rule_sha256`, `d4024b44…`) and the checked-out commit (`git_sha`). Both were added
+after review, so the two walk-forward reports above predate them. The re-evaluated report records `748667c…-dirty`:
+its diagnostics ran from uncommitted code, committed unchanged as 045da11.
 
 - **The model's teammate response.** The model's point with the row's actual teammate inputs, minus its point with
   them neutral. Neutral is 0: no teammate out or returning. Same fitted model, every other input unchanged.
@@ -144,8 +146,8 @@ The slope intervals are 95% bootstrap by week (post-hoc). Both include 1, so nei
 
 - **RB: no evidence of a useful teammate response.** RB passes the pre-registered rule against zero (−0.026), but the
   model retrained without the group is as accurate (−0.003, CI −0.013 to +0.006). This matches the promotion's neutral
-  RB result (+0.001). The pass comes from the zero counterfactual removing the group's average contribution, which a
-  model fitted without the group absorbs elsewhere.
+  RB result (+0.001). About half of the zero gap is the group's average contribution (a constant recovers it); the
+  rest is row-level information that the retrained model matches without the group.
 - **WR: a very small gain, shown only by post-hoc diagnostics.**
   - Against the retrained model, −0.014 points per game (CI −0.023 to −0.005 by week, −0.021 to −0.007 by
     player-season): about 0.35% of a 4.06 MAE, close to the promotion's −0.012.

@@ -129,7 +129,7 @@ def main() -> int:
     preds.write_parquet(out / "preds.parquet")
     report = {"evaluation": EVALUATION, "weeks": len(weeks), "store": {k: prov.get(k) for k in ("rows", "weeks",
               "scoring_fingerprint", "depth_note", "depth_coverage")}, "components": {p: list(cm.SHIPPED[p]) for p in tr.POSITIONS},
-              "model_version": cm.MODEL_VERSION, **tr.evaluate(preds), "seconds": round(time.time() - t, 1)}
+              "model_version": cm.MODEL_VERSION, "git_sha": git_sha(), **tr.evaluate(preds), "seconds": round(time.time() - t, 1)}
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str))
     print(json.dumps(report, indent=1, default=str))
     return 0
