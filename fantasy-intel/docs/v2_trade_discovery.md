@@ -207,7 +207,9 @@ in `coverage.heuristic.work_budget` and its note ("evaluated 657 of the 803 pack
 (stages A-C) is never cut by it: its top list stays proven. A package's cost is counted by the call that solves it
 (`TradeSearch._pair`), never as the growth of a counter the search shares: the API serves one cached search to
 concurrent requests, and charging their work to a package would stop a beam at a point that depends on timing
-(`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`).
+(`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`). A package whose forced-drop search stops at
+`MAX_DROP_SOLVES` (`EvaluationUnavailable`) is charged the solves it made before stopping (the exception carries
+them), so abstaining packages spend the budget like any other.
 
 The forced-drop search's `MAX_DROP_SOLVES` cap charges the single-removal costs as one solve per player on both paths
 (exact singles in the evaluator, `single_bound` in discovery), so both abstain on the same rosters. If the manual

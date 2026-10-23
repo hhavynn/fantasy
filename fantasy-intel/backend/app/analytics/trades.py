@@ -73,7 +73,13 @@ class NoRemainingWeeksError(TradeError):
 
 
 class EvaluationUnavailable(TradeError):
-    """Exact forced-drop resolution would exceed its resource budget; no result is invented."""
+    """Exact forced-drop resolution would exceed its resource budget; no result is invented. `solves`: the lineup totals
+    the search had already solved when it stopped (choose_forced_drops' own count), so a caller that budgets work
+    (trade discovery's beam) is charged for the work actually done, not only for an evaluation that finished."""
+
+    def __init__(self, message: str = "", solves: int = 0):
+        super().__init__(message)
+        self.solves = solves
 
 
 @dataclass
@@ -268,7 +274,7 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
                 if sets > MAX_DROP_SETS:
                     raise EvaluationUnavailable(
                         f"exact forced-drop resolution needs more than {MAX_DROP_SETS:,} candidate drop sets of {k} "
-                        "players; evaluation unavailable (no approximate result is substituted)")
+                        "players; evaluation unavailable (no approximate result is substituted)", solves)
                 if act - sum(frees[i] for i in combo) > cap:
                     continue
                 if limits:
@@ -301,7 +307,8 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
             solves += 1
             if solves + charged > MAX_DROP_SOLVES:
                 raise EvaluationUnavailable(f"exact forced-drop resolution needs more than {MAX_DROP_SOLVES:,} lineup "
-                                            "solves; evaluation unavailable (no approximate result is substituted)")
+                                            "solves; evaluation unavailable (no approximate result is substituted)",
+                                            solves - 1)         # this solve was refused, every earlier one was made
             combo = tuple(cands[i] for i in idx)
             t = total_without(combo)
             key = (round(t, 9), tuple(-p.espn_player_id for p in combo))

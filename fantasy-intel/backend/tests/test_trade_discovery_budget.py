@@ -347,3 +347,63 @@ def test_a_row_the_evaluator_abstains_on_is_left_out_and_counted_not_a_failed_re
     kept = [x["key"] for items in after["sections"].values() for x in items]
     assert victim not in kept and set(shown) - {victim} <= set(kept)
     assert all(o["best"] is None or o["best"]["key"] != victim for o in after["opponents"])
+
+
+CAP = 14        # MAX_DROP_SOLVES below: _small_state's 11-13 player rosters after a trade get 1-3 solves, many need more
+
+
+def test_a_package_that_abstains_at_the_solve_cap_is_charged_the_work_it_did(monkeypatch):
+    """Codex P1 on #277: choose_forced_drops raised EvaluationUnavailable after real work, and the beam charged only the
+    side's initial unit, so repeated abstaining packages slipped past the work budget. The exception now carries the
+    solves made (`solves`: every solve before the refused one), the side charges them, and the cached cost is the same
+    on a second search."""
+    st = _small_state()
+    monkeypatch.setattr(trades, "MAX_DROP_SOLVES", CAP)
+    ts = td.TradeSearch(st, 1, ALL, beam_budget=None)
+    ts.beam()
+    abstained = [k for k, (_, _, status) in ts.pairs.items() if status == "excluded_evaluation_unavailable"]
+    assert len(abstained) >= 5
+    side = td.TradeSearch(st, 1, ALL, beam_budget=None)
+    for key in abstained:
+        opp, sends, receives = int(key.split(":")[1]), *(
+            tuple(int(x) for x in part.split("-")) for part in key.split(":")[2:4])
+        # the anchor side's own cost when it finishes, else the abstention: one unit plus every solve the cap allowed
+        # (the cap charges the single-removal costs as one solve per player of the post-trade roster)
+        mine_pool = len(st.rosters[1]) - len(sends) + len(receives)
+        try:
+            spent: list[int] = []
+            side._side(1, sends, receives, spent)
+            theirs_pool = len(st.rosters[opp]) - len(receives) + len(sends)
+            want = sum(spent) + 1 + CAP - theirs_pool
+        except trades.EvaluationUnavailable:
+            want = 1 + CAP - mine_pool
+        assert ts.pair_work[key] == want > 1, key
+    again = td.TradeSearch(st, 1, ALL, beam_budget=None)
+    again.beam()
+    assert {k: again.pair_work[k] for k in abstained} == {k: ts.pair_work[k] for k in abstained}
+
+
+def test_abstaining_packages_spend_the_beam_budget(monkeypatch):
+    """With the solve cap low, the beam's packages abstain often; each is charged its consumed work, so the per-manager
+    budget binds where charging one unit per abstention would not, and a warmed search cuts at the same point."""
+    st = _small_state()
+    monkeypatch.setattr(trades, "MAX_DROP_SOLVES", CAP)
+    free = td.TradeSearch(st, 1, ALL, beam_budget=None)
+    full = free.beam()
+    abstained = [k for k, (_, _, status) in free.pairs.items() if status == "excluded_evaluation_unavailable"]
+    assert abstained and all(free.pair_work[k] > 1 for k in abstained)
+    per_opp: dict[int, tuple[int, int]] = {}         # charged work, and the same work with one unit per abstention
+    for k, w in free.pair_work.items():
+        opp = int(k.split(":")[1])
+        cheap = 1 if k in abstained else w
+        a, b = per_opp.get(opp, (0, 0))
+        per_opp[opp] = (a + w, b + cheap)
+    opp, (charged, cheap) = max(per_opp.items(), key=lambda kv: kv[1][0] - kv[1][1])
+    assert charged > cheap
+    monkeypatch.setattr(td, "BEAM_WORK_PER_OPPONENT", cheap + 1)     # binds only because abstentions are charged
+    cut = td.TradeSearch(st, 1, ALL).beam()
+    assert opp in cut["work_budget"]["opponents_cut"] and cut["evaluated"] < full["evaluated"]
+    warm = td.TradeSearch(st, 1, ALL)
+    warm.beam(td.TradeTarget(position="WR"))
+    assert warm.beam()["work_budget"] == cut["work_budget"]
+    assert [r["key"] for r in warm.beam()["rows"]] == [r["key"] for r in cut["rows"]]

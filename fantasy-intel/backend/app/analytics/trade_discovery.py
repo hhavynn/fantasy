@@ -285,7 +285,14 @@ class TradeSearch:
               [replace(self.players[x], on_ir=False, on_taxi=False) for x in receives]
         drops: list[int] = []
         if not legal_roster(pre, st, roster):
-            combo, solves = self._forced_drops(pre, roster, set(receives), team, sends, receives)
+            try:
+                combo, solves = self._forced_drops(pre, roster, set(receives), team, sends, receives)
+            except EvaluationUnavailable as err:
+                # The search stopped at its own cap after real work: charge it, so a package that abstains costs what
+                # it consumed and repeated abstentions cannot slip past the beam's budget.
+                self.work += err.solves
+                spent.append(err.solves)
+                raise
             self.work += solves
             spent.append(solves)
             drops = [p.espn_player_id for p in combo]
