@@ -480,11 +480,20 @@ def _load_side(con, ctx: dict, pid: int, which: str) -> Side:
                      + ("" if gsis else " (no nflverse match)") + ", so usage metrics are unavailable.")
     played_by_week = {g["week"]: g for g in games}
 
-    points = {r["scoring_period"]: r["actual_points"] for r in fetch_dicts(
-        con, """SELECT scoring_period, actual_points FROM espn_player_weekly_points
-                WHERE season = ? AND espn_player_id = ? AND scoring_period <= ? AND actual_points IS NOT NULL""",
-        [season, pid, done])}
+    has_source = "actual_source" in table_columns(con, "espn_player_weekly_points")
+    point_rows = fetch_dicts(
+        con, f"""SELECT scoring_period, actual_points{", actual_source" if has_source else ""}
+                 FROM espn_player_weekly_points
+                 WHERE season = ? AND espn_player_id = ? AND scoring_period <= ? AND actual_points IS NOT NULL""",
+        [season, pid, done])
+    points = {r["scoring_period"]: r["actual_points"] for r in point_rows}
     scored, unknown = scored_game_weeks(points, team, ctx["sched_games"], ctx["covered"], set(played_by_week))
+    # #254 S3: name the weeks whose league points are Fantasy Intel's box-score scoring, not the provider's
+    box = sorted(r["scoring_period"] for r in point_rows
+                 if r.get("actual_source") == "box_score" and r["scoring_period"] in scored)
+    if box:
+        notes.append(f"{name}: league points for week(s) {', '.join(map(str, box))} are Fantasy Intel's box-score "
+                     "scoring in this league's rules (no roster scored him then); the other weeks are the provider's.")
     if unknown:
         notes.append(f"{name}: the NFL schedule does not cover week(s) {', '.join(map(str, unknown))}, so 0-point "
                      "weeks without a usage record were left out of league points per game (they may be byes).")

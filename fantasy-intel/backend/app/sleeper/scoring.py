@@ -70,6 +70,18 @@ ST_FUMBLES = {"def_st_ff": "ff", "def_st_fum_rec": "fum_rec"}     # ESPN's D/ST 
 PLAYER_ST = ("st_ff", "st_fum_rec")
 
 
+def unsupported_family(key: str) -> str:
+    """The family an unsupported Sleeper key makes abstain, by the same rule `to_scoring_items` applies: "idp" (listed
+    and ignored), "kicker", "dst" or "skill". Lets a family's diagnostic name only its own keys (#254)."""
+    if key.startswith(IDP_PREFIXES):
+        return "idp"
+    if key.startswith(KICKER_PREFIXES):
+        return "kicker"
+    if key.startswith(DEFENSE_PREFIXES):
+        return "dst"
+    return "skill"
+
+
 def to_scoring_items(settings: Mapping[str, float]) -> tuple[list[dict], list[str], list[str]]:
     """(ESPN-shaped items, the non-zero keys no family implements, notes on approximations). See the module
     docstring."""

@@ -131,6 +131,12 @@ CREATE TABLE IF NOT EXISTS espn_player_weekly_points (
 -- projected_points holds ESPN's projection for that week (statSourceId 1), including future
 -- weeks current..final fantasy period. It is ESPN's number, not ours. Future projections never
 -- touch actual_points; see docs/espn_ros_projections.md for the replacement semantics.
+-- actual_source (#254 S3): who supplied actual_points, per row. 'provider' = the provider's own league-scored points
+-- (Sleeper players_points), and 'box_score' = Fantasy Intel's nflverse box score scored with the league's skill rules
+-- (app/sleeper/write.py, a Sleeper player-week no roster scored; events the box score does not record are not in it).
+-- NULL when actual_points is NULL, and on every row of a writer that does not record it: the ESPN sync writes only
+-- ESPN's appliedTotal (provider points).
+ALTER TABLE espn_player_weekly_points ADD COLUMN IF NOT EXISTS actual_source VARCHAR;
 
 -- One ESPN projection snapshot per day per player-week (latest sync of the day wins), kept
 -- for future calibration / backtesting only. Not used by any score or recommendation.

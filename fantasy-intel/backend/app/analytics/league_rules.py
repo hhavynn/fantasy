@@ -32,6 +32,7 @@ from ..espn.constants import DEFAULT_POSITION_MAP
 from .dst_store import DST_SLOT, DST_UNIVERSE, MODELED as DST_MODELED
 from .kicker_scoring import FG_ITEMS, PAT_ITEMS, resolve_kicker_scoring
 from .league_scoring import DIRECT, EXTRA_DIRECT, resolve_skill_scoring
+from ..sleeper.scoring import unsupported_family
 
 CONTRACT = "league-rules/v1"
 NOT_SYNCED = "No league has been synced yet, so there are no league rules to show."
@@ -680,11 +681,15 @@ def other_settings(settings: dict, provider: str) -> list[dict]:
 
 # ---- engine support ------------------------------------------------------------------------------------------------
 
-def _stat_name(sid: Any, sleeper_unsupported: list[str]) -> str:
+# app/sleeper/scoring.py: the synthetic statId each family's unimplemented provider rules are translated to
+SLEEPER_SYNTHETIC = {2999: "skill", 1099: "kicker", 137: "dst"}
+
+
+def _stat_name(sid: Any, sleeper_unsupported: dict[str, list[str]]) -> str:
     if isinstance(sid, list):
         return " and ".join(_stat_name(s, sleeper_unsupported) for s in sid)
-    if sid in (2999, 1099, 137):            # app/sleeper/scoring.py: a provider rule no family implements
-        return ", ".join(sleeper_unsupported) or "an unimplemented provider rule"
+    if sid in SLEEPER_SYNTHETIC:            # a provider rule no family implements: its own family's keys
+        return ", ".join(sleeper_unsupported.get(SLEEPER_SYNTHETIC[sid]) or []) or "an unimplemented provider rule"
     if isinstance(sid, int):
         if sid in ESPN_STATS:
             return ESPN_STATS[sid][1].lower()
@@ -693,7 +698,21 @@ def _stat_name(sid: Any, sleeper_unsupported: list[str]) -> str:
     return f"stat {sid}" if sid is not None else "the scoring rules"
 
 
-def _reasons(entries: list[dict], sleeper_unsupported: list[str]) -> str:
+def _rule_ids(entries: list[dict], sleeper_unsupported: dict[str, list[str]]) -> list:
+    """The machine-readable ids of the rules a family abstains on (#254, consumed by the league-compatibility/v1
+    diagnostic): ESPN statIds as integers, and for a Sleeper league the provider's own keys in place of the synthetic
+    "unimplemented provider rule" ids (a kicker also abstains on a skill key's synthetic id, which carries base points
+    a K slot would earn)."""
+    out: list = []
+    for e in entries:
+        sid = e.get("stat_id")
+        for s in (sid if isinstance(sid, list) else [sid]):
+            keys = sleeper_unsupported.get(SLEEPER_SYNTHETIC.get(s, ""), []) if s in SLEEPER_SYNTHETIC else []
+            out += [i for i in (keys or [s]) if i is not None and i not in out]
+    return out
+
+
+def _reasons(entries: list[dict], sleeper_unsupported: dict[str, list[str]]) -> str:
     seen = []
     for e in entries:
         sid = e.get("stat_id")
@@ -701,6 +720,12 @@ def _reasons(entries: list[dict], sleeper_unsupported: list[str]) -> str:
         if name not in seen:
             seen.append(name)
     return "; ".join(seen)
+
+
+def _abstains_on(entries: list[dict], sleeper_unsupported: dict[str, list[str]]) -> dict:
+    """`unsupported_rules` for an unsupported family's row only (a supported row keeps its exact shape)."""
+    ids = _rule_ids(entries, sleeper_unsupported)
+    return {"unsupported_rules": ids} if ids else {}
 
 
 RESCORED_DETAIL = ("Fantasy Intel's own projections are approximated for this league: they were made in another "
@@ -713,6 +738,8 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     rows: list[dict] = []
     name = PROVIDERS[provider]
     sl_unsupported = [str(k) for k in settings.get("scoring_unsupported") or []] if provider == "sleeper" else []
+    # each family names only the provider keys that make it abstain (app/sleeper/scoring.py routes them the same way)
+    sl_family = {f: [k for k in sl_unsupported if unsupported_family(k) == f] for f in ("skill", "kicker", "dst")}
     slots = roster["slots"]
 
     # Superflex and flex slots (app/analytics/lineup.py, start_sit.build_slot_instances, trade_discovery._Totals).
@@ -756,22 +783,25 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     te_note = " The TE reception bonus is applied." if skill.position_weights.get("TE") else ""
     if not skill.supported:
         status, detail = UNSUPPORTED, ("Fantasy Intel's own projections abstain: the league scores "
-                                       f"{_reasons(skill.unsupported, sl_unsupported)}, which the model does not "
+                                       f"{_reasons(skill.unsupported, sl_family)}, which the model does not "
                                        "implement.")
     elif ours_rescored:
         status, detail = PARTIAL, RESCORED_DETAIL + te_note
     else:
         status, detail = HANDLED, "Fantasy Intel's own projections are scored with this league's rules." + te_note
-    rows.append({"code": "skill_projections", "rule": ours, "status": status, "detail": detail})
+    rows.append({"code": "skill_projections", "rule": ours, "status": status, "detail": detail,
+                 **_abstains_on(skill.unsupported, sl_family)})
     rows.append({"code": "kicker_projections", "rule": "Kicker projections",
                  "status": HANDLED if kicker.supported else UNSUPPORTED,
                  "detail": "Field goals and extra points are scored with this league's distance rules."
                  if kicker.supported else
-                 f"Kicker projections abstain: {_reasons(kicker.unsupported, sl_unsupported)}."})
+                 f"Kicker projections abstain: {_reasons(kicker.unsupported, sl_family)}.",
+                 **_abstains_on(kicker.unsupported if not kicker.supported else [], sl_family)})
     rows.append({"code": "dst_projections", "rule": "D/ST projections", "status": HANDLED if dst_ok else UNSUPPORTED,
                  "detail": "Sacks, takeaways, touchdowns and points-allowed tiers are scored with this league's rules."
                  if dst_ok else
-                 f"D/ST projections abstain: {_reasons(dst_unmodeled_rules, sl_unsupported) or 'the league scores no D/ST statistics'}."})
+                 f"D/ST projections abstain: {_reasons(dst_unmodeled_rules, sl_family) or 'the league scores no D/ST statistics'}.",
+                 **_abstains_on(dst_unmodeled_rules if not dst_ok else [], sl_family)})
 
     te = scoring["te_premium"]["value"]
     if te:
