@@ -68,6 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
     pages: [
       { href: "/trades", label: "Analyzer", summary: "Build a trade and see its exact lineup impact, week by week" },
       { href: "/trades/discover", label: "Discover", summary: "Trade ideas found by searching every roster" },
+      { href: "/trades/values", label: "Trade values", summary: "Every rostered player's model value above replacement, with its calculation" },
     ],
   },
   {

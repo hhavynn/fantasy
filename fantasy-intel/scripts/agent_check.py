@@ -130,6 +130,9 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/routes.py", ["tests/test_api.py", "tests/test_league_scope_audit.py"]),
     # Trade scenario comparison (issue #183): before the generic "api/trade" prefix.
     ("api/trade_scenarios", ["tests/test_trade_scenarios.py", "tests/test_golden_legacy.py", "tests/test_v2_authorization_matrix.py"]),
+    # Trade values board (issue #184): before the generic "api/trade" prefix.
+    ("api/trade_values", ["tests/test_trade_values.py", "tests/test_golden_legacy.py", "tests/test_provider_copy.py",
+                          "tests/test_v2_authorization_matrix.py"]),
     ("api/trade", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py"]),
     ("api/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_lineup_what_if.py"]),
     ("api/add_drop", ["tests/test_add_drop.py", "tests/test_claim_plan.py", "tests/test_golden_legacy.py",
@@ -153,6 +156,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
 
     # Analytics engines
     ("analytics/trade_scenarios", ["tests/test_trade_scenarios.py", "tests/test_trades.py", "tests/test_golden_legacy.py"]),
+    ("analytics/trade_values", ["tests/test_trade_values.py", "tests/test_trade_assets_superflex.py",
+                                "tests/test_golden_legacy.py", "tests/test_provider_copy.py"]),
     ("analytics/trades", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_dual_value.py",
                           "tests/test_trade_scenarios.py"]),
     ("analytics/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_league_compatibility.py"]),

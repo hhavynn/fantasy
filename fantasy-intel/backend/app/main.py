@@ -36,6 +36,7 @@ from .api.power_rankings import router as power_rankings_router
 from .api.projection_ranges import router as projection_ranges_router
 from .api.league_rules import router as league_rules_router
 from .api.transactions import router as transactions_router
+from .api.trade_values import router as trade_values_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -105,6 +106,7 @@ app.include_router(power_rankings_router)
 app.include_router(projection_ranges_router)
 app.include_router(league_rules_router)
 app.include_router(transactions_router)
+app.include_router(trade_values_router)
 
 
 # The same routers again under /v2/leagues/{league_id}: authorized per league, served from that league's files
@@ -118,7 +120,7 @@ mount_legacy_routers(app, [
     projection_promotion_router, projection_performance_router, projection_movers_router, weekly_recap_router,
     research_router, player_compare_router, rankings_router, kicker_projections_router, dst_projections_router,
     injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
-    transactions_router, add_drop_router, claim_plan_router, trade_scenarios_router,
+    transactions_router, add_drop_router, claim_plan_router, trade_scenarios_router, trade_values_router,
 ], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router])
 app.middleware("http")(add_scope_headers)
 from .api.provider_copy import classic_copy  # noqa: E402
