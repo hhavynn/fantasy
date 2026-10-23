@@ -534,6 +534,32 @@ export type PlayoffRace = {
   record_check: string[];
   rules: { ordering: string; projection: string; close: string; clinch: string; espn_rules_reported: Record<string, unknown>; espn_rules_note: string };
   warnings: string[]; notes: string[];
+  /** Present only when at least one result is set (issue #192); absent, the answer is the scenario-off answer. */
+  whatif?: PrWhatIf;
+};
+
+export type PrPlaceRow = { rank: number | null; tied: boolean; status: PrStatus; record: PrRecord | null };
+export type PrSetResult = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; home_team_id: number; away_team_id: number;
+  status: PrMatchup["status"]; outcome: PrOutcome | "none"; baseline_result: PrOutcome | null; changes_baseline: boolean;
+};
+export type PrBlocker = { rule: string; state: string; reported: Record<string, unknown>; detail: string };
+export type PrBound = {
+  team_id: number; open_games: number; best: PrRecord | null; worst: PrRecord | null;
+  teams_able_to_match_worst: number | null; teams_certain_ahead_of_best: number | null;
+  record_order: "above_line" | "below_line" | "open" | null; claim: null;
+};
+export type PrWhatIf = {
+  label: "hypothetical"; method: string;
+  sampling: { method: "deterministic"; scenarios: number; random_samples: number; seed: null; probabilities: null };
+  inputs: { base: "projected" | "actual"; first_actionable_week: number | null; set_results: PrSetResult[] };
+  assumptions: string[];
+  completeness: { status: "complete" | "partial"; unresolved_games: number; by_reason: Record<string, number> };
+  labels: Record<string, string>;
+  baseline_standings: PrStanding[];
+  changes: { team_id: number; baseline: PrPlaceRow; whatif: PrPlaceRow; rank_change: number | null; status_changed: boolean }[];
+  conclusions: { status: "blocked" | "open"; blocked_by: PrBlocker[]; claims: never[];
+    record_bounds: { rule: string; fixed_results: number; open_games: number; abstain: string[]; teams: PrBound[] } };
 };
 
 // ------------------------------------------------------------------- my team value --
