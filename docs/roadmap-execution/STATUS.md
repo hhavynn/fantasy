@@ -28,7 +28,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
-| #166 action center | 2 | PR OPEN | PR #241 (32e6168, CI green) | original 4 findings resolved; re-check found 3 new LOW (cancel cleanup, per-user admission + short wait, cache deterministic errors) → being fixed |
+| #166 action center | 2 | PR OPEN | PR #241 (248ea21) | all review findings fixed (f0f1307); main (#242) merged in, action-center + what-if + start-sit tests 95 pass; CI running |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | IN PROGRESS | `feature/fi-177-bye-planner` from 5b4fe14 | one agent; section on schedule-intelligence; unknown ≠ safe |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
