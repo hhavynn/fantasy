@@ -115,12 +115,69 @@ request-path provider-side calls are the user-initiated connect checks and the b
 No new packages. The backend changes use only the standard library. The script uses `httpx`, already a dev
 dependency, and the frontend change adds no dependency.
 
+## Re-baseline after #277 and #281 (2026-10-23)
+
+The same script, with two pages added: **Start/Sit** (`/api/start-sit`) and the header's **player search**
+(`/api/players?q=alpha&limit=8`, a typed query at the search box's limit). An A/B on one machine, back to back:
+A = 7fea582 (#235, the "after" above) and B = main at 30ea75d plus the two script rows. Two pairs were run, A then B and
+then B then A, so drift in machine load cannot favour one side.
+
+- Machine: Linux x86_64, Python 3.12.3, **4 CPUs**, a local **Postgres 16** cluster (not hosted Supabase), the simulated
+  R2 link above (50 ms per object plus 30 MB/s). **Load average during the runs: 0.13-3.27 (median 1.45) for the first
+  pair and 0.98-1.76 (median 1.35) for the second, 69 samples at 10 s.** The first baseline above ran at load 24-27, so
+  compare A with B here, not with the tables above.
+- Sample counts: each single-page row is the median of 3 fresh instances; each multi-league row is one burst of N
+  leagues (N cold loads, then N warm, then N cached calls); one stampede of 10 viewers. Two pairs of runs per side.
+- These are local, in-process numbers. They do not include the Next.js render or hosted network latency, and they are not
+  an estimate of hosted latency.
+
+### One league, per page (ms; run 1 / run 2)
+
+| Page | Cold, A | Cold, B | Warm, A | Warm, B | Cached, A | Cached, B | Within budget |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Overview | 1042 / 1061 | 1118 / 1147 | 171 / 172 | 211 / 214 | 34 / 39 | 34 / 42 | yes |
+| Waivers | 956 / 955 | 1012 / 1021 | 86 / 88 | 99 / 108 | 21 / 24 | 24 / 22 | yes |
+| Trades | 973 / 987 | 1055 / 1039 | 80 / 106 | 111 / 108 | 16 / 18 | 17 / 18 | yes |
+| Trades → Discover | 2677 / 2922 | 2968 / 2843 | 1798 / 1909 | 1966 / 1959 | 22 / 25 | 28 / 23 | yes |
+| Matchup | 979 / 945 | 1005 / 1012 | 88 / 81 | 88 / 106 | 19 / 18 | 18 / 18 | yes |
+| Players | 1031 / 940 | 984 / 991 | 52 / 65 | 63 / 82 | 16 / 21 | 18 / 22 | yes |
+| **Start/Sit** (new) | 1100 / 970 | 1052 / 1053 | 103 / 89 | 118 / 126 | 21 / 19 | 19 / 18 | yes |
+| **Player search** (new) | 1002 / 896 | 966 / 949 | 26 / 24 | 30 / 29 | 8 / 7 | 7 / 7 | yes |
+
+Every cold page costs 2 R2 GETs on both sides.
+
+### Leagues loading at once (one instance; run 1 / run 2)
+
+| Leagues | Overview cold p95, A | Overview cold p95, B | Overview warm p95, A | Overview warm p95, B | Discover scan warm p50, A | Discover scan warm p50, B | Failed calls A / B |
+|---:|---|---|---|---|---|---|---|
+| 1 | 1190 / 1038 | 1174 / 1149 | 181 / 185 | 223 / 196 | 1781 / 2059 | 2064 / 1855 | 0, 0 / 0, 0 |
+| 10 | 3142 / 2997 | 3553 / 3384 | 1955 / 1994 | 2386 / 2167 | 20836 / 22478 | 19169 / 19733 | 0, 0 / 0, 0 |
+| 25 | 7978 / 7294 | 9200 / 8263 | 6731 / 6076 | 7272 / 6732 | 49223 / 47655 | 46849 / 47378 | 4, 4 / 3, 3 |
+
+Stampede (10 viewers, one cold league): A 1417 / 1412 ms, B 1617 / 1484 ms; 2 R2 GETs and 54 shared answers on every run.
+
+What it says:
+
+- **Start/Sit and player search are within every budget**, and player search is the cheapest page (about 30 ms warm).
+- **Warm compute grew since #235**, consistently in both pairs: Overview about +40 ms warm (about +24%) for one league;
+  Overview cold p95 about +13% for 10 leagues and +14% for 25; Start/Sit, Waivers and Trades about +10-30 ms warm. The
+  Discover scan, cached answers, R2 traffic and the 25-league failure count (3-4 `CacheFull` 503s) did not get worse.
+  It is within budget. A bisect over the 80 first-parent commits (warm single-league Overview, 15 samples per step)
+  points at #276 (#254 phase 2: per-row actual-points source and honest source labels), but a repeat of #276's
+  parent was also slow once, so the about 30 ms step is near this machine's noise and is not confirmed. The numbers,
+  the bisect table and the deterministic next step (compare one profiled warm request at both commits) are in **#331**;
+  any fix must leave results identical.
+- **Still open, both sides: the 25-league burst returns 3-4 `CacheFull` 503s** because the working set exceeds one
+  instance's file cache. This is remaining risk 2 below (gate cold loads with a small per-event-loop semaphore so
+  waiting loads hold no thread), tracked in **#331**.
+
 ## Remaining risks
 
 1. **The Discover scan under concurrency** (about 26 s for 10 leagues and 57 s for 25 on one instance) is CPU-bound and
    serial-ish in Python. It needs engine work (shared per-league precomputation or a smaller default search),
-   beyond this issue's scope. Also, `app/api/trade_discovery.py` keeps a 4-entry module `OrderedDict` memo,
-   keyed with the scope cache key (so per league), with no lock and no single flight across threads.
+   beyond this issue's scope. `app/api/trade_discovery.py` keeps a 4-entry module `OrderedDict` memo, keyed with the
+   scope cache key (so per league); since #311 its lookup, insert and trim run under a lock (a concurrent eviction no
+   longer raises), but there is still no single flight across threads, so two requests can build the same search.
 2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance)
    thrash R2 and can still return 503 after the 8 s wait, because requests waiting for room occupy thread-pool
    slots that pinned requests need. Raising `LEAGUE_CACHE_MAX_BYTES` is limited by Vercel's 500 MB `/tmp`. The

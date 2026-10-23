@@ -49,6 +49,9 @@ PAGES: dict[str, list[list[str]]] = {
                         [f"/api/trades/discover/summary?team_id={TEAM}&mode=mutual_upgrades"]],
     "matchup": [["/api/status", "/api/league-profile"], [f"/api/matchup?team_id={TEAM}"]],
     "players": [["/api/status", "/api/league-profile"], ["/api/players?q=&limit=40"]],
+    # Added after #277/#281 (issue #201 re-baseline): the Start/Sit page and the header's player search (a typed query).
+    "start-sit": [["/api/status", "/api/league-profile"], [f"/api/start-sit?team_id={TEAM}"]],
+    "player-search": [["/api/players?q=alpha&limit=8"]],
 }
 
 
