@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
@@ -10,7 +11,9 @@ import {
   defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeague, parseMyLeagues, type MyLeague,
 } from "@/lib/my-leagues";
 import { hostHref, onboardingView, parseProviders, progressHref, type OnboardingView, type ProviderInfo } from "@/lib/onboarding";
+import { MIN_LEAGUES } from "@/lib/action-center";
 import { currentUser } from "@/lib/supabase/server";
+import { ActionCenter, ActionCenterSkeleton } from "./ActionCenter";
 import { CookieForm, EspnForm, SleeperForm } from "./AddLeague";
 import { LeagueActions } from "./LeagueActions";
 import { DemoEntry, EspnPrivateExplainer, HostCards, Stepper, SyncProgress } from "./Onboarding";
@@ -74,8 +77,16 @@ async function SignedIn({ view, providers }: { view: OnboardingView; providers: 
   ]);
   const leagues = res.ok ? parseMyLeagues(res.data) : [];
   const focused = focus?.ok ? parseMyLeague(focus.data) : null;
+  // The all-leagues action center (issue #166) leads the page for a manager with two or more leagues, above the list
+  // that switches between them; it streams in behind its skeleton while each league is checked on the server.
+  const center = view.step === "choose" && res.ok && leagues.length >= MIN_LEAGUES;
   return (
     <>
+      {center ? (
+        <Suspense fallback={<ActionCenterSkeleton />}>
+          <ActionCenter />
+        </Suspense>
+      ) : null}
       {view.step === "progress" ? (
         <Section title="Add a league" subtitle="Step 3 of 3: the first sync. You can leave this page; the league keeps syncing.">
           <div className={styles.flow}>

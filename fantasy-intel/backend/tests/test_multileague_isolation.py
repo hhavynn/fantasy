@@ -336,7 +336,8 @@ def espn_only_db(tmp_path, monkeypatch):
 
 
 LEGACY_GETS = ("/health", "/api/overview", "/api/managers", "/api/waivers", "/api/status")
-V2_ROUTES = [("GET", "/v2/providers"), ("GET", "/v2/me"), ("GET", "/v2/leagues"), ("GET", "/v2/leagues/{id}"),
+V2_ROUTES = [("GET", "/v2/providers"), ("GET", "/v2/me"), ("GET", "/v2/leagues"), ("GET", "/v2/action-center"),
+             ("GET", "/v2/leagues/{id}"),
              ("PUT", "/v2/leagues/{id}/pin"), ("DELETE", "/v2/leagues/{id}/pin"),
              ("PUT", "/v2/leagues/{id}/perspective"), ("DELETE", "/v2/leagues/{id}/perspective")]
 

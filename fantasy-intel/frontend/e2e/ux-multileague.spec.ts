@@ -130,6 +130,41 @@ for (const width of [320, 1440]) {
   });
 }
 
+// The all-leagues action center (issue #166) on /leagues: the viewer follows a ready league with a saved team, a stale
+// league without one and a never-synced league. Each gets a card that says its state in words (never a clean roster for
+// the two without data to check), and the ready league's card deep-links into that league, team and week.
+for (const width of [320, 1440]) {
+  test.describe(`action center at ${width}px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+
+    test(`action center: every league, its state in words and a working deep link (${width}px)`, async ({ page, context }) => {
+      await signIn(context);
+      const errors = collectErrors(page);
+      await open(page, "/leagues");
+      const center = page.locator("#action-center");
+      await expect(center.getByRole("heading", { name: "Across your leagues" })).toBeVisible();
+      const card = (name: string) => center.locator("article").filter({ hasText: name });
+      await expect(card("Private Fixture League")).toContainText("Lineup lock:");
+      await expect(card("Stale Sync League")).toContainText("Team not chosen");
+      await expect(card("Stale Sync League")).toContainText("Sync paused");
+      await expect(card("Blank Sync League")).toContainText("No data yet");
+      for (const name of ["Stale Sync League", "Blank Sync League"]) {
+        await expect(card(name).locator("ul"), `${name} shows no decisions`).toHaveCount(0);
+      }
+      await expectNoSidewaysScroll(page);
+      await expectAppBarFits(page);
+      await expectAccessible(page);
+      const lg = manifest().leagues.espn_private;
+      const open_ = card("Private Fixture League").getByRole("link", { name: "Open league →" });
+      await expect(open_).toHaveAttribute("href", new RegExp(`^/l/${lg}\\?team=1$`));
+      await open_.click();
+      await expect(page).toHaveURL(new RegExp(`/l/${lg}\\?team=1$`));
+      await expect(page.locator("h1")).toHaveCount(1);
+      expect(errors, "console errors").toEqual([]);
+    });
+  });
+}
+
 // Known defect, found by this gate: a connected league with no data yet shows the generic "The backend returned an
 // error (409)" box and a "Backend offline" sync pill instead of first-sync guidance (PRODUCT.md: first run is never an
 // error box). Un-fixme once the page and the pill handle the 409 "no data yet" answer.

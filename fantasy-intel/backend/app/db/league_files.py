@@ -300,7 +300,7 @@ class LeagueFileCache:
         return fut
 
     def pin_pair(self, league_id: str, data_version: str, global_version: str, *,
-                 budget_s: float = DEFAULT_COLD_BUDGET_S) -> PinnedPair:
+                 budget_s: float = DEFAULT_COLD_BUDGET_S, blocking: bool = True) -> PinnedPair | None:
         """Pin the league's files for the pointer (data_version, global_version).
 
         Already cached: pinned at once. Otherwise, when this league has a strictly older pair still cached here, that
@@ -309,7 +309,8 @@ class LeagueFileCache:
         not each wait the whole budget). Ready in time: the new pair. Not ready, failed, or no background slot free:
         the older pair, with `degraded` set ("slow", "unavailable", "busy"). With a fallback held this never blocks
         past the budget. Without one (none, evicted, or the pointer was rolled back to before it): the new pair is
-        fetched in this request, as before (errors propagate)."""
+        fetched in this request, as before (errors propagate). With `blocking=False` (the all-leagues action center)
+        that last case never downloads in the caller: the pair is fetched in the background and None is returned."""
         cached = self._pin_pair_cached(league_id, data_version, global_version)
         if cached is not None:
             self._remember(league_id, data_version, global_version)
@@ -319,6 +320,9 @@ class LeagueFileCache:
             self._forget_last_good(league_id, last)          # rolled back past it (or the same pair): never a fallback
             last = None
         old = self._pin_pair_cached(league_id, *last) if last is not None else None
+        if old is None and not blocking:                     # nothing older to serve, and the caller will not wait
+            self.prefetch(league_id, data_version, global_version)
+            return None
         if old is None:                                      # nothing older to serve: wait for the new pair here
             paths = self._pin_pair_blocking(league_id, data_version, global_version)
             self._remember(league_id, data_version, global_version)

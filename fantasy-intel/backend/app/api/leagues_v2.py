@@ -185,6 +185,42 @@ def list_leagues(tx=REQUEST_TX):
     return _json({"leagues": [a.to_json() for a in authorize_leagues_in(con, principal, ids)]})
 
 
+def _my_granted_leagues(principal: Principal) -> list:
+    """The caller's own leagues (memberships and pins) that authorization grants, in one short transaction."""
+    from ..control_plane import mutations
+    from ..control_plane.authz import authorize_leagues_in
+    from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
+    try:
+        with get_control_plane().request_tx(principal) as con:
+            return authorize_leagues_in(con, principal, mutations.list_my_leagues(con, principal))
+    except (mutations.SignInRequired, AccountGone):
+        raise HTTPException(401, SIGN_IN) from None
+    except ControlPlaneUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+
+
+@router.get("/action-center")
+async def action_center(principal: Principal = Depends(current_principal)):
+    """The signed-in caller's decisions across their own leagues (issue #166; app/api/action_center.py). User-scoped,
+    like GET /v2/leagues: the league list is enumerated and authorized here, in one short transaction (in the thread
+    pool) that is closed before any league file is read, and never taken from the request. A league the caller cannot
+    see is simply absent. Anonymous is 401 (this is the caller's own list); an unusable token was already 401 in
+    `current_principal`. Async on purpose: while the leagues are evaluated on the action center's own bounded pool,
+    this request holds no thread-pool token that other routes need."""
+    from fastapi.concurrency import run_in_threadpool
+
+    from . import action_center as center
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    granted = await run_in_threadpool(_my_granted_leagues, principal)
+    try:
+        body, degraded = await center.serve(principal, granted)
+    except center.Busy:
+        raise HTTPException(503, center.BUSY, headers={**NO_STORE, "Retry-After": str(center.RETRY_AFTER_S)}) from None
+    headers = {**NO_STORE, **({"X-FI-Degraded": "stale-files"} if degraded else {})}
+    return JSONResponse(body, headers=headers)
+
+
 @router.get("/leagues/{league_id}")
 def get_league(ltx=Depends(league_tx, scope="function")):
     _, access = ltx
