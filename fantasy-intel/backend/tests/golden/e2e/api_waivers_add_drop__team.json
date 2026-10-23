@@ -1,0 +1,1474 @@
+// /api/waivers/add-drop?add=209&drop=-16002&team_id=2
+{
+ "body": {
+  "acquisition": {
+   "alternative": null,
+   "availability_status": "FREEAGENT",
+   "bid": null,
+   "budget": 100,
+   "claim_required": false,
+   "kind": "FREE_AGENT",
+   "preserve_priority": false,
+   "priority": 2,
+   "process_days": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver processing days.",
+    "value": null
+   },
+   "remaining": null,
+   "spends_priority": false,
+   "summary": "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing.",
+   "waiver_period": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver period.",
+    "value": null
+   },
+   "waiver_type": {
+    "display": "FAAB bidding",
+    "reason": null,
+    "value": "faab"
+   }
+  },
+  "assumptions": [
+   "Analysis only: nothing is claimed, added or dropped, and nothing is sent to ESPN.",
+   "Lineup impact: the trade analyzer's exact optimal-lineup simulation for every remaining week, with the league's real roster slots and flex rules. Only starters count; bench points are never value.",
+   "A projected 0 (bye, injury) is a real value; a missing projection is unknown and never counted as 0. A total that includes an unknown is shown as known-only.",
+   "The added player arrives in an active roster spot. IR and taxi players stay rostered but never start, and dropping one frees no active spot.",
+   "Current IR status is held constant for this hypothetical evaluation. This does not predict when a player will return. Activation upside is shown separately and may require a roster move.",
+   "Evaluation window: from the first scoring period none of whose NFL games has kicked off; a week already under way is never credited.",
+   "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model."
+  ],
+  "contract": "waiver-add-drop/v1",
+  "depth": [
+   {
+    "active_change": 0,
+    "after": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 102,
+       "name": "Bravo QB",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "before": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 102,
+       "name": "Bravo QB",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "flex_slots": [],
+    "position": "QB",
+    "starting_slots": 1
+   },
+   {
+    "active_change": 1,
+    "after": {
+     "active": 4,
+     "players": [
+      {
+       "espn_player_id": 204,
+       "name": "Hotel RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 206,
+       "name": "Juliet RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 207,
+       "name": "Kilo RB",
+       "reserved": true
+      }
+     ],
+     "reserved": 1
+    },
+    "before": {
+     "active": 3,
+     "players": [
+      {
+       "espn_player_id": 204,
+       "name": "Hotel RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 206,
+       "name": "Juliet RB",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 207,
+       "name": "Kilo RB",
+       "reserved": true
+      }
+     ],
+     "reserved": 1
+    },
+    "flex_slots": [
+     {
+      "count": 1,
+      "slot": "FLEX"
+     }
+    ],
+    "position": "RB",
+    "starting_slots": 2
+   },
+   {
+    "active_change": 0,
+    "after": {
+     "active": 4,
+     "players": [
+      {
+       "espn_player_id": 304,
+       "name": "Papa WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 305,
+       "name": "Quebec WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 306,
+       "name": "Romeo WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 307,
+       "name": "Sierra WR",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "before": {
+     "active": 4,
+     "players": [
+      {
+       "espn_player_id": 304,
+       "name": "Papa WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 305,
+       "name": "Quebec WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 306,
+       "name": "Romeo WR",
+       "reserved": false
+      },
+      {
+       "espn_player_id": 307,
+       "name": "Sierra WR",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "flex_slots": [
+     {
+      "count": 1,
+      "slot": "FLEX"
+     }
+    ],
+    "position": "WR",
+    "starting_slots": 2
+   },
+   {
+    "active_change": 0,
+    "after": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 402,
+       "name": "Victor TE",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "before": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 402,
+       "name": "Victor TE",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "flex_slots": [
+     {
+      "count": 1,
+      "slot": "FLEX"
+     }
+    ],
+    "position": "TE",
+    "starting_slots": 1
+   },
+   {
+    "active_change": 0,
+    "after": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 502,
+       "name": "Zulu K",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "before": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": 502,
+       "name": "Zulu K",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "flex_slots": [],
+    "position": "K",
+    "starting_slots": 1
+   },
+   {
+    "active_change": -1,
+    "after": {
+     "active": 0,
+     "players": [],
+     "reserved": 0
+    },
+    "before": {
+     "active": 1,
+     "players": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST",
+       "reserved": false
+      }
+     ],
+     "reserved": 0
+    },
+    "flex_slots": [],
+    "position": "D/ST",
+    "starting_slots": 1
+   }
+  ],
+  "evaluation": {
+   "earliest_actionable_week": 3,
+   "evaluated_at": "<masked>",
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "impact": {
+   "after": {
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "last_regular_season_week": 14,
+    "missing_players": [],
+    "missing_weeks": [],
+    "playoff_known_starting_points": 266.4,
+    "playoff_projected_starting_points": 266.4,
+    "projection_complete": true,
+    "regular_season_known_starting_points": 993.6,
+    "regular_season_projected_starting_points": 993.6,
+    "ros_known_starting_points": 1260.0,
+    "ros_projected_starting_points": 1260.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15
+   },
+   "before": {
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "last_regular_season_week": 14,
+    "missing_players": [],
+    "missing_weeks": [],
+    "playoff_known_starting_points": 274.2,
+    "playoff_projected_starting_points": 274.2,
+    "projection_complete": true,
+    "regular_season_known_starting_points": 1015.8,
+    "regular_season_projected_starting_points": 1015.8,
+    "ros_known_starting_points": 1290.0,
+    "ros_projected_starting_points": 1290.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15
+   },
+   "first_week": {
+    "after": 78.4,
+    "before": 79.7,
+    "delta": -1.3,
+    "entered": [
+     {
+      "espn_player_id": 209,
+      "name": "Waiver RB"
+     }
+    ],
+    "exited": [
+     {
+      "espn_player_id": -16002,
+      "name": "Bills D/ST"
+     },
+     {
+      "espn_player_id": 205,
+      "name": "India RB"
+     }
+    ],
+    "known_after": 78.4,
+    "known_before": 79.7,
+    "known_delta": -1.3,
+    "missing_projection_ids": [],
+    "on_bye_after": [],
+    "on_bye_before": [],
+    "open_slots_after": 1,
+    "open_slots_before": 0,
+    "phase": "regular",
+    "projection_complete": true,
+    "week": 3
+   },
+   "lineup": {
+    "after": {
+     "assignment": [
+      {
+       "is_flex": false,
+       "name": "Bravo QB",
+       "player_id": 102,
+       "points": 9.3,
+       "position": "QB",
+       "slot": "QB"
+      },
+      {
+       "is_flex": false,
+       "name": "Waiver RB",
+       "player_id": 209,
+       "points": 11.3,
+       "position": "RB",
+       "slot": "RB"
+      },
+      {
+       "is_flex": false,
+       "name": "Juliet RB",
+       "player_id": 206,
+       "points": 8.3,
+       "position": "RB",
+       "slot": "RB"
+      },
+      {
+       "is_flex": false,
+       "name": "Sierra WR",
+       "player_id": 307,
+       "points": 11.3,
+       "position": "WR",
+       "slot": "WR"
+      },
+      {
+       "is_flex": false,
+       "name": "Romeo WR",
+       "player_id": 306,
+       "points": 10.3,
+       "position": "WR",
+       "slot": "WR"
+      },
+      {
+       "is_flex": false,
+       "name": "Victor TE",
+       "player_id": 402,
+       "points": 8.3,
+       "position": "TE",
+       "slot": "TE"
+      },
+      {
+       "is_flex": false,
+       "name": "Zulu K",
+       "player_id": 502,
+       "points": 10.3,
+       "position": "K",
+       "slot": "K"
+      },
+      {
+       "is_flex": false,
+       "name": null,
+       "player_id": null,
+       "points": null,
+       "position": null,
+       "slot": "D/ST"
+      },
+      {
+       "is_flex": true,
+       "name": "Quebec WR",
+       "player_id": 305,
+       "points": 9.3,
+       "position": "WR",
+       "slot": "FLEX"
+      }
+     ],
+     "bench": [
+      {
+       "name": "Papa WR",
+       "player_id": 304,
+       "points": 8.3,
+       "position": "WR"
+      },
+      {
+       "name": "India RB",
+       "player_id": 205,
+       "points": 7.3,
+       "position": "RB"
+      },
+      {
+       "name": "Hotel RB",
+       "player_id": 204,
+       "points": 6.3,
+       "position": "RB"
+      }
+     ],
+     "known_lineup_points": 78.4,
+     "projected_lineup_points": 78.4,
+     "projection_complete": true,
+     "week": 3
+    },
+    "before": {
+     "assignment": [
+      {
+       "is_flex": false,
+       "name": "Bravo QB",
+       "player_id": 102,
+       "points": 9.3,
+       "position": "QB",
+       "slot": "QB"
+      },
+      {
+       "is_flex": false,
+       "name": "Juliet RB",
+       "player_id": 206,
+       "points": 8.3,
+       "position": "RB",
+       "slot": "RB"
+      },
+      {
+       "is_flex": false,
+       "name": "India RB",
+       "player_id": 205,
+       "points": 7.3,
+       "position": "RB",
+       "slot": "RB"
+      },
+      {
+       "is_flex": false,
+       "name": "Sierra WR",
+       "player_id": 307,
+       "points": 11.3,
+       "position": "WR",
+       "slot": "WR"
+      },
+      {
+       "is_flex": false,
+       "name": "Romeo WR",
+       "player_id": 306,
+       "points": 10.3,
+       "position": "WR",
+       "slot": "WR"
+      },
+      {
+       "is_flex": false,
+       "name": "Victor TE",
+       "player_id": 402,
+       "points": 8.3,
+       "position": "TE",
+       "slot": "TE"
+      },
+      {
+       "is_flex": false,
+       "name": "Zulu K",
+       "player_id": 502,
+       "points": 10.3,
+       "position": "K",
+       "slot": "K"
+      },
+      {
+       "is_flex": false,
+       "name": "Bills D/ST",
+       "player_id": -16002,
+       "points": 5.3,
+       "position": "D/ST",
+       "slot": "D/ST"
+      },
+      {
+       "is_flex": true,
+       "name": "Quebec WR",
+       "player_id": 305,
+       "points": 9.3,
+       "position": "WR",
+       "slot": "FLEX"
+      }
+     ],
+     "bench": [
+      {
+       "name": "Papa WR",
+       "player_id": 304,
+       "points": 8.3,
+       "position": "WR"
+      },
+      {
+       "name": "Hotel RB",
+       "player_id": 204,
+       "points": 6.3,
+       "position": "RB"
+      }
+     ],
+     "known_lineup_points": 79.7,
+     "projected_lineup_points": 79.7,
+     "projection_complete": true,
+     "week": 3
+    }
+   },
+   "rest_of_season": {
+    "average_weekly_delta": -2.0,
+    "known_ros_delta": -30.0,
+    "playoff_delta": -7.8,
+    "projection_complete": true,
+    "regular_season_delta": -22.2,
+    "ros_delta": -30.0,
+    "weeks_improved": 0,
+    "weeks_incomplete": [],
+    "weeks_unchanged": 0,
+    "weeks_worsened": 15
+   },
+   "weeks": [
+    {
+     "after": 78.4,
+     "before": 79.7,
+     "delta": -1.3,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 78.4,
+     "known_before": 79.7,
+     "known_delta": -1.3,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 3
+    },
+    {
+     "after": 79.2,
+     "before": 80.6,
+     "delta": -1.4,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 79.2,
+     "known_before": 80.6,
+     "known_delta": -1.4,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 4
+    },
+    {
+     "after": 80.0,
+     "before": 81.5,
+     "delta": -1.5,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 80.0,
+     "known_before": 81.5,
+     "known_delta": -1.5,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 5
+    },
+    {
+     "after": 80.8,
+     "before": 82.4,
+     "delta": -1.6,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 80.8,
+     "known_before": 82.4,
+     "known_delta": -1.6,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 6
+    },
+    {
+     "after": 81.6,
+     "before": 83.3,
+     "delta": -1.7,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 81.6,
+     "known_before": 83.3,
+     "known_delta": -1.7,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 7
+    },
+    {
+     "after": 82.4,
+     "before": 84.2,
+     "delta": -1.8,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 82.4,
+     "known_before": 84.2,
+     "known_delta": -1.8,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 8
+    },
+    {
+     "after": 83.2,
+     "before": 85.1,
+     "delta": -1.9,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 83.2,
+     "known_before": 85.1,
+     "known_delta": -1.9,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 9
+    },
+    {
+     "after": 84.0,
+     "before": 86.0,
+     "delta": -2.0,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 84.0,
+     "known_before": 86.0,
+     "known_delta": -2.0,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 10
+    },
+    {
+     "after": 84.8,
+     "before": 86.9,
+     "delta": -2.1,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 84.8,
+     "known_before": 86.9,
+     "known_delta": -2.1,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 11
+    },
+    {
+     "after": 85.6,
+     "before": 87.8,
+     "delta": -2.2,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 85.6,
+     "known_before": 87.8,
+     "known_delta": -2.2,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 12
+    },
+    {
+     "after": 86.4,
+     "before": 88.7,
+     "delta": -2.3,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 86.4,
+     "known_before": 88.7,
+     "known_delta": -2.3,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 13
+    },
+    {
+     "after": 87.2,
+     "before": 89.6,
+     "delta": -2.4,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 87.2,
+     "known_before": 89.6,
+     "known_delta": -2.4,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 14
+    },
+    {
+     "after": 88.0,
+     "before": 90.5,
+     "delta": -2.5,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 88.0,
+     "known_before": 90.5,
+     "known_delta": -2.5,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 15
+    },
+    {
+     "after": 88.8,
+     "before": 91.4,
+     "delta": -2.6,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 88.8,
+     "known_before": 91.4,
+     "known_delta": -2.6,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 16
+    },
+    {
+     "after": 89.6,
+     "before": 92.3,
+     "delta": -2.7,
+     "entered": [
+      {
+       "espn_player_id": 209,
+       "name": "Waiver RB"
+      }
+     ],
+     "exited": [
+      {
+       "espn_player_id": -16002,
+       "name": "Bills D/ST"
+      },
+      {
+       "espn_player_id": 205,
+       "name": "India RB"
+      }
+     ],
+     "known_after": 89.6,
+     "known_before": 92.3,
+     "known_delta": -2.7,
+     "missing_projection_ids": [],
+     "on_bye_after": [],
+     "on_bye_before": [],
+     "open_slots_after": 1,
+     "open_slots_before": 0,
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 17
+    }
+   ]
+  },
+  "impact_source": "exact optimal-lineup simulation (the trade analyzer's)",
+  "kdst_streaming": {
+   "enabled": true,
+   "note": "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "positions": [],
+   "rank": 3
+  },
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "limitations": [
+   "Projections can be wrong, and future injuries are unknowable.",
+   "A waiver claim can fail: other teams may claim the same player first. No claim-success probability is given.",
+   "Kickoff locks and waiver timing come from the synced schedule and settings; verify the move in the provider before making it.",
+   "Undroppable-list restrictions are not modeled."
+  ],
+  "notes": [
+   {
+    "code": "IR_SLOT_INELIGIBLE",
+    "message": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR.",
+    "player_id": 207,
+    "tone": "caution"
+   }
+  ],
+  "options": {
+   "add": [
+    {
+     "availability_status": "FREEAGENT",
+     "espn_player_id": 209,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 180.0,
+     "name": "Waiver RB",
+     "position": "RB",
+     "pro_team": "KC",
+     "projected_weeks": 15
+    },
+    {
+     "availability_status": "FREEAGENT",
+     "espn_player_id": 405,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 180.0,
+     "name": "Waiver TE",
+     "position": "TE",
+     "pro_team": "DET",
+     "projected_weeks": 15
+    },
+    {
+     "availability_status": "WAIVERS",
+     "espn_player_id": 309,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 105.0,
+     "name": "Waiver WR",
+     "position": "WR",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "availability_status": "FREEAGENT",
+     "espn_player_id": 105,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 90.0,
+     "name": "Waiver QB",
+     "position": "QB",
+     "pro_team": "PHI",
+     "projected_weeks": 15
+    }
+   ],
+   "add_limit": 60,
+   "add_total": 4,
+   "drop": [
+    {
+     "espn_player_id": 102,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Bravo QB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "QB",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 206,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Juliet RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "SEA",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 205,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 120.0,
+     "name": "India RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "SF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 204,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 105.0,
+     "name": "Hotel RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "PHI",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 207,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Kilo RB",
+     "on_ir": true,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "TB",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 307,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 180.0,
+     "name": "Sierra WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "TB",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 306,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 165.0,
+     "name": "Romeo WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "SEA",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 305,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Quebec WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "SF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 304,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Papa WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "PHI",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 402,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Victor TE",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "TE",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 502,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 165.0,
+     "name": "Zulu K",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "K",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": -16002,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 90.0,
+     "name": "Bills D/ST",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    }
+   ]
+  },
+  "perspective": {
+   "abbrev": "T2",
+   "is_owner_default": true,
+   "league_id": 999,
+   "league_synced_at": "<masked>",
+   "name": "Team 2",
+   "roster_players": 12,
+   "roster_synced_at": "<masked>",
+   "season": 2026,
+   "source": "query",
+   "team_id": 2
+  },
+  "players": {
+   "add": {
+    "availability_status": "FREEAGENT",
+    "bye_weeks": [],
+    "espn_player_id": 209,
+    "injury_status": "ACTIVE",
+    "kickoff_lock": {
+     "kickoff_utc": "<masked>",
+     "reason": "Scheduled kickoff at 2099-10-03T17:00:00+00:00",
+     "status": "UNLOCKED",
+     "week": 3
+    },
+    "lineup_eligible": true,
+    "name": "Waiver RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "on_taxi": false,
+    "position": "RB",
+    "pro_team": "KC",
+    "roster_status": "free_agent",
+    "team_id": null,
+    "team_name": null,
+    "weekly_projection": {
+     "10": 12.0,
+     "11": 12.1,
+     "12": 12.2,
+     "13": 12.3,
+     "14": 12.4,
+     "15": 12.5,
+     "16": 12.6,
+     "17": 12.7,
+     "3": 11.3,
+     "4": 11.4,
+     "5": 11.5,
+     "6": 11.6,
+     "7": 11.7,
+     "8": 11.8,
+     "9": 11.9
+    }
+   },
+   "drop": {
+    "availability_status": null,
+    "bye_weeks": [],
+    "espn_player_id": -16002,
+    "injury_status": "ACTIVE",
+    "kickoff_lock": {
+     "kickoff_utc": "<masked>",
+     "reason": "Scheduled kickoff at 2099-10-03T17:00:00+00:00",
+     "status": "UNLOCKED",
+     "week": 3
+    },
+    "lineup_eligible": true,
+    "name": "Bills D/ST",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "on_taxi": false,
+    "position": "D/ST",
+    "pro_team": "BUF",
+    "roster_status": "own_roster",
+    "team_id": 2,
+    "team_name": "Team 2",
+    "weekly_projection": {
+     "10": 6.0,
+     "11": 6.1,
+     "12": 6.2,
+     "13": 6.3,
+     "14": 6.4,
+     "15": 6.5,
+     "16": 6.6,
+     "17": 6.7,
+     "3": 5.3,
+     "4": 5.4,
+     "5": 5.5,
+     "6": 5.6,
+     "7": 5.7,
+     "8": 5.8,
+     "9": 5.9
+    }
+   }
+  },
+  "problems": [],
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 11,
+      "label": "active players with a projection",
+      "total": 11
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "request": {
+   "add": 209,
+   "drop": -16002
+  },
+  "roster": {
+   "active_after": 11,
+   "active_before": 11,
+   "active_capacity": 12,
+   "drop_required": false,
+   "ir_slot_blockers": [
+    207
+   ],
+   "issues": {
+    "active_before_drops": 11,
+    "active_capacity": 12,
+    "over_capacity_by": 0,
+    "position_limits": []
+   },
+   "legal": true,
+   "open_spots_after": 1,
+   "open_spots_before": 1,
+   "position_limits": {},
+   "suggested_drop": null
+  },
+  "status": "evaluated",
+  "team": {
+   "id": 2,
+   "name": "Team 2"
+  }
+ },
+ "status": 200
+}

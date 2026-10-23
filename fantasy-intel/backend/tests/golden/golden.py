@@ -69,6 +69,16 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         rows = client.get("/api/trades/discover").json() if client is not None else {}
         key = next((x["key"] for items in (rows.get("sections") or {}).values() for x in items), None)
         return {"key": key} if key else None
+    if path == "/api/waivers/add-drop":
+        # One evaluated pair: the best-projected available player for the owner's lowest-projected active player (the
+        # team variant keeps this drop, so it records the "not on this roster" answer).
+        opts = (client.get(path).json().get("options") or {}) if client is not None else {}
+        add = next((o["espn_player_id"] for o in opts.get("add") or []), None)
+        active = [o for o in opts.get("drop") or [] if not (o["on_ir"] or o["on_taxi"])]
+        drop = min(active, key=lambda o: (o["known_projected_points"] is None, o["known_projected_points"] or 0,
+                                          o["espn_player_id"]), default=None)
+        q = {k: v for k, v in (("add", add), ("drop", drop and drop["espn_player_id"])) if v is not None}
+        return q or None
     return {}
 
 

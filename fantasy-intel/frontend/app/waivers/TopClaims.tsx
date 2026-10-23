@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SavePlayer } from "./Shortlist";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Score, Verdict } from "@/components/ui";
@@ -13,8 +14,10 @@ import type { WaiverRow } from "./types";
  * the best-ranked options that are not an outright pass, labelled as such.
  */
 /** `provider` names the league's data source; `ownership` false (Sleeper) leaves out the % owned line. */
-export function TopClaims({ top, position, provider = "ESPN", ownership = true }: {
+export function TopClaims({ top, position, provider = "ESPN", ownership = true, simulateHref }: {
   top: Top<WaiverRow>; position: string; provider?: string; ownership?: boolean;
+  /** The page URL with this player (and his suggested drop) loaded in the add/drop simulator. */
+  simulateHref?: (row: WaiverRow) => string;
 }) {
   const scope = position === "ALL" ? "" : ` at ${position}`;
   const heading = top.mode === "actionable" ? `Top claims${scope}` : top.mode === "watch" ? `Nothing to claim right now${scope}` : `No candidates${scope}`;
@@ -32,14 +35,16 @@ export function TopClaims({ top, position, provider = "ESPN", ownership = true }
       </Verdict>
       {top.mode !== "none" && (
         <ol className={styles.claims}>
-          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} ownership={ownership} />)}
+          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} ownership={ownership} simulate={simulateHref?.(w)} />)}
         </ol>
       )}
     </section>
   );
 }
 
-function ClaimCard({ row: w, rank, informational, ownership }: { row: WaiverRow; rank: number; informational: boolean; ownership: boolean }) {
+function ClaimCard({ row: w, rank, informational, ownership, simulate }: {
+  row: WaiverRow; rank: number; informational: boolean; ownership: boolean; simulate?: string;
+}) {
   const d = w.components.decision;
   // In the "nothing to claim" band no add is recommended, so "no drop found" is not a failed action:
   // the Give up row appears only when the analysis did name a player to drop.
@@ -60,7 +65,12 @@ function ClaimCard({ row: w, rank, informational, ownership }: { row: WaiverRow;
           />
         </h3>
       </div>
-      <SavePlayer id={w.espn_player_id} name={w.full_name} />
+      <div className={styles.claimButtons}>
+        <SavePlayer id={w.espn_player_id} name={w.full_name} />
+        {simulate && (
+          <Link className={styles.simulate} href={simulate} scroll={false} aria-label={`Simulate adding ${w.full_name}`}>Simulate</Link>
+        )}
+      </div>
       <div className={styles.claimAction}>
         <Badge value={w.recommendation} />
         <strong>{actionLabel(w) ?? "Refresh analytics"}</strong>
