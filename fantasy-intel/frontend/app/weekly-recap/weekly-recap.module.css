@@ -24,3 +24,16 @@
 .trades > li:last-child { border-bottom: 0; }
 .tradeHead { margin: 0 0 4px; color: var(--ink-muted); font-size: 12px; line-height: 16px; }
 .tradeSides { margin: 0; padding-left: 18px; font-size: 13px; line-height: 20px; color: var(--ink); }
+
+/* Decision feedback ("Your decisions"): the verdict, three short lists, the calls table and the season table. */
+.feedback > * + * { margin-top: 16px; }
+.lists { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.calls { margin: 0; padding: 0; list-style: none; }
+.calls > li { padding: 8px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.calls > li:last-child { border-bottom: 0; }
+.callHead { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink); overflow-wrap: anywhere; }
+.callMeta { margin: 2px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.notes { margin: 8px 0 0; padding-left: 18px; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
+.inputs { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.inputs > summary { color: var(--accent); cursor: pointer; width: max-content; min-height: 24px; }
+.inputs ul { margin: 4px 0 0; padding-left: 16px; font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; white-space: normal; max-width: 60ch; }
