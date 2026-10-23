@@ -65,3 +65,11 @@
   .swap { grid-template-columns: minmax(0, 1fr); }
   .gain { font-size: 24px; line-height: 28px; }
 }
+
+/* Recommendation strength and other options (issue #172) */
+.strengthLine { margin: 6px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 18px; }
+.alternatives { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.altSlot { display: grid; grid-template-columns: minmax(64px, max-content) 1fr; gap: 4px 12px; align-items: baseline; min-width: 0; }
+.altLabel { font-weight: 600; font-size: 13px; }
+.altOptions { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 24px; min-width: 0; overflow-wrap: anywhere; }
+.altOptions a { display: inline-block; min-height: 24px; }

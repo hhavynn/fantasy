@@ -35,6 +35,33 @@ export interface DecisionPlayer {
   lock_status: string;
 }
 
+/** How close a recommendation is (issue #172): one close rule (a gain of at most 3 projected points, the backtests'
+ *  close-call margin), unverified on any unknown. A label with its reason, never a probability. */
+export interface RecommendationStrength {
+  label: "clear" | "close" | "unverified";
+  reason: string;
+}
+
+/** A legal single move into one recommended starting slot (issue #172): the projected total's change against the
+ *  recommendation (null when unknown) and the what-if scenario that tries it. */
+export interface AlternativeOption {
+  player_id: number;
+  name: string;
+  position: string | null;
+  projection: number | null;
+  delta: number | null;
+  known_delta: number;
+  whatif: string;
+}
+
+export interface SlotAlternatives {
+  slot_id: string;
+  slot: string;
+  label: string;
+  starter_id: number | null;
+  options: AlternativeOption[];
+}
+
 export interface StartSitDecision {
   id: string;
   action: "SWAP" | "COORDINATED_SWAP" | "NO_CHANGE";
@@ -45,6 +72,8 @@ export interface StartSitDecision {
   projected_net_gain: number | null;
   explanation: string;
   warnings: string[];
+  /** Absent from an older backend: then nothing is graded. */
+  recommendation_strength?: RecommendationStrength | null;
 }
 
 export interface BenchPlayer {
@@ -66,6 +95,7 @@ export interface BenchPlayer {
 }
 
 export interface StartSitSummary {
+  recommendation_strength?: RecommendationStrength | null;
   actual_projected_total: number | null;
   recommended_projected_total: number | null;
   known_actual_total: number;
@@ -127,6 +157,8 @@ export interface StartSitResponse {
   recommended_lineup: LineupPlayer[];
   unconstrained_lineup: LineupPlayer[];
   decisions: StartSitDecision[];
+  /** Absent from an older backend. */
+  alternatives?: SlotAlternatives[];
   current_bench: BenchPlayer[];
   injury_warnings: InjuryWarning[];
   schedule_warnings: string[];

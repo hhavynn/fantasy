@@ -32,13 +32,14 @@ import {
   lockStatusBadge,
   slotChange,
   startSitVerdict,
+  strengthBadge,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
 import { WhatIf } from "./WhatIf";
-import { readWhatIf } from "@/lib/what-if";
+import { readWhatIf, whatIfHref } from "@/lib/what-if";
 import { signalsOf } from "@/lib/signal-provenance";
 import { partialSlotsNote, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
-import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
+import type { BenchPlayer, DecisionPlayer, LineupPlayer, SlotAlternatives, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
 export const metadata = { title: "Start/Sit" };
@@ -188,6 +189,9 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         }
       >
         {verdict.detail}
+        {moves.length === 0 && summary.recommendation_strength && !d.is_future_preview ? (
+          <span className={styles.strengthLine}> {summary.recommendation_strength.reason}</span>
+        ) : null}
         {emptySlots.map((slot) => (
           <span key={slot}> <Link href={withTeam(WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers", sel.kind === "team" ? String(sel.id) : null)}>Find a {slot} on waivers</Link>.</span>
         ))}
@@ -235,6 +239,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       >
         <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} ranges={ranges} />
       </Section>
+
+      {(d.alternatives?.length ?? 0) > 0 && <Alternatives alternatives={d.alternatives!} sp={sp} />}
 
       {/* The what-if builder streams in: it re-reads the evaluation with the scenario applied. */}
       <Suspense fallback={
@@ -340,6 +346,7 @@ function MovePlayer({ p, ours, dir, ranges }: { p: DecisionPlayer; ours: boolean
 
 function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; ranges: RangeMap }) {
   const badge = actionabilityBadge(move.actionability);
+  const strength = strengthBadge(move.recommendation_strength);
   // A plain 1-for-1 swap has an obvious pair to compare; a multi-player cascade does not.
   const pair = move.start_players.length === 1 && move.bench_players.length === 1 ? [move.start_players[0], move.bench_players[0]] : null;
   return (
@@ -357,12 +364,14 @@ function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; r
       <div className={styles.moveMeta}>
         <span className={styles.gain}><Delta value={move.projected_net_gain} suffix=" pts" /></span>
         <span className={styles.tags}>
+          {strength && <Badge value={strength.label} tone={strength.tone} />}
           <Badge value={badge.label} tone={badge.tone} />
           <Badge value={move.action === "COORDINATED_SWAP" ? "FLEX cascade" : "1-for-1 swap"} tone="" />
         </span>
         {move.target_slot && <span className={styles.slotNote}>Slot: {move.target_slot}</span>}
         {pair && <CompareLink a={pair[0].id} b={pair[1].id} aName={pair[0].name} bName={pair[1].name} />}
       </div>
+      {move.recommendation_strength && <p className={styles.strengthLine}>{move.recommendation_strength.reason}</p>}
       {move.warnings.length > 0 && (
         <ul className={styles.cautions}>
           {move.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -373,6 +382,31 @@ function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; r
         <p className={styles.reason}>{move.explanation}</p>
       </details>
     </li>
+  );
+}
+
+/** The legal single moves into each recommended starting slot (issue #172), closest first, each a what-if to try. */
+function Alternatives({ alternatives, sp }: { alternatives: SlotAlternatives[]; sp: Record<string, string | string[] | undefined> }) {
+  return (
+    <Section title="Other options" subtitle="The closest legal changes to each recommended slot, one at a time"
+      footnote="Each change is checked like a what-if move: eligibility, kickoff locks and IR. The change is the projected lineup total against the recommendation; unknown when a projection is missing.">
+      <ul className={styles.alternatives}>
+        {alternatives.map((a) => (
+          <li key={a.slot_id} className={styles.altSlot}>
+            <span className={styles.altLabel}>{a.label}</span>
+            <ul className={styles.altOptions}>
+              {a.options.map((o) => (
+                <li key={o.player_id}>
+                  <PlayerLink id={o.player_id} name={o.name} /> {o.position && <Pos value={o.position} />}{" "}
+                  {o.delta === null ? <Missing why="A projection in this lineup is missing" /> : <Delta value={o.delta} suffix=" pts" />}{" "}
+                  <Link href={whatIfHref("/start-sit", sp, o.whatif)} scroll={false} aria-label={`Try ${o.name} at ${a.label}`}>Try it</Link>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
