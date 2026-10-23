@@ -68,7 +68,7 @@ GAPS = (
 
 DEFINITIONS = MappingProxyType({
     "plays": "Run and pass plays (dropbacks including sacks and scrambles, plus designed runs; two-point tries, "
-             "kneels, spikes and penalty-only snaps excluded), from nfl_team_week.offense_plays.",
+             "kneels, spikes and penalty-only snaps excluded), from the stored team-week play-by-play totals.",
     "drives": "Drives with at least one scrimmage play (nflverse fixed_drive); a drive with no scrimmage play (a "
               "kickoff returned for a touchdown, a penalty-only possession) is not a drive.",
     "neutral": "Neutral situation: win probability between 0.20 and 0.80 with more than two minutes left in the half "
