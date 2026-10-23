@@ -22,7 +22,9 @@ from test_trade_data import synced
 from test_trade_discovery import SORTS, CATEGORIES, TS, small, every_candidate   # noqa: F401  (small is a fixture)
 
 HEURISTIC = ("2-for-2", "3-for-1", "1-for-3")
-NEW_MODES = tuple(LENSES)                      # mutual_upgrades, fair, consolidation, playoff
+# mutual_upgrades, fair, consolidation, playoff; the targeted lens ranks by the anchor's horizon gain and has its own
+# tests (tests/test_trade_targets.py)
+NEW_MODES = tuple(m for m in LENSES if m != "targeted")
 LEGACY_MODES = ("practical", "mutual", "upside", "all")
 ALL_SHAPES = tuple(SHAPES) + HEURISTIC
 

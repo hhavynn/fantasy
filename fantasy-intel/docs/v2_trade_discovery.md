@@ -170,6 +170,72 @@ plus the totals-only solver bring a full page (stage A, results, per-manager sum
 roughly 2-3 s. The API keeps the last few stage-A searches in memory, keyed by the database file's
 modification time, anchor, shapes and evaluation window, so changing the sort or filter reuses them.
 
+## Targeted discovery (issue #182)
+
+A manager can ask for an RB upgrade, a named player or bye-week coverage. These are query-driven goals on the same
+engine, not another engine and not a new valuation. Every discovery endpoint (`/discover`, `/discover/context`,
+`/discover/summary`, `/discover/evidence`, all also under `/v2/leagues/{league_id}` behind `league_scope`) takes:
+
+| parameter | meaning | bounds |
+|---|---|---|
+| `target_player` | receive this player | integer >= 1; must be on another team's roster in the scoped league, else 422. With no `opponent`, his team becomes the partner; a different `opponent` is a 422 |
+| `target_position` | receive at least one player at this position | `QB`, `RB`, `WR`, `TE`, `K`, `D/ST` (422 otherwise; at most 4 characters). A K or D/ST target is tradeable even without `include_kdst` |
+| `need` | a roster need resolved by the backend | `weakest`: your lowest-ranked starting position strictly below the league median of projected points per slot (`trade_assets.league_needs`), used as `target_position` (422 together with `target_position`). `bye`: the first evaluation week the bye planner (`bye-planner.v1`) marks short, a bye cluster or with a current starter on bye, used as `weeks` (targeted mode only; 422 together with `weeks`). An unresolved need is reported with its reason and applies no filter |
+| `weeks` | the horizon: week `N` or weeks `A-B` | targeted mode only (422 elsewhere); every week inside the evaluation window; at most 7 characters |
+
+Without any of them every response is what it was, apart from new echo fields (`query.target_player`,
+`query.target_position`, `query.need`, `query.weeks`, `target`, `target_positions`, `needs`, `horizon`) that are null
+or descriptive. Saved links and the existing modes are unchanged.
+
+**How a target narrows the search.** A `TradeTarget` (player and/or position received) filters the candidates every
+stage ranks. Each candidate keeps its own valid upper bound, so the best-first stop still proves the top K among the
+matching candidates (tested against brute force on every candidate of a synthetic league). A two-player trade is
+replaced by its simpler 1-for-1 equivalent only when that sub-trade still receives the target. The beam for larger
+shapes offers the matching players in its pools and seeds only matching 1-for-1 pairs; it only adds players, so every
+package it grows still matches. Its results are cached per target. A target filters every mode, and a lens tab
+other than the targeted one links without it.
+
+**Focus weeks.** `weeks` (or a resolved `need=bye`) gives the search focus weeks. Each side gets a `focus_delta`: the
+same canonical weekly deltas summed over those weeks, NULL when any of them is incomplete. Stage A gets a focus bound
+(a sum of the same weekly bounds, so it is an upper bound). The internal sort `focus_gain` uses it, and a candidate
+also qualifies when its focus delta is positive. The stage-A cache key includes the focus weeks. The public `sort`
+values are unchanged.
+
+**The targeted mode** (`mode=targeted`, lens "Targeted search"). Its pool is the exact top 100 by your gain over the
+horizon (focus weeks, else the phase: `my_gain`, `regular_gain` or `playoff_gain`) among matching trades, plus the
+heuristic rows. Rows whose horizon delta is known and not positive are counted as `no_gain_in_horizon`; unknown
+deltas stay in the view as incomplete. Like the other lenses, it ranks by verdict, then Pareto front within the
+verdict, then your horizon gain, then the exact search order, with every verdict shown in its own section. When no
+regular-season or playoff week remains (or the league has no split), the targeted mode uses the rest of the season
+and says so (`lens_note`).
+
+**Trade-offs (`target_fit`).** Every row of a targeted view, and of any view with a target or focus weeks, states in
+plain words:
+
+* the horizon against the rest of the season, called short-term when the gain does not last;
+* how each incoming target would be used (starts out of the horizon's weeks);
+* the depth given up (outgoing players who start at most half the remaining weeks) and any net loss of roster spots;
+* roster fit: forced drops and starting slots the trade leaves empty;
+* the partner's change over the horizon.
+
+Every number is a canonical delta or a count from the manual evaluator's lineups. Nothing predicts acceptance or
+calls a trade guaranteed (tested).
+
+**Reproducible analyzer link.** Every row carries `manual_evaluator_link` (`ta`, `tb`, `a`, `b`). The page's
+"Analyze" link opens exactly that trade in the analyzer (`/trades?ta=&tb=&a=&b=`), and evaluating it gives the row's
+deltas (tested, and checked live as `consistent_with_manual_evaluator`).
+
+**`GET /api/trades/discover/targets`** (and `/v2/leagues/{league_id}/api/trades/discover/targets`) runs no search. It
+lists every player on another roster in the league (team, position, IR or taxi), the positions the league starts, and
+how both needs resolve right now. Resolved needs are cached per data version, league, team and need. The page's goal
+form reads it in the targeted lens.
+
+**Caches and isolation.** The view cache key includes every target parameter and its resolution, so a row's evidence
+is only served for the view that ranked it (another target's view answers 404 for that key). Under `/v2` every read
+goes through the league-scoped connection, so a player id from another league is not on any roster here (422). The
+golden suite records three targeted queries, which the league-scope parity and colliding-ids tests replay through
+`/v2`.
+
 ## Safeguards
 
 * Read-only: the module never touches the database; the API opens it read-only. Tests check that no table

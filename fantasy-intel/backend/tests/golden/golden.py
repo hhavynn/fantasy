@@ -22,7 +22,7 @@ VOLATILE_KEYS = {"computed_at", "generated_at", "synced_at", "published_at", "da
                  "now", "server_time", "created_at", "updated_at", "checked_at", "run_at", "started_at",
                  "finished_at", "source_updated_at", "snapshot_at", "captured_at", "run_id", "snapshot_version"}
 # Search diagnostics: wall time and work counters, which depend on what an in-process cache already held.
-VOLATILE_PREFIXES = ("lineup_solves",)
+VOLATILE_PREFIXES = ("lineup_solves", "exact_evaluations_cached")
 VOLATILE_DIAGNOSTICS = {"seconds"}
 # ISO-8601 datetimes with a time part (dates alone are data: game dates, weeks).
 _DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
@@ -82,6 +82,28 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
     return {}
 
 
+# Query variants recorded beside a route's default answer (and so replayed through /v2 by the league-scope parity and
+# colliding-ids tests): targeted trade discovery (issue #182) by position, by a named RB on another roster and by
+# the bye need of the thinnest roster (in the E2E fixture, team 4, whose every week is short). Ids come from the data.
+def extra_cases(con) -> list[Case]:
+    q = lambda sql: (con.execute(sql).fetchone() or [None])[0]   # noqa: E731
+    latest = "(SELECT max(scoring_period) FROM lineup_snapshots)"
+    player = q(f"SELECT l.espn_player_id FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id) "
+               f"WHERE l.scoring_period = {latest} AND fp.position = 'RB' AND l.team_id <> "
+               "(SELECT team_id FROM fantasy_teams WHERE is_mine ORDER BY team_id LIMIT 1) "
+               "ORDER BY l.team_id, l.espn_player_id LIMIT 1")
+    thin = q(f"SELECT team_id FROM lineup_snapshots WHERE scoring_period = {latest} GROUP BY team_id "
+             "ORDER BY count(*), team_id LIMIT 1")
+    out = [Case("api_trades_discover_summary__targeted_rb", "/api/trades/discover/summary?mode=targeted&target_position=RB")]
+    if player is not None:
+        out.append(Case("api_trades_discover_summary__targeted_player",
+                        f"/api/trades/discover/summary?mode=targeted&target_player={player}"))
+    if thin is not None:
+        out.append(Case("api_trades_discover_summary__targeted_bye",
+                        f"/api/trades/discover/summary?mode=targeted&need=bye&team_id={thin}"))
+    return out
+
+
 def cases(app, con, client=None) -> list[Case]:
     """Every legacy GET case. `client` (a TestClient on the legacy API) resolves data-dependent parameters such as
     a trade-discovery row key; without it those routes are recorded with their default (validation) answer."""
@@ -100,6 +122,8 @@ def cases(app, con, client=None) -> list[Case]:
         if _accepts(r, "team_id") and "{team_id}" not in r.path:
             sep = "&" if query else "?"
             out.append(Case(stem + "__team", path + query + sep + urlencode({"team_id": ids["team_id"]})))
+    routes = {r.path for r in legacy_get_routes(app)}
+    out += [c for c in extra_cases(con) if c.path.partition("?")[0] in routes]
     return out
 
 

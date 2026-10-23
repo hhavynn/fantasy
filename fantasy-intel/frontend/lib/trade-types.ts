@@ -220,7 +220,13 @@ export type DiscoveryV3 = {
     uncertain: boolean; warning: string | null; start_week_reason: string | null };
   query: { team_id: number; mode: string; phase: string; strictness: string; positions: string[]; include_kdst: boolean;
     shapes: string[]; sort: string; category: string | null; opponent: number | null; limit: number; heuristic: boolean;
-    kdst_streaming?: boolean };
+    kdst_streaming?: boolean; target_player?: number | null; target_position?: string | null; need?: string | null; weeks?: string | null };
+  /** Targeted discovery (issue #182): what the view was asked to bring in, as resolved; absent on an older backend. */
+  target?: DiscoveryTarget;
+  target_positions?: string[];
+  needs?: Record<string, string>;
+  /** The horizon a targeted view judges your gain over (the focus weeks, else the phase). */
+  horizon?: { kind: "weeks" | "phase"; phase: string | null; weeks: number[]; label: string; phrase: string };
   mode_text: string;
   sections: Record<string, DResult[]>;
   tiers: Record<string, string>;
@@ -249,7 +255,34 @@ export type DiscoveryV3 = {
 
 /** The page header and filters (`GET /api/trades/discover/context`): no search is run. */
 export type DiscoveryContext = Pick<DiscoveryV3, "league" | "anchor" | "teams" | "evaluation" | "query" | "mode_text" | "modes"
-  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes"> & DualValueTop & WithProvenance;
+  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes" | "target" | "target_positions" | "needs">
+  & DualValueTop & WithProvenance;
+
+/** A roster need as the backend resolved it (`weakest`: a position; `bye`: a week); unresolved needs say why. */
+export type NeedResolution = { kind: "weakest" | "bye"; resolved: boolean; position: string | null; week: number | null; reason: string };
+
+/** The resolved target of a discovery view. */
+export type DiscoveryTarget = {
+  active: boolean;
+  player: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null; team_id: number;
+    team_name: string | null } | null;
+  position: string | null; need: NeedResolution | null; weeks: number[] | null;
+};
+
+/** One row's trade-off statements in a targeted view (`target_fit`). Every number is a canonical delta or a count. */
+export type TargetFit = {
+  matched: number[];
+  horizon: { label: string; weeks: number[]; mine_delta: number | null; theirs_delta: number | null };
+  tradeoffs: { kind: "horizon" | "target" | "depth" | "roster_fit" | "partner"; text: string }[];
+};
+
+/** `GET /api/trades/discover/targets`: what a targeted search can aim at, without running one. */
+export type DiscoveryTargets = DiscoveryContext & {
+  players: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null; team_id: number;
+    team_name: string | null; on_ir: boolean; on_taxi?: boolean; injury_status: string | null }[];
+  positions: string[];
+  need_resolution: { weakest: NeedResolution; bye: NeedResolution };
+};
 
 /** One results-table row (`GET /api/trades/discover/summary`); the rest of the row is its `DEvidence`. */
 export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor_team_id" | "opponent_team_id" | "opponent_name"
@@ -259,6 +292,8 @@ export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor
   rationale: { trade_type: { kind: string; text: string }; concerns: string[] };
   manager_context: { trade_history: Pick<ManagerContext["trade_history"], "completed_trades" | "confidence"> } | null;
   dual_value_summary?: DualValueSummary | null;
+  /** Targeted views only. */
+  target_fit?: TargetFit;
 };
 
 /** `/discover` with each row cut to its table summary; `names` covers only the players shown. */

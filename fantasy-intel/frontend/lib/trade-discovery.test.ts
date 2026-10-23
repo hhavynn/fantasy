@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sortRows } from "./sort.ts";
 import {
-  API_SORTS, defaultSort, discoverQuery, evidencePath, evidenceSrc, isApiSort, resolveSort, sortValue, type SortableTrade,
+  API_SORTS, analyzerHref, defaultSort, discoverQuery, evidencePath, evidenceSrc, horizonOptions, isApiSort, resolveSort, sortValue,
+  targetHrefParams, targetQuery, type SortableTrade,
 } from "./trade-discovery.ts";
 
 const D = (ros: number | null, reg: number | null = ros, po: number | null = ros) => ({ ros_delta: ros, regular_season_delta: reg, playoff_delta: po });
@@ -109,4 +110,70 @@ test("a row's evidence request keeps the view's query and only known parameters 
     "/api/trades/discover/evidence?team_id=3&mode=upside&shapes=1-for-1%2C2-for-1&key=2%7C1-for-1%7C10%7C20");
   assert.equal(evidencePath(new URLSearchParams("key=k&positions=K&evil=1")), "/api/trades/discover/evidence?key=k");
   assert.equal(evidencePath(new URLSearchParams("mode=all")), null);
+});
+
+// ------------------------------------------------------------------------------- targeted discovery --
+
+test("a saved link without a target sends no target parameter (original modes stay as they were)", () => {
+  for (const mode of ["practical", "mutual", "mutual_upgrades", "fair", "upside", "consolidation", "playoff", "all"]) {
+    const q = discoverQuery({ mode, team: "2", opponent: "3", shape: ["1-for-1", "2-for-1"] });
+    for (const k of ["target_player", "target_position", "need", "weeks"]) assert.equal(q.get(k), null, `${mode} ${k}`);
+  }
+  assert.equal(discoverQuery({}).toString(), "mode=mutual_upgrades");
+});
+
+test("a targeted URL becomes the API's target parameters", () => {
+  const q = discoverQuery({ mode: "targeted", team: "2", target: "204", pos: "RB", weeks: "7-9" });
+  assert.equal(q.get("target_player"), "204");
+  assert.equal(q.get("target_position"), "RB");
+  assert.equal(q.get("weeks"), "7-9");
+  assert.equal(q.get("need"), null);
+});
+
+test("a roster need wins over the field it chooses; blank fields are no target", () => {
+  assert.deepEqual(targetQuery({ need: "weakest", pos: "WR" }, "targeted"), { need: "weakest" });
+  assert.deepEqual(targetQuery({ need: "bye", weeks: "7" }, "targeted"), { need: "bye" });
+  assert.deepEqual(targetQuery({ target: "", pos: "", need: "", weeks: "" }, "targeted"), {});
+  assert.deepEqual(targetQuery({ target: " 12 " }, "targeted"), { target_player: "12" });
+});
+
+test("a horizon is only sent to the targeted mode; a player or position filters any mode", () => {
+  assert.deepEqual(targetQuery({ weeks: "7", need: "bye", pos: "TE", target: "9" }, "mutual_upgrades"),
+    { target_player: "9", target_position: "TE" });
+  assert.deepEqual(targetQuery({ need: "weakest" }, "fair"), { need: "weakest" });
+});
+
+test("target parameters survive into a row's evidence request", () => {
+  const q = discoverQuery({ mode: "targeted", pos: "RB", weeks: "5" }).toString();
+  const path = evidencePath(new URL(evidenceSrc(q, "k1"), "http://x").searchParams)!;
+  const p = new URL(path, "http://x").searchParams;
+  assert.equal(p.get("target_position"), "RB");
+  assert.equal(p.get("weeks"), "5");
+  assert.equal(p.get("mode"), "targeted");
+  assert.equal(p.get("key"), "k1");
+});
+
+test("the query echo becomes the URL keys that keep a view's target", () => {
+  assert.deepEqual(targetHrefParams({ target_player: 204, target_position: null, need: "bye", weeks: null }),
+    { target: "204", pos: undefined, need: "bye", weeks: undefined });
+  assert.deepEqual(targetHrefParams({}), { target: undefined, pos: undefined, need: undefined, weeks: undefined });
+});
+
+test("horizon choices stay inside the evaluation window", () => {
+  assert.deepEqual(horizonOptions(7, 17).map((o) => o.value), ["", "7", "7-9"]);
+  assert.deepEqual(horizonOptions(16, 17).map((o) => o.value), ["", "16", "16-17"]);
+  assert.equal(horizonOptions(16, 17)[2].label, "Next 2 weeks (weeks 16–17)");
+  assert.deepEqual(horizonOptions(17, 17).map((o) => o.value), ["", "17"]);
+  assert.deepEqual(horizonOptions(null, null).map((o) => o.value), [""]);
+});
+
+test("every discovered trade links to the analyzer with exactly its teams and packages", () => {
+  const href = analyzerHref({ anchor_team_id: 2, opponent_team_id: 3, sends: [204, 205], receives: [208] });
+  const u = new URL(href, "http://x");
+  assert.equal(u.pathname, "/trades");
+  assert.equal(u.searchParams.get("ta"), "2");
+  assert.equal(u.searchParams.get("tb"), "3");
+  assert.deepEqual(u.searchParams.getAll("a"), ["204", "205"]);
+  assert.deepEqual(u.searchParams.getAll("b"), ["208"]);
+  assert.deepEqual([...u.searchParams.keys()].sort(), ["a", "a", "b", "ta", "tb"]);
 });

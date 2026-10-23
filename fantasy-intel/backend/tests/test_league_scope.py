@@ -2,6 +2,7 @@
 
 Golden parity (the E2E fixture league answers exactly the legacy goldens), authorization before any file is touched,
 two leagues with colliding team and player ids never leak into each other, anonymous perspective from the URL."""
+import json
 import shutil
 
 import duckdb
@@ -446,3 +447,31 @@ def test_response_key_cannot_be_forged_with_encoded_separators():
     assert key("week=7&whatif=w7t3~FLEX_0.8") != key("week%3D7%26whatif=w7t3~FLEX_0.8")
     assert key("a=1&b=2") != key("a=1%26b%3D2")
     assert key("b=2&a=1") == key("a=1&b=2")                     # order-insensitive, as before
+
+
+def test_targeted_trade_discovery_resolves_players_in_the_scoped_league_only(pg, served, client, e2e, tmp_path):
+    """Issue #182: a target player id is looked up on the scoped league's rosters only. League C is A with Echo RB
+    (201) unrostered and marked team names: the same id is a target in A, a 422 in C, and neither league's names or
+    players reach the other's answers (the view and need caches are per league)."""
+    c_db = tmp_path / "c.duckdb"
+    shutil.copy(e2e, c_db)
+    con = duckdb.connect(str(c_db))
+    con.execute("DELETE FROM lineup_snapshots WHERE espn_player_id = 201")
+    con.execute(f"UPDATE fantasy_teams SET name = '{MARK} ' || name")
+    con.close()
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    c = publish_local(pg, c_db, served, tmp_path / "c", visibility="public", name="C", stamp="2026-10-20T13:00:00",
+                      external_id="1998")
+    q = "/api/trades/discover/summary?mode=targeted&target_player=201&team_id=2"     # an anonymous visitor names a team
+    first = client.get(f"/v2/leagues/{a.league_id}{q}")
+    assert first.status_code == 200, first.text[:300]
+    assert first.json()["target"]["player"]["team_id"] == 1 and MARK not in first.text
+    other = client.get(f"/v2/leagues/{c.league_id}{q}")
+    assert other.status_code == 422 and "not on another team's roster" in other.json()["detail"]
+    again = client.get(f"/v2/leagues/{a.league_id}{q}")
+    assert again.status_code == 200 and again.json() == first.json()
+    ta = client.get(f"/v2/leagues/{a.league_id}/api/trades/discover/targets?team_id=2").json()
+    tc = client.get(f"/v2/leagues/{c.league_id}/api/trades/discover/targets?team_id=2").json()
+    assert 201 in {p["espn_player_id"] for p in ta["players"]} and MARK not in json.dumps(ta)
+    assert 201 not in {p["espn_player_id"] for p in tc["players"]}
+    assert tc["players"] and all(p["team_name"].startswith(MARK) for p in tc["players"])

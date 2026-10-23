@@ -11,7 +11,7 @@ const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
  * The league this server request is scoped to (proxy.ts sets the header for /l/<lg>/... pages), or null. Outside a
  * Next request (unit tests) there are no request headers: unscoped.
  */
-async function requestLeague(): Promise<string | null> {
+export async function requestLeague(): Promise<string | null> {
   try {
     const { headers } = await import("next/headers");
     return (await headers()).get(LEAGUE_HEADER);

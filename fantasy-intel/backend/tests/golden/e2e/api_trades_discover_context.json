@@ -69,7 +69,12 @@
    "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then the smaller side's gain.",
    "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, then the smaller side's playoff gain.",
    "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+   "targeted": "Targeted search: trades that bring in the player or position you asked for; ordered by verdict, then Pareto front, then your gain over the chosen horizon, with the partner's change beside it.",
    "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled."
+  },
+  "needs": {
+   "bye": "Cover your first bye or lineup-coverage conflict week (bye planner): your gain is judged over that week.",
+   "weakest": "Upgrade your weakest starting position: the position whose starters rank lowest in the league in projected points per slot (below the league median)."
   },
   "phases": [
    "ros",
@@ -125,6 +130,7 @@
    "kdst_streaming": true,
    "limit": 10,
    "mode": "practical",
+   "need": null,
    "opponent": null,
    "phase": "ros",
    "positions": [
@@ -145,7 +151,10 @@
    ],
    "sort": "my_gain",
    "strictness": "standard",
-   "team_id": 2
+   "target_player": null,
+   "target_position": null,
+   "team_id": 2,
+   "weeks": null
   },
   "sorts": [
    "my_gain",
@@ -161,6 +170,21 @@
    "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
    "strict": "Leave out any package in which they give up more asset value."
   },
+  "target": {
+   "active": false,
+   "need": null,
+   "player": null,
+   "position": null,
+   "weeks": null
+  },
+  "target_positions": [
+   "QB",
+   "RB",
+   "WR",
+   "TE",
+   "K",
+   "D/ST"
+  ],
   "teams": [
    {
     "abbrev": "T1",
