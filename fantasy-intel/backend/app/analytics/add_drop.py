@@ -11,7 +11,8 @@ trade analyzer's own machinery, unchanged:
     engine would force (trades.resolve_roster), never silently applied;
   * the evaluation window is the trade engine's (LeagueState.window): the first scoring period none of whose NFL games
     has kicked off, through the final one. A week already under way is never credited;
-  * waiver_roster.ir_slot_eligible: an IR occupant without an IR-eligible status blocks adds at the provider;
+  * waiver_roster.ir_slot_eligible: an IR occupant without an IR-eligible status blocks adds at the provider (the
+    league's own rules for Sleeper, AddDropContext.ir_rules; a status they do not decide is IR_ELIGIBILITY_UNKNOWN);
   * waiver_decisions.resource_diagnostics: free agent, waiver priority or FAAB, the same words as the waiver table;
   * trades.roster_legality: when rostered players are missing from the player data (Sleeper IDP), or a league that
     starts slots no engine fills has no player count, a roster the count shows legal is `unverified` (legal None, a
@@ -81,6 +82,7 @@ GAME_LOCKED = "GAME_LOCKED"
 LOCK_UNKNOWN = "LOCK_UNKNOWN"
 DROP_RESERVED = "DROP_RESERVED"
 IR_SLOT_INELIGIBLE = "IR_SLOT_INELIGIBLE"
+IR_ELIGIBILITY_UNKNOWN = "IR_ELIGIBILITY_UNKNOWN"
 NFL_INELIGIBLE = "NFL_INELIGIBLE"
 NOT_LINEUP_ELIGIBLE = "NOT_LINEUP_ELIGIBLE"
 UNDROPPABLE_LIST = "UNDROPPABLE_LIST"
@@ -110,6 +112,9 @@ class AddDropContext:
     # Whether the provider's sync tells waivers from free agents. Sleeper's does not (every unrostered player is
     # written FREEAGENT), so there a FREEAGENT status does not mean "no claim needed".
     waiver_status_known: bool = True
+    # The league's IR-slot rules (reserve_slots.ir_rules over leagues.settings_raw): None is ESPN's fixed statuses; a
+    # Sleeper league's come from its own settings, and a status they do not decide is unverified (issue #253 G7).
+    ir_rules: dict | None = None
 
 
 def _item(code: str, message: str, player_id: int | None = None, tone: str = "info") -> dict:
@@ -397,11 +402,17 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
                                           "him frees no active roster spot and changes no lineup.", drop))
     if roster is not None and add is not None:
         # dropping the occupant himself clears the block
-        bad = [p for p in roster if p.on_ir and not ir_slot_eligible(p.injury_status) and p.espn_player_id != drop]
-        for p in bad:
+        occupants = [p for p in roster if p.on_ir and p.espn_player_id != drop]
+        verdict = {p.espn_player_id: ir_slot_eligible(p.injury_status, ctx.ir_rules) for p in occupants}
+        for p in (p for p in occupants if verdict[p.espn_player_id] is False):
             notes.append(_item(IR_SLOT_INELIGIBLE, f"{p.name} is in an IR slot with status "
                                                    f"{p.injury_status or 'unknown'}, which is not IR-eligible: "
                                                    f"{ctx.provider} blocks adds until he is moved off IR.",
+                               p.espn_player_id, "caution"))
+        for p in (p for p in occupants if verdict[p.espn_player_id] is None):
+            notes.append(_item(IR_ELIGIBILITY_UNKNOWN, f"{p.name} is in an IR slot with status {p.injury_status}, "
+                                                       "which this league's synced IR rules do not decide: whether "
+                                                       f"{ctx.provider} blocks adds until he is moved is unverified.",
                                p.espn_player_id, "caution"))
     if state.undroppable_list_in_use and drop_p is not None:
         notes.append(_item(UNDROPPABLE_LIST, f"This league uses an undroppable list; whether {drop_p.name} is on it is "

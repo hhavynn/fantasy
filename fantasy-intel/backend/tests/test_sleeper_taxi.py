@@ -168,12 +168,13 @@ def test_waivers_keep_taxi_out_of_the_lineup_capacity_and_the_drop_list(con):
     assert drop is None or drop["espn_player_id"] not in (TAXI, IR_PLAYER)
     cand = {"espn_player_id": 1, "position": "WR", "full_name": "FA", "raw_value": 1.0, "value": 1.0,
             "available": True, "lineup_slot_id": None}
-    # pin what this test is not about: Sleeper's raw settings carry no ESPN rosterSettings, and the IR occupant is
-    # injured (an IR player with a healthy status blocks the planner, a separate rule)
+    # pin what this test is not about: Sleeper's raw settings carry no roster restrictions (G6: the planner abstains,
+    # tests/test_league_compatibility.py), and the IR occupant is designated IR, which Sleeper always admits (G7: the
+    # fixture carries no reserve_allow_* settings, so an OUT designation would leave IR eligibility undecided)
     c = {**c, "settings_complete": True}
     for p in st["players"]:
         if p["espn_player_id"] == IR_PLAYER:
-            p["injury_status"] = "OUT"
+            p["injury_status"] = "INJURY_RESERVE"
     move = plan_roster_move(st, cand, c)
     assert move["active_count"] == len(st["players"]) - 2 and move["status"] == "ADD_WITHOUT_DROP"
     # a full active roster: dropping the taxi (or IR) player can never make room

@@ -4,19 +4,17 @@ from __future__ import annotations
 import json
 from collections import Counter
 
-from ..espn.constants import DEFAULT_POSITION_MAP, IR_SLOT
+from ..espn.constants import BLANK_SLOT_LABEL, DEFAULT_POSITION_MAP, IR_SLOT
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_total
-from .reserve_slots import TAXI, active_capacity, is_reserved, is_taxi
+from .reserve_slots import ESPN_IR_STATUSES, TAXI, active_capacity, ir_rules, ir_slot_eligible, is_reserved, is_taxi
 from .team_lineups import STREAMER_IDS
 
 
-# A fantasy IR slot may hold only a player with one of these provider injury statuses; while an IR occupant has any
-# other (healthy or unknown) status, the provider blocks adds until he is moved (plan_roster_move, add_drop).
-IR_ELIGIBLE_STATUSES = ("IR", "INJURY_RESERVE", "OUT")
-
-
-def ir_slot_eligible(injury_status: str | None) -> bool:
-    return injury_status in IR_ELIGIBLE_STATUSES
+# A fantasy IR slot may hold only a player with an IR-eligible injury status; while an IR occupant has another (healthy
+# or unknown) status, the provider blocks adds until he is moved (plan_roster_move, add_drop). ESPN's statuses are
+# fixed; a Sleeper league's come from its own settings (reserve_slots.ir_rules, issue #253 G7), and a status those
+# settings do not decide is unknown, never assumed eligible or not.
+IR_ELIGIBLE_STATUSES = ESPN_IR_STATUSES
 
 
 def object_value(value) -> dict:
@@ -26,20 +24,29 @@ def object_value(value) -> dict:
 def roster_constraints(league: dict) -> dict:
     slots = object_value(league.get("roster_slots"))
     raw = object_value(league.get("settings_raw"))
-    supported = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | {"BE", "IR", TAXI}
+    # ESPN's blank-labelled slot (id 22) is a recognised non-starter (issue #253 G12: the rules page counts it as bench),
+    # but whether it holds a roster spot is unverified, so a league that starts any keeps its capacity unknown: an add is
+    # never called legal on the strength of a slot nobody has confirmed.
+    supported = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | {"BE", "IR", TAXI, BLANK_SLOT_LABEL}
     valid = bool(slots) and not any(k not in supported and v for k, v in slots.items())
     valid = valid and all(isinstance(v, int) and v >= 0 for v in slots.values())
+    blank_slots = valid and bool(slots.get(BLANK_SLOT_LABEL))
     rs = raw.get("rosterSettings") or {}
+    warnings = [] if rs else ["Raw roster restrictions were not supplied; verify positional caps."]
+    if blank_slots:
+        warnings.append("This league has ESPN's blank-labelled roster slot; whether it holds a roster spot is unverified, "
+                        "so roster capacity is not established.")
     limits = {}
     for key, val in (rs.get("positionLimits") or {}).items():
         pos = DEFAULT_POSITION_MAP.get(int(key)) if str(key).isdigit() else key
         if pos in FIXED_SLOTS and val is not None and int(val) > 0:
             limits[pos] = int(val)
-    return {"capacity": active_capacity(slots) if valid else None,       # IR and taxi slots are not active
+    return {"capacity": active_capacity(slots) if valid and not blank_slots else None,   # IR and taxi slots are not active
             "position_limits": limits, "snapshot_complete": True,
             "settings_complete": bool(rs),
+            "ir_rules": ir_rules(raw),                                      # None: ESPN's fixed IR statuses
             "undroppable_membership_unknown": bool(rs.get("isUsingUndroppableList")),
-            "warnings": ([] if rs else ["Raw roster restrictions were not supplied; verify positional caps."])}
+            "warnings": warnings}
 
 
 def competing_positions(slots: list[str], positions) -> set[str]:
@@ -135,8 +142,17 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
               "warnings": warnings, "summary": "Roster legality cannot be established from the available settings."}
     if capacity is None or not slots or not constraints.get("snapshot_complete", True):
         return result
-    if any(p.get("lineup_slot_id") == IR_SLOT and not ir_slot_eligible(p.get("injury_status")) for p in players):
-        result["summary"] = "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+    verdicts = [ir_slot_eligible(p.get("injury_status"), constraints.get("ir_rules"))
+                for p in players if p.get("lineup_slot_id") == IR_SLOT]
+    if any(v is False for v in verdicts):
+        result["summary"] = ("An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+                             if constraints.get("ir_rules") is None else
+                             "An IR occupant's injury status does not allow the IR slot under this league's rules; move him "
+                             "or verify his IR eligibility before adding.")
+        return result
+    if any(v is None for v in verdicts):
+        result["summary"] = ("An IR occupant's injury status is not decided by this league's synced IR rules; verify "
+                             "his IR eligibility before adding.")
         return result
     if constraints.get("settings_complete") is False:
         return result

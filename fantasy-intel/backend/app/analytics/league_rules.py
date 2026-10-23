@@ -28,10 +28,11 @@ import re
 from datetime import datetime
 from typing import Any
 
-from ..espn.constants import DEFAULT_POSITION_MAP
+from ..espn.constants import BLANK_SLOT_LABEL, DEFAULT_POSITION_MAP
 from .dst_store import DST_SLOT, DST_UNIVERSE, MODELED as DST_MODELED
 from .kicker_scoring import FG_ITEMS, PAT_ITEMS, resolve_kicker_scoring
 from .league_scoring import DIRECT, EXTRA_DIRECT, resolve_skill_scoring
+from .reserve_slots import SLEEPER_RESERVE_ALLOW, ir_rules, sleeper_reserve_keys
 from ..sleeper.scoring import unsupported_family
 
 CONTRACT = "league-rules/v1"
@@ -43,7 +44,7 @@ STATUSES = (HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED)
 # Stable codes of the engine_support rows (a row appears only when its rule is present in the league).
 ENGINE_CODES = ("superflex_slot", "flex_slots", "unfilled_slots", "taxi", "provider_projections", "skill_projections",
                 "kicker_projections", "dst_projections", "te_premium", "ppr", "lineup_lock", "position_limits",
-                "undroppable")
+                "undroppable", "roster_restrictions", "ir_eligibility")
 
 # D/ST tiers and the D/ST scoring check, numpy-free: the app never imports app/analytics/dst_research.py (it needs numpy;
 # tests/test_dst_research.py enforces it). Same values and rules as dst_research; tests/test_league_rules.py checks equality.
@@ -140,7 +141,10 @@ _IDP = {
 }
 _IDP_NAMES = {"DT": "Defensive tackle", "DE": "Defensive end", "LB": "Linebacker", "DL": "Defensive line",
               "CB": "Cornerback", "S": "Safety", "DB": "Defensive back", "DP": "IDP flex"}
-_ESPN_OTHER = {"P": ("starter", ("P",), "Punter"), "HC": ("starter", ("HC",), "Head coach")}
+_ESPN_OTHER = {"P": ("starter", ("P",), "Punter"), "HC": ("starter", ("HC",), "Head coach"),
+               # ESPN's blank-labelled slot (id 22): the parser stores its players as non-starters (constants.
+               # NON_STARTER_SLOTS), as does the provider adapter, so it is a bench slot here too (issue #253 G12)
+               BLANK_SLOT_LABEL: ("bench", (), "Unlabelled bench slot")}
 FIXED = ("QB", "RB", "WR", "TE", "K", "D/ST")          # app/analytics/lineup.FIXED_SLOTS
 FLEX = ("RB/WR", "WR/TE", "FLEX", "OP")                # app/analytics/lineup.FLEX_ELIGIBILITY
 _ORDER = ("QB", "RB", "WR", "TE", "RB/WR", "WR/TE", "FLEX", "OP", "K", "D/ST", "DT", "DE", "DL", "LB", "CB", "S", "DB",
@@ -166,6 +170,9 @@ def _slot_engine(label: str, kind: str) -> dict:
     if label in FLEX:
         return {"status": HANDLED, "note": "Filled by an exact search over every eligible player, so mixed flex slots "
                                            "are never filled in the wrong order."}
+    if kind == "bench" and label == BLANK_SLOT_LABEL:
+        return {"status": HANDLED, "note": "ESPN's unlabelled slot: never a starting slot. Players there count as bench "
+                                           "players and use an active roster spot, as the import stores them."}
     if kind == "bench":
         return {"status": HANDLED, "note": "Bench players are candidates for every starting slot they are eligible for."}
     if kind == "ir":
@@ -196,6 +203,10 @@ def roster_section(roster_slots: Any, settings: dict, provider: str) -> tuple[di
         if kind == "unknown":
             unmapped.append({"area": "Roster slot", "key": label or "(blank label)", "value": n,
                              "reason": "Slot not recognised: its eligible positions are unknown."})
+        elif label == BLANK_SLOT_LABEL:
+            unmapped.append({"area": "Roster slot", "key": "(blank label)", "value": n,
+                             "reason": "ESPN does not document this unlabelled slot; it is counted as a bench slot, "
+                                       "as the import stores its players."})
     order = {code: i for i, code in enumerate(_ORDER)}
     rows.sort(key=lambda r: (r["code"] in _TAIL, _TAIL.index(r["code"]) if r["code"] in _TAIL else 0,
                              order.get(r["code"], len(order))))
@@ -648,7 +659,9 @@ _SLEEPER_READ = {"type", "playoff_teams", "playoff_week_start", "playoff_round_t
                  "waiver_clear_days", "reserve_slots", "taxi_slots", "trade_deadline", "trade_review_days", "num_teams",
                  # written by app/sleeper/write.py, not provider settings (the league id is never returned)
                  "provider", "sleeper_league_id", "scoring_settings", "scoring_unsupported", "scoring_notes",
-                 "trade_deadline_week", "last_regular_season_week"}
+                 "trade_deadline_week", "last_regular_season_week",
+                 # IR-slot rules (reserve_slots.ir_rules)
+                 *(k for _, keys in SLEEPER_RESERVE_ALLOW for k in keys)}
 
 
 def _shown(value: Any) -> Any:
@@ -839,7 +852,48 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     if rs.get("isUsingUndroppableList"):
         rows.append({"code": "undroppable", "rule": "Undroppable list", "status": UNSUPPORTED,
                      "detail": "Which players are undroppable is not synced, so a suggested drop may be one of them."})
+    # Waiver add/drop legality (waiver_roster.roster_constraints `settings_complete`: without the provider's roster
+    # restrictions, plan_roster_move leaves every move unknown rather than assuming a cap; issue #253 G6).
+    if not settings.get("rosterSettings"):
+        rows.append({"code": "roster_restrictions", "rule": "Roster restrictions for waiver moves", "status": UNVERIFIED,
+                     "detail": f"{name}'s synced settings carry no roster restrictions (such as per-position limits), "
+                               "so the waiver planner does not say whether a claim needs a drop: every waiver move is "
+                               f"left unknown rather than assumed legal. Check your open roster spots in {name} "
+                               "before claiming."})
+    # IR-slot eligibility (reserve_slots.ir_rules, used by waiver_roster.plan_roster_move and add_drop; issue #253 G7).
+    rules = ir_rules(settings)
+    if rules is not None and roster["injured_reserve"]:
+        rows.append(_ir_row(rules, bool(sleeper_reserve_keys(settings))))
     return rows
+
+
+_IR_TEXT = {"OUT": "out", "DOUBTFUL": "doubtful", "SUSPENSION": "suspended"}
+_IR_FOLDED = ("Sleeper's out, not active, COVID-list and did-not-report designations are all recorded as out, so out "
+              "is decided only when the league's four settings for them agree.")
+
+
+def _ir_row(rules: dict, read: bool) -> dict:
+    """The `ir_eligibility` row of a Sleeper league with IR slots: which injury statuses its synced settings admit."""
+    statuses = [s for s, _ in SLEEPER_RESERVE_ALLOW]
+    allowed = [_IR_TEXT[s] for s in statuses if rules.get(s) is True]
+    undecided = [s for s in statuses if rules.get(s) is None]
+    admitted = "IR slots accept players designated IR" + (f" or {', '.join(allowed)}" if allowed else "")
+    row = {"code": "ir_eligibility", "rule": "Who may use an IR slot"}
+    if not read:
+        return {**row, "status": PARTIAL, "undecided_statuses": undecided,
+                "detail": "This league's IR rules (Sleeper's reserve settings) are not in the synced settings. A player "
+                          "designated IR may stay in an IR slot and a healthy one blocks adds; for any other injury "
+                          "status, waiver and add/drop plans say IR eligibility is unverified instead of applying "
+                          "another provider's rules."}
+    if undecided:
+        return {**row, "status": PARTIAL, "undecided_statuses": undecided,
+                "detail": f"{admitted}. The synced settings do not decide "
+                          f"{', '.join(_IR_TEXT[s] for s in undecided)}, so an IR occupant with that status makes "
+                          f"add/drop legality unverified. {_IR_FOLDED}"}
+    return {**row, "status": HANDLED,
+            "detail": f"{admitted}, as this league's settings allow; a healthy player there, or one with a status the "
+                      "league does not allow, blocks adds, as Sleeper does. A status no setting covers (such as "
+                      "questionable) is reported as unverified."}
 
 
 # ---- the response -------------------------------------------------------------------------------------------------
