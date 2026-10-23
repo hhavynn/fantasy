@@ -402,6 +402,16 @@ def test_more_ranged_claims_than_dollars_are_never_shown_below_the_minimum_bid()
     assert combined(order, [], 2, 1, "ESPN")["unfundable_ranks"] == [3]
 
 
+def test_claims_that_cannot_win_together_need_one_minimum_between_them():
+    """$2 left, $1 minimum, four claims, 1 and 2 sharing a drop: only one of them can win, so $2 covers it and claim 3;
+    only claim 4 is not fundable if every claim wins."""
+    claims = [_ranged(r, 1, 1) for r in (1, 2, 3, 4)]
+    comb = combined(claims, [{"kind": "shared_drop", "ranks": [1, 2], "player_id": 7}], 2, 1, "ESPN")
+    assert comb["max_winners"] == 3 and comb["fundable_at_minimum"] is False
+    assert comb["unfundable_ranks"] == [4]
+    assert [c["if_all_win"] for c in claims] == [{"low": 1, "high": 1}] * 3 + [None]
+
+
 def test_the_minimum_is_reserved_for_every_winner_before_the_rest_is_shared():
     """The review repro: $10 left, $1 minimum, one claim at $50-$100 and nine at $1-$1, no conflicts. All ten can be
     funded at the minimum, so none is unfundable, and the large claim's top is $1 (the nine others need $9)."""

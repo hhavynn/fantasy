@@ -417,11 +417,16 @@ def combined(claims: list[dict], conflicts: list[dict], remaining: float | None,
         # Reserve the minimum for every claim that can win first, then share what is left by each range's excess over
         # the minimum. When the minimum alone is more than the budget, the claims beyond what it covers are marked by
         # plan order (the later claims), never by their size after scaling.
-        funded = sorted(ranged)
+        funded, count = sorted(ranged), winners
         if not fundable:
-            funded = funded[:int(remaining // min_bid) if min_bid else len(funded)]
+            # In plan order, keep each claim while the claims kept that can win together (exclusivity counted, so two
+            # claims sharing a drop need one minimum) can all be funded at the minimum.
+            funded, count = [], 0
+            for r in sorted(ranged):
+                n = _max_spend({x: 1 for x in funded + [r]}, exclusive)
+                if n * min_bid <= remaining:
+                    funded, count = funded + [r], n
             unfundable = [r for r in sorted(ranged) if r not in funded]
-        count = winners if fundable else len(funded)
         surplus = remaining - count * min_bid
         excess = {r: ranged[r] - min_bid for r in funded}
         # The most excess the funded claims can take together, by the same exclusivity as the spend: any set of
