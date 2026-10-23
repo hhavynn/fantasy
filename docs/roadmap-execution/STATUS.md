@@ -30,9 +30,9 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
-| #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (734c08c) | MEDIUM fixed: two-phase bipartite matching, per-request memo, 30-slot cap (8-flex case 0.17 s); reviewer re-check + CI running |
+| #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (766044f) | MEDIUM fixed + re-check RESOLVED; e2e league-boundary race fix ported from #245; CI running |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
-| #187 player profile tabs | 2 | PR OPEN | PR #245 (0536fb8) | review: no MEDIUM+; 3 LOW fixed with tests; CI running |
+| #187 player profile tabs | 2 | PR OPEN | PR #245 (2e267dc) | review LOWs fixed; e2e: league-boundary race (from #241) + photo-CDN 404 stub fixed; CI running |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
@@ -142,6 +142,8 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 
 - `agent_check affected` used to miss the app-wide source audits; PR #236 adds them. Do not run full local suites
   instead (D-08): CI on the exact SHA is the full gate.
+- Since #241 the action center streams same-league `?team=` links above the league list: e2e link locators on
+  `/leagues` must scope to the region named exactly "Your leagues" (fixed in #245, ported to #244).
 - Agents must not wipe shared scratchpads or other shared state (the #229 agent ran `rm -rf <scratchpad>/*`). Rule in
   `docs/agent-workflow.md` via PR #237 (D-09).
 - CI job logs can't be downloaded here (blob host blocked); `get_job_logs` with a small tail shows the failing test
