@@ -185,6 +185,7 @@ test("the payload guard requires a known verdict state", () => {
 function inState(state: VerdictState, over: Partial<ShortlistResponse["best_projected"]> = {}, slot: string | null = "FLEX"): ShortlistResponse {
   const r = shortlist();
   r.slot = slot;
+  if (state === "unsupported_slot") r.unsupported_slots = ["LB"];
   if (slot === null) for (const p of r.players) p.slot_eligible = null;
   const ranked = ["single_leader", "tied", "only", "incomplete_single", "incomplete_tied"].includes(state);
   r.best_projected = {
@@ -244,6 +245,13 @@ const VERDICTS: {
     bestNote: "None", compared: [DASH, "Lineup slots not synced"],
     pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). This league's lineup slots are not synced, so there is no ranking to compare with.",
     pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). This league's lineup slots are not synced, so there is no ranking to compare with.",
+  },
+  {
+    // Codex round 4: an unsupported slot (IDP LB) a listed player could fill: neither "never share" nor ranked
+    state: "unsupported_slot", slot: null, headline: "Not ranked: this league starts LB, which the lineup engine does not support yet",
+    tone: "caution", bestNote: "None", compared: [DASH, "Unsupported lineup slot"],
+    pickAlpha: "Your pick, Alpha WR, is projected 14.2 (ESPN). This league starts LB, which the lineup engine does not support yet, so there is no ranking to compare with.",
+    pickBravo: "Your pick, Bravo RB, is projected 12.0 (ESPN). This league starts LB, which the lineup engine does not support yet, so there is no ranking to compare with.",
   },
   {
     state: "none_eligible", headline: "No player here can fill FLEX", tone: "caution", bestNote: "None", compared: ["0 of 4", "All of them"],

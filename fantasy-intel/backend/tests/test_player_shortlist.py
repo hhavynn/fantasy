@@ -280,19 +280,25 @@ STATE_MATRIX = [
     ("slots not synced", [_e(1, "QB"), _e(2, "WR")], None, None, "slots_unknown", []),
     ("slot nobody fills", [_e(1, elig=False), _e(2, elig=False)], "D/ST", True, "none_eligible", []),
     ("nobody projected", [_e(1, proj=None), _e(2, bye=True)], "WR", True, "none_projected", []),
+    # Codex round 4: an unsupported starting slot (IDP LB) a listed player could fill makes a shared slot unknown
+    ("two LBs in a normal league", [_e(1, "LB"), _e(2, "LB")], None, False, "unsupported_slot", []),
+    ("LB the league's only slot", [_e(1, "LB"), _e(2, "LB")], None, True, "unsupported_slot", []),
     ("eligible ones all on bye", [_e(1, bye=True), _e(2, pos="QB", elig=False)], "WR", True, "none_projected", []),
 ]
 
 
 @pytest.mark.parametrize("case, entries, slot, shared, state, leaders", STATE_MATRIX, ids=[c[0] for c in STATE_MATRIX])
 def test_every_verdict_state(case, entries, slot, shared, state, leaders):
-    best = sl.best_projected(entries, "espn", 6, slot, shared=shared)
+    unsupported = ["LB"] if state == "unsupported_slot" else []
+    best = sl.best_projected(entries, "espn", 6, slot, shared=shared, unsupported=unsupported)
     assert best["state"] == state and best["leaders"] == leaders
     assert (state in sl.RANKED_STATES) == bool(leaders) and state in sl.RANKED_STATES + sl.UNRANKED_STATES
     assert (best["value"] is None) == (not leaders)
     if state.startswith("incomplete"):
         assert "best of those that do" in best["text"]
-    if state in ("no_common_slot", "slots_unknown"):
+    if state == "unsupported_slot":
+        assert "starts LB, which the lineup engine does not support yet" in best["text"]
+    if state in ("no_common_slot", "slots_unknown", "unsupported_slot"):
         assert best["considered"] == [] and best["excluded"] == []
     if state == "slots_unknown":
         assert "not synced" in best["text"] and "pick a slot" not in best["text"].lower()
@@ -307,3 +313,27 @@ def test_unsynced_slots_and_mixed_positions_are_slots_unknown(w):
     best = sl.shortlist(w, [ACE, QUINN])["best_projected"]
     assert best["state"] == "slots_unknown" and best["text"] == sl.SLOTS_UNKNOWN
     assert sl.shortlist(w, [ACE, WALLY])["best_projected"]["state"] == "single_leader"      # one position: compared
+
+
+def test_unsupported_slots_make_a_shared_slot_unknown():
+    """Codex round 4: two LB players in a league that starts LB beside the usual slots, or with LB as its only slot,
+    are neither "never share a slot" nor ranked; engine positions in such a league are decided as before."""
+    labels = ["QB", "RB", "WR", "TE", "FLEX"]
+    assert sl.share_a_slot(["LB", "LB"], labels) is False                      # the supported slots alone would say so
+    assert sl.unsupported_for(["LB", "LB"], labels, ["LB"]) == ["LB"]          # ... but LB takes both: unknown
+    assert sl.share_a_slot(["LB", "LB"], []) is True                           # LB the only slot: not ranked either
+    assert sl.unsupported_for(["LB", "LB"], [], ["LB"]) == ["LB"]
+    assert sl.unsupported_for(["WR", "RB"], labels, ["LB"]) == []              # engine players: FLEX decides
+    assert sl.unsupported_for(["QB", "K"], ["QB", "K"], ["P"]) == []           # still no_common_slot
+    assert sl.unsupported_for(["P", "QB"], ["QB"], ["P"]) == ["P"]
+    assert sl.unsupported_for(["DL", "QB"], ["QB"], ["DP"]) == ["DP"]          # DL fits no supported slot: unknown
+
+
+def test_shortlist_of_lb_players_is_unsupported_slot(w):
+    w.execute("UPDATE fantasy_players SET position = 'LB' WHERE espn_player_id IN (?, ?)", [ACE, WALLY])
+    best = sl.shortlist(w, [ACE, WALLY])["best_projected"]
+    assert best["state"] == "unsupported_slot" and best["leaders"] == [] and "LB" in best["text"]
+    w.execute("UPDATE leagues SET roster_slots = '{\"LB\": 2, \"BE\": 4}'")
+    out = sl.shortlist(w, [ACE, WALLY])
+    assert out["best_projected"]["state"] == "unsupported_slot"
+    assert not any("lineup slots are not synced" in x for x in out["limitations"])

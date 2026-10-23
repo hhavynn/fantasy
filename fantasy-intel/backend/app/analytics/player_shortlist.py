@@ -114,6 +114,18 @@ def share_a_slot(positions: list[str | None], labels: list[str]) -> bool | None:
     return any(all(eligible(s, p) for p in positions) for s in labels)
 
 
+def unsupported_for(positions: list[str | None], labels: list[str], unsupported: list[str]) -> list[str]:
+    """The league's unsupported starting slots (IDP, P, HC: league_slots' second list) that make a shared slot unknown:
+    those a listed player could fill, else all of them when a listed player fits no supported slot. [] when the
+    supported slots alone decide (no unsupported slot, or every player is an engine position outside them)."""
+    if not unsupported:
+        return []
+    hit = [u for u in unsupported if any(eligible(u, p) for p in positions)]
+    if hit:
+        return hit
+    return list(unsupported) if any(not any(eligible(s, p) for s in labels) for p in positions) else []
+
+
 def source_label(entries: list[dict], field: str) -> str:
     """The source the block names: ESPN or Fantasy Intel only when at least one player on the list has a number from it
     for the week (D-14: a source with no values is never named), else NO_PROJECTIONS ("Unavailable")."""
@@ -131,20 +143,29 @@ def source_label(entries: list[dict], field: str) -> str:
 #   unranked states, no `leaders`:
 #     no_common_slot     no slot chosen, and no slot of this league takes every listed player: pick a slot
 #     slots_unknown      no slot chosen, mixed positions, and the league's lineup slots are not synced
+#     unsupported_slot   no slot chosen, and the league starts a slot the engine does not fill (IDP LB) that a listed
+#                        player could take: whether they compete for one slot is unknown
 #     none_eligible      the chosen slot takes none of the players
 #     none_projected     nobody who can fill the slot has a projection for the week (bye or missing)
 RANKED_STATES = ("single_leader", "tied", "only", "incomplete_single", "incomplete_tied")
-UNRANKED_STATES = ("no_common_slot", "slots_unknown", "none_eligible", "none_projected")
+UNRANKED_STATES = ("no_common_slot", "slots_unknown", "unsupported_slot", "none_eligible", "none_projected")
 SLOTS_UNKNOWN = ("This league's lineup slots are not synced, so whether these players compete for one slot is "
                  "unknown and none is ranked. Players of one position are still compared.")
 
 
-def best_projected(entries: list[dict], field: str, week: int, slot: str | None, *, shared: bool | None = True) -> dict:
+def best_projected(entries: list[dict], field: str, week: int, slot: str | None, *, shared: bool | None = True,
+                   unsupported: list[str] | tuple = ()) -> dict:
     """The best-projected block from each player's {espn_player_id, name, position, slot_eligible, next_week}.
-    `shared`: whether the players compete for one slot (True when a slot is chosen; share_a_slot otherwise)."""
+    `shared`: whether the players compete for one slot (True when a slot is chosen; share_a_slot otherwise).
+    `unsupported`: unsupported_for's slots, which make the answer unknown whatever `shared` says (no slot chosen)."""
     src = _source_name(field)
     out = {"source": field, "source_label": source_label(entries, field), "week": week, "slot": slot, "state": "",
            "leaders": [], "value": None, "gap": None, "considered": [], "excluded": [], "text": ""}
+    if unsupported and slot is None:
+        out.update(state="unsupported_slot",
+                   text=(f"This league starts {', '.join(unsupported)}, which the lineup engine does not support yet, "
+                         "so whether these players compete for one slot is unknown and none is ranked."))
+        return out
     if shared is not True:
         out.update(state="no_common_slot" if shared is False else "slots_unknown",
                    text=NO_COMMON_SLOT if shared is False else SLOTS_UNKNOWN)
@@ -257,7 +278,7 @@ def shortlist(con, ids: list[int], *, slot: str | None = None, team: dict | None
     if not scoring["settings_synced"]:
         limitations.append("League scoring settings are not synced; provider numbers are still in this league's "
                            "scoring.")
-    if not labels:
+    if not labels and not unsupported:
         limitations.append("This league's lineup slots are not synced, so slot eligibility cannot be shown.")
     elif unsupported:
         limitations.append(f"The league also starts {', '.join(unsupported)}, which no engine here fills; those "
@@ -281,6 +302,8 @@ def shortlist(con, ids: list[int], *, slot: str | None = None, team: dict | None
         "players": players,
         "best_projected": best_projected(
             entries, field, as_of, slot,
-            shared=True if slot is not None else share_a_slot([e["position"] for e in entries], labels)),
+            shared=True if slot is not None else share_a_slot([e["position"] for e in entries], labels),
+            unsupported=() if slot is not None else unsupported_for([e["position"] for e in entries], labels,
+                                                                    unsupported)),
         "limitations": limitations, "disclaimer": DISCLAIMER, "freshness": pc._freshness(con),
     }

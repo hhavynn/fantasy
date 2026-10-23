@@ -775,11 +775,16 @@ export type RosterStatus = "this_team" | "other_team" | "free_agent" | "waivers"
  */
 export type VerdictState =
   | "single_leader" | "tied" | "only" | "incomplete_single" | "incomplete_tied"           // ranked: `leaders` set
-  | "no_common_slot" | "slots_unknown" | "none_eligible" | "none_projected";              // unranked: no leaders
+  | "no_common_slot" | "slots_unknown" | "unsupported_slot" | "none_eligible" | "none_projected";  // unranked: no leaders
 export const VERDICT_STATES: readonly VerdictState[] = [
   "single_leader", "tied", "only", "incomplete_single", "incomplete_tied",
-  "no_common_slot", "slots_unknown", "none_eligible", "none_projected",
+  "no_common_slot", "slots_unknown", "unsupported_slot", "none_eligible", "none_projected",
 ];
+
+/** "LB" / "LB, DL": the league's starting slots the lineup engine does not fill (#253), for the verdict's wording. */
+function unsupportedText(r: Pick<ShortlistResponse, "unsupported_slots">): string {
+  return r.unsupported_slots.length ? r.unsupported_slots.join(", ") : "a slot";
+}
 
 export type ShortlistSlot = { slot: string; count: number; positions: string[] };
 
@@ -1074,6 +1079,8 @@ export function verdictView(r: ShortlistResponse): VerdictView {
       return unranked("These players never share a lineup slot: pick a slot to compare them", "Pick a slot: they never share one");
     case "slots_unknown":
       return unranked("Not ranked: this league's lineup slots are not synced", "Lineup slots not synced");
+    case "unsupported_slot":
+      return unranked(`Not ranked: this league starts ${unsupportedText(r)}, which the lineup engine does not support yet`, "Unsupported lineup slot");
     case "none_eligible":
       return unranked(`No player here can fill ${b.slot ?? "the slot"}`);
     case "none_projected":
@@ -1110,6 +1117,8 @@ export function startPickNote(r: ShortlistResponse, start: number | null): strin
       return `${own}. These players never share a lineup slot, so no one is best projected to compare with; pick a slot.`;
     case "slots_unknown":
       return `${own}. This league's lineup slots are not synced, so there is no ranking to compare with.`;
+    case "unsupported_slot":
+      return `${own}. This league starts ${unsupportedText(r)}, which the lineup engine does not support yet, so there is no ranking to compare with.`;
     case "none_eligible":
     case "none_projected":
       return `${own}. No player who can fill the slot is best projected to compare with.`;
