@@ -41,7 +41,7 @@
    "exact": {
     "bounds_valid": true,
     "candidates_considered": 1120,
-    "exact_evaluations_cached": 136,
+    "exact_evaluations_cached": "<masked>",
     "excluded_invalid_roster": 0,
     "excluded_missing_data": 0,
     "exhaustive": true,
@@ -208,6 +208,29 @@
    "2-for-3",
    "3-for-3"
   ],
+  "horizon": {
+   "kind": "phase",
+   "label": "rest-of-season",
+   "phase": "ros",
+   "phrase": "the rest of the season",
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
   "kdst_policy": "Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly D/ST and K projections swing with matchups and both positions are routinely streamed from free agents. They stay fully available in the manual analyzer. Every lineup, before and after a trade, can stream K and D/ST from free agents each week, so a kicker or defense counts only for what it adds above that weekly streaming baseline.",
   "kdst_streaming": {
    "enabled": true,
@@ -237,6 +260,7 @@
    "Manager acceptance is not predicted.",
    "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades are not searched.",
    "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+   "A target (player, position, roster need or horizon) only narrows which trades are searched and shown; it never changes how a trade is valued.",
    "Lenses rank a labelled candidate pool drawn from the exact search; the ranking does not change which trades the exact search proves."
   ],
   "mode_text": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
@@ -248,6 +272,7 @@
    "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then the smaller side's gain.",
    "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, then the smaller side's playoff gain.",
    "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+   "targeted": "Targeted search: trades that bring in the player or position you asked for; ordered by verdict, then Pareto front, then your gain over the chosen horizon, with the partner's change beside it.",
    "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled."
   },
   "my_needs": {
@@ -535,6 +560,10 @@
     "position": "K",
     "pro_team": "BUF"
    }
+  },
+  "needs": {
+   "bye": "Cover your first bye or lineup-coverage conflict week (bye planner): your gain is judged over that week.",
+   "weakest": "Upgrade your weakest starting position: the position whose starters rank lowest in the league in projected points per slot (below the league median)."
   },
   "note": "Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same computation as the manual evaluator. Categories and orderings describe projected starting-lineup results only; they do not estimate whether a manager would accept.",
   "opponents": [
@@ -885,6 +914,7 @@
    "kdst_streaming": true,
    "limit": 10,
    "mode": "practical",
+   "need": null,
    "opponent": null,
    "phase": "ros",
    "positions": [
@@ -905,7 +935,10 @@
    ],
    "sort": "my_gain",
    "strictness": "standard",
-   "team_id": 2
+   "target_player": null,
+   "target_position": null,
+   "team_id": 2,
+   "weeks": null
   },
   "ranking_policy": "Trades are ordered by verdict (sensible, sensible with concerns, unlikely to be mutually attractive, asset-fair without a lineup gain, one-sided, incomplete), then by Pareto front over three separately measured axes: the smaller side's projected starting-lineup gain (points), the asset-package ratio (smaller package as a share of the larger, points above replacement) and certainty (fewer injury and missing-data flags). Within a verdict a trade is in a later front only when another trade is at least as good on all three and better on one. Within a front the view's own measure decides (e.g. the smaller side's gain), then the exact search order. No axis is converted into another and nothing estimates whether a manager would accept.",
   "results": [
@@ -1040,68 +1073,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -1755,8 +1727,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -1777,9 +1749,9 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh."
+      "main_concern": null,
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
      },
      "projection_source": "espn",
      "rank_axes": {
@@ -2782,8 +2754,7 @@
     "playoff_label": "MUTUAL_PROJECTED_GAIN",
     "rationale": {
      "concerns": [
-      "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -2864,68 +2835,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
       "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -6948,68 +6858,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -7663,8 +7512,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -7685,9 +7534,9 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh."
+      "main_concern": null,
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
      },
      "projection_source": "espn",
      "rank_axes": {
@@ -8690,8 +8539,7 @@
     "playoff_label": "MUTUAL_PROJECTED_GAIN",
     "rationale": {
      "concerns": [
-      "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -8772,68 +8620,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
       "Receives Juliet RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -18893,68 +18680,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -19608,8 +19334,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -19630,9 +19356,9 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh."
+      "main_concern": null,
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
      },
      "projection_source": "espn",
      "rank_axes": {
@@ -20634,8 +20360,7 @@
     "playoff_label": "MUTUAL_PROJECTED_GAIN",
     "rationale": {
      "concerns": [
-      "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15)."
      ],
      "points": [
       "You gain a projected QB starter: Charlie QB starts 15 of 15 weeks for you.",
@@ -20717,68 +20442,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Bravo QB (QB) starts 15 of 15 weeks (QB x15)",
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
@@ -21934,68 +21598,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -22649,8 +22252,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -22671,9 +22274,9 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh."
+      "main_concern": null,
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
      },
      "projection_source": "espn",
      "rank_axes": {
@@ -23675,8 +23278,7 @@
     "playoff_label": "MUTUAL_PROJECTED_GAIN",
     "rationale": {
      "concerns": [
-      "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15)."
      ],
      "points": [
       "You gain a projected TE starter: Whiskey TE starts 15 of 15 weeks for you.",
@@ -23758,68 +23360,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
       "Receives Victor TE (TE) starts 15 of 15 weeks (TE x15)",
@@ -25023,68 +24564,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "RB",
-          "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
-         },
-         {
-          "slot": "RB",
-          "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
-         },
-         {
-          "slot": "RB",
-          "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
-         },
-         {
-          "slot": "RB",
-          "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
-         },
-         {
-          "slot": "RB",
-          "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
-         },
-         {
-          "slot": "RB",
-          "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
-         },
-         {
-          "slot": "RB",
-          "week": 15
-         },
-         {
-          "slot": "RB",
-          "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -25738,8 +25218,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -26766,8 +26246,7 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -26849,68 +26328,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "RB",
-       "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
-      },
-      {
-       "slot": "RB",
-       "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
-      },
-      {
-       "slot": "RB",
-       "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
-      },
-      {
-       "slot": "RB",
-       "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
-      },
-      {
-       "slot": "RB",
-       "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
-      },
-      {
-       "slot": "RB",
-       "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
-      },
-      {
-       "slot": "RB",
-       "week": 15
-      },
-      {
-       "slot": "RB",
-       "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
       "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -28092,68 +27510,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "RB",
-          "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
-         },
-         {
-          "slot": "RB",
-          "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
-         },
-         {
-          "slot": "RB",
-          "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
-         },
-         {
-          "slot": "RB",
-          "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
-         },
-         {
-          "slot": "RB",
-          "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
-         },
-         {
-          "slot": "RB",
-          "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
-         },
-         {
-          "slot": "RB",
-          "week": 15
-         },
-         {
-          "slot": "RB",
-          "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -28830,8 +28187,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -29865,8 +29222,7 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -29948,68 +29304,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "RB",
-       "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
-      },
-      {
-       "slot": "RB",
-       "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
-      },
-      {
-       "slot": "RB",
-       "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
-      },
-      {
-       "slot": "RB",
-       "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
-      },
-      {
-       "slot": "RB",
-       "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
-      },
-      {
-       "slot": "RB",
-       "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
-      },
-      {
-       "slot": "RB",
-       "week": 15
-      },
-      {
-       "slot": "RB",
-       "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB1 x15)",
       "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -31191,68 +30486,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "RB",
-          "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
-         },
-         {
-          "slot": "RB",
-          "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
-         },
-         {
-          "slot": "RB",
-          "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
-         },
-         {
-          "slot": "RB",
-          "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
-         },
-         {
-          "slot": "RB",
-          "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
-         },
-         {
-          "slot": "RB",
-          "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
-         },
-         {
-          "slot": "RB",
-          "week": 15
-         },
-         {
-          "slot": "RB",
-          "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -31959,8 +31193,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -33060,8 +32294,7 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -33143,68 +32376,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "RB",
-       "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
-      },
-      {
-       "slot": "RB",
-       "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
-      },
-      {
-       "slot": "RB",
-       "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
-      },
-      {
-       "slot": "RB",
-       "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
-      },
-      {
-       "slot": "RB",
-       "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
-      },
-      {
-       "slot": "RB",
-       "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
-      },
-      {
-       "slot": "RB",
-       "week": 15
-      },
-      {
-       "slot": "RB",
-       "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
       "Receives Quebec WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -34386,68 +33558,7 @@
       "caveats": [],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "RB",
-          "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
-         },
-         {
-          "slot": "RB",
-          "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
-         },
-         {
-          "slot": "RB",
-          "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
-         },
-         {
-          "slot": "RB",
-          "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
-         },
-         {
-          "slot": "RB",
-          "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
-         },
-         {
-          "slot": "RB",
-          "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
-         },
-         {
-          "slot": "RB",
-          "week": 15
-         },
-         {
-          "slot": "RB",
-          "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -35101,8 +34212,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -36129,8 +35240,7 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
      ],
      "points": [
       "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -36212,68 +35322,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "RB",
-       "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
-      },
-      {
-       "slot": "RB",
-       "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
-      },
-      {
-       "slot": "RB",
-       "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
-      },
-      {
-       "slot": "RB",
-       "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
-      },
-      {
-       "slot": "RB",
-       "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
-      },
-      {
-       "slot": "RB",
-       "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
-      },
-      {
-       "slot": "RB",
-       "week": 15
-      },
-      {
-       "slot": "RB",
-       "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Juliet RB (RB) starts 15 of 15 weeks (RB1 x15)",
       "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -40382,68 +39431,7 @@
       ],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "RB",
-          "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
-         },
-         {
-          "slot": "RB",
-          "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
-         },
-         {
-          "slot": "RB",
-          "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
-         },
-         {
-          "slot": "RB",
-          "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
-         },
-         {
-          "slot": "RB",
-          "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
-         },
-         {
-          "slot": "RB",
-          "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
-         },
-         {
-          "slot": "RB",
-          "week": 15
-         },
-         {
-          "slot": "RB",
-          "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -41120,8 +40108,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -41957,7 +40945,6 @@
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
      ],
      "points": [
@@ -42039,68 +41026,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "RB",
-       "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
-      },
-      {
-       "slot": "RB",
-       "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
-      },
-      {
-       "slot": "RB",
-       "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
-      },
-      {
-       "slot": "RB",
-       "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
-      },
-      {
-       "slot": "RB",
-       "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
-      },
-      {
-       "slot": "RB",
-       "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
-      },
-      {
-       "slot": "RB",
-       "week": 15
-      },
-      {
-       "slot": "RB",
-       "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
       "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -43338,120 +42264,60 @@
        "them": {
         "empty_slots_after": [
          {
-          "slot": "RB",
-          "week": 3
-         },
-         {
           "slot": "TE",
           "week": 3
-         },
-         {
-          "slot": "RB",
-          "week": 4
          },
          {
           "slot": "TE",
           "week": 4
          },
          {
-          "slot": "RB",
-          "week": 5
-         },
-         {
           "slot": "TE",
           "week": 5
-         },
-         {
-          "slot": "RB",
-          "week": 6
          },
          {
           "slot": "TE",
           "week": 6
          },
          {
-          "slot": "RB",
-          "week": 7
-         },
-         {
           "slot": "TE",
           "week": 7
-         },
-         {
-          "slot": "RB",
-          "week": 8
          },
          {
           "slot": "TE",
           "week": 8
          },
          {
-          "slot": "RB",
-          "week": 9
-         },
-         {
           "slot": "TE",
           "week": 9
-         },
-         {
-          "slot": "RB",
-          "week": 10
          },
          {
           "slot": "TE",
           "week": 10
          },
          {
-          "slot": "RB",
-          "week": 11
-         },
-         {
           "slot": "TE",
           "week": 11
-         },
-         {
-          "slot": "RB",
-          "week": 12
          },
          {
           "slot": "TE",
           "week": 12
          },
          {
-          "slot": "RB",
-          "week": 13
-         },
-         {
           "slot": "TE",
           "week": 13
-         },
-         {
-          "slot": "RB",
-          "week": 14
          },
          {
           "slot": "TE",
           "week": 14
          },
          {
-          "slot": "RB",
-          "week": 15
-         },
-         {
           "slot": "TE",
           "week": 15
          },
          {
-          "slot": "RB",
-          "week": 16
-         },
-         {
           "slot": "TE",
           "week": 16
-         },
-         {
-          "slot": "RB",
-          "week": 17
          },
          {
           "slot": "TE",
@@ -45273,7 +44139,7 @@
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-      "Team 3 would have an empty RB/TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+      "Team 3 would have an empty TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
      ],
      "points": [
@@ -45363,120 +44229,60 @@
      "displaced": [],
      "empty_slots_after": [
       {
-       "slot": "RB",
-       "week": 3
-      },
-      {
        "slot": "TE",
        "week": 3
-      },
-      {
-       "slot": "RB",
-       "week": 4
       },
       {
        "slot": "TE",
        "week": 4
       },
       {
-       "slot": "RB",
-       "week": 5
-      },
-      {
        "slot": "TE",
        "week": 5
-      },
-      {
-       "slot": "RB",
-       "week": 6
       },
       {
        "slot": "TE",
        "week": 6
       },
       {
-       "slot": "RB",
-       "week": 7
-      },
-      {
        "slot": "TE",
        "week": 7
-      },
-      {
-       "slot": "RB",
-       "week": 8
       },
       {
        "slot": "TE",
        "week": 8
       },
       {
-       "slot": "RB",
-       "week": 9
-      },
-      {
        "slot": "TE",
        "week": 9
-      },
-      {
-       "slot": "RB",
-       "week": 10
       },
       {
        "slot": "TE",
        "week": 10
       },
       {
-       "slot": "RB",
-       "week": 11
-      },
-      {
        "slot": "TE",
        "week": 11
-      },
-      {
-       "slot": "RB",
-       "week": 12
       },
       {
        "slot": "TE",
        "week": 12
       },
       {
-       "slot": "RB",
-       "week": 13
-      },
-      {
        "slot": "TE",
        "week": 13
-      },
-      {
-       "slot": "RB",
-       "week": 14
       },
       {
        "slot": "TE",
        "week": 14
       },
       {
-       "slot": "RB",
-       "week": 15
-      },
-      {
        "slot": "TE",
        "week": 15
       },
       {
-       "slot": "RB",
-       "week": 16
-      },
-      {
        "slot": "TE",
        "week": 16
-      },
-      {
-       "slot": "RB",
-       "week": 17
       },
       {
        "slot": "TE",
@@ -46803,68 +45609,7 @@
       ],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -47518,8 +46263,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -47540,7 +46285,7 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
       "verdict": "sensible_with_concerns",
       "verdict_text": "Both starting lineups improve, with concerns to weigh."
      },
@@ -48347,7 +47092,6 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
      ],
      "points": [
@@ -48428,68 +47172,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives India RB (RB) starts 15 of 15 weeks (RB2 x15)",
       "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -49646,68 +48329,7 @@
       ],
       "depth": {
        "them": {
-        "empty_slots_after": [
-         {
-          "slot": "WR",
-          "week": 3
-         },
-         {
-          "slot": "WR",
-          "week": 4
-         },
-         {
-          "slot": "WR",
-          "week": 5
-         },
-         {
-          "slot": "WR",
-          "week": 6
-         },
-         {
-          "slot": "WR",
-          "week": 7
-         },
-         {
-          "slot": "WR",
-          "week": 8
-         },
-         {
-          "slot": "WR",
-          "week": 9
-         },
-         {
-          "slot": "WR",
-          "week": 10
-         },
-         {
-          "slot": "WR",
-          "week": 11
-         },
-         {
-          "slot": "WR",
-          "week": 12
-         },
-         {
-          "slot": "WR",
-          "week": 13
-         },
-         {
-          "slot": "WR",
-          "week": 14
-         },
-         {
-          "slot": "WR",
-          "week": 15
-         },
-         {
-          "slot": "WR",
-          "week": 16
-         },
-         {
-          "slot": "WR",
-          "week": 17
-         }
-        ],
+        "empty_slots_after": [],
         "forced_drop_lineup_cost": 0.0,
         "forced_drop_par": 0,
         "forced_drops": [],
@@ -50384,8 +49006,8 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail",
-        "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+        "status": "pass",
+        "text": "No forced drop of a player with asset value and no empty starting slot."
        },
        {
         "criterion": "free_agent_alternative",
@@ -50406,7 +49028,7 @@
        "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
        "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
       "verdict": "sensible_with_concerns",
       "verdict_text": "Both starting lineups improve, with concerns to weigh."
      },
@@ -51220,7 +49842,6 @@
     "rationale": {
      "concerns": [
       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-      "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
      ],
      "points": [
@@ -51301,68 +49922,7 @@
       "weeks_worsened": 0
      },
      "displaced": [],
-     "empty_slots_after": [
-      {
-       "slot": "WR",
-       "week": 3
-      },
-      {
-       "slot": "WR",
-       "week": 4
-      },
-      {
-       "slot": "WR",
-       "week": 5
-      },
-      {
-       "slot": "WR",
-       "week": 6
-      },
-      {
-       "slot": "WR",
-       "week": 7
-      },
-      {
-       "slot": "WR",
-       "week": 8
-      },
-      {
-       "slot": "WR",
-       "week": 9
-      },
-      {
-       "slot": "WR",
-       "week": 10
-      },
-      {
-       "slot": "WR",
-       "week": 11
-      },
-      {
-       "slot": "WR",
-       "week": 12
-      },
-      {
-       "slot": "WR",
-       "week": 13
-      },
-      {
-       "slot": "WR",
-       "week": 14
-      },
-      {
-       "slot": "WR",
-       "week": 15
-      },
-      {
-       "slot": "WR",
-       "week": 16
-      },
-      {
-       "slot": "WR",
-       "week": 17
-      }
-     ],
+     "empty_slots_after": [],
      "fit_notes": [
       "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
       "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -55859,7 +54419,7 @@
    "candidates_considered": 1120,
    "consistency_checked": 18,
    "consistency_failures": 0,
-   "exact_evaluations_cached": 136,
+   "exact_evaluations_cached": "<masked>",
    "excluded_invalid_roster": 0,
    "excluded_missing_data": 0,
    "exhaustive": true,
@@ -56011,68 +54571,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "RB",
-           "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
-          },
-          {
-           "slot": "RB",
-           "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
-          },
-          {
-           "slot": "RB",
-           "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
-          },
-          {
-           "slot": "RB",
-           "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
-          },
-          {
-           "slot": "RB",
-           "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
-          },
-          {
-           "slot": "RB",
-           "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
-          },
-          {
-           "slot": "RB",
-           "week": 15
-          },
-          {
-           "slot": "RB",
-           "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -56726,8 +55225,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -57754,8 +56253,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -57837,68 +56335,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "RB",
-        "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
-       },
-       {
-        "slot": "RB",
-        "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
-       },
-       {
-        "slot": "RB",
-        "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
-       },
-       {
-        "slot": "RB",
-        "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
-       },
-       {
-        "slot": "RB",
-        "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
-       },
-       {
-        "slot": "RB",
-        "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
-       },
-       {
-        "slot": "RB",
-        "week": 15
-       },
-       {
-        "slot": "RB",
-        "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
        "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -59080,68 +57517,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "RB",
-           "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
-          },
-          {
-           "slot": "RB",
-           "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
-          },
-          {
-           "slot": "RB",
-           "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
-          },
-          {
-           "slot": "RB",
-           "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
-          },
-          {
-           "slot": "RB",
-           "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
-          },
-          {
-           "slot": "RB",
-           "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
-          },
-          {
-           "slot": "RB",
-           "week": 15
-          },
-          {
-           "slot": "RB",
-           "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -59818,8 +58194,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -60853,8 +59229,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -60936,68 +59311,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "RB",
-        "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
-       },
-       {
-        "slot": "RB",
-        "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
-       },
-       {
-        "slot": "RB",
-        "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
-       },
-       {
-        "slot": "RB",
-        "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
-       },
-       {
-        "slot": "RB",
-        "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
-       },
-       {
-        "slot": "RB",
-        "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
-       },
-       {
-        "slot": "RB",
-        "week": 15
-       },
-       {
-        "slot": "RB",
-        "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB1 x15)",
        "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -62179,68 +60493,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "RB",
-           "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
-          },
-          {
-           "slot": "RB",
-           "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
-          },
-          {
-           "slot": "RB",
-           "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
-          },
-          {
-           "slot": "RB",
-           "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
-          },
-          {
-           "slot": "RB",
-           "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
-          },
-          {
-           "slot": "RB",
-           "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
-          },
-          {
-           "slot": "RB",
-           "week": 15
-          },
-          {
-           "slot": "RB",
-           "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -62947,8 +61200,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -64048,8 +62301,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -64131,68 +62383,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "RB",
-        "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
-       },
-       {
-        "slot": "RB",
-        "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
-       },
-       {
-        "slot": "RB",
-        "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
-       },
-       {
-        "slot": "RB",
-        "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
-       },
-       {
-        "slot": "RB",
-        "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
-       },
-       {
-        "slot": "RB",
-        "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
-       },
-       {
-        "slot": "RB",
-        "week": 15
-       },
-       {
-        "slot": "RB",
-        "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
        "Receives Quebec WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -65374,68 +63565,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "RB",
-           "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
-          },
-          {
-           "slot": "RB",
-           "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
-          },
-          {
-           "slot": "RB",
-           "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
-          },
-          {
-           "slot": "RB",
-           "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
-          },
-          {
-           "slot": "RB",
-           "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
-          },
-          {
-           "slot": "RB",
-           "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
-          },
-          {
-           "slot": "RB",
-           "week": 15
-          },
-          {
-           "slot": "RB",
-           "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -66089,8 +64219,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -67117,8 +65247,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -67200,68 +65329,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "RB",
-        "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
-       },
-       {
-        "slot": "RB",
-        "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
-       },
-       {
-        "slot": "RB",
-        "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
-       },
-       {
-        "slot": "RB",
-        "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
-       },
-       {
-        "slot": "RB",
-        "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
-       },
-       {
-        "slot": "RB",
-        "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
-       },
-       {
-        "slot": "RB",
-        "week": 15
-       },
-       {
-        "slot": "RB",
-        "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Juliet RB (RB) starts 15 of 15 weeks (RB1 x15)",
        "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -71368,68 +69436,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -72083,8 +70090,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -72105,9 +70112,9 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-       "verdict": "sensible_with_concerns",
-       "verdict_text": "Both starting lineups improve, with concerns to weigh."
+       "main_concern": null,
+       "verdict": "sensible",
+       "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
       },
       "projection_source": "espn",
       "rank_axes": {
@@ -73110,8 +71117,7 @@
      "playoff_label": "MUTUAL_PROJECTED_GAIN",
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -73192,68 +71198,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
        "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -77276,68 +75221,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -77991,8 +75875,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -78013,9 +75897,9 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-       "verdict": "sensible_with_concerns",
-       "verdict_text": "Both starting lineups improve, with concerns to weigh."
+       "main_concern": null,
+       "verdict": "sensible",
+       "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
       },
       "projection_source": "espn",
       "rank_axes": {
@@ -79018,8 +76902,7 @@
      "playoff_label": "MUTUAL_PROJECTED_GAIN",
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
       ],
       "points": [
        "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
@@ -79100,68 +76983,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
        "Receives Juliet RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -89221,68 +87043,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -89936,8 +87697,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -89958,9 +87719,9 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-       "verdict": "sensible_with_concerns",
-       "verdict_text": "Both starting lineups improve, with concerns to weigh."
+       "main_concern": null,
+       "verdict": "sensible",
+       "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
       },
       "projection_source": "espn",
       "rank_axes": {
@@ -90962,8 +88723,7 @@
      "playoff_label": "MUTUAL_PROJECTED_GAIN",
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15)."
       ],
       "points": [
        "You gain a projected QB starter: Charlie QB starts 15 of 15 weeks for you.",
@@ -91045,68 +88805,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Bravo QB (QB) starts 15 of 15 weeks (QB x15)",
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
@@ -92262,68 +89961,7 @@
        "caveats": [],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -92977,8 +90615,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -92999,9 +90637,9 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-       "verdict": "sensible_with_concerns",
-       "verdict_text": "Both starting lineups improve, with concerns to weigh."
+       "main_concern": null,
+       "verdict": "sensible",
+       "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
       },
       "projection_source": "espn",
       "rank_axes": {
@@ -94003,8 +91641,7 @@
      "playoff_label": "MUTUAL_PROJECTED_GAIN",
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15)."
       ],
       "points": [
        "You gain a projected TE starter: Whiskey TE starts 15 of 15 weeks for you.",
@@ -94086,68 +91723,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
        "Receives Victor TE (TE) starts 15 of 15 weeks (TE x15)",
@@ -95357,68 +92933,7 @@
        ],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "RB",
-           "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
-          },
-          {
-           "slot": "RB",
-           "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
-          },
-          {
-           "slot": "RB",
-           "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
-          },
-          {
-           "slot": "RB",
-           "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
-          },
-          {
-           "slot": "RB",
-           "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
-          },
-          {
-           "slot": "RB",
-           "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
-          },
-          {
-           "slot": "RB",
-           "week": 15
-          },
-          {
-           "slot": "RB",
-           "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -96095,8 +93610,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -96932,7 +94447,6 @@
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
        "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "points": [
@@ -97014,68 +94528,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "RB",
-        "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
-       },
-       {
-        "slot": "RB",
-        "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
-       },
-       {
-        "slot": "RB",
-        "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
-       },
-       {
-        "slot": "RB",
-        "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
-       },
-       {
-        "slot": "RB",
-        "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
-       },
-       {
-        "slot": "RB",
-        "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
-       },
-       {
-        "slot": "RB",
-        "week": 15
-       },
-       {
-        "slot": "RB",
-        "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
        "Receives Papa WR (WR) starts 15 of 15 weeks (WR1 x15)",
@@ -98313,120 +95766,60 @@
         "them": {
          "empty_slots_after": [
           {
-           "slot": "RB",
-           "week": 3
-          },
-          {
            "slot": "TE",
            "week": 3
-          },
-          {
-           "slot": "RB",
-           "week": 4
           },
           {
            "slot": "TE",
            "week": 4
           },
           {
-           "slot": "RB",
-           "week": 5
-          },
-          {
            "slot": "TE",
            "week": 5
-          },
-          {
-           "slot": "RB",
-           "week": 6
           },
           {
            "slot": "TE",
            "week": 6
           },
           {
-           "slot": "RB",
-           "week": 7
-          },
-          {
            "slot": "TE",
            "week": 7
-          },
-          {
-           "slot": "RB",
-           "week": 8
           },
           {
            "slot": "TE",
            "week": 8
           },
           {
-           "slot": "RB",
-           "week": 9
-          },
-          {
            "slot": "TE",
            "week": 9
-          },
-          {
-           "slot": "RB",
-           "week": 10
           },
           {
            "slot": "TE",
            "week": 10
           },
           {
-           "slot": "RB",
-           "week": 11
-          },
-          {
            "slot": "TE",
            "week": 11
-          },
-          {
-           "slot": "RB",
-           "week": 12
           },
           {
            "slot": "TE",
            "week": 12
           },
           {
-           "slot": "RB",
-           "week": 13
-          },
-          {
            "slot": "TE",
            "week": 13
-          },
-          {
-           "slot": "RB",
-           "week": 14
           },
           {
            "slot": "TE",
            "week": 14
           },
           {
-           "slot": "RB",
-           "week": 15
-          },
-          {
            "slot": "TE",
            "week": 15
           },
           {
-           "slot": "RB",
-           "week": 16
-          },
-          {
            "slot": "TE",
            "week": 16
-          },
-          {
-           "slot": "RB",
-           "week": 17
           },
           {
            "slot": "TE",
@@ -100248,7 +97641,7 @@
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
        "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
        "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB/TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "Team 3 would have an empty TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "points": [
@@ -100338,120 +97731,60 @@
       "displaced": [],
       "empty_slots_after": [
        {
-        "slot": "RB",
-        "week": 3
-       },
-       {
         "slot": "TE",
         "week": 3
-       },
-       {
-        "slot": "RB",
-        "week": 4
        },
        {
         "slot": "TE",
         "week": 4
        },
        {
-        "slot": "RB",
-        "week": 5
-       },
-       {
         "slot": "TE",
         "week": 5
-       },
-       {
-        "slot": "RB",
-        "week": 6
        },
        {
         "slot": "TE",
         "week": 6
        },
        {
-        "slot": "RB",
-        "week": 7
-       },
-       {
         "slot": "TE",
         "week": 7
-       },
-       {
-        "slot": "RB",
-        "week": 8
        },
        {
         "slot": "TE",
         "week": 8
        },
        {
-        "slot": "RB",
-        "week": 9
-       },
-       {
         "slot": "TE",
         "week": 9
-       },
-       {
-        "slot": "RB",
-        "week": 10
        },
        {
         "slot": "TE",
         "week": 10
        },
        {
-        "slot": "RB",
-        "week": 11
-       },
-       {
         "slot": "TE",
         "week": 11
-       },
-       {
-        "slot": "RB",
-        "week": 12
        },
        {
         "slot": "TE",
         "week": 12
        },
        {
-        "slot": "RB",
-        "week": 13
-       },
-       {
         "slot": "TE",
         "week": 13
-       },
-       {
-        "slot": "RB",
-        "week": 14
        },
        {
         "slot": "TE",
         "week": 14
        },
        {
-        "slot": "RB",
-        "week": 15
-       },
-       {
         "slot": "TE",
         "week": 15
        },
        {
-        "slot": "RB",
-        "week": 16
-       },
-       {
         "slot": "TE",
         "week": 16
-       },
-       {
-        "slot": "RB",
-        "week": 17
        },
        {
         "slot": "TE",
@@ -101778,68 +99111,7 @@
        ],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -102493,8 +99765,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -102515,7 +99787,7 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+       "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
        "verdict": "sensible_with_concerns",
        "verdict_text": "Both starting lineups improve, with concerns to weigh."
       },
@@ -103322,7 +100594,6 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "points": [
@@ -103403,68 +100674,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives India RB (RB) starts 15 of 15 weeks (RB2 x15)",
        "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -104621,68 +101831,7 @@
        ],
        "depth": {
         "them": {
-         "empty_slots_after": [
-          {
-           "slot": "WR",
-           "week": 3
-          },
-          {
-           "slot": "WR",
-           "week": 4
-          },
-          {
-           "slot": "WR",
-           "week": 5
-          },
-          {
-           "slot": "WR",
-           "week": 6
-          },
-          {
-           "slot": "WR",
-           "week": 7
-          },
-          {
-           "slot": "WR",
-           "week": 8
-          },
-          {
-           "slot": "WR",
-           "week": 9
-          },
-          {
-           "slot": "WR",
-           "week": 10
-          },
-          {
-           "slot": "WR",
-           "week": 11
-          },
-          {
-           "slot": "WR",
-           "week": 12
-          },
-          {
-           "slot": "WR",
-           "week": 13
-          },
-          {
-           "slot": "WR",
-           "week": 14
-          },
-          {
-           "slot": "WR",
-           "week": 15
-          },
-          {
-           "slot": "WR",
-           "week": 16
-          },
-          {
-           "slot": "WR",
-           "week": 17
-          }
-         ],
+         "empty_slots_after": [],
          "forced_drop_lineup_cost": 0.0,
          "forced_drop_par": 0,
          "forced_drops": [],
@@ -105359,8 +102508,8 @@
         },
         {
          "criterion": "depth_cost",
-         "status": "fail",
-         "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+         "status": "pass",
+         "text": "No forced drop of a player with asset value and no empty starting slot."
         },
         {
          "criterion": "free_agent_alternative",
@@ -105381,7 +102530,7 @@
         "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
         "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
        },
-       "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+       "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
        "verdict": "sensible_with_concerns",
        "verdict_text": "Both starting lineups improve, with concerns to weigh."
       },
@@ -106195,7 +103344,6 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "points": [
@@ -106276,68 +103424,7 @@
        "weeks_worsened": 0
       },
       "displaced": [],
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "fit_notes": [
        "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
        "Receives Kilo RB (RB) starts 15 of 15 weeks (RB1 x15)",
@@ -110844,6 +107931,21 @@
    "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
    "strict": "Leave out any package in which they give up more asset value."
   },
+  "target": {
+   "active": false,
+   "need": null,
+   "player": null,
+   "position": null,
+   "weeks": null
+  },
+  "target_positions": [
+   "QB",
+   "RB",
+   "WR",
+   "TE",
+   "K",
+   "D/ST"
+  ],
   "teams": [
    {
     "abbrev": "T1",

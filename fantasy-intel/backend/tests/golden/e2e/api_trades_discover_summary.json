@@ -41,7 +41,7 @@
    "exact": {
     "bounds_valid": true,
     "candidates_considered": 1120,
-    "exact_evaluations_cached": 136,
+    "exact_evaluations_cached": "<masked>",
     "excluded_invalid_roster": 0,
     "excluded_missing_data": 0,
     "exhaustive": true,
@@ -208,6 +208,29 @@
    "2-for-3",
    "3-for-3"
   ],
+  "horizon": {
+   "kind": "phase",
+   "label": "rest-of-season",
+   "phase": "ros",
+   "phrase": "the rest of the season",
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
   "kdst_policy": "Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly D/ST and K projections swing with matchups and both positions are routinely streamed from free agents. They stay fully available in the manual analyzer. Every lineup, before and after a trade, can stream K and D/ST from free agents each week, so a kicker or defense counts only for what it adds above that weekly streaming baseline.",
   "kdst_streaming": {
    "enabled": true,
@@ -237,6 +260,7 @@
    "Manager acceptance is not predicted.",
    "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades are not searched.",
    "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+   "A target (player, position, roster need or horizon) only narrows which trades are searched and shown; it never changes how a trade is valued.",
    "Lenses rank a labelled candidate pool drawn from the exact search; the ranking does not change which trades the exact search proves."
   ],
   "mode_text": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
@@ -248,6 +272,7 @@
    "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then the smaller side's gain.",
    "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, then the smaller side's playoff gain.",
    "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+   "targeted": "Targeted search: trades that bring in the player or position you asked for; ordered by verdict, then Pareto front, then your gain over the chosen horizon, with the partner's change beside it.",
    "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled."
   },
   "my_needs": {
@@ -415,6 +440,10 @@
     "position": "TE",
     "pro_team": "PHI"
    }
+  },
+  "needs": {
+   "bye": "Cover your first bye or lineup-coverage conflict week (bye planner): your gain is judged over that week.",
+   "weakest": "Upgrade your weakest starting position: the position whose starters rank lowest in the league in projected points per slot (below the league median)."
   },
   "note": "Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same computation as the manual evaluator. Categories and orderings describe projected starting-lineup results only; they do not estimate whether a manager would accept.",
   "opponents": [
@@ -765,6 +794,7 @@
    "kdst_streaming": true,
    "limit": 10,
    "mode": "practical",
+   "need": null,
    "opponent": null,
    "phase": "ros",
    "positions": [
@@ -785,7 +815,10 @@
    ],
    "sort": "my_gain",
    "strictness": "standard",
-   "team_id": 2
+   "target_player": null,
+   "target_position": null,
+   "team_id": 2,
+   "weeks": null
   },
   "ranking_policy": "Trades are ordered by verdict (sensible, sensible with concerns, unlikely to be mutually attractive, asset-fair without a lineup gain, one-sided, incomplete), then by Pareto front over three separately measured axes: the smaller side's projected starting-lineup gain (points), the asset-package ratio (smaller package as a share of the larger, points above replacement) and certainty (fewer injury and missing-data flags). Within a verdict a trade is in a later front only when another trade is at least as good on all three and better on one. Within a front the view's own measure decides (e.g. the smaller side's gain), then the exact search order. No axis is converted into another and nothing estimates whether a manager would accept.",
   "search": {
@@ -793,7 +826,7 @@
    "candidates_considered": 1120,
    "consistency_checked": 18,
    "consistency_failures": 0,
-   "exact_evaluations_cached": 136,
+   "exact_evaluations_cached": "<masked>",
    "excluded_invalid_roster": 0,
    "excluded_missing_data": 0,
    "exhaustive": true,
@@ -855,7 +888,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -955,8 +988,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -1044,7 +1076,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -1144,8 +1176,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -1233,7 +1264,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -1333,8 +1364,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -1422,7 +1452,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -1522,8 +1552,7 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -1801,7 +1830,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -1853,10 +1882,10 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": null,
       "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
       "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
      },
      "key": "2-for-1:3:204-205:208",
@@ -1900,8 +1929,7 @@
      "opponent_team_id": 3,
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -2176,7 +2204,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -2228,10 +2256,10 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": null,
       "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
       "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of Juliet RB (RB)."
      },
      "key": "2-for-1:3:204-206:208",
@@ -2275,8 +2303,7 @@
      "opponent_team_id": 3,
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -2925,7 +2952,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -2977,10 +3004,10 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": null,
       "them_change": "Bravo QB (QB) starts 15 of 15 weeks in Team 3's lineup in place of Charlie QB (QB).",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
       "you_change": "Charlie QB (QB) starts 15 of 15 weeks in your lineup in place of Bravo QB (QB)."
      },
      "key": "2-for-1:3:102-204:103",
@@ -3024,8 +3051,7 @@
      "opponent_team_id": 3,
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15)."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -3113,7 +3139,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -3165,10 +3191,10 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": null,
       "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Whiskey TE (TE).",
-      "verdict": "sensible_with_concerns",
-      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
       "you_change": "Whiskey TE (TE) starts 15 of 15 weeks in your lineup in place of Victor TE (TE)."
      },
      "key": "2-for-1:3:204-402:403",
@@ -3212,8 +3238,7 @@
      "opponent_team_id": 3,
      "rationale": {
       "concerns": [
-       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15)."
       ],
       "trade_type": {
        "kind": "consolidation",
@@ -3303,7 +3328,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -3404,7 +3429,6 @@
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
        "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "trade_type": {
@@ -3595,7 +3619,7 @@
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
        "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
        "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
-       "Team 3 would have an empty RB/TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "Team 3 would have an empty TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "trade_type": {
@@ -3686,7 +3710,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -3738,7 +3762,7 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
       "them_change": "India RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
       "verdict": "sensible_with_concerns",
       "verdict_text": "Both starting lineups improve, with concerns to weigh.",
@@ -3786,7 +3810,6 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "trade_type": {
@@ -3875,7 +3898,7 @@
        },
        {
         "criterion": "depth_cost",
-        "status": "fail"
+        "status": "pass"
        },
        {
         "criterion": "free_agent_alternative",
@@ -3927,7 +3950,7 @@
         }
        }
       },
-      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "main_concern": "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately.",
       "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
       "verdict": "sensible_with_concerns",
       "verdict_text": "Both starting lineups improve, with concerns to weigh.",
@@ -3975,7 +3998,6 @@
      "rationale": {
       "concerns": [
        "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
       ],
       "trade_type": {
@@ -4231,6 +4253,21 @@
    "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
    "strict": "Leave out any package in which they give up more asset value."
   },
+  "target": {
+   "active": false,
+   "need": null,
+   "player": null,
+   "position": null,
+   "weeks": null
+  },
+  "target_positions": [
+   "QB",
+   "RB",
+   "WR",
+   "TE",
+   "K",
+   "D/ST"
+  ],
   "teams": [
    {
     "abbrev": "T1",

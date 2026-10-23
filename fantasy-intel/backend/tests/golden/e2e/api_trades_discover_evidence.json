@@ -108,68 +108,7 @@
     "caveats": [],
     "depth": {
      "them": {
-      "empty_slots_after": [
-       {
-        "slot": "WR",
-        "week": 3
-       },
-       {
-        "slot": "WR",
-        "week": 4
-       },
-       {
-        "slot": "WR",
-        "week": 5
-       },
-       {
-        "slot": "WR",
-        "week": 6
-       },
-       {
-        "slot": "WR",
-        "week": 7
-       },
-       {
-        "slot": "WR",
-        "week": 8
-       },
-       {
-        "slot": "WR",
-        "week": 9
-       },
-       {
-        "slot": "WR",
-        "week": 10
-       },
-       {
-        "slot": "WR",
-        "week": 11
-       },
-       {
-        "slot": "WR",
-        "week": 12
-       },
-       {
-        "slot": "WR",
-        "week": 13
-       },
-       {
-        "slot": "WR",
-        "week": 14
-       },
-       {
-        "slot": "WR",
-        "week": 15
-       },
-       {
-        "slot": "WR",
-        "week": 16
-       },
-       {
-        "slot": "WR",
-        "week": 17
-       }
-      ],
+      "empty_slots_after": [],
       "forced_drop_lineup_cost": 0.0,
       "forced_drop_par": 0,
       "forced_drops": [],
@@ -823,8 +762,8 @@
      },
      {
       "criterion": "depth_cost",
-      "status": "fail",
-      "text": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17."
+      "status": "pass",
+      "text": "No forced drop of a player with asset value and no empty starting slot."
      },
      {
       "criterion": "free_agent_alternative",
@@ -845,9 +784,9 @@
      "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
      "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
     },
-    "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
-    "verdict": "sensible_with_concerns",
-    "verdict_text": "Both starting lineups improve, with concerns to weigh."
+    "main_concern": null,
+    "verdict": "sensible",
+    "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
    },
    "projection_source": "espn",
    "rank_axes": {
@@ -1038,8 +977,7 @@
   },
   "rationale": {
    "concerns": [
-    "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
-    "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+    "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
    ],
    "points": [
     "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",

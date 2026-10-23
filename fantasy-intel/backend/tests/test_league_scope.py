@@ -2,6 +2,7 @@
 
 Golden parity (the E2E fixture league answers exactly the legacy goldens), authorization before any file is touched,
 two leagues with colliding team and player ids never leak into each other, anonymous perspective from the URL."""
+import json
 import shutil
 
 import duckdb
@@ -450,3 +451,82 @@ def test_response_key_cannot_be_forged_with_encoded_separators():
     assert key("a=2&a=1") != key("a=1&a=2")
     assert key("override=12:home&override=12:away") != key("override=12:away&override=12:home")
     assert key("b=1&a=2&a=1") == key("a=2&b=1&a=1")             # other names may still move around
+
+
+def test_targeted_trade_discovery_resolves_players_in_the_scoped_league_only(pg, served, client, e2e, tmp_path):
+    """Issue #182: a target player id is looked up on the scoped league's rosters only. League C is A with Echo RB
+    (201) unrostered and marked team names: the same id is a target in A, a 422 in C, and neither league's names or
+    players reach the other's answers (the view and need caches are per league)."""
+    c_db = tmp_path / "c.duckdb"
+    shutil.copy(e2e, c_db)
+    con = duckdb.connect(str(c_db))
+    con.execute("DELETE FROM lineup_snapshots WHERE espn_player_id = 201")
+    con.execute(f"UPDATE fantasy_teams SET name = '{MARK} ' || name")
+    con.close()
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    c = publish_local(pg, c_db, served, tmp_path / "c", visibility="public", name="C", stamp="2026-10-20T13:00:00",
+                      external_id="1998")
+    q = "/api/trades/discover/summary?mode=targeted&target_player=201&team_id=2"     # an anonymous visitor names a team
+    first = client.get(f"/v2/leagues/{a.league_id}{q}")
+    assert first.status_code == 200, first.text[:300]
+    assert first.json()["target"]["player"]["team_id"] == 1 and MARK not in first.text
+    other = client.get(f"/v2/leagues/{c.league_id}{q}")
+    assert other.status_code == 422 and "not on another team's roster" in other.json()["detail"]
+    again = client.get(f"/v2/leagues/{a.league_id}{q}")
+    assert again.status_code == 200 and again.json() == first.json()
+    ta = client.get(f"/v2/leagues/{a.league_id}/api/trades/discover/targets?team_id=2").json()
+    tc = client.get(f"/v2/leagues/{c.league_id}/api/trades/discover/targets?team_id=2").json()
+    assert 201 in {p["espn_player_id"] for p in ta["players"]} and MARK not in json.dumps(ta)
+    assert 201 not in {p["espn_player_id"] for p in tc["players"]}
+    assert tc["players"] and all(p["team_name"].startswith(MARK) for p in tc["players"])
+
+
+def test_trade_evidence_is_served_only_for_the_league_in_the_path(pg, served, client, e2e, e2e_b, tmp_path,
+                                                                   monkeypatch):
+    """The row evidence behind the discovery page's "Why this trade" panel (and the #182 targeted views): a member of
+    league A can never read league B's evidence. The league comes only from the /v2 path, authorized per request
+    (league_scope -> authorize_league_in): B is the same 404 as an unknown league for a non-member and for an anonymous
+    caller, a forged league header or a league id in the query never moves A's request to B, and the single-league
+    /api path (which ignores any league) is closed once the classic site is retired."""
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="private", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="private", name="B", stamp="2026-10-20T13:00:00",
+                      external_id="1999")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_user(con, U2)
+        seed_membership(con, U1, a.league_id, "viewer")
+        seed_membership(con, U2, b.league_id, "viewer")
+        for user, lg in ((U1, a.league_id), (U2, b.league_id)):
+            con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
+                        [user, lg])
+        con.commit()
+    q = "mode=targeted&target_position=RB"
+    summary = client.get(f"/v2/leagues/{b.league_id}/api/trades/discover/summary?{q}", headers=bearer(U2))
+    assert summary.status_code == 200, summary.text[:200]
+    key = next(x["key"] for items in summary.json()["sections"].values() for x in items)
+    ev = f"/api/trades/discover/evidence?{q}&key={key}"
+    own = client.get(f"/v2/leagues/{b.league_id}{ev}", headers=bearer(U2))
+    assert own.status_code == 200 and MARK in own.text                     # B's member reads B's evidence
+
+    not_found = (404, {"detail": "League not found."})
+    unknown = client.get(f"/v2/leagues/lg_{'z' * 24}{ev}", headers=bearer(U1))
+    assert (unknown.status_code, unknown.json()) == not_found
+    for path in (ev, f"/api/trades/discover/summary?{q}", f"/api/trades/discover/context?{q}",
+                 "/api/trades/discover/targets"):
+        for headers in (bearer(U1), {}):                                    # A's member, then anonymous
+            r = client.get(f"/v2/leagues/{b.league_id}{path}", headers=headers)
+            assert (r.status_code, r.json()) == not_found, (path, headers)
+
+    # A forged league header and a league id in the query are ignored: A's request answers from A's files only.
+    forged = client.get(f"/v2/leagues/{a.league_id}{ev}&league_id={b.league_id}",
+                        headers={**bearer(U1), "x-fi-league": b.league_id})
+    plain = client.get(f"/v2/leagues/{a.league_id}{ev}", headers=bearer(U1))
+    assert forged.status_code == plain.status_code == 200, forged.text[:200]
+    assert MARK not in forged.text and forged.json() == plain.json()
+
+    # The single-league path never selects a tenant; retired, it answers 404 whatever league header is sent.
+    monkeypatch.setenv("CLASSIC_SITE_ENABLED", "0")
+    for path in (ev, "/api/trades/discover/targets"):
+        r = client.get(path, headers={"x-fi-league": b.league_id})
+        assert r.status_code == 404 and MARK not in r.text, path
+    assert client.get(f"/v2/leagues/{b.league_id}{ev}", headers=bearer(U2)).status_code == 200
