@@ -431,7 +431,12 @@ def _load(con) -> dict:
     lg = latest_league(con, ["league_id", "season", "name", "current_week", "is_faab"])
     if not lg:
         raise NotSynced("League not synced yet. Run the league sync first.")
-    lid, season = lg["league_id"], lg["season"]
+    return {"league": lg, **load_season_rows(con, lg["league_id"], lg["season"])}
+
+
+def load_season_rows(con, lid: int, season: int) -> dict:
+    """One league season's teams, executed transaction rows (one per item) and activity-feed trade legs: the stored
+    rows `records_from_rows` reads. Shared with trade counterparty scouting (analytics/trade_counterparty.py)."""
     teams = fetch_dicts(con, "SELECT team_id, name, abbrev FROM fantasy_teams WHERE league_id = ? AND season = ? "
                              "ORDER BY team_id", [lid, season])
     types = ", ".join(f"'{t}'" for t in (*TRADE_TYPES, *MOVE_TYPES))
@@ -457,7 +462,7 @@ def _load(con) -> dict:
         SELECT topic_id, topic_date, espn_player_id, from_team_id, to_team_id FROM activity_messages
         WHERE league_id = ? AND season = ? AND message_type_id = 244
         ORDER BY topic_id, message_id""", [lid, season]) if table_exists(con, "activity_messages") else []
-    return {"league": lg, "teams": teams, "tx_rows": tx_rows, "activity": activity}
+    return {"teams": teams, "tx_rows": tx_rows, "activity": activity}
 
 
 def _players(con, ids: set[int]) -> dict[int, dict]:
