@@ -1,7 +1,8 @@
 import { Missing } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import {
-  attributionHeadline, attributionRows, inputValue, kindText, reconcileText, sideText, signedText, unattributedInputs,
+  attributionHeadline, attributionRows, fullInputsText, inputValue, kindText, reconcileText, sideText, signedText,
+  unattributedInputs,
   weeksText, type Attribution, type AttributionInput, type AttributionPart,
 } from "@/lib/projection-attribution";
 import type { Mover } from "@/lib/projection-movers";
@@ -28,10 +29,20 @@ function partDetail(p: AttributionPart, a: Attribution) {
     case "availability":
       return "The model's chance that he plays changed. This part is that change times the earlier points if he plays.";
     case "input":
-      return p.exact
-        ? "This input's stored term changed by this much, times the latest chance he plays."
-        : a.approximation_note ?? "Approximate share.";
+      if (p.features) return `Inputs whose shares are each under 0.05 points: ${(p.feature_labels ?? p.features).join("; ")}.`;
+      if (!p.exact) return a.approximation_note ?? "Approximate share.";
+      return a.full_inputs
+        ? "This input's change times the average of the two models' weights for it, times the latest chance he plays."
+        : "This input's stored term changed by this much, times the latest chance he plays.";
     case "model":
+      if (p.key === "model:coefficients") {
+        return "The model was retrained between the two forecasts. This is the change its new weights and intercept "
+          + "make by themselves, at the average of the two forecasts' inputs, times the latest chance he plays.";
+      }
+      if (p.key === "model:rescoring") {
+        return "This league's re-scoring of the model's points (a factor or shift from his recent box scores) differs "
+          + "between the two forecasts; this is that change by itself.";
+      }
       return p.key === "model:availability"
         ? "The availability model or method differs between the two forecasts, so this change is not assigned to anything."
         : "The points model differs between the two forecasts, so the change in points if he plays is not split between inputs.";
@@ -43,13 +54,13 @@ function partDetail(p: AttributionPart, a: Attribution) {
 }
 
 function PartRow({ p, a }: { p: AttributionPart; a: Attribution }) {
-  const showValues = p.kind === "input" || p.kind === "availability";
+  const showValues = (p.kind === "input" && !p.features) || p.kind === "availability";
   return (
     <li className={styles.whyRow}>
       <details>
         <summary className={styles.whySummary}>
           <span className={styles.whyLabel}>{p.label}</span>
-          <span className={styles.whyKind}>{kindText(p.kind, p.exact)}</span>
+          <span className={styles.whyKind}>{kindText(p.kind, p.exact, p.measured)}</span>
           <span className={styles.whyPts}>{signedText(p.points)}</span>
         </summary>
         <div className={styles.whyBody}>
@@ -61,7 +72,7 @@ function PartRow({ p, a }: { p: AttributionPart; a: Attribution }) {
               {(p.events ?? []).map((e, i) => <li key={i}>{e.forecast === "earlier" ? "Earlier" : "Latest"} forecast: {e.text} ({e.source})</li>)}
             </ul>
           )}
-          {p.kind === "model" && a.model.reasons.length > 0 && (
+          {p.kind === "model" && !p.measured && a.model.reasons.length > 0 && (
             <ul className={styles.whyList}>
               {a.model.reasons.map((r, i) => <li key={i}>{r.text} ({weeksText(r.weeks)})</li>)}
             </ul>
@@ -153,6 +164,7 @@ export function WhyItChanged({ m }: { m: Mover }) {
             <ResidualRow a={a} />
           </ul>
           <p className={styles.sigMeta}>{reconcileText(a)}</p>
+          {fullInputsText(a) && <p className={styles.sigMeta}>{fullInputsText(a)}</p>}
           <InputsList inputs={unattributedInputs(a)} />
           <MissingInputs a={a} />
           {a.as_of && (

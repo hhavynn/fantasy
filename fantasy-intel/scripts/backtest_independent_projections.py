@@ -349,10 +349,11 @@ def cmd_project(args, hist, scoring) -> dict:
             try:
                 if rest_of_season:     # the same artifact, whatever the horizon: its cutoff must precede the target
                     wl.check_artifact(art, args.season, target, scoring.fingerprint)
+                captured: dict = {}     # the rows' full model inputs, stored beside the run (#225 attribution)
                 meta, rows = build_live(con, src, art, args.season, target, participation=part,
                                         artifact_sha256=art_sha, projected_from_week=from_week,
-                                        context_inputs=ctx_inputs, news=news)
-                built.append((target, meta, rows, t0))
+                                        context_inputs=ctx_inputs, news=news, inputs_out=captured)
+                built.append((target, meta, rows, t0, captured))
             except Exception as err:      # noqa: BLE001 - a later week's failure is reported, the others still run
                 if target == target0:
                     raise
@@ -381,9 +382,9 @@ def cmd_project(args, hist, scoring) -> dict:
                                      "artifact is not registered alone (that would start enforcement with the older "
                                      f"store artifacts unregistered): {backfill['error']}") from err
             registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
-        for target, meta, rows, t0 in built:
+        for target, meta, rows, t0, captured in built:
             try:
-                stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
+                stored = write_run(con, meta, rows, inputs=captured)   # append-only: an identical retry returns the existing run
                 results.append(_summary(meta, rows, stored, art, art_sha, t0))
             except Exception as err:      # noqa: BLE001
                 if target == target0:

@@ -41,6 +41,23 @@ residual ("as-of check failed"). No outcome of any compared week is read.
 
 ESPN snapshots publish one total per week and no inputs: their movers get `status = "unavailable"` with the reason,
 labelled as ESPN's numbers, never as Fantasy Intel's.
+
+Full inputs (contract `projection-attribution/v2`, additive). A run stored with its forecast inputs
+(production_forecasts "forecast inputs") keeps each projected row's whole design row and the model it went through.
+When BOTH compared rows have inputs that verify (digests match and they rebuild the stored point), the per-game change
+is split exactly, even across a retrain or a re-score. Write each point as y = s * L + t with L = a + sum_i w_i * v_i
+before the floor (w = coef / std, a = intercept - sum_i w_i * mean_i; s and t the league re-score factor or shift, 1 and
+0 otherwise; a QB start/no-start mixture is L at the start share when neither scenario is floored). With the two-factor
+midpoint (Shapley) convention, exact and independent of which forecast comes first:
+
+  input i       p1 * s_mid * w_mid_i * (v1_i - v0_i)        a column only one model has changes its model term only
+  model         p1 * s_mid * ((a1 - a0) + sum_i v_mid_i * (w1_i - w0_i))
+  re-scoring    p1 * (L_mid * (s1 - s0) + (t1 - t0))
+
+where x_mid is the mean of the two forecasts' values. An input unknown in either forecast (imputed with the training
+average) is not a measurement: its term is residual ("imputed"). A floored row is not split. The parts plus the
+stored-value rounding add up to p1 * (x1 - x0). Without verified inputs on both sides the week is split exactly as
+under v1, and a block that used no inputs is byte-identical to v1.
 """
 
 from __future__ import annotations
@@ -55,6 +72,8 @@ from . import production_forecasts as pf
 from .projection_backtest import _utc
 
 CONTRACT = "projection-attribution/v1"
+CONTRACT_V2 = "projection-attribution/v2"          # a block that split at least one week with the full stored inputs
+SMALL_PART = 0.05            # full-input parts under this many points are shown together as one line
 INDEPENDENT = "independent"
 ZERO_STATUSES = frozenset({"bye", "withheld_unavailable"})       # projection_source.ZERO_STATUSES (tested)
 OURS_LABEL = "Fantasy Intel model"
@@ -109,6 +128,13 @@ METHOD = ("Both forecasts come from the same model artifact. Before its floor at
 METHOD_MODEL_CHANGED = ("The model differs between the two forecasts (retrained, another version or re-scored), so the "
                         "per-game change is shown as a model change and not split between inputs. The inputs both "
                         "forecasts stored are listed with their values only.")
+METHOD_V2 = ("Both forecasts stored their full model inputs and model, so the per-game change is split exactly with "
+             "the two-factor midpoint (Shapley) convention: each input's change is weighted by the average of the two "
+             "models' weights, and the model's own change (retrained coefficients and intercept) is taken at the "
+             "average of the two forecasts' inputs. Swapping the two forecasts negates every part; nothing is assigned "
+             "by the order they were made in. Inputs unknown when a forecast was made stay in the residual.")
+AVAILABILITY_UNSPLIT = ("The chance-to-play model or method also differs between the two forecasts, so that part is "
+                        "shown as a model change and not split.")
 ESPN_REASON = ("ESPN publishes one projected total per week and none of the inputs behind it, so its changes cannot be "
                "split into parts.")
 RESIDUAL = MappingProxyType({
@@ -119,6 +145,7 @@ RESIDUAL = MappingProxyType({
     "missing_row": "A stored forecast row or its chance to play is missing",
     "as_of": "As-of check failed: a forecast may have seen the week's games",
     "rounding": "Rounding of the stored 2-decimal values",
+    "imputed": "Inputs unknown when a forecast was made (filled with the training average): not measured changes",
 })
 
 
@@ -248,9 +275,14 @@ class _Acc:
         self.tolerance = 0.0
         self.refused: list[dict] = []
         self.approximate = False
+        self.full_weeks: list[int] = []     # weeks split with the full stored inputs (v2)
 
     def part(self, key: str, base: dict, points: float, week: int) -> dict:
         p = self.parts.setdefault(key, {**base, "points": 0.0, "weeks": [], "_before": [], "_after": []})
+        # one part over weeks split in different ways: exact only if every week was, folded only if every week was full
+        p["exact"] = bool(p.get("exact", True)) and bool(base.get("exact", True))
+        if p.get("_full") and not base.get("_full"):
+            p["_full"] = False
         p["points"] += points
         if week not in p["weeks"]:
             p["weeks"].append(week)
@@ -274,6 +306,13 @@ class _Acc:
         for side, e in (("_before", eb), ("_after", ea)):
             r[side].append(_value(e) if e is not None else (None, NOT_STORED))
 
+    def recorded_values(self, col: str, before: tuple, after: tuple, week: int) -> None:
+        r = self.inputs.setdefault(col, {"feature": col, "label": feature_label(col), "unit": feature_unit(col),
+                                         "weeks": [], "_before": [], "_after": []})
+        r["weeks"].append(week)
+        r["_before"].append(before)
+        r["_after"].append(after)
+
 
 def _collapse(values: list[tuple]) -> tuple[float | None, str | None, bool]:
     """(value, missing reason, varies) of one side over the weeks: one value when every week agrees."""
@@ -294,7 +333,73 @@ def _public_part(p: dict) -> dict:
     return out
 
 
-def _week(acc: _Acc, w: int, wk: dict, position: str, sides: dict, first_kickoff: datetime | None) -> None:
+def _side_values(model: dict, rebuilt: dict, imputed: list) -> dict[str, tuple[float, float, float, bool]]:
+    """{column: (raw weight, value, training mean, imputed)} of one verified forecast."""
+    return {str(c): (w, v, float(m), bool(i))
+            for c, w, v, m, i in zip(model["columns"], rebuilt["w"], rebuilt["values"], model["means"], imputed)}
+
+
+def _full_split(acc: _Acc, w: int, p1: float, per_game: float, vb: dict, va: dict) -> None:
+    """The per-game change of one week split with both forecasts' full stored inputs (module docstring, v2).
+
+    An input unknown in either forecast is kept in its centred form w * (v - mean) on both sides (0 where it was
+    imputed: the training mean), and the whole change of that term is residual ("imputed"): neither an input part nor,
+    through the model constant's w * mean, a model part."""
+    rb, ra = vb["rebuilt"], va["rebuilt"]
+    acc.full_weeks.append(w)
+    if rb["floored"] or ra["floored"]:
+        acc.resid("floored", per_game, w)
+        return
+    s0, s1, t0, t1 = rb["scale"], ra["scale"], rb["shift"], ra["shift"]
+    l0, l1 = rb["linear"], ra["linear"]
+    s_mid, l_mid = (s0 + s1) / 2, (l0 + l1) / 2
+    c0 = _side_values(vb["model"], rb, vb["inputs"]["imputed"])
+    c1 = _side_values(va["model"], ra, va["inputs"]["imputed"])
+    same_model = vb["model"].get("model_sha256") == va["model"].get("model_sha256")
+    unknown = {c for c in set(c0) | set(c1) if (c0.get(c) or (0, 0, 0, False))[3] or (c1.get(c) or (0, 0, 0, False))[3]}
+    a0 = rb["a"] + sum(c0[c][0] * c0[c][2] for c in unknown if c in c0)       # the constant without those columns'
+    a1 = ra["a"] + sum(c1[c][0] * c1[c][2] for c in unknown if c in c1)       # w * mean: they are centred below
+    model_term = a1 - a0
+    imputed = 0.0
+    for col in sorted(set(c0) | set(c1)):
+        if col in unknown:
+            t_0 = c0[col][0] * (c0[col][1] - c0[col][2]) if col in c0 else 0.0
+            t_1 = c1[col][0] * (c1[col][1] - c1[col][2]) if col in c1 else 0.0
+            imputed += p1 * s_mid * (t_1 - t_0)
+            acc.recorded_values(col, (None, IMPUTED) if col in c0 and c0[col][3] else
+                                ((c0[col][1], None) if col in c0 else (None, NOT_STORED)),
+                                (None, IMPUTED) if col in c1 and c1[col][3] else
+                                ((c1[col][1], None) if col in c1 else (None, NOT_STORED)), w)
+            continue
+        w0, v0, _, _ = c0.get(col, (0.0, None, 0.0, False))
+        w1, v1, _, _ = c1.get(col, (0.0, None, 0.0, False))
+        v0 = v1 if v0 is None else v0            # a column one model lacks: no input change, a model change only
+        v1 = v0 if v1 is None else v1
+        model_term += (v0 + v1) / 2 * (w1 - w0)
+        if col not in c0 or col not in c1:
+            continue
+        p = acc.part(f"input:{col}", {"key": f"input:{col}", "kind": "input", "feature": col,
+                                      "label": feature_label(col), "unit": feature_unit(col), "exact": True,
+                                      "_full": True}, p1 * s_mid * (w0 + w1) / 2 * (v1 - v0), w)
+        p["_before"].append((v0, None))
+        p["_after"].append((v1, None))
+    if not same_model and abs(model_term) > 1e-12:
+        acc.part("model:coefficients", {"key": "model:coefficients", "kind": "model", "exact": True, "measured": True,
+                                        "label": "Model retrained (its weights and intercept)", "unit": "points"},
+                 p1 * s_mid * model_term, w)
+    rescoring = p1 * (l_mid * (s1 - s0) + (t1 - t0))
+    if abs(rescoring) >= 1e-9:
+        acc.part("model:rescoring", {"key": "model:rescoring", "kind": "model", "exact": True, "measured": True,
+                                     "label": "League re-scoring factor changed", "unit": "points"}, rescoring, w)
+    if imputed:
+        acc.resid("imputed", imputed, w)
+    y0, y1 = s0 * l0 + t0, s1 * l1 + t1
+    acc.resid("rounding", per_game - p1 * (y1 - y0), w)
+    acc.tolerance += TOLERANCE_PER_NUMBER * p1 * (2 + abs(s0) * (s0 != 1.0) + abs(s1) * (s1 != 1.0))
+
+
+def _week(acc: _Acc, w: int, wk: dict, position: str, sides: dict, first_kickoff: datetime | None,
+          full: tuple | None = None) -> None:
     """Split one window week's change into `acc` (module docstring)."""
     d = (_num(wk.get("after")) or 0.0) - (_num(wk.get("before")) or 0.0)
     (b_run, b_row), (a_run, a_row) = sides["before"], sides["after"]
@@ -349,6 +454,9 @@ def _week(acc: _Acc, w: int, wk: dict, position: str, sides: dict, first_kickoff
                                       "label": "Chance he plays", "unit": "share"}, avail, w)
         p["_before"].append((p0, None))
         p["_after"].append((p1, None))
+    if full is not None:
+        _full_split(acc, w, p1, per_game, *full)
+        return
     eb, ea = _explanation(b_row), _explanation(a_row)
     changes = model_changes(b_run, a_run)
     if changes:
@@ -385,9 +493,11 @@ def _week(acc: _Acc, w: int, wk: dict, position: str, sides: dict, first_kickoff
 
 
 def decompose(mover: dict, window: list[int], before_runs: dict, after_runs: dict, rows: dict,
-              first_kickoffs: dict) -> dict:
+              first_kickoffs: dict, inputs: dict | None = None) -> dict:
     """The attribution block of one Fantasy Intel mover. `before_runs` / `after_runs`: {week: run meta};
-    `rows`: {(run_id, espn_player_id): row}; `first_kickoffs`: {week: aware datetime}. Pure: same input, same output."""
+    `rows`: {(run_id, espn_player_id): row}; `first_kickoffs`: {week: aware datetime}; `inputs`: the verified forecast
+    inputs {(run_id, espn_player_id): {model, inputs, rebuilt}} (production_forecasts.verified_inputs), None or {} =
+    none. Pure: same input, same output."""
     pid, position = int(mover["espn_player_id"]), mover.get("position") or ""
     acc = _Acc()
     weeks = {int(w["week"]): w for w in mover.get("weeks") or []}
@@ -397,7 +507,9 @@ def decompose(mover: dict, window: list[int], before_runs: dict, after_runs: dic
         b_run, a_run = before_runs.get(w), after_runs.get(w)
         sides = {"before": (b_run, rows.get((b_run or {}).get("run_id"), {}).get(pid) if b_run else None),
                  "after": (a_run, rows.get((a_run or {}).get("run_id"), {}).get(pid) if a_run else None)}
-        _week(acc, w, weeks[w], position, sides, first_kickoffs.get(w))
+        vb = (inputs or {}).get(((b_run or {}).get("run_id"), pid))
+        va = (inputs or {}).get(((a_run or {}).get("run_id"), pid))
+        _week(acc, w, weeks[w], position, sides, first_kickoffs.get(w), (vb, va) if vb and va else None)
     return _finish(acc, mover, before_runs, after_runs)
 
 
@@ -415,9 +527,29 @@ def _side_meta(runs: dict, window: Iterable[int]) -> dict:
             "run_ids": list(dict.fromkeys(str(r["run_id"]) for r in used))}
 
 
+def _fold_small(parts: dict[str, dict]) -> dict[str, dict]:
+    """Full-input parts under SMALL_PART points shown as one line (their exact sum), so a model with dozens of inputs
+    stays readable; nothing is dropped."""
+    # an input that did not move contributes nothing and is not a line at all
+    parts = {k: p for k, p in parts.items() if not (p.get("_full") and abs(p["points"]) < 1e-9)}
+    small = [p for p in parts.values() if p.get("_full") and abs(p["points"]) < SMALL_PART]
+    if len(small) < 2:
+        return parts
+    out = {k: p for k, p in parts.items() if not (p.get("_full") and abs(p["points"]) < SMALL_PART)}
+    out["inputs:small"] = {"key": "inputs:small", "kind": "input", "exact": True,
+                           "label": f"{len(small)} other inputs, each under {SMALL_PART:.2f} points",
+                           "unit": "points", "points": sum(p["points"] for p in small),
+                           "weeks": sorted({w for p in small for w in p["weeks"]}),
+                           "features": sorted(p["feature"] for p in small),
+                           "feature_labels": [feature_label(f) for f in sorted(p["feature"] for p in small)]}
+    return out
+
+
 def _finish(acc: _Acc, mover: dict, before_runs: dict, after_runs: dict) -> dict:
     total = round(float(mover.get("delta") or 0.0), 2)
-    parts = sorted((_public_part(p) for p in acc.parts.values()), key=lambda p: (-abs(p["points"]), p["key"]))
+    full = bool(acc.full_weeks)
+    raw = _fold_small(acc.parts) if full else acc.parts
+    parts = sorted((_public_part(p) for p in raw.values()), key=lambda p: (-abs(p["points"]), p["key"]))
     shown = round(sum(p["points"] for p in parts), 2)
     residual_points = round(total - shown, 2)
     reasons = sorted(({**r, "points": round(r["points"], 2), "weeks": sorted(r["weeks"])}
@@ -432,7 +564,7 @@ def _finish(acc: _Acc, mover: dict, before_runs: dict, after_runs: dict) -> dict
         rnd["points"] = round(rnd["points"] + gap, 2)
     reasons = [r for r in reasons if abs(r["points"]) >= 0.005 or r["key"] in ("as_of", "missing_row", "no_inputs")]
     tolerance = round(acc.tolerance + TOLERANCE_PER_NUMBER * 2, 2)
-    model_changed = any(p["kind"] == "model" for p in parts)
+    model_changed = any(p["kind"] == "model" and not p.get("measured") for p in parts)
     if not parts and abs(residual_points) >= 0.005:
         status = "not_decomposed"
     elif model_changed:
@@ -446,10 +578,17 @@ def _finish(acc: _Acc, mover: dict, before_runs: dict, after_runs: dict) -> dict
                     key=lambda r: (r["label"], r["feature"]))
     for r in inputs:
         r.pop("points", None)
-    return {
-        "contract": CONTRACT, "status": status, "source_label": OURS_LABEL,
-        "method": "model_changed" if model_changed else ("approximate" if acc.approximate else "exact_linear"),
-        "method_note": METHOD_MODEL_CHANGED if model_changed else METHOD,
+    method = "model_changed" if model_changed else ("approximate" if acc.approximate else "exact_linear")
+    note = METHOD_MODEL_CHANGED if model_changed else METHOD
+    # a full-input block whose only unsplit model part is the chance to play still split the points model exactly
+    points_unsplit = any(p["kind"] == "model" and not p.get("measured") and p["key"] != "model:availability"
+                         for p in parts)
+    if full and not points_unsplit:
+        method = "approximate" if acc.approximate else "exact_midpoint"
+        note = METHOD_V2 + (" " + AVAILABILITY_UNSPLIT if model_changed else "")
+    block = {
+        "contract": CONTRACT_V2 if full else CONTRACT, "status": status, "source_label": OURS_LABEL,
+        "method": method, "method_note": note,
         "approximation_note": QB_NOTE if acc.approximate else None,
         "total": total, "parts": parts,
         "residual": {"points": residual_points, "reasons": reasons},
@@ -463,6 +602,9 @@ def _finish(acc: _Acc, mover: dict, before_runs: dict, after_runs: dict) -> dict
                   "refused": sorted(acc.refused, key=lambda r: (r["week"], r["forecast"]))},
         "reason": None,
     }
+    if full:
+        block["full_inputs"] = {"weeks": sorted(set(acc.full_weeks)), "convention": "two-factor midpoint (Shapley)"}
+    return block
 
 
 def unavailable(reason: str, label: str) -> dict:
@@ -480,10 +622,11 @@ def _run_ids(snap: dict | None) -> dict[int, str]:
     return {int(w): str(r) for w, r in ids.items()} if isinstance(ids, dict) else {}
 
 
-def _load(con, run_ids: list[str], pids: list[int]) -> tuple[dict, dict]:
-    """(runs {run_id: meta}, rows {run_id: {pid: row}}): two queries, whatever the number of movers."""
+def _load(con, run_ids: list[str], pids: list[int]) -> tuple[dict, dict, dict]:
+    """(runs {run_id: meta}, rows {run_id: {pid: row}}, verified inputs {(run_id, pid): ...}): four queries, whatever
+    the number of movers."""
     if not run_ids or not table_exists(con, pf.RUNS) or not table_exists(con, pf.ROWS):
-        return {}, {}
+        return {}, {}, {}
     runs = {r["run_id"]: r for r in fetch_dicts(con, f"SELECT * FROM {pf.RUNS} WHERE run_id IN (SELECT unnest(?))",
                                                 [run_ids])}
     have = table_columns(con, pf.ROWS)
@@ -494,7 +637,7 @@ def _load(con, run_ids: list[str], pids: list[int]) -> tuple[dict, dict]:
         for r in fetch_dicts(con, f"SELECT {', '.join(cols)} FROM {pf.ROWS} WHERE run_id IN (SELECT unnest(?)) "
                                   "AND espn_player_id IN (SELECT unnest(?))", [run_ids, pids]):
             rows.setdefault(r["run_id"], {})[int(r["espn_player_id"])] = r
-    return runs, rows
+    return runs, rows, pf.verified_inputs(con, run_ids, pids, rows, runs)
 
 
 def _targets(result: dict, player: int | None) -> list[tuple[str, int]]:
@@ -521,7 +664,7 @@ def attach(con, season: int, result: dict, player: int | None = None) -> dict:
         before_ids, after_ids = _run_ids(result.get("baseline")), _run_ids(result.get("current"))
         ids = sorted({r for w, r in before_ids.items() if w in window} | {r for w, r in after_ids.items() if w in window})
         pids = sorted({int(result[k][i]["espn_player_id"]) for k, i in targets})
-        runs, rows = _load(con, ids, pids)
+        runs, rows, inputs = _load(con, ids, pids)
         before_runs = {w: runs[r] for w, r in before_ids.items() if w in window and r in runs}
         after_runs = {w: runs[r] for w, r in after_ids.items() if w in window and r in runs}
         first = pf.first_kickoffs(con, season)
@@ -530,7 +673,7 @@ def attach(con, season: int, result: dict, player: int | None = None) -> dict:
             m = result[k][i]
             pid = int(m["espn_player_id"])
             if blocks[pid] is None:
-                blocks[pid] = decompose(m, window, before_runs, after_runs, rows, first)
+                blocks[pid] = decompose(m, window, before_runs, after_runs, rows, first, inputs)
     # `players` shares its dicts with the two lists: copy before setting, so the other entries keep None
     shared = {id(m) for m in result.get("players") or []} | {id(m) for m in result.get("risers") or []} \
         | {id(m) for m in result.get("fallers") or []}

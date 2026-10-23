@@ -551,3 +551,260 @@ def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
                                        "(or kickoff unknown), so none of its rows is a pregame forecast"})
     excluded.sort(key=lambda e: (e["week"], e["run_id"]))
     return [v[1] for _, v in sorted(best.items())], excluded
+
+
+# ----------------------------------------------------------------------------- forecast inputs (#225)
+#
+# A projected row's full point-model inputs, so a change between two forecasts can be split exactly between the
+# inputs and the model even across a retrain (projection_attribution). Two create-only, write-once tables beside
+# the run tables, never part of a run's content_sha256 (old runs keep their seals; an idempotent retry is unchanged):
+#
+#   independent_projection_models      one row per (artifact_id, position, model_kind): the ridge's design columns,
+#                                      training means and stds, coefficients and intercept (model_sha256 seals it)
+#   independent_projection_row_inputs  one row per (run_id, espn_player_id): the raw design row the model was applied
+#                                      to (imputed cells hold the training mean and are marked), the model it went
+#                                      through, the QB start-share column when the point is the start/no-start mixture,
+#                                      and the league re-score factor (scale) or shift
+#
+# Size (they ship in every league file): a rest-of-season cycle applies one artifact to every remaining week, and a
+# player's inputs differ between its target weeks only where the target week enters (opponent, home/away, the
+# week's teammate availability). So the first row stored for a player in a cycle keeps the whole vector and a later
+# target week stores only the columns that differ (`changed`, `input_values` / `imputed` at those positions) and the
+# run it differs from (`base_run_id`); a row differing in more than a third of its columns is stored whole.
+# `inputs_digest` (the first 64 bits of a sha256 over the row as stored) catches a changed or truncated copy; the
+# decisive check is that the reconstructed inputs rebuild the stored point (`verified_inputs`). Anything that fails
+# is "inputs not stored" and the reader keeps its earlier behaviour. Runs written before these tables existed have
+# none and are never backfilled.
+
+MODELS = "independent_projection_models"
+INPUTS = "independent_projection_row_inputs"
+INPUTS_VERSION = "forecast-inputs/v1"
+REPRODUCE_TOLERANCE = 0.006       # the stored points are rounded to 2 decimals
+DELTA_MAX_SHARE = 1 / 3           # store a row as changes against its cycle's base only below this share of columns
+
+
+def _digest(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+
+
+def _floats(v) -> list[float] | None:
+    return None if v is None else [float(x) for x in v]
+
+
+def row_fingerprint(row: dict) -> str:
+    """Digest of one forecast row's content cells (ROW_COLUMNS, canonicalised as for content_sha256)."""
+    return _digest({c: _canon(c, row.get(c)) for c in ROW_COLUMNS})
+
+
+def model_sha256(m: dict) -> str:
+    return _digest({"artifact_id": str(m["artifact_id"]), "position": str(m["position"]),
+                    "model_kind": str(m["model_kind"]), "model_version": m.get("model_version"),
+                    "columns": [str(c) for c in m["columns"]], "means": _floats(m["means"]), "stds": _floats(m["stds"]),
+                    "coef": _floats(m["coef"]), "intercept": float(m["intercept"])})
+
+
+def inputs_digest(r: dict) -> int:
+    """First 64 bits of the sha256 of one input row as stored (a UBIGINT)."""
+    payload = {"run_id": str(r["run_id"]), "espn_player_id": int(r["espn_player_id"]),
+               "artifact_id": str(r["artifact_id"]), "position": str(r["position"]), "model_kind": str(r["model_kind"]),
+               "base_run_id": r.get("base_run_id"), "changed": None if r.get("changed") is None else
+               [int(i) for i in r["changed"]], "input_values": _floats(r["input_values"]),
+               "imputed": [bool(x) for x in r["imputed"]], "mixture_column": r.get("mixture_column"),
+               "scale": None if r.get("scale") is None else float(r["scale"]),
+               "shift": None if r.get("shift") is None else float(r["shift"]), "inputs_version": r.get("inputs_version")}
+    return int(_digest(payload)[:16], 16)
+
+
+MODEL_COLUMNS = ("artifact_id", "position", "model_kind", "model_version", "columns", "means", "stds", "coef",
+                 "intercept", "model_sha256")
+INPUT_COLUMNS = ("run_id", "espn_player_id", "artifact_id", "position", "model_kind", "base_run_id", "changed",
+                 "input_values", "imputed", "mixture_column", "scale", "shift", "inputs_version", "inputs_digest")
+_LIST_TYPES = {"columns": "VARCHAR[]", "means": "DOUBLE[]", "stds": "DOUBLE[]", "coef": "DOUBLE[]",
+               "input_values": "DOUBLE[]", "imputed": "BOOLEAN[]", "changed": "INTEGER[]"}
+_SCALAR_TYPES = {"base_run_id": "VARCHAR", "mixture_column": "VARCHAR", "scale": "DOUBLE", "shift": "DOUBLE",
+                 "inputs_digest": "UBIGINT"}
+
+
+def _insert(con, table: str, columns: tuple[str, ...], rows: list[dict], conflict: str = "") -> None:
+    """One INSERT for the batch: the rows as a registered Arrow table (lists stay lists, never JSON text)."""
+    import pyarrow as pa       # the connection layer's own dependency (connection._rows_to_arrow)
+
+    arrow = {"columns": pa.list_(pa.string()), "means": pa.list_(pa.float64()), "stds": pa.list_(pa.float64()),
+             "coef": pa.list_(pa.float64()), "input_values": pa.list_(pa.float64()), "imputed": pa.list_(pa.bool_()),
+             "changed": pa.list_(pa.int32()), "base_run_id": pa.string(), "mixture_column": pa.string(),
+             "scale": pa.float64(), "shift": pa.float64(), "inputs_digest": pa.uint64()}
+    tmp = f"_inputs_{len(rows)}_{id(rows)}"
+    con.register(tmp, pa.table({c: pa.array([r[c] for r in rows], type=arrow.get(c)) for c in columns}))
+    try:
+        types = {**_LIST_TYPES, **_SCALAR_TYPES}
+        sel = ", ".join(f"CAST({c} AS {types[c]})" if c in types else c for c in columns)
+        con.execute(f"INSERT INTO {table} ({', '.join(columns)}) SELECT {sel} FROM {tmp} {conflict}")
+    finally:
+        con.unregister(tmp)
+
+
+def write_models(con, models: Iterable[dict]) -> int:
+    """Insert each model once (ON CONFLICT DO NOTHING: an artifact's models never change). Returns rows offered."""
+    rows = [{**m, "model_sha256": model_sha256(m)} for m in models]
+    if rows:
+        _insert(con, MODELS, MODEL_COLUMNS, rows, "ON CONFLICT DO NOTHING")
+    return len(rows)
+
+
+def write_inputs(con, run_id: str, inputs: Iterable[dict], bases: dict | None = None) -> int:
+    """Insert one run's input rows (write-once: a key collision raises), each sealed by inputs_digest. A row given
+    whole whose cycle `bases` {espn_player_id: (base_run_id, full row)} holds a vector of the same model is stored as
+    its changes against it when few columns differ (module comment, "Size")."""
+    rows = []
+    for r in inputs:
+        r = {"mixture_column": None, "scale": None, "shift": None, "base_run_id": None, "changed": None, **r,
+             "run_id": run_id, "inputs_version": r.get("inputs_version") or INPUTS_VERSION}
+        base = (bases or {}).get(int(r["espn_player_id"]))
+        if base is not None and r["base_run_id"] is None and r["changed"] is None:
+            r = _as_changes(r, *base)
+        r["inputs_digest"] = inputs_digest(r)
+        rows.append(r)
+    if rows:
+        _insert(con, INPUTS, INPUT_COLUMNS, rows)
+    return len(rows)
+
+
+def _as_changes(r: dict, base_run_id: str, b: dict) -> dict:
+    same = all(r[k] == b[k] for k in ("artifact_id", "position", "model_kind", "mixture_column")) \
+        and len(r["input_values"]) == len(b["input_values"]) and b.get("base_run_id") is None
+    if not same:
+        return r
+    changed = [i for i, (v, w, iv, iw) in enumerate(zip(r["input_values"], b["input_values"], r["imputed"], b["imputed"]))
+               if float(v) != float(w) or bool(iv) != bool(iw)]
+    if len(changed) > DELTA_MAX_SHARE * len(r["input_values"]):
+        return r
+    return {**r, "base_run_id": base_run_id, "changed": changed,
+            "input_values": [float(r["input_values"][i]) for i in changed],
+            "imputed": [bool(r["imputed"][i]) for i in changed]}
+
+
+def cycle_bases(con, run: dict, pids: list[int]) -> dict:
+    """{espn_player_id: (base_run_id, whole input row)}: per player the newest whole row stored by another run of the
+    same cycle (season, artifact, cutoff week, scoring) as `run`, for `write_inputs(..., bases=)`."""
+    if not pids or not table_exists(con, INPUTS):
+        return {}
+    cutoff = run.get("projected_from_week")
+    cutoff = run.get("week") if cutoff is None else cutoff
+    got = fetch_dicts(con, f"""
+        SELECT i.*, r.created_at AS _created FROM {INPUTS} i JOIN {RUNS} r USING (run_id)
+        WHERE r.season = ? AND r.artifact_id = ? AND coalesce(r.projected_from_week, r.week) = ?
+          AND r.scoring_fingerprint IS NOT DISTINCT FROM ? AND r.run_id <> ? AND i.base_run_id IS NULL
+          AND i.espn_player_id IN (SELECT unnest(?))
+        ORDER BY r.created_at, r.run_id""",
+                      [run["season"], run.get("artifact_id"), cutoff, run.get("scoring_fingerprint"), run["run_id"],
+                       sorted(pids)])
+    return {int(r["espn_player_id"]): (r["run_id"], r) for r in got}       # newest wins
+
+
+def linear_parts(model: dict, values: list[float]) -> tuple[float, list[float]]:
+    """(constant a, raw weights w) with model output a + sum_i w_i * v_i before the floor: w = coef / std,
+    a = intercept - sum_i w_i * mean_i."""
+    w = [float(c) / float(s) for c, s in zip(model["coef"], model["stds"])]
+    a = float(model["intercept"]) - sum(wi * float(m) for wi, m in zip(w, model["means"]))
+    return a, w
+
+
+def reproduce(model: dict, inp: dict) -> dict | None:
+    """The stored point rebuilt from whole inputs: {points, linear, floored, a, w, values, scale, shift}. `linear` is
+    the unfloored model output at the inputs (a QB mixture is linear in the start share when neither scenario is
+    floored); `floored` says the floor at 0 binds somewhere, so the point is not linear in the inputs. None when the
+    inputs do not fit the model (lengths differ, unknown mixture column)."""
+    values = _floats(inp["input_values"])
+    cols = list(model["columns"])
+    if values is None or len(values) != len(cols) or len(inp["imputed"]) != len(cols):
+        return None
+    a, w = linear_parts(model, values)
+    lin = a + sum(wi * v for wi, v in zip(w, values))
+    mix = inp.get("mixture_column")
+    if mix is None:
+        floored, point = lin < 0, max(lin, 0.0)
+    else:
+        if mix not in cols:
+            return None
+        i = cols.index(mix)
+        pi = values[i]
+        f1 = lin + w[i] * (1.0 - pi)
+        f0 = lin - w[i] * pi
+        floored = f1 < 0 or f0 < 0
+        point = pi * max(f1, 0.0) + (1.0 - pi) * max(f0, 0.0)
+    scale, shift = inp.get("scale"), inp.get("shift")
+    if shift is not None:
+        point, floored = max(point + float(shift), 0.0), floored or point + float(shift) < 0
+    elif scale is not None:
+        point = float(scale) * point
+    return {"points": point, "linear": lin, "floored": floored, "a": a, "w": w, "values": values,
+            "scale": 1.0 if scale is None else float(scale), "shift": 0.0 if shift is None else float(shift)}
+
+
+def _whole(r: dict, bases: dict) -> dict | None:
+    """The row's whole inputs: itself, or its cycle base with the stored changes applied. None when its base is
+    missing, not whole, of another model, or fails its digest."""
+    if r.get("base_run_id") is None:
+        return r if r.get("changed") is None else None
+    b = bases.get((r["base_run_id"], int(r["espn_player_id"])))       # digest already checked by the caller
+    if b is None or b.get("base_run_id") is not None \
+            or any(b[k] != r[k] for k in ("artifact_id", "position", "model_kind", "mixture_column")):
+        return None
+    values, imputed = list(_floats(b["input_values"])), [bool(x) for x in b["imputed"]]
+    changed = [int(i) for i in r["changed"] or []]
+    if len(changed) != len(r["input_values"]) or len(changed) != len(r["imputed"]) \
+            or any(i < 0 or i >= len(values) for i in changed):
+        return None
+    for i, v, m in zip(changed, r["input_values"], r["imputed"]):
+        values[i], imputed[i] = float(v), bool(m)
+    return {**r, "input_values": values, "imputed": imputed}
+
+
+def verified_inputs(con, run_ids: list[str], pids: list[int], rows: dict, runs: dict | None = None) -> dict:
+    """{(run_id, espn_player_id): {model, inputs, rebuilt}} for the stored inputs that verify: the row's (and its base's)
+    digest matches, the model's digest matches and it is the run's own artifact's, and the whole inputs rebuild the
+    stored projected_points (2 decimals; `inputs` is the whole row). `rows`: {run_id: {pid: row}} of the run rows
+    (projected_points, position) already read; `runs`: {run_id: run meta}, whose artifact_id the inputs must name.
+    Three queries; nothing raises."""
+    if not run_ids or not pids or not table_exists(con, INPUTS) or not table_exists(con, MODELS):
+        return {}
+    got = fetch_dicts(con, f"SELECT * FROM {INPUTS} WHERE run_id IN (SELECT unnest(?)) "
+                           "AND espn_player_id IN (SELECT unnest(?))", [run_ids, pids])
+    need = sorted({r["base_run_id"] for r in got if r.get("base_run_id")})
+    bases = {(b["run_id"], int(b["espn_player_id"])): b for b in fetch_dicts(
+        con, f"SELECT * FROM {INPUTS} WHERE run_id IN (SELECT unnest(?)) AND espn_player_id IN (SELECT unnest(?))",
+        [need, pids])} if need else {}
+    keys = sorted({str(r["artifact_id"]) for r in got})
+    models = {(str(m["artifact_id"]), str(m["position"]), str(m["model_kind"])): m for m in fetch_dicts(
+        con, f"SELECT * FROM {MODELS} WHERE artifact_id IN (SELECT unnest(?))", [keys])} if keys else {}
+    sound = {k for k, m in models.items() if m.get("model_sha256") == model_sha256(m)}
+    whole_ok = {k for k, b in bases.items() if b.get("inputs_digest") == inputs_digest(b)}
+    bases = {k: b for k, b in bases.items() if k in whole_ok}
+    out = {}
+    for r in got:
+        try:
+            if r.get("inputs_digest") != inputs_digest(r):
+                continue
+            if runs is not None and str((runs.get(r["run_id"]) or {}).get("artifact_id")) != str(r["artifact_id"]):
+                continue
+            whole = _whole(r, bases)
+            key = (str(r["artifact_id"]), str(r["position"]), str(r["model_kind"]))
+            m = models.get(key)
+            if whole is None or m is None or key not in sound:
+                continue
+            row = (rows.get(r["run_id"]) or {}).get(int(r["espn_player_id"]))
+            if row is None or row.get("projected_points") is None or str(row.get("position")) != str(r["position"]):
+                continue
+            rebuilt = reproduce(m, whole)
+            if rebuilt is None:
+                continue
+            # a re-scored point is the league factor times the reference point already rounded to 2 decimals (or that
+            # point plus a shift, rounded again): the rounding it carries grows with the factor
+            tol = REPRODUCE_TOLERANCE + 0.005 * (abs(rebuilt["scale"]) if r.get("scale") is not None
+                                                 else 1.0 if r.get("shift") is not None else 0.0)
+            if abs(rebuilt["points"] - float(row["projected_points"])) > tol:
+                continue
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            continue
+        out[(r["run_id"], int(r["espn_player_id"]))] = {"model": m, "inputs": whole, "rebuilt": rebuilt}
+    return out
