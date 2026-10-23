@@ -249,12 +249,29 @@ def test_the_flex_solver_leaving_slots_empty_is_never_bounded():
     players = [P(1, "RB"), P(2, "WR")]
     pr = {1: {1: 1.0, 2: 1.0, 3: 1.0}, 2: {1: -2.0, 2: -2.0, 3: -2.0}, 31: {1: 0.0, 2: 0.0, 3: 3.0}}
     floors = sp._floors(sp.project_team(players, slots, w, pr), list(w.weeks))
-    assert all(f is None for f in floors.values())
+    assert all(f is not None and all(v == float("-inf") for v in f.values()) for f in floors.values())
     res = sp.plan_stashes(players, slots, w, pr, free_agents=[P(31, "TE")], free_agent_status={31: "FREEAGENT"},
                           active_capacity=3, horizon=2, projection_source="ESPN")
     direct = scenario(players, slots, w, pr, add=[P(31, "TE")])["_ros_exact"]
     assert res["counts"]["no_possible_gain"] == 0
     assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["pick_up_now"]] == [(31, round(direct, 2))]
+
+
+def test_a_negative_player_out_of_reach_keeps_the_bound():
+    # a negative bench D/ST can fill no RB-reachable slot, so 55 RBs who never start are still skipped exactly and the
+    # one real stash (RB 3's bye week) is found
+    slots = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "D/ST": 1})
+    players = [P(0, "WR")] + roster() + [P(9, "D/ST"), P(10, "D/ST")]    # WR 0 (bench, 0.5): the drop, not the D/ST
+    rbs = [P(700 + i, "RB") for i in range(55)]
+    pr = proj({0: weekly(0.5), 9: weekly(6.0), 10: weekly(-1.0), 31: weekly(0.0, w3=4.0),
+               **{p.espn_player_id: weekly(2.9) for p in rbs}})
+    res = sp.plan_stashes(players, slots, WIN, pr, free_agents=[*rbs, P(31, "RB")],
+                          free_agent_status={p.espn_player_id: "FREEAGENT" for p in [*rbs, P(31, "RB")]},
+                          active_capacity=len(players), projection_source="ESPN")
+    assert res["drop"]["espn_player_id"] == 0
+    after = sp.project_team([p for p in players if p.espn_player_id != 0], slots, Window((1, 2, 3, 4, 5), 5), pr)
+    assert all(f["RB"] > float("-inf") for f in sp._floors(after, [1, 2, 3, 4, 5]).values())
+    assert [x["espn_player_id"] for x in res["stashes"]] == [31] and res["counts"]["no_possible_gain"] == 55
 
 
 def test_an_unsupported_slot_keeps_the_bound():

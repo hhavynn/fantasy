@@ -22,7 +22,8 @@ any lineup is solved, each gets an upper bound on what he can add: per week, his
 NFL-ineligible) minus the lowest starter he could displace through the slots his position reaches in the lineup without
 the drop (0 for an empty slot), plus the drop's exact removal cost. Adding one player changes an optimal lineup by one
 replacement chain that ends with that starter leaving, so a bound of 0 or less means no gain (counted, not solved). A
-week with a missing or negative projection on the roster, or a negative one for him, has no bound (he is solved). When
+week with a missing projection, or a negative one for him or for any player who could fill a slot his position reaches,
+has no bound (he is solved). When
 removing the drop alone adds points (a negative projection forced into a starting slot), every free agent is measured
 against the roster without him and the drop's own change is reported separately. The rest are evaluated exactly, at most MAX_PER_POSITION per position in bound order; every cut is counted.
 
@@ -82,19 +83,23 @@ def _effective(proj, p: RosterPlayer, week: int) -> float:
 def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]:
     """Per week and position: the lowest starter a player at that position could push out of the current lineup (0 for
     an empty slot it reaches), following the replacement chain through the slots each displaced starter can take. None
-    (no bound: the candidate is solved) for a week with a missing projection, or with a negative one anywhere on the
-    roster: a negative player can be forced into a fixed slot and the flex solver may leave flex slots empty below a
-    threshold, so the replacement-chain argument does not hold there."""
+    for a week with a missing projection (no bound: the candidate is solved). -inf (no bound) for a position whose
+    reachable slots some negative-projected player could fill: a negative player can be forced into a fixed slot and the
+    flex solver may leave flex slots empty below a threshold, so the replacement-chain argument does not hold there. A
+    negative player who can fill none of them (a bench D/ST for an RB) does not matter."""
     out = {}
     by_week = {w["week"]: w for w in base["weeks"]}
     for wk in hweeks:
         week = by_week[wk]
-        values = [a["points"] for a in week["assignment"] if slot_filled(a)] + [b["points"] for b in week["bench"]]
-        if not week.get("_projections_complete", week["projection_complete"]) or any(
-                v is None or v < 0 for v in values):
+        if not week.get("_projections_complete", week["projection_complete"]):
             out[wk] = None
             continue
         rows = week["assignment"]
+        # (position, value) of every player in the lineup pool: starters, streamers and the bench (a teamless,
+        # unprojected bench player is no part of any lineup and has no position here)
+        pool = [(a["position"], a["points"]) for a in rows if slot_filled(a)] + \
+               [(b["position"], b["points"]) for b in week["bench"] if b["position"] is not None]
+        negative = {q for q, v in pool if v is not None and v < 0}
         floors = {}
         for pos in STASH_POSITIONS:
             if DUAL_ELIGIBILITY:                        # eligibility widens per player: every slot may be reached
@@ -110,6 +115,9 @@ def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]
                             if slot_filled(a) and a["position"] not in seen:
                                 seen.add(a["position"])
                                 frontier.append(a["position"])
+            if (DUAL_ELIGIBILITY and negative) or any(eligible(rows[i]["slot"], q) for i in reached for q in negative):
+                floors[pos] = float("-inf")
+                continue
             vals = [(a["points"] if slot_filled(a) else 0.0) for i, a in enumerate(rows) if i in reached]
             floors[pos] = min(vals) if vals else None
         out[wk] = floors
@@ -220,7 +228,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
             unknown += 1
             continue
         total, d_now, d_later = s["_ros_exact"], exact[0], sum(exact[1:])
-        if total <= EPS:
+        if total <= EPS or r(total) <= 0:               # a gain that shows as 0.0 is not listed
             no_gain += 1
             continue
         by_week = {w["week"]: w for w in s["weeks"]}
@@ -230,7 +238,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
                "weeks": [{"week": w, "delta": by_week[w]["delta"],
                           "starts": fa.espn_player_id in by_week[w]["entered_lineup"],
                           "fills_in_for": by_week[w]["left_lineup"]} for w in hweeks]}
-        if d_now > EPS:
+        if d_now > EPS and r(d_now) > 0:
             now_adds.append(row)
             continue
         starts = [w["week"] for w in row["weeks"] if w["starts"] and w["week"] != now]

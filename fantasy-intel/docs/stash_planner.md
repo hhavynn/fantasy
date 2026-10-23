@@ -33,9 +33,9 @@ Only a candidate whose net difference over the whole horizon is positive is list
   he is verified NFL-ineligible) minus the lowest starter he could push out through the slots his position reaches in
   the lineup without the drop (0 for an empty slot), plus the drop's exact removal cost. Adding one player changes an
   optimal lineup by one replacement chain that ends with that starter leaving, so a bound of 0 or less is no gain
-  (`no_possible_gain`, exact, not solved). A week with a missing or negative projection on the roster (or a negative one
-  for him) has no bound, so he is solved: a negative player can be forced into a fixed slot and the flex solver may
-  leave flex slots empty. When removing the drop alone adds points, every free agent is measured against the roster
+  (`no_possible_gain`, exact, not solved). A week with a missing projection, or a negative one for him or for any player
+  who could fill a slot his position reaches (a bench D/ST does not count for an RB), has no bound, so he is solved: a
+  negative player can be forced into a fixed slot and the flex solver may leave flex slots empty. When removing the drop alone adds points, every free agent is measured against the roster
   without him and a `drop_notes` entry reports the drop's own change. A randomized test checks the bound against the evaluator. The rest are
   evaluated exactly, at most 50 per position in bound order (`not_evaluated_cap`), so free agents who can never start
   (a backup QB in a one-QB league) never crowd out a real stash.
