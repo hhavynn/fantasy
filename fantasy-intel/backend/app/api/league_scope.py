@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+import duckdb
 from fastapi import Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
@@ -246,19 +247,17 @@ class ResponseCache:
 def next_kickoff(scope: LeagueScope, now: datetime) -> datetime | None:
     """The first scheduled NFL kickoff after `now` in the global file this league's answer was read from, or None
     (no schedule, no kickoff times, or none ahead). Every game type counts: an extra boundary only costs a recompute.
-    Runs in the thread pool while the request holds the pair pinned."""
+    One small query per cache miss, in the thread pool while the request holds the pair pinned, over the rows dated
+    from a day before `now` on. Rows are selected by date, never by `season`: a season label need not match its
+    calendar dates (a season's playoffs run into the next year; synthetic schedules date future weeks far ahead)."""
     from ..analytics.trade_data import kickoff_utc
     con = layered_databases().cursor(scope.league_path, scope.global_path, perspective=scope.perspective)
     try:
-        cols = {r[0] for r in con.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_catalog = 'gl' AND table_schema = 'main' "
-            "AND table_name = 'nfl_schedules'").fetchall()}
-        if not {"gameday", "gametime"} <= cols:
-            return None
         # gameday is the US Eastern date: a day of margin keeps a late game (after midnight UTC) in view.
-        since = (now - timedelta(days=1)).date().isoformat()
         rows = con.execute("SELECT DISTINCT gameday, gametime FROM gl.main.nfl_schedules "
-                           "WHERE CAST(gameday AS VARCHAR) >= ?", [since]).fetchall()
+                           "WHERE CAST(gameday AS VARCHAR) >= ?", [(now - timedelta(days=1)).date().isoformat()]).fetchall()
+    except (duckdb.CatalogException, duckdb.BinderException):     # no schedule, or one without kickoff columns
+        return None
     finally:
         con.close()
     return min((k for gd, gt in rows if (k := kickoff_utc(gd, gt)) is not None and k > now), default=None)

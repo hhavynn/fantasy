@@ -291,7 +291,7 @@ def test_next_kickoff_reads_the_global_schedule(tmp_path, monkeypatch):
     from app.api import deps, league_scope
     from app.api.deps import LeagueScope
     monkeypatch.setattr(deps, "_LAYERED", {})
-    lg, gl, bare = tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", tmp_path / "bare.duckdb"
+    lg, gl, bare, timeless = (tmp_path / f"{n}.duckdb" for n in ("lg", "gl", "bare", "timeless"))
     con = duckdb.connect(str(lg))
     con.execute("CREATE TABLE fantasy_teams (team_id INT, name VARCHAR, is_mine BOOLEAN)")
     # a league table of the same name must never be read: the schedule is global
@@ -303,28 +303,37 @@ def test_next_kickoff_reads_the_global_schedule(tmp_path, monkeypatch):
     con.executemany("INSERT INTO nfl_schedules VALUES (?, ?, ?, ?, ?)", [
         [2099, 3, "REG", "2099-10-03", "13:00"], [2099, 3, "REG", "2099-10-03", None],
         [2099, 3, "REG", "2099-10-03", "20:15"],          # 00:15 UTC on 2099-10-04
-        [2099, 4, "REG", "2099-10-10", "13:00"], [2026, 1, "REG", "2026-09-10", "20:20"]])
+        [2099, 4, "REG", "2099-10-10", "13:00"], [2026, 1, "REG", "2026-09-10", "20:20"],
+        [2026, 5, "REG", "2099-10-02", "13:00"]])     # selected by date, whatever its season label says
     con.close()
     duckdb.connect(str(bare)).close()
+    con = duckdb.connect(str(timeless))
+    con.execute("CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, gameday VARCHAR)")
+    con.execute("INSERT INTO nfl_schedules VALUES (2099, 3, 'REG', '2099-10-03')")
+    con.close()
 
     def scope(global_path):
         return LeagueScope("lg_t", lg, global_path, "d", "g", 0, None)
 
     late = _utc("2099-10-04T00:15:00+00:00")
     assert league_scope.next_kickoff(scope(gl), _utc("2099-10-03T16:00:00+00:00")) == WEEK3_KICKOFF
+    assert league_scope.next_kickoff(scope(gl), _utc("2099-10-02T12:00:00+00:00")) == _utc("2099-10-02T17:00:00+00:00")
     assert league_scope.next_kickoff(scope(gl), WEEK3_KICKOFF) == late                # at kickoff: the next one
     assert league_scope.next_kickoff(scope(gl), _utc("2099-10-04T00:10:00+00:00")) == late
     assert league_scope.next_kickoff(scope(gl), late) == _utc("2099-10-10T17:00:00+00:00")
     assert league_scope.next_kickoff(scope(gl), _utc("2100-01-01T00:00:00+00:00")) is None
     assert league_scope.next_kickoff(scope(bare), WEEK3_KICKOFF) is None
+    assert league_scope.next_kickoff(scope(timeless), _utc("2099-10-01T00:00:00+00:00")) is None   # no gametime column
 
 
 @pytest.mark.parametrize("path", ["/api/trades/values", "/api/trades/options"])
-def test_a_time_dependent_answer_is_recomputed_once_its_week_kicks_off(pg, served, client, e2e, e2e_b, tmp_path, path):
+def test_a_time_dependent_answer_is_recomputed_once_its_week_kicks_off(pg, served, client, e2e, e2e_b, tmp_path, path,
+                                                                      monkeypatch):
     """The trade window starts at the first week not kicked off (app/analytics/trade_data.evaluation_start_week). A
-    cached answer is served until the next kickoff, then computed again; another league's and another perspective's
-    entries stay their own."""
+    cached answer is served until the next kickoff, then computed again with the window moved on; another league's and
+    another perspective's entries stay their own. The handler reads the same moved clock as the cache."""
     from datetime import timedelta
+    from app.analytics import trade_data
     from app.api import league_scope
     from app.api.league_scope import RESPONSE_TTL
     a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
@@ -333,6 +342,8 @@ def test_a_time_dependent_answer_is_recomputed_once_its_week_kicks_off(pg, serve
     clock = _Clock(WEEK3_KICKOFF - timedelta(minutes=10))
     cache = league_scope.response_cache()
     cache.clock = clock
+    real_now = trade_data._aware_utc
+    monkeypatch.setattr(trade_data, "_aware_utc", lambda now: real_now(clock() if now is None else now))
     url_a, url_b = f"/v2/leagues/{a.league_id}{path}?team_id=2", f"/v2/leagues/{b.league_id}{path}?team_id=2"
     first = client.get(url_a)
     assert first.status_code == 200 and first.headers["x-fi-cache"] == "miss", first.text[:200]
@@ -350,6 +361,10 @@ def test_a_time_dependent_answer_is_recomputed_once_its_week_kicks_off(pg, serve
     after = client.get(url_a)
     assert after.status_code == 200 and after.headers["x-fi-cache"] == "miss"
     assert MARK not in after.text
+    if path == "/api/trades/options":           # the window moved on: week 3 has kicked off, so it starts at week 4
+        assert first.json()["evaluation"]["start_week"] == 3 and after.json()["evaluation"]["start_week"] == 4
+    else:                                       # every value is taken over the shorter window
+        assert first.json()["available"] and after.json()["players"] != first.json()["players"]
     assert len(cache) == 1                                                      # the three expired entries are gone
     assert cache._entries[next(iter(cache._entries))][3] == clock.now + RESPONSE_TTL   # week 4 is a day away: the cap
     assert client.get(url_a).headers["x-fi-cache"] == "hit"
