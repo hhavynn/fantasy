@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { sortRows } from "./sort.ts";
 import {
-  DEFAULT_SORT, analyzerHref, analyzerLabel, basisLine, changeUnavailableText, filterRows, parseValuesState,
+  DEFAULT_SORT, analyzerHref, analyzerLabel, basisLine, changeUnavailableText, changeWindowNote, filterRows, highestInView,
+  parseValuesState, sourceText,
   positionRankText, selectedRow, signedPts, valueSortValue, valuesHref, weeksText, whyText,
   type Basis, type ChangeContext, type ValueRow,
 } from "./trade-values.ts";
@@ -13,8 +14,9 @@ function row(over: Partial<ValueRow> = {}): ValueRow {
     espn_player_id: 9001, name: "Test Player A", position: "RB", pro_team: "KC", injury_status: null,
     team_id: 3, team_name: "Team 3", on_my_team: false,
     value: 24.5, value_per_week: 2.5, value_regular: 20, value_playoff: 4.5, known_value: null,
-    rank: 2, rank_of: 10, position_rank: 1, position_rank_of: 4, league_starters_at_position: 8, starter_caliber: true,
-    weeks_counted: 10, missing_weeks: [], nfl_ineligible_weeks: [], availability_status: "available",
+    rank: 2, rank_of: 10, rank_reason: null, position_rank: 1, position_rank_of: 4, league_starters_at_position: 8, starter_caliber: true,
+    weeks_counted: 10, missing_weeks: [], no_replacement_weeks: [], nfl_ineligible_weeks: [], availability_status: "available",
+    projection_versions: ["ESPN"],
     uncertainty: [], weekly: [], change: null, ...over,
   };
 }
@@ -94,7 +96,27 @@ test("wording helpers", () => {
   assert.equal(positionRankText(row({ position_rank: null })), null);
   assert.equal(selectedRow([row()], 9001)?.name, "Test Player A");
   assert.equal(selectedRow([row()], 5), null);
-  const b = { label: "Fantasy Intel model estimate", projection_label: "ESPN weekly projections", calculation_version: "tv-1",
-    window: { weeks: [3, 4, 5] } } as unknown as Basis;
-  assert.equal(basisLine(b), "Fantasy Intel model estimate · ESPN weekly projections · weeks 3–5 · calculation tv-1");
+  const b = { label: "Fantasy Intel model estimate", projection_label: "ESPN weekly projections", calculation_version: "tv-2",
+    projection_source: "espn", projection_versions: ["ESPN"], window: { weeks: [3, 4, 5] } } as unknown as Basis;
+  assert.equal(basisLine(b), "Fantasy Intel model estimate · ESPN weekly projections · weeks 3–5 · calculation tv-2");
+  const ours = { ...b, projection_source: "independent", projection_label: "Fantasy Intel projections",
+    projection_versions: ["ESPN", "ifp-2.1.0", "kfp-1.1.0"] } as Basis;
+  assert.equal(sourceText(ours), "Fantasy Intel projections (ESPN, ifp-2.1.0, kfp-1.1.0)");
+});
+
+test("a change over fewer weeks than the value is labelled with its weeks", () => {
+  assert.equal(changeWindowNote(ctx), null);
+  assert.equal(changeWindowNote({ ...ctx, weeks: [5, 6, 7, 8], excluded_weeks: [{ week: 4, reason: "not projected in the earlier snapshot" }] }),
+    "over weeks 5–8");
+  assert.equal(changeWindowNote(none), null);
+  assert.equal(changeWindowNote(null), null);
+});
+
+test("highest in view never picks a missing value, and across positions only a free-agent-baseline value", () => {
+  const k = row({ espn_player_id: 1, position: "K", value: 90, rank: null, rank_reason: "Different replacement baseline: …" });
+  const qb = row({ espn_player_id: 2, position: "QB", value: 40, rank: 1 });
+  const gone = row({ espn_player_id: 3, position: "K", value: null, rank: null });
+  assert.equal(highestInView([k, qb, gone], null)?.espn_player_id, 2);
+  assert.equal(highestInView([k, gone], "K")?.espn_player_id, 1);
+  assert.equal(highestInView([gone], "K"), null);
 });

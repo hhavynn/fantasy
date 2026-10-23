@@ -163,7 +163,7 @@ class AssetBoard:
                 fa = [v for p in state.free_agents if p.position == pos and w not in p.unavailable_weeks
                       and (v := projection(state.projections, p.espn_player_id, w)) is not None]
                 if fa:
-                    per[w] = {"level": max(fa), "source": "best available free agent"}
+                    per[w] = {"level": max(fa), "source": "best available free agent", "measured": True}
                 else:
                     vals = sorted((v for p in rostered if p.position == pos and w not in p.unavailable_weeks
                                    and (v := projection(state.projections, p.espn_player_id, w)) is not None),
@@ -172,8 +172,11 @@ class AssetBoard:
                     # share rounded to 0; only a position no slot accepts falls back to one per team.
                     lineup_pos = pos in self.starters or lineup_relevant(pos, state.slots)
                     k = self.reference["weeks"][w].get(pos, 0) if lineup_pos else self.teams
+                    # `measured` False: no projected player beyond the starters, so the 0.0 level is a stand-in, not a
+                    # measurement (the trade values board reports such a week as unknown; the engines here keep 0.0).
                     per[w] = {"level": vals[k] if len(vals) > k else 0.0,
-                              "source": "league-structure replacement (no free agent projected)"}
+                              "source": "league-structure replacement (no free agent projected)",
+                              "measured": len(vals) > k}
             self.base[pos] = per
         self.profiles = {p.espn_player_id: self._profile(p) for p in rostered}
         by_pos: dict[str, list[tuple[float, int]]] = {}

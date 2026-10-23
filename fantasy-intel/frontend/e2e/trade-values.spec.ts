@@ -30,7 +30,7 @@ test("values are labelled model estimates, change is unavailable (never 0), and 
   const main = page.locator("main");
   await expect(main.getByText("Model estimates, not trade prices")).toBeVisible();
   await expect(main.getByText("Week-over-week change unavailable")).toBeVisible();
-  await expect(main.getByText(/Fantasy Intel model estimate · ESPN weekly projections · weeks 3–17 · calculation tv-1/)).toBeVisible();
+  await expect(main.getByText(/Fantasy Intel model estimate · ESPN weekly projections · weeks 3–17 · calculation tv-2/)).toBeVisible();
   const n = await rows(page).count();
   expect(n).toBeGreaterThan(10);
   // The Change column (6th) says Unavailable on every row: no number, no 0.0.
@@ -78,6 +78,24 @@ test("a player's calculation shows the week-by-week sum, version, caveats and li
   await trade.click();
   await expect(page).toHaveURL(/\/trades\?ta=\d+/);
   await expect(page.locator("main h1:visible")).toHaveText("Trade analyzer", { timeout: 30_000 });
+});
+
+test("analyzer links keep the analyzed team from the URL, and missing values stay missing", async ({ page }) => {
+  await page.goto("/trades/values?team=4&pos=WR");
+  await loaded(page);
+  const links = page.locator("main table").first().locator("a", { hasText: /^Trade (for|away)/ });
+  expect(await links.count()).toBeGreaterThan(0);
+  for (const href of await links.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
+    const q = new URL(href!, "http://x").searchParams;
+    expect(href).toMatch(/^\/trades\?/);
+    expect(q.get("team"), href!).toBe("4");
+    expect(q.get("ta"), href!).toBe("4");
+  }
+  await expect(page.locator("main").getByRole("link", { name: "Trade analyzer" }).first()).toHaveAttribute("href", "/trades?team=4");
+  // The fixture projects no free-agent kicker and no kicker beyond the starters: no value, never one above a 0 level.
+  await page.goto("/trades/values?pos=K");
+  await loaded(page);
+  for (const v of await rows(page).locator("td:nth-child(3)").allInnerTexts()) expect(v.trim()).toBe("—");
 });
 
 test("the board is in the Trades navigation", async ({ page }) => {

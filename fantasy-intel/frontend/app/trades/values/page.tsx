@@ -1,6 +1,6 @@
-import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";
+import { TeamLink } from "@/components/TeamLink";
 import { EmptyState, Glossary, Method, Notice, PageHeader, ProvenanceBadge, Section, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -8,7 +8,8 @@ import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
 import type { SearchParams } from "@/lib/sort";
 import {
-  CONTRACT, changeUnavailableText, filterRows, parseValuesState, selectedRow, weeksText, type TradeValuesResponse,
+  CONTRACT, changeUnavailableText, filterRows, highestInView, parseValuesState, selectedRow, sourceText, weeksText,
+  type TradeValuesResponse,
 } from "@/lib/trade-values";
 import { Controls } from "./Controls";
 import { Detail } from "./Detail";
@@ -46,7 +47,7 @@ export default async function TradeValuesPage({ searchParams }: PageProps<"/trad
     );
   }
   const provenance = <ProvenanceBadge signals={signalsOf(d.provenance)} />;
-  const analyzer = <Link href="/trades">Trade analyzer</Link>;
+  const analyzer = <TeamLink href="/trades">Trade analyzer</TeamLink>;
   if (!d.available || !d.basis) {
     return (
       <div className="stack">
@@ -62,7 +63,7 @@ export default async function TradeValuesPage({ searchParams }: PageProps<"/trad
   const state = parseValuesState(sp);
   const rows = filterRows(d.players, state);
   const selected = selectedRow(d.players, state.player);
-  const top = [...rows].filter((r) => r.value !== null).sort((x, y) => (y.value ?? 0) - (x.value ?? 0))[0] ?? null;
+  const top = highestInView(rows, state.position);
   const ch = d.change;
   const projections = signalsOf(d.provenance).find((s) => s.signal === "projections") ?? null;
 
@@ -71,7 +72,7 @@ export default async function TradeValuesPage({ searchParams }: PageProps<"/trad
       <PageHeader
         eyebrow={EYEBROW}
         title={TITLE}
-        meta={<>{b.label}: projected points above replacement · <b>{b.projection_label}</b> · {weeksText(b.window.weeks)}</>}
+        meta={<>{b.label}: projected points above replacement · <b>{sourceText(b)}</b> · {weeksText(b.window.weeks)}</>}
         provenance={provenance}
         actions={analyzer}
       >
@@ -79,14 +80,15 @@ export default async function TradeValuesPage({ searchParams }: PageProps<"/trad
       </PageHeader>
 
       <Notice tone="info" title="Model estimates, not trade prices">
-        {d.note} Values are comparable only with each other on this board.
+        {d.note} Values are comparable only with each other on this board. {b.cross_position}
       </Notice>
       {b.window.uncertain && b.window.warning && <Notice tone="caution">{b.window.warning}</Notice>}
 
       <StatStrip compact>
         <Stat label="Valued players" value={`${d.summary?.valued ?? 0} of ${d.summary?.players ?? 0}`}
           note={(d.summary?.unvalued ?? 0) > 0 ? `${d.summary!.unvalued} without a value (missing projection)` : "every rostered player"} />
-        <Stat label="Highest in view" value={top ? top.value!.toFixed(1) : "—"} note={top ? top.name ?? undefined : "no value in this filter"} />
+        <Stat label="Highest in view" value={top ? top.value!.toFixed(1) : "—"}
+          note={top ? `${top.name ?? `Player #${top.espn_player_id}`}${state.position ? "" : ", above a free agent"}` : "no comparable value in this filter"} />
         <Stat label="Sample window" value={weeksText(b.window.weeks)}
           note={`${b.window.weeks.length} ${plural(b.window.weeks.length, "week")} of projections`} />
         <Stat label="Change since" value={ch?.available && ch.baseline ? ch.baseline.label : "Unavailable"}
@@ -110,13 +112,14 @@ export default async function TradeValuesPage({ searchParams }: PageProps<"/trad
         <p>{b.calculation}</p>
         <p>{b.comparable_within}</p>
         <p>
-          Source: {b.projection_label}{b.model_version ? ` (model ${b.model_version})` : ""}, calculation {b.calculation_version}. {b.scoring} {b.rostered_only}
-          {b.kdst_streaming && " Kickers and D/STs are valued the way the trade analyzer values them by default: lineups stream them weekly from free agents."}
+          Source: {sourceText(b)}, calculation {b.calculation_version}. Each week of a player&apos;s calculation names the
+          source or model version that produced it. {b.scoring} {b.rostered_only} {b.kdst}
         </p>
         <p>
           League starters per position used for ranks and the league-structure level:{" "}
           {Object.entries(b.league_starters).map(([pos, n]) => `${pos} ${n}`).join(", ")}.{b.flex_note ? ` ${b.flex_note}` : ""}
-          {b.replacement_fallback_positions.length > 0 && ` No free agent is projected at ${b.replacement_fallback_positions.join(", ")} in some weeks, so the league-structure level stands in there; it falls to 0 when the pool is too small.`}
+          {b.replacement_fallback_positions.length > 0 && ` No free agent is projected at ${b.replacement_fallback_positions.join(", ")} in some weeks, so the league-structure level stands in there; those values are ranked only within their position.`}
+          {b.no_replacement_positions.length > 0 && ` At ${b.no_replacement_positions.join(", ")} some weeks have no measurable replacement level (no projected free agent and no rostered player beyond the starters), so those players have no value rather than a value above 0.`}
         </p>
         <p>{ch?.method}{ch?.notes.length ? ` ${ch.notes.join(" ")}` : ""}</p>
         <p className={styles.faintText}>

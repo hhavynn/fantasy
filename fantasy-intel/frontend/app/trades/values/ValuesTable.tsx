@@ -6,10 +6,19 @@ import { Missing } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
 import {
-  DEFAULT_SORT, SORT_KEYS, VALUE_MISSING, analyzerHref, analyzerLabel, basisLine, changeUnavailableText, ownerHref,
+  DEFAULT_SORT, SORT_KEYS, VALUE_MISSING, basisLine, changeUnavailableText, changeWindowNote, ownerHref,
   positionRankText, valueSortValue, valuesHref, type TradeValuesResponse, type ValueRow, type ValuesState,
 } from "@/lib/trade-values";
+import { AnalyzerLink } from "./AnalyzerLink";
 import styles from "./values.module.css";
+
+/** Why a value is missing, from the row's own facts. */
+function missingWhy(r: ValueRow): string {
+  const why = r.no_replacement_weeks.length && !r.missing_weeks.length
+    ? "No value: no measurable replacement level at the position (no projected free agent and no rostered player beyond the starters); never counted as 0"
+    : VALUE_MISSING;
+  return r.known_value !== null ? `${why}; the known weeks alone sum to ${r.known_value.toFixed(1)}` : why;
+}
 
 function ChangeCell({ r, d }: { r: ValueRow; d: TradeValuesResponse }) {
   if (!d.change?.available || !r.change) {
@@ -18,7 +27,8 @@ function ChangeCell({ r, d }: { r: ValueRow; d: TradeValuesResponse }) {
   if (r.change.delta === null) {
     return <span className={styles.unavailable} title={r.change.reason ?? "No change can be computed"}>Unavailable</span>;
   }
-  return <Delta value={r.change.delta} />;
+  const note = changeWindowNote(d.change);
+  return <><Delta value={r.change.delta} />{note && <span className={styles.changeWeeks}> {note}</span>}</>;
 }
 
 /** Every rostered player in the filter, sortable by link (server-side, URL-backed). Values are the backend's. */
@@ -37,8 +47,8 @@ export function ValuesTable({ d, rows, state, sp }: { d: TradeValuesResponse; ro
       flush={sorted.length > 0}
       footnote={
         <>
-          Values count only {b.unit}; they are comparable only with each other on this board.
-          {unvalued > 0 && <> {unvalued} {plural(unvalued, "player")} {unvalued === 1 ? "has" : "have"} no value because a remaining week has no projection; a missing week is never counted as 0.</>}
+          Values count only {b.unit}; they are comparable only with each other on this board. {b.cross_position}
+          {unvalued > 0 && <> {unvalued} {plural(unvalued, "player")} {unvalued === 1 ? "has" : "have"} no value because a remaining week has no projection or no measurable replacement level; neither is ever counted as 0.</>}
         </>
       }
     >
@@ -72,9 +82,9 @@ export function ValuesTable({ d, rows, state, sp }: { d: TradeValuesResponse; ro
                       {r.on_my_team && <span className="faint"> (you)</span>}
                     </td>
                     <td className="num">
-                      {r.value !== null ? r.value.toFixed(1) : <Missing why={`${VALUE_MISSING}${r.known_value !== null ? `; the known weeks alone sum to ${r.known_value.toFixed(1)}` : ""}`} />}
+                      {r.value !== null ? r.value.toFixed(1) : <Missing why={missingWhy(r)} />}
                     </td>
-                    <td className="num">{r.value_per_week !== null ? r.value_per_week.toFixed(1) : <Missing why={VALUE_MISSING} />}</td>
+                    <td className="num">{r.value_per_week !== null ? r.value_per_week.toFixed(1) : <Missing why={missingWhy(r)} />}</td>
                     <td className="num">{positionRankText(r) ?? <Missing why="No rank without a value" />}</td>
                     <td className="num"><ChangeCell r={r} d={d} /></td>
                     <td className={styles.caveats} title={r.uncertainty.map((u) => u.text).join(" ") || undefined}>
@@ -85,9 +95,7 @@ export function ValuesTable({ d, rows, state, sp }: { d: TradeValuesResponse; ro
                         Details<VisuallyHidden> for {label}</VisuallyHidden>
                       </Link>
                       <CompareLink a={r.espn_player_id} aName={r.name} />
-                      <Link href={analyzerHref(r, d.my_team_id)} prefetch={false}>
-                        {analyzerLabel(r, d.my_team_id)}<VisuallyHidden> {label}</VisuallyHidden>
-                      </Link>
+                      <AnalyzerLink row={r} myTeamId={d.my_team_id} />
                     </td>
                   </tr>
                 );

@@ -25,6 +25,7 @@
 .playerCell { min-width: 180px; }
 .ownerCell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unavailable { color: var(--ink-faint); font-size: 12px; }
+.changeWeeks { color: var(--ink-faint); font-size: 12px; white-space: nowrap; }
 .caveats { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
 .links { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 12px; font-size: 13px; white-space: nowrap; }
 .selected { background: var(--surface-hover); box-shadow: inset 3px 0 0 var(--accent); }

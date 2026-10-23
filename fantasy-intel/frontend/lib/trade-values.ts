@@ -21,7 +21,10 @@ export type WeekRow = {
   replacement: number | null;
   replacement_source: "free_agent" | "league_structure" | null;
   adds: number | null;
-  status: "counted" | "nfl_ineligible" | "missing";
+  status: "counted" | "nfl_ineligible" | "missing" | "no_replacement" | "not_counted";
+  /** Where the projection came from and what produced it, as served ("ESPN", a model version); null without one. */
+  origin: string | null;
+  version: string | null;
 };
 
 export type Caveat = { code: string; text: string };
@@ -51,16 +54,20 @@ export type ValueRow = {
   value_regular: number | null;
   value_playoff: number | null;
   known_value: number | null;
+  /** Cross-position rank, only among players valued against a free-agent replacement every counted week. */
   rank: number | null;
   rank_of: number;
+  rank_reason: string | null;
   position_rank: number | null;
   position_rank_of: number | null;
   league_starters_at_position: number | null;
   starter_caliber: boolean;
   weeks_counted: number;
   missing_weeks: number[];
+  no_replacement_weeks: number[];
   nfl_ineligible_weeks: number[];
   availability_status: string | null;
+  projection_versions: string[];
   uncertainty: Caveat[];
   weekly: WeekRow[];
   change: RowChange | null;
@@ -87,17 +94,20 @@ export type Basis = {
   comparable_within: string;
   projection_source: "espn" | "independent";
   projection_label: string;
-  model_version: string | null;
+  /** Every source or model version that produced a projection the board read. */
+  projection_versions: string[];
+  cross_position: string;
   scoring: string;
   window: {
     weeks: number[]; start: number | null; final: number | null; last_regular_season_week: number | null;
     regular_weeks: number[]; playoff_weeks: number[]; uncertain: boolean; warning: string | null;
   };
-  kdst_streaming: boolean;
+  kdst: string;
   league_starters: Record<string, number>;
   flex_note: string | null;
   incomplete_team_weeks: number;
   replacement_fallback_positions: string[];
+  no_replacement_positions: string[];
   rostered_only: string;
 };
 
@@ -114,7 +124,7 @@ export type TradeValuesResponse = {
   basis: Basis | null;
   change: ChangeContext | null;
   players: ValueRow[];
-  summary: { players: number; valued: number; unvalued: number; changed: number } | null;
+  summary: { players: number; valued: number; unvalued: number; ranked_overall: number; changed: number } | null;
   provenance: ProvenancePayload | null;
 };
 
@@ -239,13 +249,33 @@ export function whyText(r: Pick<ValueRow, "position" | "change">, ctx: ChangeCon
   return `${head}${since}: over ${weeksText(ctx.weeks)}, ${own} and ${repl}.`;
 }
 
+/** "over weeks 5–17" when the change covers fewer weeks than the value (the earlier snapshot did not project them all),
+ *  else null: a change is then never read as a change of the whole value. */
+export function changeWindowNote(ctx: ChangeContext | null): string | null {
+  if (!ctx?.available || !ctx.excluded_weeks.length) return null;
+  return `over ${weeksText(ctx.weeks)}`;
+}
+
+/** The largest value in view that may be compared: with every position shown, only values above a free-agent
+ *  replacement (ranked overall); within one position, any value. Never a missing value. */
+export function highestInView(rows: readonly ValueRow[], position: Position | null): ValueRow | null {
+  const pool = rows.filter((r) => r.value !== null && (position !== null || r.rank !== null));
+  return pool.reduce<ValueRow | null>((best, r) => (best === null || (r.value ?? 0) > (best.value ?? 0) ? r : best), null);
+}
+
 export function changeUnavailableText(ctx: ChangeContext | null): string {
   return ctx?.reason ?? "No earlier projection snapshot is stored, so no change is shown.";
 }
 
-/** Value header text: "Fantasy Intel model estimate · ESPN weekly projections · weeks 3–17 · calculation tv-1". */
+/** "ESPN weekly projections" or "Fantasy Intel projections (ifp-2.2.0, kfp-1.1.0)": the versions actually served. */
+export function sourceText(b: Pick<Basis, "projection_label" | "projection_versions" | "projection_source">): string {
+  const v = b.projection_source === "independent" ? b.projection_versions : [];
+  return v.length ? `${b.projection_label} (${v.join(", ")})` : b.projection_label;
+}
+
+/** Value header text: "Fantasy Intel model estimate · ESPN weekly projections · weeks 3–17 · calculation tv-2". */
 export function basisLine(b: Basis): string {
-  return [b.label, b.projection_label, weeksText(b.window.weeks), `calculation ${b.calculation_version}`].join(" · ");
+  return [b.label, sourceText(b), weeksText(b.window.weeks), `calculation ${b.calculation_version}`].join(" · ");
 }
 
 export function selectedRow(rows: readonly ValueRow[], id: number | null): ValueRow | null {
