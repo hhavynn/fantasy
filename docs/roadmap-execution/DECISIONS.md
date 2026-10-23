@@ -93,6 +93,29 @@ Caveats: the memo's non-nflverse verdicts rest on search excerpts (the sandbox c
 nflverse upstream provider is unverified. Changes if: a source's full terms explicitly grant display in third-party
 apps, or the owner obtains written consent (e.g. from Sleeper).
 
+## D-12 · 2026-10-23 · League Compatibility & Scoring Correctness workstream (#253, #254)
+Owner request: track #253 (P0) and #254 (P1) as a separate workstream. The combined scope is 62 issues. #205 (40) and
+#227 (18) keep their original scope and numbering.
+- **Ownership:** #253 owns end-to-end compatibility fixtures, the per-tool gap inventory and the diagnostic contract.
+  #254 owns scoring-fidelity changes and consumes the contract. Neither duplicates the other's logic.
+- **Diagnostic contract:** reuse the `handled / partial / unsupported / unverified` vocabulary already in
+  `analytics/league_rules.py` (#169). "Ready" in the issue text means `handled`. Each entry carries a reason, the
+  missing input, the provider boundary and an action. It reports four separate dimensions: import readiness, roster
+  legality, scoring/projection fidelity, and feature availability.
+- **Roster support is not scoring fidelity.** A structurally supported league can still get partial or unsupported
+  scoring for some tools, and the diagnostics say so per tool.
+- **P0 meaning:** unsupported behavior is reliably identified and disclosed. It is not a promise that every rule will
+  be implemented. Abstention and research-only outcomes are valid.
+- **Ordering:** #253 starts after #249 merges, audit-first, in one small backend PR. #254 implementation follows the
+  contract and the confirmed gaps. The workstream takes the priority slot; other roadmap work continues in the second
+  slot when file ownership is disjoint. Nothing else is paused or deferred wholesale.
+- **Fixtures:** synthetic only. FX-17 reproduces the structure of a real private six-team ESPN league (2 QB, 3 RB,
+  4 WR, 2 TE, 1 OP, 3 FLEX, K, D/ST, 10 BE, 3 IR). Its real scoring modifiers are unverified, and its name, ids,
+  members and rosters never appear in the repository.
+- **Product claims:** no claim of universal support. ESPN/Sleeper capability is verified per integration and
+  deployment. Yahoo stays unavailable. Unsupported IDP slots, scoring overrides and missing data are disclosed. Missing
+  is never zero. Independent scoring never poses as league-specific. No paid APIs, provider writes or scraping.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.

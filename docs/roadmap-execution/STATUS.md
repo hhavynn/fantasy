@@ -1,11 +1,36 @@
 # FantasyPros-class roadmap: execution status
 
-Tracks the 40 child issues of [#205](https://github.com/hhavynn/fantasy/issues/205). The issue text is the spec. This
-file records state, branches and the next action. Decisions and blockers are in [DECISIONS.md](DECISIONS.md).
+Tracks 62 issues in four separate workstreams. The issue text is the spec. This file records state, branches and the
+next action. Decisions and blockers are in [DECISIONS.md](DECISIONS.md).
+
+| Workstream | Issues | Count |
+|---|---|---:|
+| Original FantasyPros-class roadmap ([#205](https://github.com/hhavynn/fantasy/issues/205)) | #165–#204 | 40 |
+| Competitive expansion ([#227](https://github.com/hhavynn/fantasy/issues/227)) | #209–#226 | 18 |
+| Correctness additions | #228, #229 | 2 |
+| League Compatibility & Scoring Correctness (added 2026-10-23, D-12) | #253, #254 | 2 |
+| **Total** | | **62** |
+
+#253 and #254 are not part of #205 or #227; those two roadmaps keep their original scope and numbering.
 
 States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI green on head, reviews resolved) · MERGED (sha, date)
 · BLOCKED · RESEARCH-ONLY.
-"Pushed" is not "merged"; "tested locally" is not "CI-verified".
+"Pushed" is not "merged"; "tested locally" is not "CI-verified". "Issue created" is not "started".
+
+## Progress (reconciled with GitHub 2026-10-23 03:20Z)
+
+Counted from merged PRs (checked via the GitHub API), not from issue open/closed state.
+
+| Workstream | Implementation merged | Research merged | PR open | Not started (incl. research-only) | Total |
+|---|---:|---:|---:|---:|---:|
+| #205 roadmap | 13 | 1 (#186) | 1 (#178 → PR #249) | 25 | 40 |
+| #227 expansion | 0 | 0 | 0 | 18 | 18 |
+| Correctness #228–#229 | 2 | 0 | 0 | 0 | 2 |
+| Compatibility #253–#254 | 0 | 0 | 0 | 2 | 2 |
+| **Total** | **15** | **1** | **1** | **45** | **62** |
+
+GitHub hygiene: 7 issues whose PRs merged are still open on GitHub (#165, #167, #168, #169, #193, #201, #202). Their
+PRs did not use a closing keyword. Closing them is an owner/coordinator action, not done here.
 
 ## Baseline (audit 2026-10-22)
 
@@ -89,12 +114,102 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 | #220 Three-team sandbox | E | RESEARCH-ONLY | — | stable trade engines |
 | #223 Keeper/dynasty readiness | E | RESEARCH-ONLY | — | #185, #204; taxi via #228 |
 
+## League Compatibility & Scoring Correctness (#253, #254; D-12)
+
+A separate workstream, added 2026-10-23. It does not replace or re-scope #205 or #227 and does not pause active work.
+
+| Issue | Priority | Workstream | State | Branch / PR |
+|---|---|---|---|---|
+| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | NOT STARTED | — |
+| [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | NOT STARTED | — |
+
+**Roster support is not scoring fidelity.** A league can be fully supported structurally (every slot parsed, filled
+once, flex and superflex solved exactly) while its scoring is only partly reproduced. #253 certifies structure and
+reports per-tool readiness. #254 owns whether each analysis computes points under the league's real scoring rules.
+Neither issue may report "connected" as "all analytics trustworthy".
+
+**What the workstream tracks** (owner in brackets):
+1. Provider connection/import compatibility: ESPN public/private, Sleeper; Yahoo stays unavailable (provider access,
+   terms, OAuth). Verified per integration and deployment, never assumed. [#253]
+2. Roster configuration and slot eligibility: multi-QB, superflex/OP, multiple FLEX, bench, IR, taxi; atypical and IDP
+   slots labelled unsupported per engine, never silently dropped from full-lineup claims. [#253]
+3. Actual scoring-rule compatibility: mapped vs unmapped modifiers, slot overrides (TE premium), kicker distance
+   buckets, D/ST buckets, bonuses, negative modifiers, missing components. [#254]
+4. Analytics-engine support: league rules, starters and flex optimization, Start/Sit, team values, waivers, add/drop,
+   trade valuation/discovery, bye coverage, K/DST streaming. Real consuming engines are exercised, not just slot
+   parsing. [#253 structure, #254 scoring]
+5. Per-feature diagnostics: ready (`handled`) / partial / unsupported / unverified, each with a reason, the missing
+   input, the provider boundary and an action. Four separate dimensions: import readiness, roster legality,
+   scoring/projection fidelity, feature availability. Contract owned by #253, consumed by #254 (D-12).
+6. Authorization and tenant isolation: everything behind `league_scope` / `authorize_league`; no private tenant data
+   from global endpoints; scoring fingerprints and caches never mix leagues. [both]
+7. Synthetic regression fixtures only: fake league ids, fake team names, synthetic players and scoring. [both]
+
+**Reuse, do not rebuild:** #169 (PR #207: `analytics/league_rules.py` already has the `handled/partial/unsupported/
+unverified` vocabulary and per-slot engine status), #167 onboarding and the multileague stack, #229 (PR #238,
+OP-aware replacement level), #252 (exact polynomial flex solver, `LineupTooLargeError` → 422), `league_scoring.py`
+(already rejects unsupported ESPN scoring and slot overrides), the ESPN provider's mapped/unmapped modifier record,
+`signal-provenance.v1`, `docs/multileague/provider-capability-matrix.md`.
+Related, not duplicated: #222 (hypothetical scoring sandbox; it should consume #254's support table), #223
+(keeper/dynasty readiness), #178 (add/drop, a consumer to certify), #181 (K/DST streaming, a consumer to certify).
+
+**Synthetic regression scenario FX-17.** Motivated by a real six-team ESPN H2H-points redraft league owned by the user
+(name, ids, members and rosters are private and never appear in the repo). Its structure is reproduced synthetically:
+2 QB, 3 RB, 4 WR, 2 TE, 1 OP, 3 FLEX, 1 K, 1 D/ST (17 starters), 10 bench, 3 IR. Its individual scoring modifiers are
+**not verified** (the league-info snapshot does not expose them). FX-17 is a test fixture, not evidence that the live
+league has been tested. Public tests and docs use fake ids, fake team names, synthetic players and synthetic scoring.
+
+**#253 completion criteria (P0, cross-cutting release-confidence gate):**
+- [ ] Per-tool gap inventory (read-only audit) committed, covering every consumer engine listed above.
+- [ ] FX-17 plus the fixture matrix (standard redraft; superflex/multi-FLEX with ties and sparse pools; half/full PPR;
+  known and unmapped custom scoring; IR/taxi; IDP/atypical slots) exercised by automated import-to-analysis tests.
+- [ ] FX-17 slot counts unchanged by normalization; no player starts twice; 3 FLEX are three interchangeable slots; no
+  bench/IR player starts; totals and displacement correct in tied, sparse and multi-flex pools.
+- [ ] Every applicable engine answers from supported, source-grounded data or abstains with an actionable reason.
+- [ ] Missing or unsupported scoring never becomes a measured zero or a faux league-scored total.
+- [ ] Per-league/per-tool diagnostic contract (D-12) implemented with reproducible tests and readable explanations.
+- [ ] `league_scope`/tenant-isolation tests pass on the fixtures; no provider writes, no credentials.
+- [ ] One responsive/accessible E2E: connect/demo → league rules → lineup/waivers/trades, including an unsupported case.
+- [ ] Exact-head CI green, independent security review (D-10) resolved, merged.
+P0 means unsupported behavior is reliably identified and disclosed. It does not promise every exotic rule will work.
+
+**#254 completion criteria (P1, incremental):**
+- [ ] Documented actual-scoring support table: QB/RB/WR/TE/K/DST × provider × rule category × data source × tool;
+  unknowns labelled.
+- [ ] Synthetic scoring fixtures with exact expected outcomes for supported cases (zero/negative results, unusual QB
+  scoring, multiple FLEX).
+- [ ] TE premium/slot overrides, kicker distance buckets, IDP bonuses and missing components never yield fabricated
+  league-scored independent results.
+- [ ] Provider projections used and labelled as provider values only in the right scope/season/scoring context; no
+  rescaling without per-stat inputs.
+- [ ] Standard ESPN/Sleeper output and goldens unchanged except reviewed bug fixes.
+- [ ] Scoring fingerprints and caches cannot leak wrong-league rules or values.
+- [ ] Unsupported rule ids/reasons surface through the D-12 contract, not duplicated scoring logic.
+- [ ] Focused tests, app-wide audits, security tier and exact-head CI pass; source-rights unknowns stay blocked.
+Research-only outcomes and explicit abstention are acceptable for rules without usable component data.
+
+**Dependencies and order:**
+1. Current integration wave: #252 merged (ea9e664); #249/#178 merge reconciliation in progress.
+2. #253 starts after #249 merges: read-only gap inventory and FX-17 fixture matrix first, then the D-12 diagnostic
+   contract, in one small backend PR; minimal UI on the existing League Rules page only if needed.
+3. #254 scheduled from #253's confirmed gaps. An isolated read-only scoring audit may overlap #253 only with disjoint
+   file ownership and a free slot. Implementation waits for the D-12 contract.
+4. Other work continues in the second slot when file ownership is disjoint (#180/#179 waivers, then Phase 4 trades).
+   #222 waits for #254's support table.
+
+**Likely file overlap:** #253 → `analytics/league_rules.py`, `api/league_rules.py`, `app/league-rules/*`, new synthetic
+fixture builders/tests, `provider-capability-matrix.md` (tests read it, so it is never docs-only). #254 →
+`league_scoring.py`, `kicker_scoring.py`, D/ST scoring, `rescore.py`, `leagues/providers/espn.py`/`sleeper.py`.
+Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (waivers) is tests only; with #222 it is
+`league_scoring.py` (so #222 follows #254).
+
 ## Out-of-roadmap fixes
 
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
-- IN PROGRESS `perf/ci-critical-path` (one agent): CI critical-path audit → parallel E2E jobs, docs-only classifier, caching where measured. Baseline run 39884539280: E2E 11m57s, slowest shard 7m08s.
+- MERGED #248 → af94873: CI critical path (parallel E2E jobs, docs-only classifier with credential scan, browser cache, apt only when needed). PR CI 9.5–12 min → 6.5–7.5 min; docs-only 33 s (#251 → a438e1c).
+- MERGED #252 → ea9e664: shared `_best_flex` polynomial with identical assignments (security MEDIUM from the #249 review).
 - MERGED #246 → 9faee55: quick budget timeout → UNVERIFIED unless a failure was already printed; typed `timed_out` flag; test_schedule_intelligence (73 s) deferred. Codex P2 + review LOWs fixed.
 - MERGED #243 → ef21c42: response-cache key re-encoded so `%3D`/`%26` can't forge another URL's key (LOW from #242 review).
 - MERGED #240 → e234416: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
@@ -107,7 +222,10 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 
 ## Active wave
 
-**Now (2026-10-23 03:10Z):** #248, #250, #251, #252 merged. #249 agent merging main (waivers/page.tsx conflict) + 422 test; then CI and merge. Next: #179/#180 (waivers), Phase 4 trades #182–#184.
+**Now (2026-10-23 03:20Z):** #248, #250, #251, #252 merged. #249 agent merging main (waivers/page.tsx conflict) + 422
+test; then CI and merge.
+**Next after #249:** #253 (P0) in the priority slot: read-only gap inventory + FX-17 fixtures + D-12 contract. Second
+slot, disjoint files: #180 claim planner, then #179, then Phase 4 trades #182–#184. #254 follows #253's gap inventory.
 
 
 **Wave 1** (parallel, isolated worktrees under `.worktrees/`, all from `5315c96`):
