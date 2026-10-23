@@ -231,7 +231,7 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
-1a. Bounded fix: `components/CommandPalette.tsx` fetches `/api/search` without `/l/<lg>/` (same wrong-league class as TradeEvidence, fixed in #182). Lane C candidate once a slot frees.
+1a. Bounded fix: `components/CommandPalette.tsx` fetches `/api/search` without `/l/<lg>/` (same wrong-league class as TradeEvidence, fixed in #182). Reuses `leagueRouteHref()` added by #182, so it starts after #182 merges.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
