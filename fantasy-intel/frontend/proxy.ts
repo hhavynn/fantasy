@@ -50,7 +50,11 @@ export async function proxy(request: NextRequest) {
       const headers = new Headers(request.headers);
       headers.set(LEAGUE_HEADER, d.league);
       const response = NextResponse.rewrite(target!, { request: { headers } });
-      response.cookies.set(LEAGUE_COOKIE, d.league, { path: "/", sameSite: "lax", maxAge: COOKIE_MAX_AGE, httpOnly: true });
+      // Only a page view records the last-viewed league: a POST (a server action such as Sign out, which deletes it)
+      // must not set it again on the same response.
+      if (request.method === "GET" || request.method === "HEAD") {
+        response.cookies.set(LEAGUE_COOKIE, d.league, { path: "/", sameSite: "lax", maxAge: COOKIE_MAX_AGE, httpOnly: true });
+      }
       return refreshSession(request, response);
     }
     case "redirect":   // also /l/<lg>/<page>?league=clear -> /l/<lg>/<page> without it
