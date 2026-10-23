@@ -556,7 +556,10 @@ export type PrRange = { teams_able_to_match_worst: number | null; teams_certain_
   record_order: PrBound["record_order"] };
 /** The spotlight team's place if one side wins: in the scenario (every other result as in it) and its possible range
  * (record bounds with that result fixed; null when the bounds abstain). */
-export type PrRootingSide = { scenario: PrPlaceRow; range: PrRange | null };
+export type PrRootingSide = {
+  /** places: the span the rank group covers, [rank, rank + tied teams − 1] (no tiebreak); null when unranked. */
+  scenario: PrPlaceRow & { places: [number, number] | null }; range: PrRange | null;
+};
 export type PrRootingGame = {
   matchup_id: number; matchup_period: number; weeks: number[] | null; home_team_id: number; away_team_id: number;
   status: PrMatchup["status"]; close: boolean | null; scenario_result: PrOutcome | null;

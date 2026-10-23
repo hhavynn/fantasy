@@ -77,10 +77,12 @@ BOUNDS_RULE = ("Record bounds: each team's record if it wins, and if it loses, e
                "withheld. They are never turned into a clinch or elimination claim.")
 ROOTING_METHOD = ("Rooting guide: for each open game in the next matchup period that your team does not play, your place "
                   "if the home side wins and if the away side wins. Scenario place: every other result as in this "
-                  "scenario (hypothetical). Possible range: the record bounds with that result fixed and every other "
-                  "remaining game open (no projections): above the line in every outcome, below it in every outcome, "
-                  "or open, under the assumed record order. A side is preferred only when it is no worse on both and "
-                  "better on at least one; a game where they disagree is shown as a conflict. Ties are not compared. Deterministic: no probability, and never a clinch "
+                  "scenario (hypothetical): cutline status first, then the places your rank group spans, since no "
+                  "tiebreak is applied (a shared rank is never read as the top of the tie). Possible range: the "
+                  "record bounds with that result fixed and every other remaining game open (no projections): above "
+                  "the line in every outcome, below it in every outcome, or open, under the assumed record order. A "
+                  "side is preferred only when it is no worse on both and better on at least one; a game where they "
+                  "disagree is shown as a conflict. A tied result is not evaluated. Deterministic: no probability, and never a clinch "
                   "or elimination claim.")
 
 
@@ -467,6 +469,7 @@ def pathways(sc: Scenario, tid: int) -> dict:
 # Issue #217: which other games this week the viewer wants to go one way, from the same deterministic evaluator as
 # the what-if (#192). Each result is evaluated one game at a time against the scenario; nothing is a probability.
 
+_STATUS_ORDER = {"inside": 2, "cutline_tie": 1, "outside": 0, None: -1}
 _RANGE_ORDER = {"above_line": 2, "open": 1, "below_line": 0, None: -1}
 
 
@@ -479,6 +482,19 @@ def _range_better(a: dict | None, b: dict | None) -> bool:
     return _RANGE_ORDER[a["record_order"]] > _RANGE_ORDER[b["record_order"]]
 
 
+def _root_better(a: dict, b: dict) -> bool:
+    """For the rooting guide: a's scenario place is better than b's. A better cutline status wins; with the same
+    status, the places the rank group spans (rank to rank + tied teams - 1, no tiebreak applied) must be no worse at
+    both ends and better at one, so a shared rank is never compared as if the tie were broken in your favour."""
+    sa, sb = _STATUS_ORDER[a["status"]], _STATUS_ORDER[b["status"]]
+    if sa != sb:
+        return sa > sb
+    if a["places"] is None or b["places"] is None:
+        return False
+    (a1, a2), (b1, b2) = a["places"], b["places"]
+    return a1 <= b1 and a2 <= b2 and (a1 < b1 or a2 < b2)
+
+
 def _prefer(better) -> str | None:
     return "home" if better("home", "away") else "away" if better("away", "home") else None
 
@@ -487,13 +503,17 @@ def evaluate_outcome(sc: Scenario, m: dict, outcome: str, tid: int, fixed: dict[
                      abstain: list[str]) -> dict:
     """The viewer's place with one game's result set (pure; the scenario and the fixtures are not changed):
     `scenario` = rank and status with every other result as in the scenario; `range` = the viewer's record bounds
-    with the result fixed (plus the user's set results) and every other game open, None when the bounds abstain."""
-    row = _row(sc.with_({m["matchup_id"]: outcome}), tid)
+    with the result fixed (plus the user's set results) and every other game open, None when the bounds abstain.
+    `places` is the span of places the viewer's rank group covers ([rank, rank] when not tied)."""
+    rows = sc.with_({m["matchup_id"]: outcome})
+    row = _row(rows, tid)
+    group = sum(1 for x in rows if x["rank"] is not None and x["rank"] == row["rank"])
+    place = {**_place(row), "places": None if row["rank"] is None else [row["rank"], row["rank"] + group - 1]}
     rng = None
     if not abstain:
         b = _row(record_bounds(sc, {**fixed, m["matchup_id"]: outcome}, [])["teams"], tid)
         rng = {k: b[k] for k in ("teams_able_to_match_worst", "teams_certain_ahead_of_best", "record_order")}
-    return {"scenario": _place(row), "range": rng}
+    return {"scenario": place, "range": rng}
 
 
 def rooting_guide(sc: Scenario, tid: int, fixed: dict[int, str], abstain: list[str], gate: dict) -> dict:
@@ -510,15 +530,15 @@ def rooting_guide(sc: Scenario, tid: int, fixed: dict[int, str], abstain: list[s
     week_games = [m for m in sc.open_games if m["matchup_period"] == periods[0]]
     out["weeks"] = week_games[0]["weeks"]
     out["later_open_games"] = sum(1 for m in sc.open_games if m["matchup_period"] != periods[0])
-    own = next((m for m in week_games if tid in (m["home_team_id"], m["away_team_id"])), None)
-    out["own_game"] = None if own is None else own["matchup_id"]
+    own = sorted(m["matchup_id"] for m in week_games if tid in (m["home_team_id"], m["away_team_id"]))
+    out["own_game"] = own[0] if own else None
     for m in sorted(week_games, key=lambda m: m["matchup_id"]):
-        if m is own:
+        if m["matchup_id"] in own:
             continue
         held = {k: v for k, v in fixed.items() if k != m["matchup_id"]}
         res = {o: evaluate_outcome(sc, m, o, tid, held, abstain) for o in ("home", "away")}
-        by_place = _prefer(lambda a, b: _better(res[a]["scenario"], res[b]["scenario"]))
-        by_range = _prefer(lambda a, b: _range_better(res[a]["range"], res[b]["range"]))
+        by_place = _prefer(lambda a, b, res=res: _root_better(res[a]["scenario"], res[b]["scenario"]))
+        by_range = _prefer(lambda a, b, res=res: _range_better(res[a]["range"], res[b]["range"]))
         conflict = by_place is not None and by_range is not None and by_place != by_range
         prefer = None if conflict else by_place or by_range
         h, a = res["home"]["scenario"], res["away"]["scenario"]
@@ -535,7 +555,7 @@ def rooting_guide(sc: Scenario, tid: int, fixed: dict[int, str], abstain: list[s
                                        (res["away"]["range"] or {}).get("record_order")}}
         (out["games"] if prefer or conflict else out["no_effect"]).append(g)
     out["games"].sort(key=lambda g: (g["prefer"] is None, not g["swing"]["status_changes"],
-                                     -(g["swing"]["rank_difference"] or 0), not g["swing"]["range_changes"],
+                                     not g["swing"]["range_changes"], -(g["swing"]["rank_difference"] or 0),
                                      g["matchup_id"]))
     out["status"] = "ok" if out["games"] or out["no_effect"] else "no_other_games"
     return out

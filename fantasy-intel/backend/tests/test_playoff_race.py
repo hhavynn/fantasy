@@ -607,8 +607,19 @@ def _viewer_bounds(d, tid, overrides):
 _ORDER = {"inside": 2, "cutline_tie": 1, "outside": 0, None: -1}
 
 
+def _places(rows, tid):
+    """The places a team's rank group spans, straight from the standings (no tiebreak: rank .. rank + group - 1)."""
+    me = standing(rows, tid)
+    if me["rank"] is None:
+        return None
+    return [me["rank"], me["rank"] + sum(1 for x in rows if x["rank"] == me["rank"]) - 1]
+
+
 def _no_worse(a, b):
-    return (_ORDER[a["status"]], -(a["rank"] or 99)) >= (_ORDER[b["status"]], -(b["rank"] or 99))
+    """a's scenario place is no worse than b's: a better status, or the same status and both ends of the span."""
+    if _ORDER[a["status"]] != _ORDER[b["status"]]:
+        return _ORDER[a["status"]] > _ORDER[b["status"]]
+    return a["places"] is None or b["places"] is None or (a["places"][0] <= b["places"][0] and a["places"][1] <= b["places"][1])
 
 
 def test_every_rooting_outcome_reproduces_the_deterministic_simulation():
@@ -625,9 +636,10 @@ def test_every_rooting_outcome_reproduces_the_deterministic_simulation():
             assert tid not in (x["home_team_id"], x["away_team_id"]) and x["matchup_period"] == g["period"]
             for key, outcome in (("if_home", "home"), ("if_away", "away")):
                 trial = {**ov, x["matchup_id"]: outcome}
-                row = standing(build_playoff_race(d, team_id=tid, overrides=trial)["scenario"]["projected_standings"], tid)
+                rows_ = build_playoff_race(d, team_id=tid, overrides=trial)["scenario"]["projected_standings"]
+                row = standing(rows_, tid)
                 assert x[key]["scenario"] == {"rank": row["rank"], "tied": row["tied"], "status": row["status"],
-                                              "record": row["record"]}
+                                              "record": row["record"], "places": _places(rows_, tid)}
                 assert x[key]["range"] == _viewer_bounds(d, tid, trial)
             if x["prefer"]:
                 win, lose = x["if_" + x["prefer"]], x["if_" + ("away" if x["prefer"] == "home" else "home")]
@@ -636,8 +648,9 @@ def test_every_rooting_outcome_reproduces_the_deterministic_simulation():
             else:
                 assert x["conflict"] or (x["if_home"] == x["if_away"] or not x["basis"])
         assert all(x["prefer"] is None and not x["conflict"] for x in g["no_effect"])
-        # Ranked: preferences first, status swings before rank swings.
-        keys = [(x["prefer"] is None, not x["swing"]["status_changes"]) for x in g["games"]]
+        # Ranked: preferences first, then status swings, then record-order swings, then rank swings.
+        keys = [(x["prefer"] is None, not x["swing"]["status_changes"], not x["swing"]["range_changes"])
+                for x in g["games"]]
         assert keys == sorted(keys)
 
 
@@ -684,6 +697,35 @@ def test_rooting_with_ties_at_the_cutline_three_way_ties_and_a_tied_game():
     x = g["no_effect"][0]
     assert x["if_home"]["scenario"]["status"] == x["if_away"]["scenario"]["status"] == "cutline_tie"
     assert x["prefer"] is None and x["basis"] == [] and not x["swing"]["status_changes"]
+
+
+def test_a_shared_rank_is_compared_as_the_span_of_places_it_covers():
+    from app.analytics.playoff_race import _root_better
+    place = lambda status, places: {"status": status, "places": places}                       # noqa: E731
+    # Reviewer's repro: #3 in a five-way tie (3rd to 7th) vs #4 in a three-way tie (4th to 6th), both at the line.
+    assert not _root_better(place("cutline_tie", [3, 7]), place("cutline_tie", [4, 6]))
+    assert not _root_better(place("cutline_tie", [4, 6]), place("cutline_tie", [3, 7]))
+    # #2 shared by three (2nd to 4th) vs #3 alone, both inside: neither dominates.
+    assert not _root_better(place("inside", [2, 4]), place("inside", [3, 3]))
+    assert _root_better(place("inside", [2, 3]), place("inside", [3, 3]))                    # no worse, better top
+    assert _root_better(place("inside", [4, 4]), place("cutline_tie", [2, 5]))              # status first
+    assert not _root_better(place(None, None), place(None, None))
+    # On real leagues: whenever a side is named on the scenario with the same status both ways, its span dominates.
+    import random
+    rnd = random.Random(11)
+    checked = 0
+    for _ in range(40):
+        n, reg = rnd.choice([8, 10]), rnd.choice([8, 10])
+        scores = {(p, t): float(rnd.choice([90, 100, 110])) for p in range(1, reg + 1) for t in range(1, n + 1)}
+        d = sr.race(n_teams=n, reg_periods=reg, spots=rnd.choice([3, 4, 5]), start_week=rnd.randint(3, reg),
+                    final_week=reg + 3, scores=scores, strength={t: rnd.uniform(15, 35) for t in range(1, n + 1)})
+        g = build_playoff_race(d, team_id=rnd.randint(1, n), base=rnd.choice(["projected", "actual"]))["scenario"]["rooting"]
+        for x in g["games"]:
+            if x["prefer"] and "scenario" in x["basis"]:
+                win, lose = x["if_" + x["prefer"]]["scenario"], x["if_" + ("away" if x["prefer"] == "home" else "home")]["scenario"]
+                assert _no_worse(win, lose) and win != lose
+                checked += 1
+    assert checked > 0
 
 
 def test_rooting_abstains_from_the_possible_range_and_never_claims_when_rules_are_unknown():

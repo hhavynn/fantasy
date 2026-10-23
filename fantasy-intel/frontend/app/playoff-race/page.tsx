@@ -10,7 +10,7 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import {
-  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, unresolvedText, weeksText,
+  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, rootPlace, unresolvedText, weeksText,
   whatifChanged, withCutline, withOverride, type RaceQuery,
 } from "@/lib/playoff-view";
 import type {
@@ -409,8 +409,7 @@ function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; na
 // ------------------------------------------------------------- rooting guide (issue #217) --
 
 function RootPlace({ s }: { s: PrRootingSide }) {
-  const p = s.scenario;
-  return <>#{p.rank ?? "—"}{p.tied ? "=" : ""} <StatusBadge s={p.status} /></>;
+  return <>{rootPlace(s.scenario)} <StatusBadge s={s.scenario.status} /></>;
 }
 
 function Rooting({ d, g, t, q, name }: { d: PlayoffRace; g: PrRooting; t: PrTeam; q: Q; name: Name }) {
@@ -425,7 +424,7 @@ function Rooting({ d, g, t, q, name }: { d: PlayoffRace; g: PrRooting; t: PrTeam
       flush
       footnote={<>Each row sets one game&apos;s result and keeps every other result as in this scenario. {g.later_open_games > 0
         ? `${g.later_open_games} later open ${plural(g.later_open_games, "game")} also remain and can change any of this. ` : ""}
-        Ties are not compared. Nothing here is a clinch or elimination: {g.conclusions.status === "blocked"
+        A tied result is not evaluated, and a shared rank counts as the span of places it covers. Nothing here is a clinch or elimination: {g.conclusions.status === "blocked"
         ? "the league's tiebreak and seeding rules are not mapped." : "no claim is made."}</>}
     >
       {g.status === "no_games_remaining" && <p className={styles.padded}>No open regular-season games remain: there is nothing left to root for.</p>}
@@ -446,7 +445,7 @@ function Rooting({ d, g, t, q, name }: { d: PlayoffRace; g: PrRooting; t: PrTeam
           )}
           {g.games.length > 0 && <RootingTable rows={g.games} q={q} name={name} />}
           {g.no_effect.length > 0 && (
-            <p className={styles.padded}>No effect on {t.name} either way: {g.no_effect.map((x) =>
+            <p className={styles.padded}>Neither result is better for {t.name}: {g.no_effect.map((x) =>
               `${name(x.home_team_id)} vs ${name(x.away_team_id)}`).join(", ")}.</p>
           )}
         </>
@@ -471,8 +470,9 @@ function RootingTable({ rows, q, name }: { rows: PrRootingGame[]; q: Q; name: Na
               <td><RootPlace s={x.if_away} /></td>
               <td className={styles.remaining}>{rootingReason(x, (id) => name(id))}</td>
               <td><span className={styles.overrideLinks}>
-                <Link href={withOverride(q, x.matchup_id, "home")}>Home wins</Link>
-                <Link href={withOverride(q, x.matchup_id, "away")}>Away wins</Link>
+                {(["home", "away"] as const).map((o) => q.o[String(x.matchup_id)] === o
+                  ? <b key={o}>{o === "home" ? "Home wins" : "Away wins"}</b>
+                  : <Link key={o} href={withOverride(q, x.matchup_id, o)}>{o === "home" ? "Home wins" : "Away wins"}</Link>)}
               </span></td>
             </tr>
           ))}

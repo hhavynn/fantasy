@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { PrRootingGame } from "./types.ts";
 import {
-  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, unresolvedText, weeksText, whatifChanged,
+  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, rootPlace, unresolvedText, weeksText, whatifChanged,
   withCutline, withOverride,
 } from "./playoff-view.ts";
 
@@ -96,7 +96,7 @@ test("matchupAnalysisHref opens the game's first week from the spotlight side wh
 
 function game(over: Partial<PrRootingGame> = {}): PrRootingGame {
   const place = (rank: number, status: "inside" | "outside" | "cutline_tie" | null, tied = false) =>
-    ({ scenario: { rank, tied, status, record: { wins: 5, losses: 4, ties: 0 } }, range: { teams_able_to_match_worst: 5, teams_certain_ahead_of_best: 0, record_order: "open" as const } });
+    ({ scenario: { rank, tied, status, record: { wins: 5, losses: 4, ties: 0 }, places: [rank, rank] as [number, number] }, range: { teams_able_to_match_worst: 5, teams_certain_ahead_of_best: 0, record_order: "open" as const } });
   return {
     matchup_id: 9, matchup_period: 10, weeks: [10], home_team_id: 3, away_team_id: 4, status: "upcoming", close: false,
     scenario_result: "home", if_home: place(5, "outside"), if_away: place(4, "inside"), prefer: "away", basis: ["scenario"],
@@ -108,8 +108,8 @@ const nm = (id: number) => `Team ${id}`;
 test("rootingReason states the backend's comparison for the preferred side, scenario first", () => {
   assert.equal(rootingReason(game(), nm),
     "A Team 4 win leaves you #4, inside the line; a Team 3 win, #5, outside the line, every other result as in this scenario.");
-  const tied = game({ if_away: { ...game().if_away, scenario: { rank: 4, tied: true, status: "cutline_tie", record: null } } });
-  assert.match(rootingReason(tied, nm), /#4 \(tied\), tied at the line/);
+  const tied = game({ if_away: { ...game().if_away, scenario: { rank: 4, tied: true, status: "cutline_tie", record: null, places: [4, 6] } } });
+  assert.match(rootingReason(tied, nm), /#4–6 \(tied\), tied at the line/);
 });
 
 test("rootingReason words the possible range as record order only, never a clinch", () => {
@@ -125,10 +125,20 @@ test("rootingReason words the possible range as record order only, never a clinc
 
 test("rootingReason for no preference and for a conflict names both results", () => {
   const same = game({ prefer: null, basis: [], if_away: game().if_home });
-  assert.equal(rootingReason(same, nm), "Either result leaves you #5, outside the line.");
-  const mixed = rootingReason(game({ prefer: null, basis: [], conflict: true }), nm);
+  assert.equal(rootingReason(same, nm), "Neither result is better for you: Team 3 win, #5, outside the line; Team 4 win, #5, outside the line.");
+  const below = { teams_able_to_match_worst: 7, teams_certain_ahead_of_best: 2, record_order: "below_line" as const };
+  const mixed = rootingReason(game({ prefer: null, basis: [], conflict: true, if_home: { ...game().if_home, range: below } }), nm);
   assert.match(mixed, /^Mixed: /);
   assert.match(mixed, /Team 3 win: #5, outside the line; Team 4 win: #4, inside the line\./);
-  const unranked = game({ prefer: null, if_away: game().if_home, if_home: { scenario: { rank: null, tied: false, status: null, record: null }, range: null } });
-  assert.equal(rootingReason({ ...unranked, if_away: unranked.if_home }, nm), "Either result leaves you unranked.");
+  assert.match(mixed, /after a Team 3 win, at least as many teams as there are spots finish ahead.*after a Team 4 win, these bounds do not settle/);
+  const blank = { scenario: { rank: null, tied: false, status: null, record: null, places: null }, range: null };
+  assert.equal(rootingReason(game({ prefer: null, basis: [], if_home: blank, if_away: blank }), nm),
+    "Neither result is better for you: Team 3 win, unranked; Team 4 win, unranked.");
+});
+
+test("rootPlace shows a shared rank as the span of places the tie covers", () => {
+  assert.equal(rootPlace({ rank: 3, tied: true, places: [3, 7] }), "#3–7 (tied)");
+  assert.equal(rootPlace({ rank: 4, tied: false, places: [4, 4] }), "#4");
+  assert.equal(rootPlace({ rank: 2, tied: true, places: null }), "#2 (tied)");
+  assert.equal(rootPlace({ rank: null, tied: false, places: null }), "unranked");
 });

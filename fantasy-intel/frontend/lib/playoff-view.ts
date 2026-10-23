@@ -133,14 +133,25 @@ const PLACE_STATUS: Record<string, string> = { inside: "inside the line", outsid
 // Record order only, worded as counts like the what-if's bounds: never a clinch or elimination claim.
 const RANGE_TEXT: Record<string, string> = {
   above_line: "fewer teams than there are spots can match your record even if you lose every open game",
-  below_line: "as many teams as there are spots finish ahead of your record even if you win every open game",
-  open: "your record alone does not settle your side of the line",
+  below_line: "at least as many teams as there are spots finish ahead of your record even if you win every open game",
+  open: "these bounds do not settle your side of the line",
 };
+
+/** "#4", or "#3–7 (tied)" for a shared rank: the span of places the tie covers, no tiebreak applied. */
+export function rootPlace(p: { rank: number | null; tied: boolean; places: [number, number] | null }): string {
+  if (p.rank === null) return "unranked";
+  if (p.tied && p.places && p.places[1] > p.places[0]) return `#${p.places[0]}–${p.places[1]} (tied)`;
+  return `#${p.rank}${p.tied ? " (tied)" : ""}`;
+}
 
 function placeText(s: PrRootingSide): string {
   const p = s.scenario;
-  const rank = p.rank !== null ? `#${p.rank}${p.tied ? " (tied)" : ""}` : "unranked";
+  const rank = rootPlace(p);
   return p.status ? `${rank}, ${PLACE_STATUS[p.status]}` : rank;
+}
+
+function rangeText(s: PrRootingSide): string | null {
+  return s.range?.record_order ? RANGE_TEXT[s.range.record_order] : null;
 }
 
 /**
@@ -150,19 +161,22 @@ function placeText(s: PrRootingSide): string {
 export function rootingReason(g: PrRootingGame, name: (id: number) => string): string {
   const home = name(g.home_team_id), away = name(g.away_team_id);
   if (g.conflict) {
+    const rh = rangeText(g.if_home), ra = rangeText(g.if_away);
     return `Mixed: the scenario and the possible range point to different sides. ${home} win: ${placeText(g.if_home)}; `
-      + `${away} win: ${placeText(g.if_away)}.`;
+      + `${away} win: ${placeText(g.if_away)}.`
+      + (rh && ra ? ` With every other game open: after a ${home} win, ${rh}; after a ${away} win, ${ra} (record order assumed; not a clinch or elimination).` : "");
   }
-  if (!g.prefer) return `Either result leaves you ${placeText(g.if_home)}.`;
+  if (!g.prefer) return `Neither result is better for you: ${home} win, ${placeText(g.if_home)}; ${away} win, ${placeText(g.if_away)}.`;
   const [win, lose] = g.prefer === "home" ? [g.if_home, g.if_away] : [g.if_away, g.if_home];
   const [winner, loser] = g.prefer === "home" ? [home, away] : [away, home];
   const parts: string[] = [];
   if (g.basis.includes("scenario")) {
     parts.push(`A ${winner} win leaves you ${placeText(win)}; a ${loser} win, ${placeText(lose)}, every other result as in this scenario.`);
   }
-  if (g.basis.includes("possible_range") && win.range?.record_order && lose.range?.record_order) {
-    parts.push(`With every other game open: after a ${winner} win, ${RANGE_TEXT[win.range.record_order]}; after a ${loser} `
-      + `win, ${RANGE_TEXT[lose.range.record_order]} (record order assumed; not a clinch or elimination).`);
+  const rw = rangeText(win), rl = rangeText(lose);
+  if (g.basis.includes("possible_range") && rw && rl) {
+    parts.push(`With every other game open: after a ${winner} win, ${rw}; after a ${loser} `
+      + `win, ${rl} (record order assumed; not a clinch or elimination).`);
   }
   return parts.join(" ");
 }

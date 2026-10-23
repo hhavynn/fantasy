@@ -88,7 +88,7 @@ test("the rooting guide compares other games one at a time, labelled hypothetica
   await expect(guide.getByText("Hypothetical", { exact: true })).toBeVisible();
   await expect(guide.getByText(/one at a time against this scenario\. Deterministic, no probability\./)).toBeVisible();
   await expect(guide.getByText(/No other game in wk 3 has a better side for Team 2 on its own\./)).toBeVisible();
-  await expect(guide.getByText("No effect on Team 2 either way: Team 4 vs Team 3.")).toBeVisible();
+  await expect(guide.getByText("Neither result is better for Team 2: Team 4 vs Team 3.")).toBeVisible();
   await expect(guide.getByText(/Possible range not used: The provider's records do not match/)).toBeVisible();
   await expect(guide.getByText(/later open games also remain/)).toBeVisible();
   await expect(guide.getByText(/clinched|eliminated|%/i).filter({ visible: true })).toHaveCount(0);

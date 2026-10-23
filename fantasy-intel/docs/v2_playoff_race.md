@@ -148,20 +148,23 @@ results, and it needs no new parameter.
 * **One game at a time.** `evaluate_outcome` sets one game's result (home win, then away win) without changing the
   scenario or the fixtures, and reports two things:
   * `scenario`: the spotlight team's rank, tie flag, cutline status and record, every other result as in the
-    scenario (hypothetical; the projected baseline plus your set results).
+    scenario (hypothetical; the projected baseline plus your set results), plus `places`, the span its rank group
+    covers (rank to rank + tied teams − 1; no tiebreak is applied).
   * `range`: its record bounds with that result fixed (plus your set results) and every other game open, with no
     projections. It is null when the bounds abstain (`range_abstain` gives the reasons, the same as the what-if's).
 * **Which side.** `prefer` names a side only when it is no worse on both comparisons and better on at least one.
-  The scenario compares cutline status, then rank. The range compares record order only (above the line in every
+  The scenario compares cutline status first; with the same status, the `places` span must be no worse at both ends
+  and better at one, so "#3 in a five-way tie" (3rd to 7th) is never called better than "#4 in a three-way tie" (4th
+  to 6th). The range compares record order only (above the line in every
   outcome, open, below it in every outcome). The team counts are reported but never decide: a team locked ahead of
   you can be irrelevant to your spot. When the two comparisons point to different sides, the game is a `conflict`
   and no side is named. `basis` lists which comparison decided.
-* **Order.** Games with a preference come first, then cutline status swings, then the size of the rank swing, then
-  record-order swings. Games where neither side helps are listed apart (`no_effect`).
+* **Order.** Games with a preference come first, then cutline status swings, then record-order swings, then the size
+  of the rank swing. Games where neither side is better are listed apart (`no_effect`).
 * **Never a claim.** `probabilities` is null, `conclusions.claims` is always `[]`, and the conclusion gate's status
   is carried as-is. The page words the range as counts ("fewer teams than there are spots can match your record
-  even if you lose every open game") and says "record order assumed; not a clinch or elimination". Ties are not
-  compared.
+  even if you lose every open game") and says "record order assumed; not a clinch or elimination". A tied result is
+  not evaluated.
 
 The page shows a "Rooting guide: wk N" section labelled Hypothetical. It has one row per game: the side to root for
 (or Mixed), the spotlight team's place either way, the reason in words from `rootingReason()`
@@ -169,8 +172,8 @@ The page shows a "Rooting guide: wk N" section labelled Hypothetical. It has one
 simulation: `test_every_rooting_outcome_reproduces_the_deterministic_simulation` sets each result as an override
 and checks the standings and the what-if's record bounds against the row.
 
-Cost: about 13 ms more for a 14-team league (two standings and two bounds evaluations per game). The block is about
-5 KB.
+Cost: roughly 10 to 30 ms more for a 14-team league (two standings and two bounds evaluations per game; 13 ms and
+28 ms measured on two runs). The block is about 5 KB.
 
 ## Page
 
