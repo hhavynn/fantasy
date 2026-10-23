@@ -30,9 +30,9 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
-| #177 bye/kickoff planner | 2 | IN PROGRESS | `feature/fi-177-bye-planner` from 5b4fe14 | one agent; section on schedule-intelligence; unknown ≠ safe |
+| #177 bye/kickoff planner | 2 | PR OPEN | PR #244 (d746861) | `GET .../schedule-intelligence/bye-planner`; a/s pass; security review running (Codex stalled) |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
-| #187 player profile tabs | 2 | IN PROGRESS | `feature/fi-187-player-tabs` from 07484b1 | one agent; no News tab unless a redistributable source exists (#186 gate) |
+| #187 player profile tabs | 2 | PR OPEN | PR #245 (5eaa886) | 5 tabs, no News (#186 gate); frontend only; correctness review running |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
@@ -94,6 +94,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
+- PR OPEN #246: quick budget timeout → UNVERIFIED (not FAIL); test_schedule_intelligence (73 s) deferred.
 - MERGED #243 → ef21c42: response-cache key re-encoded so `%3D`/`%26` can't forge another URL's key (LOW from #242 review).
 - MERGED #240 → e234416: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
   test_overlapping_pytest_sessions_isolation, reproduced locally); ported into #238.
