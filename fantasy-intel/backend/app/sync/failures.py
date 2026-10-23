@@ -5,7 +5,8 @@
              (fi.record_credential_failure: >= 3 over >= 6 h with a control success), the job retries meanwhile
     private  401/403 without cookies: the provider says the league is private; restrict it now (the safe direction)
     missing  404 league not found: Postgres decides when it is `unavailable` (same rule); data is kept
-    dead     our parsing or validation failed: retrying cannot help; the previous data stays served
+    dead     our parsing or validation failed, or the provider returned the league with no teams (provider_empty):
+             retrying cannot help; the previous data stays served
 
 An Outcome holds a fixed error code and never the exception's message: provider messages carry league ids and the
 drain's logs are public.
@@ -39,6 +40,7 @@ def classify(err: BaseException, *, authenticated: bool, stage: str = "build") -
     from espn_api.requests.espn_requests import ESPNAccessDenied, ESPNInvalidLeague, ESPNUnknownError
 
     from ..analytics.validation import ValidationError
+    from .build import EmptyLeague
     from ..db.r2 import R2Error
 
     from ..sleeper.client import InvalidLeagueId, SleeperError, SleeperHTTPError, SleeperRateLimited
@@ -74,6 +76,8 @@ def classify(err: BaseException, *, authenticated: bool, stage: str = "build") -
             return Outcome("retry", "control_plane")
     except ImportError:   # pragma: no cover - psycopg is a dependency of the sync group
         pass
+    if isinstance(err, EmptyLeague):
+        return Outcome("dead", "provider_empty")
     if isinstance(err, ValidationError):
         return Outcome("dead", "validation_error")
     if isinstance(err, (KeyError, TypeError, ValueError, IndexError)):

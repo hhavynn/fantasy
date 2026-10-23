@@ -61,7 +61,7 @@ test("capabilities come from the backend's registry, in canonical order, with wo
 
 const mine = (over: Partial<MyLeague>): MyLeague => ({
   id: LG, provider: "espn", externalId: "4242", season: 2026, name: null, visibility: "public", status: "active",
-  role: "admin", pinned: true, teamId: null, syncState: "ready", syncIssue: null, committedAt: null, ...over,
+  role: "admin", pinned: true, teamId: null, syncState: "ready", syncIssue: null, syncStalled: false, committedAt: null, ...over,
 });
 
 test("a league the visitor already follows is found instead of registered again", () => {
@@ -167,4 +167,29 @@ test("a dormant or unavailable public league goes through import again, which is
   assert.equal(canSkipImport({ visibility: "public", status: "dormant" }), false);
   // private leagues recover through fresh cookies on their progress step, never by re-sending cookies here
   assert.equal(canSkipImport({ visibility: "private", status: "unavailable" }), true);
+});
+
+test("a first sync overdue far beyond the worker cadence says so, offers a retry and never reads as failed (#167)", () => {
+  for (const syncState of ["first_sync_queued", "first_sync_running"]) {
+    const p = syncProgress(mine({ syncState, syncStalled: true }));
+    assert.equal(p.headline, "The first sync is taking much longer than usual");
+    assert.equal(p.tone, "warn");
+    assert.equal(p.ready, false);
+    assert.ok(p.actions.includes("refresh"));
+    assert.ok(!p.steps.some((s) => s.state === "failed"), syncState);
+    assert.match(p.steps[1].detail ?? "", /over an hour/);
+  }
+  // not stalled: the usual steps
+  assert.equal(syncProgress(mine({ syncState: "first_sync_queued", syncStalled: false })).headline, "Your league is in the queue");
+});
+
+test("a league the provider returned with no teams is named as such and never opens (#167)", () => {
+  const p = syncProgress(mine({ syncState: "first_sync_failed", syncIssue: "empty" }));
+  assert.equal(p.ready, false);
+  assert.match(p.steps[1].detail ?? "", /ESPN returned this league with no teams yet\. Try again once the league has its teams\./);
+  assert.doesNotMatch(p.steps[1].detail ?? "", /repeated tries/);
+  assert.match(leagueState({ status: "active", syncState: "first_sync_failed", visibility: "public", syncIssue: "empty", provider: "espn" }).detail,
+    /no teams yet\. Refresh once the league has its teams\./);
+  assert.equal(parseMyLeague({ league_id: "lg_aaaaaaaaaaaaaaaaaaaaaa", provider: "espn", external_league_id: "1", season: 2026,
+    visibility: "public", sync_issue: "empty", sync_stalled: true })?.syncIssue, "empty");
 });

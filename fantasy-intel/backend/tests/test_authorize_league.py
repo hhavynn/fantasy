@@ -123,6 +123,7 @@ def test_sync_state_before_the_first_publish(pg, plane, states, job, expected):
     ("dead", "provider_auth", "access"),
     ("dead", "no_credential", "access"),
     ("dead", "provider_not_found", "not_found"),
+    ("dead", "provider_empty", "empty"),                        # the provider returned the league with no teams
     ("dead", "parse_error", "internal"),
     ("failed", "something_new", "internal"),                    # an unknown code is never shown, only its category
     ("succeeded", "network", None),
@@ -136,6 +137,40 @@ def test_sync_issue_is_a_category_never_the_worker_code(pg, plane, states, job, 
     assert a.sync_issue == expected and a.to_json()["sync_issue"] == expected
     body = str(a.to_json())
     assert "redacted detail" not in body and (code is None or expected == code or f"'{code}'" not in body)
+
+
+@pytest.mark.parametrize("job,due_min,started_min,attempt,expected", [
+    ("queued", 10, None, 0, False),            # due 10 minutes ago: a worker runs every 15
+    ("queued", 61, None, 0, True),             # due over an hour ago and nobody claimed it
+    ("queued", -30, None, 2, False),           # waiting out a retry backoff: due in the future
+    ("running", 0, 30, 1, False),
+    ("running", 0, 61, 1, True),               # a first run started over an hour ago: one drain run is capped at 25 min
+    ("running", 0, 300, 3, False),             # a retry keeps the first attempt's started_at: its age says nothing
+    ("failed", 600, 600, 5, False),            # finished: failed, not stalled
+])
+def test_a_sync_overdue_far_beyond_the_worker_cadence_is_stalled(pg, plane, states, job, due_min, started_min, attempt,
+                                                               expected):
+    lid = states["public_fresh"]
+    with pg.connect() as con:
+        jid = seed_job(con, lid, status=job)
+        con.execute("UPDATE fi.sync_jobs SET run_after = now() - make_interval(mins => %s), attempt = %s, "
+                    "started_at = CASE WHEN %s::int IS NULL THEN NULL ELSE now() - make_interval(mins => %s) END "
+                    "WHERE id = %s::uuid", [due_min, attempt, started_min, started_min or 0, jid])
+        con.commit()
+    a = authorize_league(plane, ANON, lid)
+    assert a.sync_stalled is expected and a.to_json()["sync_stalled"] is expected
+
+
+def test_stalled_is_judged_on_the_database_clock_from_columns_request_roles_may_read():
+    """Unit check of the rule itself (no Postgres): queued past due, or a first run, by more than STALL_AFTER."""
+    from datetime import datetime, timedelta
+
+    from app.control_plane.authz import STALL_AFTER, _sync_stalled
+    now = datetime(2026, 10, 23, 12)
+    over, under = now - STALL_AFTER - timedelta(minutes=1), now - STALL_AFTER + timedelta(minutes=1)
+    assert _sync_stalled("queued", over, None, 0, now) and not _sync_stalled("queued", under, None, 0, now)
+    assert _sync_stalled("running", None, over, 1, now) and not _sync_stalled("running", None, over, 2, now)
+    assert not _sync_stalled("queued", None, None, 0, now) and not _sync_stalled(None, over, over, 1, now)
 
 
 def test_a_revoked_member_of_a_private_league_is_a_stranger(pg, plane, states):

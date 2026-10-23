@@ -30,6 +30,11 @@ from ..espn.sync import EspnPayloads, write_synced
 from .raw_store import scrub
 
 
+class EmptyLeague(RuntimeError):
+    """The provider returned the league with no teams for the season: nothing a league page could show, so it is never
+    published as ready (issue #167). Classified `dead` / provider_empty (failures.py)."""
+
+
 @dataclass(frozen=True)
 class Built:
     league_path: Path
@@ -101,6 +106,8 @@ def build_league_file(work_dir: Path, *, global_path: Path, previous: Path | Non
             write_sleeper(con, payloads)
         else:
             write_synced(con, payloads, swid=anon_member(owner_swid) if owner_swid else None, my_team_id=None)
+        if not con.execute("SELECT count(*) FROM fantasy_teams WHERE season = ?", [season]).fetchone()[0]:
+            raise EmptyLeague("the provider returned no teams for this league season")
         if refs:
             apply_reference(con, season)
         run_analytics(con, season)
