@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useId, type ReactNode } from "react";
 import { TeamLink } from "@/components/TeamLink";
 import { Badge, EmptyState, Glossary, ProvenanceBadge, Section, SkeletonStatStrip, SkeletonTable } from "@/components/ui";
-import { label, num, pct } from "@/lib/format";
+import { Missing, label, num, pct } from "@/lib/format";
 import { isOursNumber, oursBlock, oursByWeek } from "@/lib/forward-view";
 import { providerName } from "@/lib/labels";
 import type { LeagueProfile } from "@/lib/league-profile";
@@ -13,6 +13,7 @@ import { weekAxis } from "@/lib/player-usage";
 import { plural } from "@/lib/plural";
 import type { PlayerRange } from "@/lib/projection-ranges";
 import { tidyReason } from "@/lib/reason-text";
+import { knownWaiverScore, waiverScoreGap } from "@/lib/waivers";
 import { signalsOf, type SignalKey } from "@/lib/signal-provenance";
 import type { ForwardProjection } from "@/lib/types";
 import { ForwardView } from "./ForwardView";
@@ -141,7 +142,7 @@ export function OverviewTab({ d, profile }: TabProps) {
         <Section title="Waiver view" actions={<TeamLink href="/waivers">All waivers</TeamLink>}>
           <div className={styles.badgeRow}>
             <Badge value={d.waiver.recommendation} />
-            <span>Waiver score {d.waiver.waiver_score.toFixed(2)}</span>
+            <span>Waiver score {knownWaiverScore(d.waiver) === null ? <Missing why={waiverScoreGap(d.waiver)} /> : d.waiver.waiver_score.toFixed(2)}</span>
           </div>
           <ul className={styles.reasons}>{d.waiver.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
         </Section>

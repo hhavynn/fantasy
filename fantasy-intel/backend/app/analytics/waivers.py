@@ -17,7 +17,7 @@ from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_i
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_gain, lineup_slots, lineup_total
 from .player_scores import percentile_scores, percentile_scores_100
 from .reserve_slots import is_reserved, is_taxi
-from .waiver_roster import plan_roster_move, player_names, unknown_value_players
+from .waiver_roster import competing_positions, plan_roster_move, player_names, unknown_value_players
 from .waiver_decisions import (VALUE_SCALE, VALUE_SCALE_TEXT, acquisition_utility, classify_action, evaluate_streaming,
                                resource_diagnostics)
 from .waiver_data import (attach_roster_evidence, comparable_free_agents, load_waiver_context, select_candidates,
@@ -96,6 +96,8 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
     slots = lineup_slots(roster_slots)
     lineup = assign_lineup(players, slots)
     unknown_ids = {p["espn_player_id"] for p in players if p["raw_value"] is None}
+    # A row's value is None for a player without a value, so lineup_total over these rows is not defined: callers sum
+    # one slot group with waiver_roster.group_total after checking it for unknown players.
     for a in lineup:
         a["value_known"] = a["player_id"] not in unknown_ids      # an empty slot is a measured hole, not unknown
         if not a["value_known"]:
@@ -111,25 +113,9 @@ def _ref(p: dict) -> dict:
     return {"espn_player_id": p["espn_player_id"], "name": p.get("full_name")}
 
 
-def _competing_positions(slots: list[str], pos: str) -> set[str]:
-    """Positions whose lineup placement can change who starts at `pos`: every position sharing a slot with it,
-    transitively (an OP slot links QB with RB/WR/TE; K and D/ST stand alone). Empty when no slot takes `pos`."""
-    comp, frontier = set(), [pos]
-    while frontier:
-        cur = frontier.pop()
-        for s in set(slots):
-            if eligible(s, cur):
-                for q in FLEX_ELIGIBILITY.get(s, (s,)):
-                    if q not in comp:
-                        comp.add(q)
-                        frontier.append(q)
-    return comp
-
-
 def unknown_competitors(state: dict, pos: str) -> list[dict]:
     """Available players without a value who compete for the slots `pos` can fill."""
-    comp = _competing_positions(state["slots"], pos)
-    return [p for p in state["players"] if p["available"] and p["raw_value"] is None and p["position"] in comp]
+    return unknown_value_players(state["players"], state["slots"], {pos})
 
 
 def _empty_slots(state: dict, pos: str) -> int:
@@ -247,7 +233,9 @@ def suggest_drop(state: dict, candidate: dict | None = None) -> dict | None:
 def manager_interest(team_id: int, pos: str, needs: dict[int, dict], profiles: dict[int, dict],
                      league_pos_share: dict[str, float]) -> tuple[float, list[str], dict]:
     prof = profiles.get(team_id, {})
-    need = needs.get(team_id, {}).get(pos, {}).get("need_score", 0.0)
+    need_row = needs.get(team_id, {}).get(pos, {})
+    need = need_row.get("need_score", 0.0)
+    partial = (need_row.get("details") or {}).get("value_status") == "partial"
     reasons = []
     share = prof.get("add_share", {}).get(pos)
     league_share = league_pos_share.get(pos)
@@ -261,7 +249,7 @@ def manager_interest(team_id: int, pos: str, needs: dict[int, dict], profiles: d
     aggression = prof.get("aggression_pct", 0.5)
     resource = prof.get("resource", 0.5)
     if need >= 0.5:
-        reasons.append(f"{pos} need {need:.2f}")
+        reasons.append(f"{pos} need {need:.2f}{' (lower bound: starter quality unknown)' if partial else ''}")
     if aggression >= 0.75:
         reasons.append("one of the most active waiver managers")
     if prof.get("resource_note"):
@@ -316,9 +304,9 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
             "lineup_slot_id": None, "raw_value": cv.value,
             "value": round(cand_value * av["weight"], 3) if cand_value is not None else None,
             "available": av["weight"] > 0, "availability": av}
-    # A lineup gain needs the candidate's value and every possible starter's (the same rule as acquisition_utility's
-    # starter_gain); otherwise it is unknown, never a difference that counts a missing value as 0 (#253 G5).
-    unknown = ([cand] if cand_value is None else []) + unknown_value_players(my_state["players"], my_state["slots"])
+    # A lineup gain needs the candidate's value and the value of every player in his slot group (the same rule as
+    # acquisition_utility's starter_gain); otherwise it is unknown, never a difference counting a missing value as 0.
+    unknown = ([cand] if cand_value is None else []) + unknown_competitors(my_state, pos)
     if unknown:
         lg = {"gain": None, "enters_lineup": None, "slot": None, "displaced_id": None}
         reasons.append(f"Lineup gain unknown: no historical value for {player_names(unknown)} (unknown is not zero)")
@@ -359,8 +347,9 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
         reasons.append(f"Would enter your lineup at {lg['slot']} (+{lg['gain']:.1f} lineup value{scale})")
     elif depth_utility < 0.5 and need < 0.5:
         reasons.append(f"Wouldn't start for you and a backup {pos} rarely plays")
-    scarcity_count = scarcity.get(pos, 0)
-    scarcity_bonus = 0.5 if scarcity_count <= 2 else 0.25 if scarcity_count <= 5 else 0.0
+    scarcity_count = scarcity.get(pos, 0)        # None: startability unknown, so no scarcity is claimed
+    scarcity_bonus = (0.0 if scarcity_count is None else
+                      0.5 if scarcity_count <= 2 else 0.25 if scarcity_count <= 5 else 0.0)
     if fit < CLAIM_MIN_FIT:
         scarcity_bonus = 0.0   # scarcity only matters if he'd help my roster
     if scarcity_bonus:
@@ -394,7 +383,8 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
         rec = "WAIT"
     else:
         rec = "IGNORE"
-    utility = acquisition_utility(my_state, cand, move, need=need, opportunity=opportunity)
+    need_status = (my_need.get("details") or {}).get("value_status", "complete")
+    utility = acquisition_utility(my_state, cand, move, need=need, opportunity=opportunity, need_status=need_status)
     stream = evaluate_streaming(pos, ctx.get("streaming", {}), required=int(my_state.get("roster_slots", {}).get(pos, 0))) if pos in ("K", "D/ST") else None
     stream_benefit = bool(stream and stream["category"] in ("SHORT_TERM_STREAMER", "MULTIWEEK_HOLD"))
     if stream_benefit:
@@ -623,8 +613,13 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     cands, coverage = select_candidates(pool, values, base_ctx["projections"], depth, base_ctx["weeks"])
     candidates_by_id = {p["espn_player_id"]: p for p in cands}
     coverage["excluded_rostered_conflicts"] = rostered_conflicts
-    scarcity = {pos: sum(1 for c in cands if c["espn_player_id"] in values
-                         and c["position"] == pos and (values[c["espn_player_id"]].value or 0) >= (lsa.get(pos) or 99))
+    # Startable available players per position: an upper bound that counts a candidate without a value as possibly
+    # startable (unknown, not "not startable"), and None when the league has no starter average to compare with.
+    def _value(c):
+        v = values.get(c["espn_player_id"])
+        return v.value if v is not None else None
+    scarcity = {pos: (sum(1 for c in cands if c["position"] == pos and (_value(c) is None or _value(c) >= lsa[pos]))
+                      if lsa.get(pos) is not None else None)
                 for pos in FANTASY_POSITIONS}
     contexts = load_player_contexts(con, season)
     # Team-independent candidate evidence, computed once.

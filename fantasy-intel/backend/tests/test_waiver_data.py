@@ -119,8 +119,16 @@ def test_ppr_basis_differences_name_pass_td_and_te_premium():
     te_pos = [{**i, "positionPoints": {"TE": 0.5}} if i["statId"] == 53 else i for i in ppr]    # translated items
     assert ppr_basis_differences(te_pos) == ["+0.5 per reception for TE"]
     extra = ppr + [{"statId": 2002, "points": 0.5}, {"statId": 74, "points": 3},             # 74: a kicker rule
-                   {"statId": 99, "points": 0, "pointsOverrides": {"16": 1}}]                # D/ST-only override
+                   {"statId": 99, "points": 0, "pointsOverrides": {"16": 1}},                # D/ST-only override
+                   {"statId": 63, "points": 6}]                                              # fumble-recovery TD
     assert ppr_basis_differences(extra) == ["0.5 per rushing first down (basis 0)"]
+    # Other offensive rules outside the basis are counted: ESPN completions (1) and a 300-yard passing bonus (17), and
+    # Sleeper's translated unimplemented skill rule (bonus_pass_yd_300 -> 2999). A zero-point rule is not.
+    bonuses = ppr + [{"statId": 1, "points": 0.5}, {"statId": 17, "points": 3}, {"statId": 2999, "points": 2},
+                     {"statId": 0, "points": 0}]
+    assert ppr_basis_differences(bonuses) == ["plus 3 other offensive rules (see League rules)"]
+    assert ppr_basis_differences(six + [{"statId": 17, "points": 3}]) == [
+        "6 per passing TD (basis 4)", "plus 1 other offensive rule (see League rules)"]
 
 
 def test_waiver_warning_fires_for_a_full_ppr_league_with_six_point_pass_tds(tmp_path):

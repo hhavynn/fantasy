@@ -25,7 +25,9 @@ export type Detail = {
   forward_projection: ForwardProjection | null;
   injuries: Injury[];
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;
-  waiver: { recommendation: string; waiver_score: number; reasons: string[] } | null;
+  waiver: { recommendation: string; waiver_score: number; reasons: string[];
+    /** roster.fit_status "partial": the score lacks its lineup-gain term (shown as unknown, lib/waivers knownWaiverScore). */
+    components?: { roster?: { fit_status?: string; value_unknown?: { name: string | null }[] } | null } | null } | null;
   unavailable_metrics: Record<string, string>;
   /** signal-provenance.v1: league data, forward projections, usage and injury reports (lib/signal-provenance.ts). */
   provenance?: ProvenancePayload | null;

@@ -8,21 +8,26 @@ These are decision thresholds, not changes to the shared player scoring model.
 """
 from __future__ import annotations
 
-from .lineup import assign_lineup, lineup_total
-from .waiver_roster import forward_effect, player_names, unknown_value_players
+from .lineup import assign_lineup
+from .waiver_roster import competing_positions, forward_effect, group_total, player_names, unknown_value_players
 
 VALUE_SCALE = "0-10 position percentile, not fantasy points"
 VALUE_SCALE_TEXT = "0-10 position-percentile scale, not fantasy points"
 
 
-def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float, opportunity: float | None) -> dict:
+def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float, opportunity: float | None,
+                        need_status: str = "complete") -> dict:
+    """`need_status` "partial": the need omits its unknown starter-quality term (a lower bound), said in the summary."""
     players, slots = state["players"], state["slots"]
     drop = move.get("drop")
     after = [p for p in players if not drop or p["espn_player_id"] != drop["espn_player_id"]] + [candidate]
     cand_raw = candidate.get("raw_value")
-    unknown = ([candidate] if cand_raw is None else []) + unknown_value_players(players, slots)
+    # The add (and the drop) move only their slot groups, so only an unknown player there makes the gain unknown.
+    group = competing_positions(slots, {candidate["position"], drop["position"] if drop else None})
+    unknown = ([candidate] if cand_raw is None else []) + unknown_value_players(players, slots, group)
     comparable = not unknown
-    gain = round(lineup_total(assign_lineup(after, slots)) - lineup_total(state["lineup"]), 3) if comparable else None
+    before, after_total = group_total(state["lineup"], group), group_total(assign_lineup(after, slots), group)
+    gain = round(after_total - before, 3) if comparable and before is not None and after_total is not None else None
     depth = [p["raw_value"] for p in players if p["position"] == candidate["position"] and p.get("raw_value") is not None]
     depth_unknown = any(p.get("raw_value") is None for p in players if p["position"] == candidate["position"])
     depth_gain = None if depth_unknown or cand_raw is None else cand_raw - min(depth) if depth else cand_raw
@@ -40,6 +45,8 @@ def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float
                f"Roster comparison is incomplete: no historical value for {player_names(unknown)}; unknown is not zero."
                if not comparable else
                "No meaningful improvement over your current starters or positional depth is demonstrated.")
+    if need_status == "partial":
+        summary += f" The {candidate['position']} need is a lower bound: starter quality there is unknown."
     return {"meaningful": bool(starter or stash), "starter_gain": gain, "depth_gain": depth_gain,
             "unknown_value_ids": [p["espn_player_id"] for p in unknown],
             "stash": bool(stash and not starter), "forward": forward, "summary": summary,

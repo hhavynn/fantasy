@@ -362,3 +362,63 @@ def test_flex_lineup_gain_says_it_compares_position_percentiles_not_points():
     assert r["components"]["roster"]["value_scale"].startswith("0-10 position percentile")
     entered = [x for x in r["reasons"] if x.startswith("Would enter your lineup")]
     assert entered and "percentile" in entered[0] and "not fantasy points" in entered[0]
+
+
+def _gain_for(roster, vals, slots, cand_pos="RB", cand_value=8.5):
+    mine = team_state(roster, vals, slots)
+    cand = {"espn_player_id": 99, "position": cand_pos, "availability_status": "FREEAGENT", "injury_status": "ACTIVE",
+            "full_name": "Cand"}
+    r = evaluate_candidate(cand, pv(99, cand_pos, cand_value), my_team_id=2, needs={2: team_needs(mine, slots, LSA)},
+                           my_state=mine, profiles={}, league_pos_share={}, team_names={}, scarcity={})
+    return r["components"]["roster"]["lineup_gain"], r["components"]["decision"]["utility"]["starter_gain"]
+
+
+def test_unknown_kicker_does_not_hide_a_running_backs_gain():
+    vals = values()
+    del vals[11]                                                      # my K has no value: a separate slot group
+    gain, starter_gain = _gain_for(my_roster(), vals, SLOTS)
+    assert gain is not None and gain > 0 and starter_gain == pytest.approx(gain)
+    assert team_state(my_roster(), vals, SLOTS)["lineup_value"] is None     # the whole-lineup total stays unknown
+
+
+def test_unknown_backup_qb_in_a_one_qb_league_does_not_hide_a_running_backs_gain():
+    roster = my_roster() + [p(14, "QB")]                              # no OP slot: QB shares no slot with RB
+    gain, starter_gain = _gain_for(roster, values(), SLOTS)
+    assert gain is not None and gain > 0 and starter_gain == pytest.approx(gain)
+
+
+def test_with_an_op_slot_an_unknown_qb_makes_a_running_backs_gain_unknown():
+    roster = my_roster() + [p(14, "QB")]
+    gain, starter_gain = _gain_for(roster, values(), {**SLOTS, "OP": 1})    # OP links QB with RB/WR/TE
+    assert gain is None and starter_gain is None
+
+
+def test_a_partial_need_is_named_as_a_lower_bound_where_it_is_used():
+    from app.analytics.waivers import manager_interest
+    roster = [p(1, "WR"), p(2, "WR"), p(3, "RB"), p(4, "RB")]
+    slots = {"RB": 2, "WR": 2, "BE": 2}
+    st = team_state(roster, {1: pv(1, "WR", 9), 3: pv(3, "RB", 6), 4: pv(4, "RB", 5)}, slots)
+    needs = {2: team_needs(st, slots, LSA)}
+    assert needs[2]["WR"]["details"]["value_status"] == "partial"
+    cand = {"espn_player_id": 99, "position": "WR", "availability_status": "FREEAGENT", "injury_status": "ACTIVE",
+            "full_name": "Cand"}
+    r = evaluate_candidate(cand, pv(99, "WR", 7.0), my_team_id=2, needs=needs, my_state=st, profiles={},
+                           league_pos_share={}, team_names={}, scarcity={})
+    assert "WR need is a lower bound" in r["components"]["decision"]["utility"]["summary"]
+    needs[2]["WR"]["need_score"] = 0.6                                 # force the reason line
+    _, why, _ = manager_interest(2, "WR", needs, {}, {})
+    assert any("lower bound" in w for w in why)
+
+
+def test_unknown_scarcity_claims_no_few_startable_bonus():
+    r = _eval(8.5, 8.0)
+    base = r["components"]["league"]["scarcity_bonus"]
+    vals = values()
+    mine = team_state(my_roster(), vals, SLOTS)
+    cand = {"espn_player_id": 99, "position": "RB", "availability_status": "WAIVERS", "injury_status": "ACTIVE",
+            "full_name": "Cand"}
+    unknown = evaluate_candidate(cand, pv(99, "RB", 8.5), my_team_id=2, needs={2: team_needs(mine, SLOTS, LSA)},
+                                 my_state=mine, profiles={}, league_pos_share={}, team_names={},
+                                 scarcity={"RB": None})
+    assert base > 0 and unknown["components"]["league"]["scarcity_bonus"] == 0.0
+    assert not any(x.startswith("Few startable") for x in unknown["reasons"])

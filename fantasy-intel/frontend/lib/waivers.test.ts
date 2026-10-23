@@ -66,6 +66,7 @@ test("a waiver score missing its lineup-gain term is unknown, never a measured n
   assert.match(waiverScoreGap(partial), /Cand QB/);
   assert.equal(knownWaiverScore({ waiver_score: 3.2, components: { roster: { fit_status: "complete" } } }), 3.2);
   assert.equal(knownWaiverScore({ waiver_score: 3.2, components: {} }), 3.2);   // older rows carry no status
+  assert.equal(knownWaiverScore({ waiver_score: 3.2 }), 3.2);                    // a player-page row without components
 });
 
 test("a need without its starter-quality term is marked partial with the stored reason", () => {

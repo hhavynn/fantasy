@@ -32,6 +32,11 @@ PPR_BASIS = {3: ("passing yards", 0.04), 4: ("passing TD", 4.0), 19: ("passing 2
              2001: ("passing first down", 0.0), 2002: ("rushing first down", 0.0), 2003: ("receiving first down", 0.0),
              2004: ("pass attempt", 0.0), 2005: ("pass completion", 0.0), 2006: ("rush attempt", 0.0)}
 DST_SLOT = "16"   # ESPN's D/ST lineup slot: an override there never scores an offensive player
+# Other offensive rules outside the basis: ESPN's offensive statIds (0-72; kicking starts at 73, defense beyond) and
+# the id Sleeper's translation gives an unimplemented skill rule (bonus_pass_yd_300, ...: app/sleeper/scoring.py).
+# 63 (fumble-recovery TD) is left out: whether the basis scores it is not verified.
+SKILL_UNSUPPORTED_ID = 2999
+_UNCOMPARED = {63}
 
 
 def stale_snapshot(stamp, now: datetime) -> bool:
@@ -45,15 +50,22 @@ def stale_snapshot(stamp, now: datetime) -> bool:
 def ppr_basis_differences(scoring_items) -> list[str]:
     """Known ways a league's offensive scoring differs from PPR_BASIS (#253 S2), as short phrases. Only rules the league
     states are compared: an absent rule is unknown, not 0. Rules outside PPR_BASIS (yardage bonuses, kicker and D/ST
-    rules) are not listed here; the League rules page names every rule."""
+    rules) are counted, not named; kicker and D/ST rules do not apply. The League rules page names every rule."""
     items = json.loads(scoring_items) if isinstance(scoring_items, str) else scoring_items
     if not items:
         return []
     points: dict[int, float] = {}
-    out_slot, out_pos = [], []
+    out_slot, out_pos, other = [], [], []      # other: one entry per rule (2999 carries several)
     for item in items:
         sid = item.get("statId")
-        if sid not in PPR_BASIS or item.get("isReverseItem"):
+        if sid not in PPR_BASIS:
+            offensive = isinstance(sid, int) and (0 <= sid <= 72 or sid == SKILL_UNSUPPORTED_ID) and sid not in _UNCOMPARED
+            if offensive and (float(item.get("points") or 0.0) or item.get("positionPoints")
+                              or any(str(k) != DST_SLOT and v for k, v in (item.get("pointsOverrides") or {}).items())):
+                other.append(sid)
+            continue
+        if item.get("isReverseItem"):
+            other.append(sid)
             continue
         name = PPR_BASIS[sid][0]
         points[sid] = points.get(sid, 0.0) + float(item.get("points") or 0.0)
@@ -62,8 +74,10 @@ def ppr_basis_differences(scoring_items) -> list[str]:
         if any(str(k) != DST_SLOT and v is not None and float(v) != base for k, v in (item.get("pointsOverrides") or {}).items()):
             out_slot.append(f"{name} scored differently by lineup slot (such as a TE premium)")
     out = [f"{pts:g} per {PPR_BASIS[sid][0]} (basis {PPR_BASIS[sid][1]:g})"
-           for sid, pts in points.items() if abs(pts - PPR_BASIS[sid][1]) > 1e-9]
-    return out + out_pos + out_slot
+           for sid, pts in points.items() if abs(pts - PPR_BASIS[sid][1]) > 1e-9] + out_pos + out_slot
+    if other:
+        out.append(f"plus {len(other)} other offensive {'rule' if len(other) == 1 else 'rules'} (see League rules)")
+    return out
 
 
 def comparable_free_agents(candidate: dict, values: dict, pool: list[dict], ctx: dict, reports: dict | None = None) -> list[dict]:
