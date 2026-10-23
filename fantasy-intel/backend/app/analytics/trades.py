@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 
 from .lineup import separable, unsupported_of
+from .lineup_totals import LineupTotals
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
 from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
                            StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
@@ -201,7 +202,8 @@ def minimum_drops(after: list[RosterPlayer], before: list[RosterPlayer], state: 
 
 
 def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], state: LeagueState,
-                        incoming: set[int], total, negative: bool = False) -> dict:
+                        incoming: set[int], total, negative: bool = False, total_without=None,
+                        single_bound=None) -> dict:
     """The forced drops for an illegal post-trade roster, shared by the evaluator and discovery so both
     pick the same players. `total(players)` is the known starting total over the window.
 
@@ -215,41 +217,63 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
     least the sum of its players' single-removal costs. Drop sets are solved in increasing order of
     that bound and the search stops once the bound exceeds the best exact cost, so no unsolved set
     can beat (or tie) the choice. A negative projection voids the bound: every legal set is solved.
-    Budgets: MAX_DROP_SETS candidate sets, MAX_DROP_SOLVES exact solves (EvaluationUnavailable)."""
+    Budgets: MAX_DROP_SETS candidate sets, MAX_DROP_SOLVES exact solves (EvaluationUnavailable).
+
+    `total_without(combo)`, when given, must equal `total` of `after` without the players in `combo` (a tuple of
+    objects from `after`); callers that can answer from the removed players alone pass it (LineupTotals.removal_total),
+    which saves rebuilding the roster for every candidate set. The search and its choice are the same either way.
+    `single_bound(p)`, when given, stands in for each player's single-removal cost in the lower bounds: it must not
+    exceed that cost by more than float rounding (LineupTotals' RemovalTotal.single_bound computes it from one solve
+    per week and position). The choice does not depend on it: a set is left unsolved only when its bound exceeds the
+    best exact cost found by DROP_EPS, so it cannot beat or tie the choice, and the chosen set (bound <= its cost <= the
+    best cost) is always solved. Only the order and the number of exact solves change."""
+    if total_without is None:
+        def total_without(combo):
+            out = {id(p) for p in combo}           # the combos hold the very objects of `after`
+            return total([p for p in after if id(p) not in out])
     pool = sorted(after, key=lambda p: p.espn_player_id)
     cap = max(state.active_capacity, _active(before))
     counts, prior = _position_counts(after), _position_counts(before)
     limits = {p: max(lim, prior[p]) for p, lim in state.position_limits.items()}
     act = _active(after)
     full = total(after)
-    single = {} if negative else {p.espn_player_id: max(0.0, full - total([q for q in after if q is not p]))
-                                  for p in pool}
-    solves = 0 if negative else len(pool)
+    if negative:
+        single, solves = {}, 0
+    elif single_bound is not None:
+        single, solves = {p.espn_player_id: max(0.0, single_bound(p)) for p in pool}, 0
+    else:
+        single = {p.espn_player_id: max(0.0, full - total_without((p,))) for p in pool}
+        solves = len(pool)
     sets = 0
     # Players no engine values (they start only in IDP/P/HC slots) would always look free to drop: they are candidates
     # only when no other legal drop exists, and the choice is then flagged (`unvalued_drop`).
     unvalued = unvalued_ids(after, state)
 
-    def search(cands: list[RosterPlayer]) -> tuple[list, int] | None:
+    def search(cands: list[RosterPlayer]) -> tuple[list, int, list] | None:
+        """The legal drop sets of the fewest players, as (lower bound, indexes into `cands`), and that count. Indexes
+        follow `cands` (sorted by player id), so index order is id order."""
         nonlocal sets
         k = minimum_drops(after, before, state)
+        frees = [0 if p.reserved else 1 for p in cands]
+        bound = [single.get(p.espn_player_id, 0.0) for p in cands]
+        where = [p.position for p in cands]
         while k <= len(cands):
             legal = []
-            for combo in combinations(cands, k):
+            for combo in combinations(range(len(cands)), k):
                 sets += 1
                 if sets > MAX_DROP_SETS:
                     raise EvaluationUnavailable(
                         f"exact forced-drop resolution needs more than {MAX_DROP_SETS:,} candidate drop sets of {k} "
                         "players; evaluation unavailable (no approximate result is substituted)")
-                if act - sum(1 for p in combo if not p.reserved) > cap:
+                if act - sum(frees[i] for i in combo) > cap:
                     continue
                 if limits:
-                    gone = _position_counts(combo)
+                    gone = Counter(where[i] for i in combo)
                     if any(counts[pos] - gone[pos] > lim for pos, lim in limits.items()):
                         continue
-                legal.append((sum(single.get(p.espn_player_id, 0.0) for p in combo), combo))
+                legal.append((sum(bound[i] for i in combo), combo))
             if legal:
-                return legal, k
+                return legal, k, cands
             k += 1
         return None
 
@@ -260,20 +284,22 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
         unvalued_drop = bool(unvalued) and found is not None
     if found is None:
         raise TradeError("no legal roster exists after this trade")
-    legal, k = found
+    legal, k, cands = found
+    arriving = [p.espn_player_id in incoming for p in cands]
     best: dict[bool, tuple] = {}
     for group in (False, True):
-        items = sorted((x for x in legal if any(p.espn_player_id in incoming for p in x[1]) == group),
-                       key=lambda x: (x[0], [p.espn_player_id for p in x[1]]))
+        # by lower bound, then player ids (index order is id order)
+        items = sorted(x for x in legal if any(arriving[i] for i in x[1]) == group)
         best_total = None
-        for lb, combo in items:
+        for lb, idx in items:
             if not negative and best_total is not None and lb > full - best_total + DROP_EPS:
                 break
             solves += 1
             if solves > MAX_DROP_SOLVES:
                 raise EvaluationUnavailable(f"exact forced-drop resolution needs more than {MAX_DROP_SOLVES:,} lineup "
                                             "solves; evaluation unavailable (no approximate result is substituted)")
-            t = total([p for p in after if p not in combo])
+            combo = tuple(cands[i] for i in idx)
+            t = total_without(combo)
             key = (round(t, 9), tuple(-p.espn_player_id for p in combo))
             if group not in best or key > best[group][0]:
                 best[group] = (key, combo, t)
@@ -291,21 +317,24 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
     redundant asset."""
     if legal_roster(after, state, before):
         return {"forced_drops": [], "lineup_cost": 0.0, "redundant_incoming_asset": None, "basis": None}
-    teams: dict[tuple, dict] = {}
+    # The search compares known totals only, on the totals-only solver (lineup_totals.LineupTotals: bit-identical to
+    # known_total(project_team(...)), and a drop that leaves a week's lineup alone reuses that week's value instead of
+    # a new solve). project_team runs for the two rosters this resolution reports on.
+    T = LineupTotals(state, window.weeks, {p.espn_player_id for p in after},
+                     {p.espn_player_id: p.position for p in after}, {p.espn_player_id: p.pro_team for p in after},
+                     {p.espn_player_id: p.unavailable_weeks for p in after if p.unavailable_weeks}, exact_negative=True)
+    known = T.removal_total(p.espn_player_id for p in after if not p.reserved)
 
     def total(players):
-        key = tuple(sorted(p.espn_player_id for p in players))
-        if key not in teams:
-            teams[key] = project_team(players, state.slots, window, state.projections)
-        return known_total(teams[key])
+        return known(p.espn_player_id for p in players if not p.reserved)
     negative = any(v < 0 for p in after for w, v in state.projections.get(p.espn_player_id, {}).items()
                    if w in window.weeks)
-    res = choose_forced_drops(after, before, state, incoming, total, negative)
+    res = choose_forced_drops(after, before, state, incoming, total, negative, known.dropping)
     best = res["best"]
-    full = teams[tuple(sorted(p.espn_player_id for p in after))]
+    full = project_team(after, state.slots, window, state.projections)
     chosen = best.get(False) or best[True]
     _, combo, _ = chosen
-    team = teams[tuple(sorted(p.espn_player_id for p in after if p not in combo))]
+    team = project_team([p for p in after if p not in combo], state.slots, window, state.projections)
     unsupported = unsupported_of(state.slots)
     # The cost is exact when the projections are complete and, with unsupported slots, no dropped player could fill
     # one (team_lineups.delta_exact's rule); otherwise it is known-only.

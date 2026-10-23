@@ -313,6 +313,13 @@ proof is claimed. Per opponent:
 5. Deduplicate by sorted player sets. Skip padding: an added player that changes neither team's effects or drops.
    Illegal rosters are rejected by the shared forced-drop rules. Packages that qualify become rows marked
    `search_method: heuristic_beam`.
+6. Work budget (`BEAM_WORK_PER_OPPONENT`, 15,000 lineup totals per opponent: each side of an exact package and each
+   forced-drop set it solves). The 1-for-1 seeds are always evaluated. Once an opponent's share is spent, the rest of
+   that expansion step is counted as generated but not evaluated, and later steps do not run for that opponent. A
+   cached package is charged what it cost when first solved, so the cut is the same however warm the cache is. Standard
+   leagues stay well below it (at most ~7,400 per opponent in the synthetic 16-player 1-FLEX and IDP leagues), so their
+   results are unchanged; a deep league (FX-17: 27 active players, up to ~56,000) reaches it. See
+   [`v2_trade_discovery.md`](v2_trade_discovery.md#deep-leagues-fx-17-and-the-beams-work-budget).
 
 Every displayed row, exact or heuristic, is re-run through `evaluate_trade` and carries
 `consistent_with_manual_evaluator`.
@@ -329,6 +336,12 @@ The API returns `coverage.exact` (the V2 search block, which is exhaustive withi
 * per-opponent seeds, pools and evaluations;
 * timing;
 * a note that it is not a proven top list.
+
+Only when the work budget stopped the beam, `coverage.heuristic.work_budget` (the budget, the opponents cut, packages
+evaluated of packages generated, and a note appended to the coverage note) and a `work_budget` entry on each opponent
+cut (packages generated, not evaluated, and expansion steps not run). The page adds one sentence to its "not a proven
+top list" notice and to the larger-shapes tile. A beam that stays within its budget returns exactly the fields it
+always did.
 
 The page shows both as separate tiles, and marks heuristic shapes with `*` in the controls and with a
 "heuristic search" badge on each row. There is also an "exact search only" option.

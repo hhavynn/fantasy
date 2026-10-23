@@ -12,7 +12,7 @@ import { signed } from "@/lib/format";
 import { projectionName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
-import { analyzerHref, discoverQuery, evidenceSrc, resolveSort, sortValue, targetHrefParams } from "@/lib/trade-discovery";
+import { analyzerHref, beamBudgetText, discoverQuery, evidenceSrc, resolveSort, sortValue, targetHrefParams } from "@/lib/trade-discovery";
 import {
   beforeAfterText, favoursText, excludedText, lensTabText, lensTabs, modeUsesPhase, modeUsesStrictness, sectionsAreVerdicts,
 } from "@/lib/trade-dual-value";
@@ -177,6 +177,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         <Notice tone="caution" title="This list is not a proven top list">
           {d.coverage.exact && !d.coverage.exact.exhaustive ? "The exact search reached its evaluation cap. " : ""}
           {d.coverage.heuristic ? `Larger shapes (${d.coverage.heuristic_shapes.join(", ")}) come from a bounded heuristic search. ` : ""}
+          {beamBudgetText(d.coverage.heuristic?.work_budget)?.notice ?? ""}
           Every listed trade is still evaluated exactly; see About this search below.
         </Notice>
       ) : null}
@@ -317,6 +318,7 @@ function Filters({ d, action }: { d: DiscoveryContext; action: string }) {
 
 function Coverage({ d }: { d: DiscoverySummary }) {
   const ex = d.coverage.exact, he = d.coverage.heuristic;
+  const budget = beamBudgetText(he?.work_budget);
   return (
     <StatStrip>
       <Stat label={<span title={d.pool_rule}>Pool for this view</span>} value={d.pool_size.toLocaleString()} note={d.pool_rule} />
@@ -328,7 +330,7 @@ function Coverage({ d }: { d: DiscoverySummary }) {
       <Stat
         label={<span title={he?.note}>Larger shapes ({d.coverage.heuristic_shapes.join(", ") || "off"})</span>}
         value={he ? "Heuristic" : "Off"}
-        note={he ? `not exhaustive · ${he.packages_evaluated.toLocaleString()} packages evaluated exactly (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
+        note={he ? `not exhaustive · ${budget ? budget.tile : `${he.packages_evaluated.toLocaleString()} packages evaluated exactly`} (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
       />
       <Stat
         label="Checked against the analyzer"
