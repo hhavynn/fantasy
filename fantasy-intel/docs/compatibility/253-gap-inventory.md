@@ -321,3 +321,68 @@ waivers `scoring.partial` (xFP is full PPR).
 
 Leave out: UI (a later small entry on the league-rules page), scoring changes (#254), E2E and goldens for new
 leagues.
+
+---
+
+## 8. Phase 2 status (backend fixture and diagnostic PR)
+
+Phase 2 implements section 7 on `origin/main` at `17d26e2` (after #249). Sections 1-6 above describe the code as audited
+at `ea9e664` and are left as they were; line numbers in them may have moved.
+
+### 8.1 What shipped
+
+- **Fixtures.** `fantasy-intel/backend/tests/compat_fixtures.py` builds the matrix rows M1, M2 (FX-17 ESPN), M2b (FX-17
+  with an unmapped stat and a TE slot override), M3 (FX-17 Sleeper), M4 (tied, sparse superflex with mixed flex types),
+  M8 (ESPN IDP) and M8s (Sleeper IDP). It produces raw provider payloads, which go through the real
+  `fetch_all`/`write_all` and `write_sleeper` paths. `espn_fixture` and the existing goldens stay untouched.
+- **Diagnostic.** `app/analytics/league_compatibility.py` implements `league-compatibility/v1`.
+  - `load_facts` reads the few league-file facts the diagnostic needs. It reads projections the way the engines do
+    (`projection_source.league_projections` and `select_run`, never `weekly()`), as pinned in
+    `tests/test_independent_projections.py`.
+  - `build_compatibility` runs on top of `build_league_rules`.
+- **Endpoint.** `GET /api/league-compatibility` lives in `app/api/league_rules.py` and is mounted league-scoped at
+  `/v2/leagues/{league_id}/api/league-compatibility`. It is covered by the per-league golden check
+  (`test_league_scope.py`) and by an authorization test (404 for unknown or inaccessible leagues,
+  `private, no-store`).
+- **Stable codes.** Every `engine_support` row now carries a stable `code` (`league_rules.ENGINE_CODES`), and lineup
+  what-if keys on `lineup_lock` instead of the English rule text (G14 fixed).
+- **G1 fixed** in `start_sit.optimize_lock_constrained_lineup`. An empty recommended or unconstrained slot that a
+  rostered, teamed, eligible player without a projection could fill now makes the total unknown. The total is `None`,
+  the known part is still reported, and those players are listed under `missing_projections`. When no projection exists
+  for the week, the source label is `"Unavailable"` (`start_sit.NO_PROJECTIONS`) instead of a provider name. Tests are
+  in `test_start_sit.py` and `test_league_compatibility.py`.
+
+### 8.2 Implemented contract (differences from the section 4 draft)
+
+- `Entry` is `{status, reason, missing_input, provider_boundary, action, evidence}`. `evidence` lists every finding as
+  `{code, status, value}`, handled findings included. The entry's status is the worst of its findings. Its reason joins
+  the reasons of the findings that are not handled, most severe first.
+- `projection_source` is `provider`, `ours` or `none`, or `null` for the bye planner. `ours_rescored` is left to #254,
+  together with S1.
+- The response has `contract`, `source` (the same as league_rules), `week`, `dimensions` (import, roster and scoring,
+  league-wide), `tools` (13 tools with the four dimensions, `projection_source` and `refs` to engine_support codes),
+  `unmapped_count` and a `note`. It returns no league, member or player identifiers and no player names.
+
+### 8.3 Gaps reported by the diagnostic, left for follow-ups
+
+| Gap | Finding code(s) and status | Follow-up owner |
+|---|---|---|
+| G2: Start/Sit gain ignores starters in slots no engine fills | `unfilled_slots`, roster `partial` (start_sit, what-if) | #253 follow-up |
+| G3: full-lineup totals omit unfilled slots | `unfilled_slots`, roster `partial` (totals tools, waivers, bye planner) | #253 follow-up |
+| G4: Sleeper IDP players missing from the player data | `players_missing`: import `partial`, roster `unsupported` for capacity tools, `partial` for others | #253 follow-up |
+| G5: waiver lineup math treats a missing value as 0 and compares percentiles | `missing_value`, feature `partial` (waivers) | the #180 agent owns waiver code; diagnostic only here |
+| G6: Sleeper waiver legality always unknown | `roster_restrictions`, roster `unverified` (waivers) | #180 agent |
+| G7: ESPN IR statuses applied to Sleeper | `ir_eligibility`, roster `partial` (waivers, add/drop) | #180 agent |
+| G8: sparse-pool replacement level 0 | `replacement_level`, feature `partial` (trade discovery) | the #182 agent owns trade code; diagnostic only here |
+| G9: one streaming slot for 2+ K or D/ST | `streaming_slots`, roster `partial` (kdst_streaming) | #253 follow-up |
+| G10: one missing family makes lineup totals known-only | `projection_coverage`, scoring `partial`; `totals_known_only`, feature `unverified` | #253 diagnostic; scoring fix #254 |
+| S2: waiver values are full-PPR usage percentiles | `player_value_basis`, scoring `partial` with refs `ppr` / `te_premium` | #254 |
+
+Other follow-ups:
+
+- G11 and G12 (dual eligibility, blank ESPN slot 22) are not yet reported by the diagnostic.
+- `fantasy-intel/frontend/lib/action-center.ts` maps any Start/Sit source other than `"Independent model"` to ESPN
+  wording. It should treat the new `"Unavailable"` label as "no projections" when the action center is next touched.
+- The frontend `EngineRule` type can gain the optional `code` when the UI entry for the diagnostic is built (no UI in
+  this PR).
+- UI entry point and E2E acceptance items for #253 remain open.

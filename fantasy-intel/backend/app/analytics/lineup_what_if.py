@@ -357,7 +357,7 @@ def evaluate_what_if(con: Any, *, team_id: int | None = None, week: int | None =
         })
 
     rules = build_league_rules(cap["league_row"])
-    support = next((r for r in rules["engine_support"] if r["rule"] == "Lineup lock"), None)
+    support = next((r for r in rules["engine_support"] if r["code"] == "lineup_lock"), None)
     lock_rule = rules["lineup_lock"]
     limitations = [
         "A what-if is computed for this page only: nothing is saved and nothing is sent to the provider.",

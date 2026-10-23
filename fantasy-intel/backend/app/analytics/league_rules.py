@@ -11,7 +11,9 @@ Honest data:
   * a provider rule this module cannot read (an unrecognised slot, a scoring key without a label, a settings key it does
     not interpret) is listed under `unmapped`, never dropped;
   * `engine_support` states, for each rule present in this league, whether the analysis engines apply it. The statuses
-    restate what the engines do (cited per entry below); this module never changes an engine.
+    restate what the engines do (cited per entry below); this module never changes an engine. Each row carries a
+    stable `code` (ENGINE_CODES): consumers (lineup what-if, the league compatibility diagnostic) key on it, never on
+    the readable `rule` text.
 
 No league ids, member ids or credentials are returned: only the settings the page shows.
 """
@@ -33,6 +35,11 @@ NOT_SYNCED = "No league has been synced yet, so there are no league rules to sho
 PROVIDERS = {"espn": "ESPN", "sleeper": "Sleeper"}
 
 HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED = "handled", "partial", "unsupported", "unverified"
+STATUSES = (HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED)
+# Stable codes of the engine_support rows (a row appears only when its rule is present in the league).
+ENGINE_CODES = ("superflex_slot", "flex_slots", "unfilled_slots", "taxi", "provider_projections", "skill_projections",
+                "kicker_projections", "dst_projections", "te_premium", "ppr", "lineup_lock", "position_limits",
+                "undroppable")
 
 # D/ST tiers and the D/ST scoring check, numpy-free: the app never imports app/analytics/dst_research.py (it needs numpy;
 # tests/test_dst_research.py enforces it). Same values and rules as dst_research; tests/test_league_rules.py checks equality.
@@ -701,24 +708,25 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
 
     # Superflex and flex slots (app/analytics/lineup.py, start_sit.build_slot_instances, trade_discovery._Totals).
     if roster["superflex"]:
-        rows.append({"rule": "Superflex (OP) slot", "status": HANDLED,
+        rows.append({"code": "superflex_slot", "rule": "Superflex (OP) slot", "status": HANDLED,
                      "detail": "Projected lineups, Start/Sit, Matchup, Waivers and the trade analyzer start a QB in "
                                "the OP slot when he projects highest. Waiver needs and trade discovery's replacement "
                                "levels and starter-caliber labels count the QBs the league actually starts in OP."})
     flex = roster["flex_types"]
     if len(flex) > 1:
-        rows.append({"rule": "Several flex slot types", "status": HANDLED,
+        rows.append({"code": "flex_slots", "rule": "Several flex slot types", "status": HANDLED,
                      "detail": f"{', '.join(flex)}: every lineup engine searches all flex combinations exactly, so a "
                                "player is never placed in a narrower slot when a wider one fits better."})
     elif flex == ["FLEX"]:
-        rows.append({"rule": "Flex slot", "status": HANDLED, "detail": "Filled by every projected lineup."})
+        rows.append({"code": "flex_slots", "rule": "Flex slot", "status": HANDLED,
+                     "detail": "Filled by every projected lineup."})
     skipped = [s for s in slots if s["kind"] in ("starter", "unknown") and s["engine"]["status"] == UNSUPPORTED]
     if skipped:
-        rows.append({"rule": "Starting slots no engine fills", "status": UNSUPPORTED,
+        rows.append({"code": "unfilled_slots", "rule": "Starting slots no engine fills", "status": UNSUPPORTED,
                      "detail": f"{', '.join(s['code'] for s in skipped)}: left out of every projected lineup, lineup "
                                "total and trade value; waiver roster planning reports the roster capacity as unknown."})
     if any(s["kind"] == "taxi" for s in slots):
-        rows.append({"rule": "Taxi squad", "status": HANDLED,
+        rows.append({"code": "taxi", "rule": "Taxi squad", "status": HANDLED,
                      "detail": "Taxi players stay owned and visible but never start in projected, start/sit or waiver "
                                "lineups, and taxi slots are left out of active roster capacity in the trade analyzer and "
                                "waiver planning. A traded taxi player arrives in an active spot."})
@@ -728,23 +736,24 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     kicker = resolve_kicker_scoring(items or None)
     dst_ok, dst_unmodeled_rules = dst_unmodeled(items or None)
     if provider == "espn":
-        rows.append({"rule": "Projections in this league's scoring", "status": HANDLED,
+        rows.append({"code": "provider_projections", "rule": "Projections in this league's scoring", "status": HANDLED,
                      "detail": "ESPN projects every player in this league's own scoring; those numbers are shown "
                                "unmodified by default."})
         ours = "Ours projections (QB, RB, WR, TE)"
     else:
         ours = "Projections (Ours, QB, RB, WR, TE)"
-    rows.append({"rule": ours, "status": HANDLED if skill.supported else UNSUPPORTED,
+    rows.append({"code": "skill_projections", "rule": ours, "status": HANDLED if skill.supported else UNSUPPORTED,
                  "detail": ("Fantasy Intel's own projections are scored with this league's rules."
                             + (" The TE reception bonus is applied." if skill.position_weights.get("TE") else "")
                             if skill.supported else
                             "Fantasy Intel's own projections abstain: the league scores "
                             f"{_reasons(skill.unsupported, sl_unsupported)}, which the model does not implement.")})
-    rows.append({"rule": "Kicker projections", "status": HANDLED if kicker.supported else UNSUPPORTED,
+    rows.append({"code": "kicker_projections", "rule": "Kicker projections",
+                 "status": HANDLED if kicker.supported else UNSUPPORTED,
                  "detail": "Field goals and extra points are scored with this league's distance rules."
                  if kicker.supported else
                  f"Kicker projections abstain: {_reasons(kicker.unsupported, sl_unsupported)}."})
-    rows.append({"rule": "D/ST projections", "status": HANDLED if dst_ok else UNSUPPORTED,
+    rows.append({"code": "dst_projections", "rule": "D/ST projections", "status": HANDLED if dst_ok else UNSUPPORTED,
                  "detail": "Sacks, takeaways, touchdowns and points-allowed tiers are scored with this league's rules."
                  if dst_ok else
                  f"D/ST projections abstain: {_reasons(dst_unmodeled_rules, sl_unsupported) or 'the league scores no D/ST statistics'}."})
@@ -752,38 +761,38 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     te = scoring["te_premium"]["value"]
     if te:
         espn_slot = scoring["te_premium_scope"] == "slot"
-        rows.append({"rule": "TE premium", "status": PARTIAL,
+        rows.append({"code": "te_premium", "rule": "TE premium", "status": PARTIAL,
                      "detail": ("ESPN's projections include it; " if provider == "espn" else "")
                      + ("Ours does not (ESPN expresses it per lineup slot). " if espn_slot else
                         "Ours applies it. " if skill.supported else "")
                      + "Player ratings and expected points (xFP) are full PPR and ignore it."})
     rp = scoring["points_per_reception"]["value"]
     if rp is not None and rp != 1.0:
-        rows.append({"rule": "Points per reception", "status": PARTIAL,
+        rows.append({"code": "ppr", "rule": "Points per reception", "status": PARTIAL,
                      "detail": f"League projections use {_g(rp)} per catch. Player ratings and expected points "
                                "(xFP) are full PPR, not this league's scoring."})
 
     # Lineup lock (app/analytics/start_sit.py: game locks at each team's kickoff).
     if lock["value"] == "individual_game":
-        rows.append({"rule": "Lineup lock", "status": HANDLED,
+        rows.append({"code": "lineup_lock", "rule": "Lineup lock", "status": HANDLED,
                      "detail": "Start/Sit keeps players whose game has kicked off where they are, as this league does."})
     elif lock["value"] is not None:
-        rows.append({"rule": "Lineup lock", "status": UNSUPPORTED,
+        rows.append({"code": "lineup_lock", "rule": "Lineup lock", "status": UNSUPPORTED,
                      "detail": f"Start/Sit locks each player at his own game's kickoff; this league's rule "
                                f"({lock['display']}) is not applied."})
     else:
-        rows.append({"rule": "Lineup lock", "status": UNVERIFIED,
+        rows.append({"code": "lineup_lock", "rule": "Lineup lock", "status": UNVERIFIED,
                      "detail": f"Start/Sit locks each player at his own game's kickoff. {name}'s rule for this league is "
                                "not in the synced settings, so that assumption is not verified."})
 
     # Roster rules (app/analytics/trade_data._position_limits, waiver_roster.roster_constraints).
     limits = roster["position_limits"]["value"]
     if limits:
-        rows.append({"rule": "Per-position roster limits", "status": HANDLED,
+        rows.append({"code": "position_limits", "rule": "Per-position roster limits", "status": HANDLED,
                      "detail": "Waiver and trade suggestions respect them."})
     rs = settings.get("rosterSettings") if provider == "espn" and isinstance(settings.get("rosterSettings"), dict) else {}
     if rs.get("isUsingUndroppableList"):
-        rows.append({"rule": "Undroppable list", "status": UNSUPPORTED,
+        rows.append({"code": "undroppable", "rule": "Undroppable list", "status": UNSUPPORTED,
                      "detail": "Which players are undroppable is not synced, so a suggested drop may be one of them."})
     return rows
 

@@ -1,0 +1,674 @@
+// /api/league-compatibility
+{
+ "body": {
+  "contract": "league-compatibility/v1",
+  "dimensions": {
+   "import": {
+    "action": null,
+    "evidence": [],
+    "missing_input": null,
+    "provider_boundary": null,
+    "reason": "League settings, rosters and players for week 3 were synced.",
+    "status": "handled"
+   },
+   "roster": {
+    "action": null,
+    "evidence": [],
+    "missing_input": null,
+    "provider_boundary": null,
+    "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+    "status": "handled"
+   },
+   "scoring": {
+    "action": null,
+    "evidence": [
+     {
+      "code": "provider_projections",
+      "status": "handled",
+      "value": null
+     }
+    ],
+    "missing_input": null,
+    "provider_boundary": "ESPN's own projections, in this league's scoring.",
+    "reason": "Projections exist in this league's scoring for every rostered player.",
+    "status": "handled"
+   }
+  },
+  "note": "Each tool is judged on four separate dimensions; a connected league is not automatically supported by every tool. Statuses restate what the engines do with this league's synced data.",
+  "source": {
+   "captured_at": "<masked>",
+   "note": "Read from the ESPN settings saved by the last sync. Nothing on this page is fetched live, and nothing here can change the league's settings.",
+   "provider": "espn",
+   "provider_label": "ESPN"
+  },
+  "tools": [
+   {
+    "feature": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "lineup_lock",
+       "status": "unverified",
+       "value": null
+      }
+     ],
+     "missing_input": "the league's lineup-lock rule",
+     "provider_boundary": null,
+     "reason": "Start/Sit locks each player at his own game's kickoff. ESPN's rule for this league is not in the synced settings, so that assumption is not verified.",
+     "status": "unverified"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Start/Sit",
+    "projection_source": "provider",
+    "refs": [
+     "lineup_lock",
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "start_sit"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "lineup_lock",
+       "status": "unverified",
+       "value": null
+      }
+     ],
+     "missing_input": "the league's lineup-lock rule",
+     "provider_boundary": null,
+     "reason": "Start/Sit locks each player at his own game's kickoff. ESPN's rule for this league is not in the synced settings, so that assumption is not verified.",
+     "status": "unverified"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Start/Sit what-if",
+    "projection_source": "provider",
+    "refs": [
+     "lineup_lock",
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "what_if"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Projected lineups",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "lineup_projections"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Team value",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "team_value"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "missing_value",
+       "status": "partial",
+       "value": null
+      }
+     ],
+     "missing_input": "usage data for every player",
+     "provider_boundary": null,
+     "reason": "A player without usage data counts as 0 in the waiver lineup math, and flex and superflex choices compare position percentiles, not points.",
+     "status": "partial"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Waivers",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": "Compare the projected points shown beside each claim.",
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      },
+      {
+       "code": "player_value_basis",
+       "status": "partial",
+       "value": null
+      }
+     ],
+     "missing_input": "usage values in this league's scoring",
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Waiver scores rank players by recent usage (expected points, full PPR) as a percentile within each position, not by this league's scoring.",
+     "status": "partial"
+    },
+    "tool": "waivers"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Add/drop simulator",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "add_drop"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Trade analyzer",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "trades"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "replacement_level",
+       "status": "partial",
+       "value": [
+        "D/ST",
+        "K"
+       ]
+      }
+     ],
+     "missing_input": "projected free agents at those positions",
+     "provider_boundary": null,
+     "reason": "No free agent at D/ST, K has a projection, so asset balance uses the league-structure replacement level, which falls to 0 when the pool is too small.",
+     "status": "partial"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Trade discovery",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "trade_discovery"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Bye planner",
+    "projection_source": null,
+    "refs": [],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Uses NFL schedules and availability only, no projections or scoring.",
+     "status": "handled"
+    },
+    "tool": "bye_planner"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Kicker and D/ST streaming",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "kdst_streaming"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Player rankings",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Ranks players by position; lineup slots are not used.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "rankings"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Power rankings",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "power_rankings"
+   },
+   {
+    "feature": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "Available for this league.",
+     "status": "handled"
+    },
+    "import": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "League settings, rosters and players for week 3 were synced.",
+     "status": "handled"
+    },
+    "label": "Playoff race",
+    "projection_source": "provider",
+    "refs": [
+     "provider_projections"
+    ],
+    "roster": {
+     "action": null,
+     "evidence": [],
+     "missing_input": null,
+     "provider_boundary": null,
+     "reason": "All 9 starting slots are filled by the lineup engines; IR and taxi players never start.",
+     "status": "handled"
+    },
+    "scoring": {
+     "action": null,
+     "evidence": [
+      {
+       "code": "provider_projections",
+       "status": "handled",
+       "value": null
+      }
+     ],
+     "missing_input": null,
+     "provider_boundary": "ESPN's own projections, in this league's scoring.",
+     "reason": "Projections exist in this league's scoring for every rostered player this tool reads.",
+     "status": "handled"
+    },
+    "tool": "playoff_race"
+   }
+  ],
+  "unmapped_count": 2,
+  "week": 3
+ },
+ "status": 200
+}

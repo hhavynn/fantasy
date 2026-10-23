@@ -682,3 +682,36 @@ def test_ineligible_starter_scores_zero_and_no_lineup_has_no_actual_total():
     assert res["actual_total"] is None
     assert res["projected_gain"] is None
     assert res["recommended_total"] == 10.0
+
+
+def test_an_empty_slot_with_an_unprojected_eligible_player_is_not_a_measured_total():
+    """Issue #253 G1. A slot left empty because the only players who could fill it have no projection is unknown, not
+    a short-handed 0; an empty slot nobody could fill (or only a teamless player) still is a real 0."""
+    from app.analytics.start_sit import NO_PROJECTIONS, build_slot_instances, optimize_lock_constrained_lineup, \
+        projection_source_label
+
+    slots = build_slot_instances({"QB": 1, "K": 1})
+    qb = {"espn_player_id": 1, "position": "QB", "pro_team": "KC"}
+    k = {"espn_player_id": 2, "position": "K", "pro_team": "KC"}
+    kw = dict(slot_instances=slots, locked_starter_assignments=[], locked_bench_ids=set(), unavailable_ids=set(),
+              ir_ids=set(), actual_starters=[])
+
+    res = optimize_lock_constrained_lineup(roster_players=[qb, k], projections={1: 20.0, 2: None}, **kw)
+    assert [a["player_id"] for a in res["recommended_lineup"]] == [1, None]
+    assert res["recommended_total"] is None and res["unconstrained_total"] is None
+    assert res["known_recommended_total"] == 20.0 and res["is_complete"] is False
+    assert res["missing_projection_ids"] == [2]
+
+    # nothing projected at all (a league whose provider publishes none and whose own model abstains): never 0.0
+    res = optimize_lock_constrained_lineup(roster_players=[qb, k], projections={1: None, 2: None}, **kw)
+    assert res["recommended_total"] is None and res["unconstrained_total"] is None
+    assert projection_source_label("independent", False, {1: None, 2: None}) == NO_PROJECTIONS
+
+    # no kicker rostered, or only a teamless one, or one on IR: the empty K slot is a real 0
+    for roster, ir in (([qb], set()), ([qb, {**k, "pro_team": None}], set()), ([qb, k], {2})):
+        res = optimize_lock_constrained_lineup(roster_players=roster, projections={1: 20.0, 2: None},
+                                               **{**kw, "ir_ids": ir})
+        assert res["recommended_total"] == 20.0 and res["unconstrained_total"] == 20.0 and res["is_complete"]
+
+    assert projection_source_label("independent", True, {}) == "Independent model"
+    assert projection_source_label("espn", False, {1: 3.0}) == "ESPN"
