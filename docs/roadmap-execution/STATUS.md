@@ -120,7 +120,7 @@ A separate workstream, added 2026-10-23. It does not replace or re-scope #205 or
 
 | Issue | Priority | Workstream | State | Branch / PR |
 |---|---|---|---|---|
-| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | PHASE 2 MERGED (PR #256 → 668b198); phase 3 (G2–G4 unsupported-slot integrity) + UI/E2E remain | — |
+| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | phases 1–3 MERGED (#256, #268) + completion audit/E2E journey #275 (a4baa69); remaining: trade discovery on large rosters (1p, PR in progress), deferred G6–G12 | — |
 | [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | PHASE 1 MERGED (PR #259 → 261728e); phase 2: S3 per-row source, ESPN-fallback label under source=independent (L2), doc fixes D1–D3, cache/fingerprint audit | — |
 
 **Roster support is not scoring fidelity.** A league can be fully supported structurally (every slot parsed, filled
@@ -295,6 +295,7 @@ conflicts.
 From #261 on: opened and merged times come from GitHub; the CI column is the head's last completed check (approximate where noted); the review column records outcomes only, since review completion times were not captured.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #275 | 12:27 | 12:57 (83504f7) | approve with changes (audit overstated discovery) + Codex P2 | 12:58 (31 min) | 2 | 0 |
 | #274 | 11:35 | 12:28 (a118337) | changes requested (3 MEDIUM honesty) + Codex 4×P2 → re-check OK, R1 fixed | 12:28 (53 min) | 3 | 0 |
 | #273 | 10:19 | 11:07 (831e821; shards 4/8 app-wide guards + skeleton race) | approve 6 LOW + Codex P2 | 11:08 (49 min) | 2 | 0 |
 | #271 | 09:01 | 09:47 (97a26a1) | MEDIUM+3 LOW → self-check | 09:48 (47 min) | 2 | 0 |
