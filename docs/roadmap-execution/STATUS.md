@@ -280,7 +280,7 @@ Baseline from GitHub timestamps, PRs #230–#252 (22 merged): open→merge mean 
 5.4 h span (first to last merge). Per-PR split of waiting on CI vs review vs merge was not recorded before D-13.
 From now on, log per merged PR: opened, CI green on final head, review done, merged; plus reruns and parallel-caused
 conflicts.
-| PR | Opened | CI green (final head) | Review done | Merged | Reruns | Parallel conflicts |
+| PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
 | #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
 | #257 | 04:30 | 04:36 | 04:34 (approve) | 04:37 (7 min) | 0 | 0 |

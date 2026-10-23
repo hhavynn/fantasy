@@ -142,6 +142,34 @@ and up to one implementation agent active. It also posted repeated status messag
 - **Unchanged:** D-07 exact-head CI and merge rules, D-08, D-09, D-10 independent review, tenant isolation, the
   credential scan, check integrity, provenance and missing ≠ zero, provider read-only terms.
 
+## D-14 · 2026-10-23 · Merge-first scheduling, CI as the heavy gate, overlapping reviews
+Bottleneck: finished work piled up behind one local heavyweight slot and behind serial review rounds. One PR (#258)
+also sat in conflict with main without CI ever running.
+- **WIP limit (temporary):** at most two feature PRs in implementation or review fixes at once. Narrow, independent
+  correctness fixes (e.g. G5, #254 phase 1) may run alongside. No new feature issues just to fill lanes. The third
+  feature lane comes back once the queue is below about 3 open PRs and merging steadily.
+- **Heavy local tiers:** exact-head CI already runs the full backend suite, the security tests and every E2E suite in
+  parallel runners. Local `affected`/`security`/Playwright are no longer required before opening a PR. Agents run
+  targeted tests plus `quick`, and Playwright only for a spec they are writing. The single local heavyweight slot stays
+  (4 CPUs and 15 GB; an earlier batch was OOM-killed with exit 137). pg_harness already isolates databases per session.
+  The slot is used only when CI cannot reproduce a problem.
+- **Overlapping reviews:** a clear Codex or reviewer finding goes to the PR owner at once. Other reviews continue, later
+  findings are folded in, and one consolidated push follows. Never merge with a material finding open. Re-run CI on the
+  new exact head, and re-review the changed areas.
+- **One candidate per round:** batch fixes into one push. Don't push trivial changes that restart CI. A critical
+  security fix is never held back for batching.
+- **Conflicts block CI:** GitHub runs no `pull_request` CI on a PR that conflicts with main. Check `mergeable_state`
+  whenever main moves, and merge main into open PRs (merge commit, never a force-push).
+- **Pre-PR checklist** (from findings on #249, #255, #256, #257, #258; one line each in the PR body):
+  1. Missing input never becomes 0 (totals, values, gains, mixes, replacement levels).
+  2. A source with no non-null values is never named as the source ("Unavailable" instead).
+  3. Per-provider assumptions are stated or gated (Sleeper waiver status, IR rules, IDP rows).
+  4. Combined effects are evaluated, not item by item (multi-claim spots and limits, multi-slot totals).
+  5. Cache keys include every input that changes output (repeated params in order, mode flags).
+  6. Fetches, forms and links stay league-scoped (`/l/<lg>/`, `/v2`), never relying on the last-league cookie.
+- Unchanged: D-07 exact-head CI, D-09, D-10 independent review, tenant isolation, credential scan, missing ≠ zero,
+  provenance, provider read-only terms.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
