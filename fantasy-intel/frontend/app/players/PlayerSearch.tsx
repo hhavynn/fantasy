@@ -1,11 +1,15 @@
+import { CompareLink } from "@/components/CompareLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
+import { TeamLink } from "@/components/TeamLink";
 import { Badge, Delta, EmptyState, Rating, Section, TrendArrow } from "@/components/ui";
+import { addDropHref } from "@/lib/add-drop";
 import { cx } from "@/lib/cx";
 import { int, num } from "@/lib/format";
 import { ownershipAvailable, type Provider } from "@/lib/labels";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
+import { nextSteps } from "@/lib/roster-status";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { PlayerListRow } from "./types";
@@ -67,18 +71,20 @@ export function ResultsTable({ rows, q, limit, provider = "espn" }: { rows: Play
               <th className="num" title="PPR per game minus expected PPR per game. Above zero: producing more than the role implies">+/− xFP</th>
               <th title="Usage trend">Trend</th><th title="Market signal">Signal</th>
               <th className="num" title={OPP_TITLE}>Opportunity</th>
+              <th title="Where to take this player next: compare him, simulate adding him on Waivers, or look for trades for him">Next</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((p) => {
-              const owner = ownerBadge(p.fantasy_team, p.availability_status);
+              const owner = ownerBadge(p.fantasy_team, p.availability_status, provider);
+              const steps = nextSteps(p.availability_status, p.fantasy_team, provider);
               return (
                 <tr key={p.espn_player_id}>
                   <td>
                     <PlayerIdentity id={p.espn_player_id} name={p.full_name} position={p.position} team={p.pro_team}
                                     meta={hasInjuryDesignation(p.injury_status) ? <Badge value={p.injury_status} /> : null} />
                   </td>
-                  <td><Badge value={owner.text} tone={owner.tone} /></td>
+                  <td><Badge value={owner.text} tone={owner.tone} title={owner.title} /></td>
                   {owned && <td className="num dim">{num(p.percent_owned, 1)}</td>}
                   <td className="num dim">{int(p.games, "No games / no NFL id")}</td>
                   <td className="num key">{num(p.fp_per_game, 1, "No games / no NFL id")}</td>
@@ -87,6 +93,20 @@ export function ResultsTable({ rows, q, limit, provider = "espn" }: { rows: Play
                   <td><TrendArrow label={p.trend_label} /></td>
                   <td><Badge value={p.market_signal} /></td>
                   <td className="num"><Rating rating={ratingFor(p, "opportunity")} kind="opportunity" variant="bar" why="No usage data" /></td>
+                  <td>
+                    <span className={styles.next}>
+                      <CompareLink a={p.espn_player_id} aName={p.full_name} />
+                      {/* Adds only for a player off every roster; trades only for a rostered one. Unknown gets neither. */}
+                      {steps.add && (
+                        <TeamLink href={addDropHref("/waivers", {}, { add: p.espn_player_id, drop: null })} className={styles.nextLink}
+                          aria-label={`Simulate adding ${p.full_name} on Waivers`}>Simulate add</TeamLink>
+                      )}
+                      {steps.trade && (
+                        <TeamLink href={`/trades/discover?mode=targeted&target=${p.espn_player_id}`} className={styles.nextLink}
+                          aria-label={`Find trades for ${p.full_name}`}>Find trades</TeamLink>
+                      )}
+                    </span>
+                  </td>
                 </tr>
               );
             })}
