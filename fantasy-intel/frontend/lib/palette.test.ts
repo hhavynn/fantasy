@@ -185,10 +185,48 @@ test("parseRecents survives garbage and rejects off-site destinations", () => {
   assert.deepEqual(parseRecents(null), []);
   assert.deepEqual(parseRecents("not json"), []);
   assert.deepEqual(parseRecents('{"a":1}'), []);
-  const ok = { id: "a", kind: "page", label: "A", href: "/a" };
+  const ok = { id: "page:/movers", kind: "page", label: "Movers", href: "/movers" };
   const evil = { id: "b", kind: "page", label: "B", href: "//evil.example" };
   const abs = { id: "c", kind: "page", label: "C", href: "https://evil.example" };
-  assert.deepEqual(parseRecents(JSON.stringify([ok, evil, abs, 5, null])).map((i) => i.id), ["a"]);
+  assert.deepEqual(parseRecents(JSON.stringify([ok, evil, abs, 5, null])).map((i) => i.id), ["page:/movers"]);
+});
+
+test("a stored recent may only hold a destination the palette offers for its kind, never one that changes league", () => {
+  const B = "lg_bbbbbbbbbbbbbbbb";
+  const action = QUICK_ACTIONS.find((a) => a.href === "/waivers")!;
+  const valid = [
+    { id: action.id, kind: "action", label: action.label, href: action.href },
+    { id: "page:/movers", kind: "page", label: "Movers", href: "/movers" },
+    { id: "player:207", kind: "player", label: "Kilo RB", href: "/players?id=207" },
+    { id: "player:-16002", kind: "player", label: "Bills D/ST", href: "/players?id=-16002" },
+  ];
+  assert.deepEqual(parseRecents(JSON.stringify(valid)).map((i) => i.href), valid.map((v) => v.href));
+  const rejected: [string, string, string][] = [
+    ["player", "player:207", `/l/${B}/players?id=207`],          // another league: withLeague keeps it as it is
+    ["page", `page:/l/${B}/movers`, `/l/${B}/movers`],
+    ["player", "player:207", "//evil.example/players?id=207"],
+    ["player", "player:207", "/\\evil.example/players?id=207"],
+    ["player", "player:207", "https://evil.example/players?id=207"],
+    ["player", "player:207", "/players?id=207&league=clear"],
+    ["player", "player:207", "/players?league=clear&id=207"],
+    ["page", "page:/movers?league=clear", "/movers?league=clear"],
+    ["player", "player:207", "/players?id=207#x"],
+    ["player", "player:207", "/players?id=0207"],
+    ["player", "player:208", "/players?id=207"],                 // the id must name the same player
+    ["player", "player:207", "/leagues"],
+    ["page", "page:/leagues", "/leagues"],                        // not a palette page
+    ["page", "page:/movers", "/movers/../leagues"],
+    ["action", "action:waivers", "/l/" + B + "/waivers"],
+    ["action", "action:evil", "/waivers"],                        // an action that does not exist
+    ["page", "page:/movers", "javascript:alert(1)"],
+    ["other", "x", "/movers"],
+  ];
+  for (const [kind, id, href] of rejected)
+    assert.deepEqual(parseRecents(JSON.stringify([{ id, kind, label: "X", href }])), [], `${kind} ${href}`);
+  // Through the league store too: a tampered value under league A's own key cannot point at league B.
+  const A = "lg_aaaaaaaaaaaaaaaa";
+  const raw = JSON.stringify({ v: 1, league: A, items: [{ id: "player:207", kind: "player", label: "Kilo RB", href: `/l/${B}/players?id=207` }, valid[2]] });
+  assert.deepEqual(parseLeagueRecents(raw, A).map((i) => i.href), ["/players?id=207"]);
 });
 
 test("playerItem builds the profile link and a compact hint", () => {

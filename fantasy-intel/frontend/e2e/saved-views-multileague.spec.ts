@@ -188,12 +188,28 @@ for (const width of [1440, 375]) {
     expect(storedRecents).not.toMatch(new RegExp(`waivers|Free agent|${holder}`, "i"));
     expect(await page.evaluate(() => localStorage.getItem("fantasy-intel:palette-recent"))).toBeNull();
 
+    // A client-side league change while the palette is open (Back/Forward does the same through the router): the
+    // dialog starts over in league B, so A's recents are not shown there, and a choice is written to B's list only.
+    await page.keyboard.press("Control+k");
+    await expect(recentA.getByRole("option")).toHaveCount(2);
+    await page.evaluate((lg) => window.history.pushState(null, "", `/l/${lg}/rankings`), b);
+    await expect(dialog.getByRole("group", { name: "Recent" })).toHaveCount(0);
+    await expect(dialog).not.toContainText("Kilo RB");
+    await expect(input).toBeFocused();
+    await input.fill("Waiver WR");
+    await dialog.getByRole("option", { name: /^Waiver WR/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/l/${b}/players\\?id=309`));
+    const recentsOf = (lg: string) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? "null"), `fi:palette-recent:v1:${lg}`);
+    expect((await recentsOf(b)).items.map((i: { id: string }) => i.id)).toEqual(["player:309"]);
+    expect((await recentsOf(a)).items.map((i: { id: string }) => i.id)).toEqual(["player:309", "player:207"]);
+
+    // After a full load of league B: only B's own recent (picked above, by name and position), none of A's text.
     await page.goto(`/l/${b}/rankings`);
     await expect(page.getByRole("group", { name: "Rankings views" })).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Control+k");
     await expect(input).toBeFocused();
-    await expect(dialog.getByRole("group", { name: "Recent" })).toHaveCount(0);
-    for (const text of ["Free agent", "On waivers", holder, "Kilo RB", "Waiver WR"]) await expect(dialog).not.toContainText(text);
+    await expect(dialog.getByRole("group", { name: "Recent" }).getByRole("option")).toHaveText([/^Waiver WR\s*WR$/]);
+    for (const text of ["Free agent", "On waivers", holder, "Kilo RB"]) await expect(dialog).not.toContainText(text);
     await page.keyboard.press("Escape");
 
     expect(seen.writes).toEqual([]);

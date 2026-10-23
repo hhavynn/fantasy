@@ -4,7 +4,7 @@
 import type { ApiResult } from "./api.ts";
 import type { Provider } from "./labels.ts";
 import { isLeagueId } from "./league-scope.ts";
-import type { NavGroup } from "./navigation.ts";
+import { ALL_NAV_PAGES, type NavGroup } from "./navigation.ts";
 import { injuryText, rosterStatus } from "./roster-status.ts";
 
 export type PaletteKind = "action" | "page" | "player";
@@ -180,13 +180,32 @@ export function pushRecent(recents: readonly PaletteItem[], item: PaletteItem): 
   return [slim, ...recents.filter((r) => r.href !== item.href)].slice(0, RECENT_LIMIT);
 }
 
+/** The only player destination a recent may hold: the profile, by a bare provider id (`/players?id=-16002`). */
+const PLAYER_HREF = /^\/players\?id=(-?[1-9]\d{0,11})$/;
+
+/**
+ * True when a stored recent's destination is one the palette itself offers for that kind, so it can only open a page of
+ * the current league: an action's or nav page's exact unscoped href, or a player profile by id (with the matching item
+ * id). Stored recents are untrusted: anything else (a `/l/<lg>/...` path in another league, `//host`, a backslash, an
+ * absolute URL, `?league=clear`, an unknown path) is refused, since `withLeague` keeps an already-scoped or unscoped
+ * destination as it is.
+ */
+export function isRecentDestination(kind: unknown, id: unknown, href: unknown): boolean {
+  if (typeof href !== "string" || typeof id !== "string") return false;
+  if (kind === "action") return QUICK_ACTIONS.some((a) => a.href === href && a.id === id);
+  if (kind === "page") return ALL_NAV_PAGES.some((p) => p.href === href) && id === `page:${href}`;
+  if (kind === "player") {
+    const m = PLAYER_HREF.exec(href);
+    return !!m && id === `player:${m[1]}`;
+  }
+  return false;
+}
+
 function recentItems(data: unknown): PaletteItem[] {
   if (!Array.isArray(data)) return [];
   const out: PaletteItem[] = [];
   for (const r of data) {
-    if (r && typeof r === "object" && typeof r.id === "string" && typeof r.label === "string"
-        && typeof r.href === "string" && r.href.startsWith("/") && !r.href.startsWith("//")
-        && (r.kind === "action" || r.kind === "page" || r.kind === "player")) {
+    if (r && typeof r === "object" && typeof r.label === "string" && isRecentDestination(r.kind, r.id, r.href)) {
       const hint = r.kind === "player" ? playerRecentHint(r.hint) : typeof r.hint === "string" ? r.hint : undefined;
       out.push({ id: r.id, kind: r.kind, label: r.label, hint, href: r.href });
     }

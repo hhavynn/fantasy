@@ -58,6 +58,9 @@ export function CommandPalette({ provider = "espn", providerLeague = null }: { p
   const mac = useSyncExternalStore(noopSubscribe, isMac, () => true);
   // The analyzed team (`?team=`): a team-scoped destination opens for the same team, as the nav links do.
   const team = useTeam();
+  // The dialog is keyed by league: a client-side league change while it is open (Back/Forward) remounts it, so it never
+  // shows, or writes, another league's recents and query.
+  const league = useLeagueId();
 
   const show = useCallback(() => {
     returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : trigger.current;
@@ -95,7 +98,9 @@ export function CommandPalette({ provider = "espn", providerLeague = null }: { p
         <span className={styles.triggerLabel}>Search players, pages…</span>
         <kbd className={styles.kbd} aria-hidden="true">{mac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
-      {open && createPortal(<PaletteDialog onClose={close} team={team} provider={provider} providerLeague={providerLeague} />, document.body)}
+      {open && createPortal(
+        <PaletteDialog key={league ?? "unscoped"} onClose={close} team={team} provider={provider} providerLeague={providerLeague} />,
+        document.body)}
     </>
   );
 }
