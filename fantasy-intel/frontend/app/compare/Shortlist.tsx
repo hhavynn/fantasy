@@ -12,7 +12,7 @@ import {
   type ShortlistResponse, MAX_SHORTLIST, MIN_SHORTLIST, byeText, compareHref, injuryCell,
   isBestProjected, isShortlistResponse, metricCell, nextOpponentText, nextWeekCell, pairFromShortlistHref,
   parseShortlistParams, playerName, projectionSourceLine, rosCell, rosterShort, rosterText, shortlistFromPair,
-  shortlistHref, shortlistPairs, shortlistSourceHint, startPickNote, trendCell, verdictView, unknownShortlistId, withoutPlayer, DASH,
+  shortlistHref, shortlistPairs, shortlistSourceHint, slotLine, startPickNote, trendCell, verdictView, unknownShortlistId, withoutPlayer, DASH,
 } from "@/lib/compare";
 import { cx } from "@/lib/cx";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -365,7 +365,7 @@ function PlayerRow({ p, i, r, state, teamName }: { p: ShortlistPlayer; i: number
         <PlayerIdentity id={id} name={p.card.player.full_name} position={p.card.player.position} team={p.card.player.pro_team}
                         meta={<span>{rosterText(p, teamName)}</span>} />
         <p className={styles.shortFacts}>
-          {p.eligible_slots.length > 0 ? <>Can start at {p.eligible_slots.join(", ")}</> : <>No lineup slot of this league takes a {p.card.player.position ?? "player of unknown position"}</>}
+          {slotLine(p, r.unsupported_slots)}
           {" "}· Injury: {p.card.availability.has_designation ? p.card.availability.label : "no designation reported"}
           {isBestProjected(r, id) ? <> · <strong>Best projected</strong></> : null}
         </p>

@@ -1018,6 +1018,22 @@ export function shortlistSourceHint(r: Pick<ShortlistResponse, "best_projected" 
   return r.players.some((p) => finite(p.card.projection?.ros?.[field])) ? name : "Unavailable";
 }
 
+/**
+ * Where a shortlist player can start: the engine-supported slots (`eligible_slots`), plus any of the league's
+ * unsupported starting slots (#253: IDP, P, HC) his position fills, which the engine takes as the slot of the same
+ * name. Never "no slot takes him" when the league starts one the engine does not fill.
+ */
+export function slotLine(p: Pick<ShortlistPlayer, "eligible_slots" | "card">, unsupportedSlots: readonly string[]): string {
+  const pos = p.card.player.position;
+  const other = pos && unsupportedSlots.includes(pos) ? pos : null;
+  const unsupported = other ? `${other}, which the lineup engine does not support yet` : null;
+  if (p.eligible_slots.length > 0) {
+    return `Can start at ${p.eligible_slots.join(", ")}${unsupported ? `; also fills ${unsupported}` : ""}`;
+  }
+  if (unsupported) return `Fills ${unsupported}`;
+  return `No supported lineup slot of this league takes a ${pos ?? "player of unknown position"}`;
+}
+
 /** Whether the player is (one of) the best projected. */
 export function isBestProjected(r: Pick<ShortlistResponse, "best_projected">, id: number): boolean {
   return r.best_projected.leaders.includes(id);

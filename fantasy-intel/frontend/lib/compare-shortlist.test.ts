@@ -6,7 +6,7 @@ import {
   DASH, MAX_SHORTLIST, bestHeadline, compareHref, injuryCell, isBestProjected, isShortlistResponse, isShortlistView,
   metricCell, nextWeekCell, pairFromShortlistHref, parseCompareParams, parseShortlistParams, rosCell, rosterShort,
   rosterText, shortlistBackHref, shortlistFromPair, shortlistHref, shortlistPairs, startPickNote, trendCell,
-  shortlistSourceHint, unknownShortlistId, withPlayer, withoutPlayer,
+  shortlistSourceHint, slotLine, unknownShortlistId, withPlayer, withoutPlayer,
   VERDICT_STATES, verdictView,
   type CompareCard, type CompareResponse, type ShortlistResponse, type VerdictState,
 } from "./compare.ts";
@@ -314,4 +314,18 @@ test("row source hints name a source only when the row has its numbers (#175 rev
   r.players[1].card.projection!.ros!.ours = 98.2;
   assert.equal(shortlistSourceHint(r, "next"), "Ours");
   assert.equal(shortlistSourceHint(r, "ros"), "Ours");
+});
+
+test("a player's slot line names an unsupported league slot he fills (#282, Codex round 5)", () => {
+  const lb = structuredClone(shortlist().players[0]);
+  lb.card.player.position = "LB";
+  lb.eligible_slots = [];
+  assert.equal(slotLine(lb, ["LB"]), "Fills LB, which the lineup engine does not support yet");
+  assert.equal(slotLine(lb, []), "No supported lineup slot of this league takes a LB");
+  const wr = shortlist().players[0];
+  assert.equal(slotLine(wr, ["LB"]), "Can start at WR, FLEX");
+  const p = structuredClone(wr);
+  p.card.player.position = "P";
+  p.eligible_slots = ["OP"];                      // a made-up mix: both parts are named
+  assert.equal(slotLine(p, ["P"]), "Can start at OP; also fills P, which the lineup engine does not support yet");
 });
