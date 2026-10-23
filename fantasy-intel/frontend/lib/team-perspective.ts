@@ -10,6 +10,7 @@ const LEGACY_TEAM_PARAM = "team_id";
 export const TEAM_SCOPED_PATHS = [
   "/", "/matchup", "/start-sit", "/my-team/value", "/waivers", "/trades", "/trades/discover",
   "/schedule-intelligence", "/schedule-intelligence/sos", "/luck-lab", "/playoff-race", "/power-rankings", "/injury-impact",
+  "/injury-impact/timeline",
 ] as const;
 
 /** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset, a Start/Sit

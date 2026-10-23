@@ -1,0 +1,1212 @@
+// /api/injury-impact/availability-timeline
+{
+ "body": {
+  "counts": {
+   "conflicts": 0,
+   "designated": 1,
+   "disagreements": 0,
+   "high_signal": 0,
+   "listed": 0,
+   "players": 11,
+   "practice_known": 0,
+   "team_defenses_skipped": 1,
+   "unknown": 10
+  },
+  "generated_at": "<masked>",
+  "league_context": {
+   "available": true,
+   "league_name": "Fixture League",
+   "my_team_id": 2,
+   "perspective": "owner_default",
+   "team_name": "Team 2"
+  },
+  "method": {
+   "headline": "The level is the one the lineup tools read: the most severe of the provider status, an IR or taxi slot and the week's NFL report. Without any of them the level is unknown, never healthy.",
+   "order": "Events are ordered by week, then by their own time: the provider's publication time (NFL report date_modified) when it has one, else the time we retrieved it; weekly roster statuses carry a week only and come first in their week. Times are UTC and shown in US Eastern time.",
+   "practice": "Practice participation comes from the NFL injury report via nflverse: one value per report row (the final practice listed that week), not each practice day. Daily DNP / LP / FP progression is not in any integrated feed, so it is never shown or inferred; without a listing it is unknown.",
+   "replacement": "Within a week the newest NFL report row is current and older rows are superseded; rows with no time that disagree are marked conflicting, and the current one is chosen exactly as the lineup tools choose it (newest, then most severe). A newer week's report replaces the previous week's.",
+   "third_party": "Owner-curated news summaries cite their reports and supplement, never replace, an official or provider status.",
+   "watchlist": "No player watchlist exists yet, so the digest covers the selected team's roster only.",
+   "window": "The current week and the 3 before it."
+  },
+  "notices": [
+   {
+    "code": "no_nfl_report",
+    "text": "The NFL injury report has never been synced: official designations and practice participation are unknown for every player.",
+    "tone": "caution"
+   },
+   {
+    "code": "practice_granularity",
+    "text": "Practice participation comes from the NFL injury report via nflverse: one value per report row (the final practice listed that week), not each practice day. Daily DNP / LP / FP progression is not in any integrated feed, so it is never shown or inferred; without a listing it is unknown.",
+    "tone": "info"
+   }
+  ],
+  "players": [
+   {
+    "change": null,
+    "espn_player_id": 207,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-207",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "TB",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-TB",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "TB",
+      "title": "Kickoff vs LA",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Kilo RB",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LA",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Injured reserve",
+     "level": "ir",
+     "sources": [
+      "ESPN IR slot"
+     ],
+     "text": "Injured reserve: ESPN IR slot."
+    },
+    "high_signal": false,
+    "is_starter": false,
+    "lineup": {
+     "sources": [
+      "ESPN IR slot"
+     ],
+     "status": "IR"
+    },
+    "lineup_slot": "IR",
+    "position": "RB",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "TB"
+   },
+   {
+    "change": null,
+    "espn_player_id": 102,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-102",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "BUF",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-BUF",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "BUF",
+      "title": "Kickoff vs NE",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Bravo QB",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "NE",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "QB",
+    "position": "QB",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "BUF"
+   },
+   {
+    "change": null,
+    "espn_player_id": 204,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-204",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "PHI",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-PHI",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "PHI",
+      "title": "Kickoff vs MIA",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Hotel RB",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "MIA",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "RB",
+    "position": "RB",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "PHI"
+   },
+   {
+    "change": null,
+    "espn_player_id": 205,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-205",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "SF",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-SF",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "SF",
+      "title": "Kickoff vs LV",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "India RB",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LV",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "RB",
+    "position": "RB",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "SF"
+   },
+   {
+    "change": null,
+    "espn_player_id": 304,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-304",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "PHI",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-PHI",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "PHI",
+      "title": "Kickoff vs MIA",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Papa WR",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "MIA",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "WR",
+    "position": "WR",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "PHI"
+   },
+   {
+    "change": null,
+    "espn_player_id": 305,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-305",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "SF",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-SF",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "SF",
+      "title": "Kickoff vs LV",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Quebec WR",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LV",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "WR",
+    "position": "WR",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "SF"
+   },
+   {
+    "change": null,
+    "espn_player_id": 306,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-306",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "SEA",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-SEA",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "SEA",
+      "title": "Kickoff vs LAC",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Romeo WR",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LAC",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "FLEX",
+    "position": "WR",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "SEA"
+   },
+   {
+    "change": null,
+    "espn_player_id": 402,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-402",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "BUF",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-BUF",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "BUF",
+      "title": "Kickoff vs NE",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Victor TE",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "NE",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "TE",
+    "position": "TE",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "BUF"
+   },
+   {
+    "change": null,
+    "espn_player_id": 502,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-502",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "BUF",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-BUF",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "BUF",
+      "title": "Kickoff vs NE",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Zulu K",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "NE",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": true,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "K",
+    "position": "K",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "BUF"
+   },
+   {
+    "change": null,
+    "espn_player_id": 206,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-206",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "SEA",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-SEA",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "SEA",
+      "title": "Kickoff vs LAC",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Juliet RB",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LAC",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": false,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "BE",
+    "position": "RB",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "SEA"
+   },
+   {
+    "change": null,
+    "espn_player_id": 307,
+    "events": [
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "retrieved",
+      "date": null,
+      "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
+      "id": "provider-307",
+      "injury": null,
+      "kind": "provider_status",
+      "practice": null,
+      "published_at": null,
+      "relation": "current",
+      "replaced_by": null,
+      "retrieved_at": "<masked>",
+      "source": {
+       "name": "ESPN player status",
+       "type": "provider",
+       "url": null,
+       "urls": []
+      },
+      "status": "ACTIVE",
+      "team": "TB",
+      "title": "ESPN status: No designation",
+      "week": 3
+     },
+     {
+      "after_kickoff": null,
+      "at": "<masked>",
+      "at_basis": "scheduled",
+      "date": null,
+      "detail": "Reports modified at or after kickoff are marked late.",
+      "id": "kickoff-3-TB",
+      "injury": null,
+      "kind": "kickoff",
+      "practice": null,
+      "published_at": null,
+      "relation": "context",
+      "replaced_by": null,
+      "retrieved_at": null,
+      "source": {
+       "name": "NFL schedule (via nflverse)",
+       "type": "schedule",
+       "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
+       "urls": []
+      },
+      "status": null,
+      "team": "TB",
+      "title": "Kickoff vs LA",
+      "week": 3
+     }
+    ],
+    "freshness": {
+     "evidence_retrieved_at": "<masked>",
+     "reason": "within_threshold",
+     "source_used": "espn_status",
+     "status": "fresh"
+    },
+    "full_name": "Sierra WR",
+    "game": {
+     "kickoff": "<masked>",
+     "on_bye": false,
+     "opponent": "LA",
+     "started": false,
+     "week": 3
+    },
+    "gsis_id": null,
+    "headline": {
+     "conflicting_reports": false,
+     "coverage": "no_feed",
+     "disagreement": null,
+     "label": "Unknown",
+     "level": "unknown",
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "text": "The NFL injury report has never been synced: availability unknown. ESPN lists no designation either."
+    },
+    "high_signal": false,
+    "is_starter": false,
+    "lineup": {
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE"
+    },
+    "lineup_slot": "BE",
+    "position": "WR",
+    "practice": {
+     "code": "unknown",
+     "label": "Unknown",
+     "raw": null,
+     "reason": "no_feed",
+     "scope": null
+    },
+    "team": "TB"
+   }
+  ],
+  "practice": {
+   "daily_available": false,
+   "granularity": "final_report",
+   "text": "Practice participation comes from the NFL injury report via nflverse: one value per report row (the final practice listed that week), not each practice day. Daily DNP / LP / FP progression is not in any integrated feed, so it is never shown or inferred; without a listing it is unknown."
+  },
+  "season": 2026,
+  "sources": [
+   {
+    "available": false,
+    "key": "nfl_report",
+    "name": "NFL injury report (via nflverse)",
+    "publication_time": "missing",
+    "retrieved_at": null,
+    "text": "Game status, final practice participation and injury per player-week, with the provider's date_modified when published. Practice is one value per report row, not each practice day.",
+    "type": "official",
+    "url": "https://github.com/nflverse/nflverse-data/releases/tag/injuries"
+   },
+   {
+    "available": null,
+    "key": "nfl_roster",
+    "name": "NFL weekly roster (via nflverse)",
+    "publication_time": "missing",
+    "retrieved_at": null,
+    "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time.",
+    "type": "official",
+    "url": "https://github.com/nflverse/nflverse-data/releases/tag/weekly_rosters"
+   },
+   {
+    "available": true,
+    "key": "provider",
+    "name": "ESPN player status",
+    "publication_time": "missing",
+    "retrieved_at": "<masked>",
+    "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced.",
+    "type": "provider",
+    "url": null
+   },
+   {
+    "available": true,
+    "key": "news",
+    "name": "Owner-curated news summaries",
+    "publication_time": "date_only",
+    "retrieved_at": null,
+    "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation.",
+    "type": "third_party",
+    "url": null
+   },
+   {
+    "available": true,
+    "key": "schedule",
+    "name": "NFL schedule (via nflverse)",
+    "publication_time": "scheduled",
+    "retrieved_at": null,
+    "text": "This week's kickoffs, to mark reports modified after kickoff.",
+    "type": "schedule",
+    "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules"
+   }
+  ],
+  "version": "availability-timeline/v1",
+  "week": 3,
+  "window": {
+   "from_week": 1,
+   "to_week": 3
+  }
+ },
+ "status": 200
+}

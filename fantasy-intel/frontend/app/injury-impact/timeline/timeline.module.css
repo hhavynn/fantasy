@@ -1,0 +1,63 @@
+/* Availability timeline: source line, change list, one card per rostered player with its timeline. Tokens only. */
+
+.sourceLine { min-width: 0; color: var(--ink); font-size: 13px; line-height: 19px; }
+.sourceLine p { margin: 0 0 4px; max-width: 120ch; }
+.notices { display: grid; gap: 8px; }
+.count { margin-left: 6px; color: var(--ink-muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sub { display: block; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; overflow-wrap: anywhere; }
+.unknown { color: var(--ink-muted); font-style: italic; }
+
+/* ---------- Source type tags: the word carries the meaning, the edge colour only repeats it ---------- */
+.tag {
+  display: inline-flex; align-items: center; padding: 0 6px; border-radius: var(--radius-xs); border: 1px solid var(--line-control);
+  border-left-width: 3px; color: var(--ink); font-size: 10.5px; line-height: 16px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.official { border-left-color: var(--accent); }
+.provider { border-left-color: var(--chart-3); }
+.third_party { border-left-color: var(--caution); border-style: dashed; border-left-style: solid; }
+.schedule { border-left-color: var(--ink-faint); }
+
+/* ---------- Changes this week ---------- */
+.signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 24px; margin: 0; padding: 0; list-style: none; }
+.signals li { display: grid; gap: 3px; min-width: 0; }
+.signals li .sub { padding-left: 40px; }
+
+/* ---------- Player cards ---------- */
+.players { display: flex; flex-direction: column; min-width: 0; }
+.player { min-width: 0; padding: 16px 0; }
+.player:first-child { padding-top: 2px; }
+.player + .player { border-top: 1px solid var(--line); }
+.playerHead { display: grid; grid-template-columns: minmax(200px, 260px) 1fr; align-items: start; gap: 12px 24px; }
+.slot { color: var(--ink-faint); font-size: 11px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 20px; margin: 0; min-width: 0; }
+.facts > div { min-width: 0; }
+.facts dt { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.facts dd { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 3px 0 0; font-size: 13.5px; line-height: 18px; color: var(--ink); min-width: 0; }
+.level { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.flag { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid var(--caution); background: var(--caution-soft); border-radius: var(--radius-xs); color: var(--ink); font-size: 12.5px; line-height: 18px; max-width: 100ch; }
+.links { margin: 10px 0 0; font-size: 12.5px; line-height: 18px; color: var(--ink-muted); }
+
+/* ---------- Timeline ---------- */
+.timeline { margin-top: 10px; }
+.timeline summary { cursor: pointer; color: var(--ink); font-size: 13px; font-weight: 600; min-height: 28px; display: flex; align-items: center; }
+.events { display: grid; gap: 10px; margin: 8px 0 0; padding: 0 0 0 12px; list-style: none; border-left: 2px solid var(--line); }
+.events li { min-width: 0; }
+.replaced .eventTitle { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+.eventHead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.eventTitle { color: var(--ink); font-size: 13px; line-height: 18px; }
+.relation { color: var(--ink-muted); font-size: 12px; }
+.late { color: var(--ink); font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: var(--radius-xs); background: var(--caution-soft); }
+.eventDetail { margin: 2px 0 0; color: var(--ink); font-size: 12.5px; line-height: 18px; max-width: 100ch; overflow-wrap: anywhere; }
+.eventMeta { margin: 2px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.cite { color: var(--ink-muted); }
+
+/* ---------- Sources and method ---------- */
+.sources { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 18px; }
+.sources li { min-width: 0; }
+.method p { margin: 0 0 8px; max-width: 100ch; }
+
+@media (max-width: 720px) {
+  .playerHead { grid-template-columns: minmax(0, 1fr); }
+  .signals li .sub { padding-left: 0; }
+}
