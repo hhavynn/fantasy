@@ -145,7 +145,7 @@ def test_hosted_mode_reads_motherduck_through_one_shared_connection(api_db, monk
     deps._MD_CONS["fantasy_intel"].close()
 
 
-def test_hosted_mode_without_token_fails_fast(monkeypatch):
+def test_hosted_mode_without_token_fails_fast(monkeypatch, caplog):
     from app.api import deps
     monkeypatch.setattr(deps, "_MD_CONS", {})
     monkeypatch.setenv("MOTHERDUCK_DATABASE", "fantasy_intel")
@@ -153,8 +153,12 @@ def test_hosted_mode_without_token_fails_fast(monkeypatch):
     monkeypatch.delenv("motherduck_token", raising=False)
     monkeypatch.delenv("FANTASY_API_KEY", raising=False)
     from app.main import app
-    r = TestClient(app).get("/api/overview")
-    assert r.status_code == 503 and "MOTHERDUCK_TOKEN is not set" in r.json()["detail"]
+    with caplog.at_level("WARNING", logger="app.api.deps"):
+        r = TestClient(app).get("/api/overview")
+    # Visitors get a fixed 503 that names no setting or database; the operator reason goes to the server log only.
+    assert r.status_code == 503 and r.json()["detail"] == "Cannot reach the hosted database."
+    assert "MOTHERDUCK" not in r.text and "fantasy_intel" not in r.text
+    assert "MOTHERDUCK_TOKEN is not set" in caplog.text
 
 
 def test_motherduck_connect_supplies_home_when_empty(monkeypatch, tmp_path):

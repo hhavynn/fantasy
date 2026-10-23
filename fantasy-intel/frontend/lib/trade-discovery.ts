@@ -2,6 +2,7 @@
 // `sort` parameter, and the value each column sorts by. Unit-tested in lib/trade-discovery.test.ts.
 
 import type { SearchParams, SortState } from "./sort.ts";
+import type { BeamWorkBudget } from "./trade-types.ts";
 
 // Lib modules import each other only for types (node's test runner and tsc disagree about ".ts" import paths), so these two
 // constants repeat lib/trade-dual-value.ts's `DEFAULT_MODE` and `VERDICT_ORDER`; lib/trade-dual-value.test.ts asserts they agree.
@@ -175,4 +176,19 @@ export function evidenceSrc(query: string, key: string): string {
   const q = new URLSearchParams(query);
   q.set("key", key);
   return `/api/trade-evidence?${q.toString()}`;
+}
+
+/** The words that disclose a larger-shape search the work budget stopped early (`coverage.heuristic.work_budget`): a
+ *  sentence for the "not a proven top list" notice and a note for the coverage tile. Null when the search ran to the
+ *  end (the API then sends no `work_budget`). */
+export function beamBudgetText(wb: BeamWorkBudget | null | undefined): { notice: string; tile: string } | null {
+  if (!wb) return null;
+  const cut = wb.opponents_cut.length;
+  const evaluated = wb.packages_evaluated.toLocaleString("en-US");
+  const generated = wb.packages_generated.toLocaleString("en-US");
+  return {
+    notice: `A work limit stopped it early for ${cut} of ${wb.opponents} ${wb.opponents === 1 ? "manager" : "managers"}: `
+      + `${evaluated} of the ${generated} packages it generated were evaluated, so a better package may exist. `,
+    tile: `work limit reached · ${evaluated} of ${generated} packages evaluated exactly`,
+  };
 }

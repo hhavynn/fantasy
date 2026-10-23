@@ -10,11 +10,12 @@ const LEGACY_TEAM_PARAM = "team_id";
 export const TEAM_SCOPED_PATHS = [
   "/", "/matchup", "/start-sit", "/my-team/value", "/waivers", "/trades", "/trades/discover",
   "/schedule-intelligence", "/schedule-intelligence/sos", "/luck-lab", "/playoff-race", "/power-rankings", "/injury-impact",
+  "/injury-impact/timeline",
 ] as const;
 
 /** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset, a Start/Sit
- *  what-if lineup, a Waivers add/drop scenario) and are dropped when the team changes. */
-export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override", "whatif", "add", "drop"];
+ *  what-if lineup, a Waivers add/drop scenario, a Compare shortlist's start pick) and are dropped when the team changes. */
+export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override", "whatif", "add", "drop", "start"];
 
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -55,6 +56,19 @@ export function isTeamScoped(pathname: string): boolean {
 }
 
 /**
+ * Whether the page at `pathname` with this query depends on the selected team: a team-scoped path, or the Compare
+ * shortlist (`/compare?ids=…` without a pair), whose roster status is computed for `team`. The pair view and every
+ * other `/compare` URL stay league-wide. The rail picker, link propagation and the page's own picker all use this, so
+ * the team in the rail, the URL and the backend call agree on the shortlist as on any team-scoped page.
+ */
+export function isTeamScopedView(pathname: string, search?: URLSearchParams | SP | null): boolean {
+  if (isTeamScoped(pathname)) return true;
+  if (normalizePath(pathname) !== "/compare" || !search) return false;
+  const has = (k: string) => (search instanceof URLSearchParams ? search.has(k) : search[k] !== undefined);
+  return has("ids") && !has("a") && !has("b");
+}
+
+/**
  * `href` carrying the current team selection, when it points at a team-scoped page. An href that already names a
  * team keeps it; other pages, external links and the owner default are left as they are.
  */
@@ -62,8 +76,8 @@ export function withTeam(href: string, team: string | null | undefined): string 
   if (!team || !href.startsWith("/")) return href;
   const [pathAndQuery, hash] = href.split("#");
   const [path, query = ""] = pathAndQuery.split("?");
-  if (!isTeamScoped(path)) return href;
   const qs = new URLSearchParams(query);
+  if (!isTeamScopedView(path, qs)) return href;
   if (qs.has(TEAM_PARAM) || qs.has(LEGACY_TEAM_PARAM)) return href;
   qs.set(TEAM_PARAM, team);
   return `${path}?${qs}${hash !== undefined ? `#${hash}` : ""}`;
@@ -129,8 +143,9 @@ export function isUnknownTeam(res: { ok: boolean; status?: number; error?: strin
  * back to the team last analyzed in this browser tab: Start/Sit for team 4 → Rankings → My team opens team 4's
  * Overview again instead of silently switching back to the default.
  */
-export function navTeam(pathname: string, urlTeam: string | null, lastTeam: string | null): string | null {
-  return isTeamScoped(pathname) ? urlTeam : (urlTeam ?? lastTeam);
+export function navTeam(pathname: string, urlTeam: string | null, lastTeam: string | null,
+                        scoped: boolean = isTeamScoped(pathname)): string | null {
+  return scoped ? urlTeam : (urlTeam ?? lastTeam);
 }
 
 /** A stored last-analyzed team, or null when absent or not a team id. */

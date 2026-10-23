@@ -51,4 +51,6 @@ next-env.d.ts
 /playwright-report-visual/
 /test-results-signup/
 /playwright-report-signup/
+/test-results-attribution/
+/playwright-report-attribution/
 /blob-report/

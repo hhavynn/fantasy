@@ -238,7 +238,9 @@ export type DiscoveryV3 = {
       excluded_invalid_roster: number; excluded_missing_data: number; not_evaluated: number; not_evaluated_reason: string | null;
       termination: string; exhaustive: boolean; bounds_valid: boolean; seconds: { stage_a: number; stage_b: number } } | null;
     heuristic: { method: string; shapes: string[]; exhaustive: boolean; packages_evaluated: number; qualifying_rows: number;
-      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string } | null;
+      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string;
+      /** Only when the beam's work budget stopped it early for at least one manager. */
+      work_budget?: BeamWorkBudget } | null;
     exact_shapes: string[]; heuristic_shapes: string[]; positions: string[] | null;
   };
   opponents: { opponent_team_id: number; team_name: string | null;
@@ -367,3 +369,10 @@ export type TradeVsFreeAgency =
     pool: { available_players_scored: number; excluded_unprojected: Record<string, number>; acquisition_types: Record<string, number> };
     assumptions: string[]; limitations: string[];
   };
+
+/** `coverage.heuristic.work_budget`: the larger-shape search stopped early for some managers (backend
+ * `TradeSearch.beam`, BEAM_WORK_PER_OPPONENT). Present only when the budget was reached. */
+export type BeamWorkBudget = {
+  per_opponent: number; unit: string; opponents_cut: number[]; opponents: number;
+  packages_evaluated: number; packages_generated: number; note: string;
+};

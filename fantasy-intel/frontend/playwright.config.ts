@@ -20,9 +20,9 @@ const BACKEND_ENV = {
   EXTERNAL_USAGE_PREFERRED_PROVIDER: "",
 };
 
-// Specs with their own config: playwright.sleeper, playwright.multileague (also ux-multileague), playwright.visual and
-// playwright.signup.
-const OWN_CONFIGS = /(sleeper|multileague|visual|signup)\.spec\.ts/;
+// Specs with their own config: playwright.sleeper, playwright.multileague (also ux-multileague), playwright.visual,
+// playwright.signup and playwright.attribution (movers-attribution).
+const OWN_CONFIGS = /(sleeper|multileague|visual|signup|attribution)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",

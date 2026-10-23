@@ -4,7 +4,7 @@ import { EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
-  CONTRACT, SOURCE_NAME, chartMovers, eyebrowText, freshnessText, moversQuery, parseMoversState, selectedMover, signedPts,
+  CONTRACT, SOURCE_NAME, chartMovers, eyebrowText, freshnessText, moversApiQuery, parseMoversState, selectedMover, signedPts,
   totalsText, type MoversResponse,
 } from "@/lib/projection-movers";
 import type { SearchParams } from "@/lib/sort";
@@ -30,13 +30,13 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
   const espnOn = profile.providerProjections;
   let state = parseMoversState(sp, espnOn);
 
-  let res = await api<MoversResponse>(`/api/projections/movers?${moversQuery(state)}`);
+  let res = await api<MoversResponse>(`/api/projections/movers?${moversApiQuery(state)}`);
   let baselineDropped = false;
   if (!res.ok && res.status === 422 && state.baseline) {
     // A stale link can name a comparison point that no longer exists: fall back to the default one, and say so.
     state = { ...state, baseline: null };
     baselineDropped = true;
-    res = await api<MoversResponse>(`/api/projections/movers?${moversQuery(state)}`);
+    res = await api<MoversResponse>(`/api/projections/movers?${moversApiQuery(state)}`);
   }
   if (!res.ok) {
     return (

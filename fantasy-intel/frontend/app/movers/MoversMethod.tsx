@@ -51,6 +51,17 @@ export function MoversMethod({ d, provider = "espn", providerProjections = true 
         per-game part (the points expected when the player plays); the two add up to the change.
       </p>
       <p>
+        <b>Why it changed.</b> For Fantasy Intel&apos;s forecasts of the listed risers and fallers and the selected player, the change is split
+        into parts that add up to it: a change of status stored with a forecast (a bye, or withheld as unavailable, with the stored reason),
+        the availability part, and, when both forecasts come from the same model artifact, each input whose term both forecasts stored (the
+        change in that term times the latest chance he plays; the model adds one term per input before its floor at 0, so this share is
+        exact, and approximate for quarterbacks). When the model was retrained, re-scored or replaced in between, the per-game part is shown
+        as a model change and never assigned to inputs. Everything else, including inputs a forecast did not store and the rounding of stored
+        numbers, is the residual, with its reasons. Only the two stored forecasts are read, and a week is split only when both were made
+        before its first kickoff and their data ran through an earlier week. These are measured parts of the model&apos;s arithmetic, not
+        football causes. ESPN publishes no inputs, so its changes are not split.
+      </p>
+      <p>
         <b>Not shown.</b> No confidence scores, grades or probabilities, and no advice to add, drop, start, sit or trade anyone.
       </p>
     </Method>

@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { isTeamScoped, navTeam, parseStoredTeam, teamParamFrom } from "@/lib/team-perspective";
+import { isTeamScopedView, navTeam, parseStoredTeam, teamParamFrom } from "@/lib/team-perspective";
 import { useAppPathname, useLeagueId } from "./useAppPathname";
 
 // The last team analyzed on a team-scoped page, for this browser tab only (sessionStorage): a new tab or a shared
@@ -55,12 +55,13 @@ export function rememberTeam(league: string | null, team: string | null) {
 export function useTeam(): string | null {
   const key = teamStorageKey(useLeagueId());
   const pathname = useAppPathname();
-  const urlTeam = teamParamFrom(useSearchParams());
-  const scoped = isTeamScoped(pathname);
+  const search = useSearchParams();
+  const urlTeam = teamParamFrom(search);
+  const scoped = isTeamScopedView(pathname, search);
   const getSnapshot = useCallback(() => read(key), [key]);
   const last = useSyncExternalStore(subscribe, getSnapshot, () => null);
   useEffect(() => {
     if (scoped) write(key, urlTeam);
   }, [key, scoped, urlTeam]);
-  return navTeam(pathname, urlTeam, last);
+  return navTeam(pathname, urlTeam, last, scoped);
 }

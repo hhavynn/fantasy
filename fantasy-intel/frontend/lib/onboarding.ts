@@ -195,6 +195,9 @@ export function connectProblem(status: number | undefined, message: string, host
   if (status === 409 && /25 leagues/.test(message)) return p("Your list is full", "manage", "Unpin a league below, then add this one.");
   if (status === 409 && /public/i.test(message)) return p("This league is public", "fix_input", "Add it without cookies.");
   if (status === 409) return p("This league cannot be added right now", "none", null);
+  if (status === 503 && /^private leagues are not available/i.test(message)) {
+    return p(`Private ${name} leagues are not available here`, "none", "Nothing was added.");
+  }
   if (status === 503) return p(`${name} could not be reached`, "retry_later", "Nothing was added. Try again in a few minutes.");
   return p("The league could not be added", "retry_later", null);
 }
