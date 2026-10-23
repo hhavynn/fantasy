@@ -89,12 +89,12 @@ GRADE_DEFINITIONS = MappingProxyType({
              "has no call."),
     "margin": "margin = actual(x) - actual(y), in league points, rounded to 0.01.",
     "verdict": "Correct if margin > 0, missed if margin < 0, push if margin = 0.",
-    "hit_rate": "correct / (correct + missed); pushes and excluded calls are left out. Null when no call is decided.",
+    "hit_rate": "correct / (correct + missed); pushes and excluded calls are left out. Unknown when no call is decided.",
     "forecast_gap": ("forecast(x) - forecast(y) >= 0. A call with a gap under "
                      f"{CLOSE_CALL_POINTS:g} points is a close call: a miss there is not a confident miss."),
     "opportunity_cost": ("lower = max(0, actual(y) - actual(x)): points lost against the archive's own alternative. "
                          "upper = max(0, max over every eligible benched b of actual(b) - actual(x)): points lost against "
-                         "the best alternative in hindsight. lower <= upper. upper is unknown (null) when an eligible "
+                         "the best alternative in hindsight. lower <= upper. upper is unknown when an eligible "
                          "benched player has no recorded points."),
     "lineup": ("archived = actual points of the archived lineup; best = the most points any lineup from the same decision "
                "set and slots scored; archive_shortfall = best - archived (>= 0). Only when every decision-set player has "
