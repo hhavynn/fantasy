@@ -21,8 +21,8 @@ stored in `player_week_usage`. No new source, no fetch. The research-only teamma
 `certainty` is how settled the change is, never "confirmed": `designated_out` (Out / IR / suspended), `if_he_sits`
 (questionable / doubtful), `if_he_plays` (questionable after missing the last game), `status_cleared` (on this week's
 NFL report without an Out / Doubtful designation, or a real provider designation: questionable / day to day),
-`roster_only` (weaker: only an ACT / INA status on his newest weekly roster before this week), `unconfirmed` (no such
-evidence: the scenario abstains). A player whose newest weekly-roster status is a reserve list needs the NFL report
+`roster_only` (weaker: only an ACT / INA status on his newest weekly roster before this week, accepted only once this
+week's NFL report has rows), `unconfirmed` (no such evidence: the scenario abstains). A player whose newest weekly-roster status is a reserve list needs the NFL report
 listing; nothing else counts. ESPN's default ACTIVE / NORMAL is no designation and never evidence of a return, and a
 missing designation is never read as one. The week's own roster row (the game-day decision) is never read. Depth
 charts, coach statements and backup order are never evidence.

@@ -342,8 +342,9 @@ def _subjects(ctx: ii.ImpactContext, entries: list[dict], newest: dict) -> list[
 def _return_evidence(ctx: ii.ImpactContext, g: str, provider_label: str, newest: dict,
                      reserve: bool) -> tuple[str, list[dict]]:
     """(certainty, evidence) for a return: if_he_plays (questionable), status_cleared (this week's NFL report or a
-    provider designation), roster_only (only an ACT / INA weekly-roster status before this week: weaker) or
-    unconfirmed. Off a reserve list only the NFL report listing counts."""
+    provider designation), roster_only (only an ACT / INA weekly-roster status before this week: weaker, and only once
+    this week's NFL report is published, so his absence from it means something) or unconfirmed. Off a reserve list
+    only the NFL report listing counts."""
     ev = []
     rep = ctx.reports.get((g, ctx.week))
     if rep is not None and rep["report_status"] not in _NOT_BACK_REPORT:
@@ -356,9 +357,14 @@ def _return_evidence(ctx: ii.ImpactContext, g: str, provider_label: str, newest:
         st = ctx.status_of.get(g)
         return ("if_he_plays" if st is not None and st["status"] == QUESTIONABLE else "status_cleared"), ev
     n = newest.get(g)
-    if not reserve and n is not None and n[2] in _ROSTER_EVIDENCE:
+    if not reserve and n is not None and n[2] in _ROSTER_EVIDENCE and _report_published(ctx):
         return "roster_only", [{"source": "weekly_roster", "week": n[0], "status": n[2]}]
     return "unconfirmed", []
+
+
+def _report_published(ctx: ii.ImpactContext) -> bool:
+    """Whether any NFL injury report row for the current week is synced."""
+    return any(w == ctx.week for _, w in ctx.reports)
 
 
 def _usable(mates: list[dict], view: _TeamView, ctx: ii.ImpactContext) -> list[dict]:
@@ -443,6 +449,8 @@ def _scenario(kind: str, g: str, pos: str, extra: dict, view: _TeamView, ctx: ii
     elif kind == "teammate_returning" and certainty == "unconfirmed":
         why = ("his newest weekly roster puts him on a reserve list and this week's NFL report does not list him"
                if extra["reserve"] else
+               f"this week's NFL report is not synced yet, so a roster status alone is not enough, and there is no "
+               f"{provider_label} designation" if not _report_published(ctx) else
                f"no NFL report entry clearing him, no {provider_label} designation and no active or inactive status on "
                "the newest weekly roster")
         abstain = {"code": "no_return_evidence",

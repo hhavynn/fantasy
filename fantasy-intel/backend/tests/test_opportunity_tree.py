@@ -246,6 +246,16 @@ def test_espn_default_active_is_not_return_evidence(league):
     assert "default active status" in s["abstain"]["text"]
 
 
+def test_roster_status_alone_needs_this_weeks_report_to_be_published(league):
+    """Early in the week, before the week-7 report is ingested, an ACT roster row is not enough for a return."""
+    league.execute("DELETE FROM nfl_injuries WHERE week = ?", [CURRENT])
+    league.execute("UPDATE fantasy_players SET injury_status = 'ACTIVE' WHERE espn_player_id = 401")
+    s = scenario(get(league), 401)
+    assert s["certainty"] == "unconfirmed" and s["evidence"] == [] and s["effects"] == []
+    assert s["outcome"] == "abstain" and s["abstain"]["code"] == "no_return_evidence"
+    assert "this week's NFL report is not synced yet" in s["abstain"]["text"]
+
+
 def _reserve(league, pid):
     league.execute("UPDATE nfl_rosters_weekly SET status = 'RES' WHERE gsis_id = ? AND week = 6", [G[pid]])
     league.execute("UPDATE fantasy_players SET injury_status = 'ACTIVE' WHERE espn_player_id = ?", [pid])
