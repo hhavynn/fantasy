@@ -14,8 +14,6 @@ from app.analytics import lineup
 from app.analytics.lineup import FLEX_ELIGIBILITY, FLEX_SLOTS, eligible, is_flex, positions_of, slot_positions
 
 APP = Path(__file__).resolve().parents[1] / "app"
-# lineup_totals.py keeps its own flex reads until the all-slot solver replaces them (PR 2); #308 is changing it now.
-NOT_YET = {"analytics/lineup_totals.py"}
 
 RB = [2, 3, 23, 7, 20, 21]                 # ESPN eligibleSlots for a pure RB (RB, RB/WR, FLEX, OP, bench, IR)
 RB_WR = [2, 3, 4, 5, 23, 7, 20, 21]        # an RB the provider also lists at WR
@@ -91,4 +89,4 @@ def test_no_engine_reads_the_flex_table_itself():
     readers = sorted(rel for f in APP.rglob("*.py")
                      if (rel := f.relative_to(APP).as_posix()) != "analytics/lineup.py"
                      and "FLEX_ELIGIBILITY" in _names(ast.parse(f.read_text())))
-    assert set(readers) <= NOT_YET, readers
+    assert readers == [], readers
