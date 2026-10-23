@@ -77,3 +77,20 @@ test("set a future result, see deterministic standings against the baseline, cop
   await expect(page.getByRole("region", { name: /^Actual vs hypothetical standings/ })).toBeVisible();
   await expect(whatIf(page)).toHaveCount(0);
 });
+
+test("the rooting guide compares other games one at a time, labelled hypothetical, with no claim", async ({ page }) => {
+  // Fixture: in week 3 team 2 (the default) plays team 1, and team 4 plays team 3. Team 2 sits first by a distance
+  // and the fixture's provider records differ from its stored finals, so the possible range is withheld.
+  await page.goto("/playoff-race");
+  await loaded(page);
+  const guide = page.getByRole("region", { name: /^Rooting guide: wk 3/ });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByText("Hypothetical", { exact: true })).toBeVisible();
+  await expect(guide.getByText(/one at a time against this scenario\. Deterministic, no probability\./)).toBeVisible();
+  await expect(guide.getByText(/No other game in wk 3 has a better side for Team 2 on its own\./)).toBeVisible();
+  await expect(guide.getByText("No effect on Team 2 either way: Team 4 vs Team 3.")).toBeVisible();
+  await expect(guide.getByText(/Possible range not used: The provider's records do not match/)).toBeVisible();
+  await expect(guide.getByText(/later open games also remain/)).toBeVisible();
+  await expect(guide.getByText(/clinched|eliminated|%/i).filter({ visible: true })).toHaveCount(0);
+  await noSideScroll(page);
+});

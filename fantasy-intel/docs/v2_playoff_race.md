@@ -135,6 +135,43 @@ what-if standings table, the blocked conclusions, the record bounds ("Not claime
 scenario link" button (the league-scoped URL with every set result) and "Reset to the baseline". Every standing on
 the page is labelled actual or hypothetical.
 
+## Rooting guide (issue #217)
+
+`scenario.rooting` answers "which other games this week do I want to go one way?" for the spotlight team, from the
+same deterministic evaluator as the what-if. It is present whenever there is a spotlight team, with or without set
+results, and it needs no new parameter.
+
+* **Which games.** Every open regular-season game of the next matchup period (the earliest period with an open
+  game, under way included) that the spotlight team does not play. Its own game is named (`own_game`) and left to
+  the leverage table. Final games, byes and later periods are not evaluated; `later_open_games` counts the later
+  ones that can still change everything.
+* **One game at a time.** `evaluate_outcome` sets one game's result (home win, then away win) without changing the
+  scenario or the fixtures, and reports two things:
+  * `scenario`: the spotlight team's rank, tie flag, cutline status and record, every other result as in the
+    scenario (hypothetical; the projected baseline plus your set results).
+  * `range`: its record bounds with that result fixed (plus your set results) and every other game open, with no
+    projections. It is null when the bounds abstain (`range_abstain` gives the reasons, the same as the what-if's).
+* **Which side.** `prefer` names a side only when it is no worse on both comparisons and better on at least one.
+  The scenario compares cutline status, then rank. The range compares record order only (above the line in every
+  outcome, open, below it in every outcome). The team counts are reported but never decide: a team locked ahead of
+  you can be irrelevant to your spot. When the two comparisons point to different sides, the game is a `conflict`
+  and no side is named. `basis` lists which comparison decided.
+* **Order.** Games with a preference come first, then cutline status swings, then the size of the rank swing, then
+  record-order swings. Games where neither side helps are listed apart (`no_effect`).
+* **Never a claim.** `probabilities` is null, `conclusions.claims` is always `[]`, and the conclusion gate's status
+  is carried as-is. The page words the range as counts ("fewer teams than there are spots can match your record
+  even if you lose every open game") and says "record order assumed; not a clinch or elimination". Ties are not
+  compared.
+
+The page shows a "Rooting guide: wk N" section labelled Hypothetical. It has one row per game: the side to root for
+(or Mixed), the spotlight team's place either way, the reason in words from `rootingReason()`
+(`lib/playoff-view.ts`), and links that set the result as a what-if. Every row reproduces the deterministic
+simulation: `test_every_rooting_outcome_reproduces_the_deterministic_simulation` sets each result as an override
+and checks the standings and the what-if's record bounds against the row.
+
+Cost: about 13 ms more for a 14-team league (two standings and two bounds evaluations per game). The block is about
+5 KB.
+
 ## Page
 
 `/playoff-race` (nav "Playoff race") has these sections:
@@ -183,3 +220,5 @@ Latency on synthetic leagues:
 * Future playoff matchups and opponents are not modeled. Byes or one-team rows in the regular season produce no
   result.
 * The fewest-wins search is exhaustive only up to 12 open games.
+* The rooting guide evaluates one game at a time, for the next period only. Combinations of results and later weeks
+  are left to the what-if. A preference is about this scenario and the record order; it is not a chance.

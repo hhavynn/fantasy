@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { PrRootingGame } from "./types.ts";
 import {
-  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, unresolvedText, weeksText, whatifChanged, withCutline,
-  withOverride,
+  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, unresolvedText, weeksText, whatifChanged,
+  withCutline, withOverride,
 } from "./playoff-view.ts";
 
 test("parseRaceQuery reads team, base and overrides; ignores malformed entries", () => {
@@ -89,4 +90,45 @@ test("matchupAnalysisHref opens the game's first week from the spotlight side wh
   assert.equal(matchupAnalysisHref(m, 9), "/matchup?week=7&team=3");
   assert.equal(matchupAnalysisHref(m, null), "/matchup?week=7&team=3");
   assert.equal(matchupAnalysisHref({ ...m, weeks: null }, 3), "/matchup?team=3");
+});
+
+// -------------------------------------------------------------- rooting guide (issue #217) --
+
+function game(over: Partial<PrRootingGame> = {}): PrRootingGame {
+  const place = (rank: number, status: "inside" | "outside" | "cutline_tie" | null, tied = false) =>
+    ({ scenario: { rank, tied, status, record: { wins: 5, losses: 4, ties: 0 } }, range: { teams_able_to_match_worst: 5, teams_certain_ahead_of_best: 0, record_order: "open" as const } });
+  return {
+    matchup_id: 9, matchup_period: 10, weeks: [10], home_team_id: 3, away_team_id: 4, status: "upcoming", close: false,
+    scenario_result: "home", if_home: place(5, "outside"), if_away: place(4, "inside"), prefer: "away", basis: ["scenario"],
+    conflict: false, swing: { status_changes: true, rank_difference: 1, range_changes: false }, ...over,
+  };
+}
+const nm = (id: number) => `Team ${id}`;
+
+test("rootingReason states the backend's comparison for the preferred side, scenario first", () => {
+  assert.equal(rootingReason(game(), nm),
+    "A Team 4 win leaves you #4, inside the line; a Team 3 win, #5, outside the line, every other result as in this scenario.");
+  const tied = game({ if_away: { ...game().if_away, scenario: { rank: 4, tied: true, status: "cutline_tie", record: null } } });
+  assert.match(rootingReason(tied, nm), /#4 \(tied\), tied at the line/);
+});
+
+test("rootingReason words the possible range as record order only, never a clinch", () => {
+  const g = game({
+    prefer: "home", basis: ["possible_range"],
+    if_home: { ...game().if_home, range: { teams_able_to_match_worst: 2, teams_certain_ahead_of_best: 0, record_order: "above_line" } },
+  });
+  const text = rootingReason(g, nm);
+  assert.match(text, /after a Team 3 win, fewer teams than there are spots can match your record/);
+  assert.match(text, /not a clinch or elimination/);
+  assert.doesNotMatch(text, /clinched|eliminated|probab|%/i);
+});
+
+test("rootingReason for no preference and for a conflict names both results", () => {
+  const same = game({ prefer: null, basis: [], if_away: game().if_home });
+  assert.equal(rootingReason(same, nm), "Either result leaves you #5, outside the line.");
+  const mixed = rootingReason(game({ prefer: null, basis: [], conflict: true }), nm);
+  assert.match(mixed, /^Mixed: /);
+  assert.match(mixed, /Team 3 win: #5, outside the line; Team 4 win: #4, inside the line\./);
+  const unranked = game({ prefer: null, if_away: game().if_home, if_home: { scenario: { rank: null, tied: false, status: null, record: null }, range: null } });
+  assert.equal(rootingReason({ ...unranked, if_away: unranked.if_home }, nm), "Either result leaves you unranked.");
 });

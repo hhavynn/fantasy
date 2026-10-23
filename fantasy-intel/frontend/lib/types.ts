@@ -529,6 +529,8 @@ export type PlayoffRace = {
     focus: { scenario: PrPlace; win_out: PrPlace; lose_out: PrPlace; open_games: number;
       fewest_wins_to_get_inside: { wins_needed: number | null; of_games: number; method: string; games: number[]; note?: string } | null;
       helpful_other_results: { matchup_id: number; matchup_period: number; result: PrOutcome; loser_id: number; rank: number | null; status: PrStatus }[] } | null;
+    /** Issue #217: the spotlight team's rooting guide for the next matchup period; null without a spotlight team. */
+    rooting: PrRooting | null;
   };
   schedule_coverage: { checked: boolean; reason?: string; regular_season_periods?: number; complete?: boolean;
     missing: { team_id: number; periods: number[] }[]; unmapped_periods?: number[] };
@@ -549,6 +551,24 @@ export type PrBound = {
   team_id: number; open_games: number; best: PrRecord | null; worst: PrRecord | null;
   teams_able_to_match_worst: number | null; teams_certain_ahead_of_best: number | null;
   record_order: "above_line" | "below_line" | "open" | null; claim: null;
+};
+export type PrRange = { teams_able_to_match_worst: number | null; teams_certain_ahead_of_best: number | null;
+  record_order: PrBound["record_order"] };
+/** The spotlight team's place if one side wins: in the scenario (every other result as in it) and its possible range
+ * (record bounds with that result fixed; null when the bounds abstain). */
+export type PrRootingSide = { scenario: PrPlaceRow; range: PrRange | null };
+export type PrRootingGame = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; home_team_id: number; away_team_id: number;
+  status: PrMatchup["status"]; close: boolean | null; scenario_result: PrOutcome | null;
+  if_home: PrRootingSide; if_away: PrRootingSide;
+  prefer: "home" | "away" | null; basis: ("scenario" | "possible_range")[]; conflict: boolean;
+  swing: { status_changes: boolean; rank_difference: number | null; range_changes: boolean };
+};
+export type PrRooting = {
+  label: "hypothetical"; method: string; status: "ok" | "no_games_remaining" | "no_other_games";
+  period: number | null; weeks: number[] | null; games: PrRootingGame[]; no_effect: PrRootingGame[];
+  own_game: number | null; later_open_games: number; range_abstain: string[];
+  conclusions: { status: "blocked" | "open"; claims: never[] }; probabilities: null;
 };
 export type PrWhatIf = {
   label: "hypothetical"; method: string;
