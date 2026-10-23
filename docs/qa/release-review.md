@@ -96,9 +96,11 @@ Do this before a release, about 15 minutes, on a phone-sized window (390px) and 
 
 ## Known defects found by the gates
 
-These are open; the triage file or a `test.fixme` names each one:
-- Matchup scoreboard team names are `h3` with no `h2` above them (axe `heading-order`).
-- The links in the player profile's note lines are told apart by colour only (axe `link-in-text-block`).
-- A Sleeper team with no abbreviation prints "(null)" in the Start/Sit header.
-- With no saved team, a league's Overview and a Sleeper league's Matchup show the operator hint `ESPN_MY_TEAM_ID`.
+These are open; the triage file or a `test.fixme` names each one, and each triage entry's owner is its issue:
+- #322: the trade builder's player checkboxes are 18px inputs (axe `target-size`).
+- #323: Matchup scoreboard team names are `h3` with no `h2` above them (axe `heading-order`).
+- #324: the links in the player profile's note lines are told apart by colour only (axe `link-in-text-block`).
+- #325: a Sleeper team with no abbreviation prints "(null)" in the Start/Sit header.
+- #326: with no saved team, a league's Overview and Matchup show the operator hint `ESPN_MY_TEAM_ID`. The Matchup line
+  is the backend's `TeamNotFound` detail (`backend/app/analytics/matchup.py`).
 - A connected league that has never synced shows "The backend returned an error (409)" and a "Backend offline" pill. The `test.fixme` in `ux-multileague.spec.ts` covers it.
