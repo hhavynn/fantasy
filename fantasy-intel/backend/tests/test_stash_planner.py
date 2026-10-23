@@ -205,36 +205,68 @@ def test_a_current_week_add_does_not_hide_a_stash_at_his_position():
     assert [x["espn_player_id"] for x in res["stashes"]] == [31]
 
 
-@pytest.mark.parametrize("league", ["std", "fx17"])
+@pytest.mark.parametrize("league", ["std", "fx17", "op"])
 def test_the_gain_bound_never_skips_a_real_gain(league):
+    """The planner's rule, checked against the exact evaluator on random rosters: short ones (empty slots), negative
+    projections, NFL-ineligible weeks and a random drop (or none)."""
     import random
     rng = random.Random(218)
-    slots = STD if league == "std" else lineup_slots(cf.FX17)
-    shape = ["QB", "RB", "RB", "RB", "WR", "WR", "WR", "TE"] if league == "std" else \
-        ["QB"] * 3 + ["RB"] * 6 + ["WR"] * 7 + ["TE"] * 3
-    for trial in range(25):
-        players = [P(100 + i, pos) for i, pos in enumerate(shape)]
+    slots = {"std": STD, "fx17": lineup_slots(cf.FX17), "op": lineup_slots({"QB": 1, "FLEX": 1, "OP": 1})}[league]
+    shape = {"std": ["QB", "RB", "RB", "RB", "WR", "WR", "WR", "TE"], "op": ["QB", "RB", "WR", "TE"],
+             "fx17": ["QB"] * 3 + ["RB"] * 6 + ["WR"] * 7 + ["TE"] * 3}[league]
+    hw = Window((1, 2, 3, 4, 5), 5)
+    weeks = list(hw.weeks)
+    for trial in range(120):
+        players = [P(100 + i, pos) for i, pos in enumerate(shape) if rng.random() > 0.2]
         fas = [P(300 + i, rng.choice(sp.STASH_POSITIONS),
-                 unavailable_weeks=frozenset(w for w in WIN.weeks if rng.random() < 0.1)) for i in range(12)]
-        pr = {p.espn_player_id: {w: round(rng.uniform(-2, 25), 1) * (rng.random() > 0.15) for w in WIN.weeks}
+                 unavailable_weeks=frozenset(w for w in WIN.weeks if rng.random() < 0.1)) for i in range(8)]
+        lo = -3 if rng.random() < 0.4 else 0
+        pr = {p.espn_player_id: {w: round(rng.uniform(lo, 25), 1) * (rng.random() > 0.15) for w in WIN.weeks}
               for p in players + fas}
-        hw = Window((1, 2, 3, 4, 5), 5)
         base = sp.project_team(players, slots, hw, pr)
-        drop = rng.choice([None, *players])
+        drop = rng.choice([None, *players]) if players else None
         rest = players if drop is None else [p for p in players if p is not drop]
         removal = 0.0 if drop is None else scenario(players, slots, hw, pr, remove=[drop.espn_player_id],
                                                     base=base)["_ros_exact"]
-        floors = sp._floors(sp.project_team(rest, slots, hw, pr), list(hw.weeks))
+        gains = removal > sp.EPS
+        after = sp.project_team(rest, slots, hw, pr)
+        floors = sp._floors(after, weeks)
         for fa in fas:
-            gain = scenario(players, slots, hw, pr, remove=[drop.espn_player_id] if drop else (), add=[fa],
-                            base=base)["_ros_exact"]
-            assert gain <= sp._bound(fa, floors, list(hw.weeks), pr) + removal + 1e-9, (trial, fa)
+            if gains:
+                gain = scenario(rest, slots, hw, pr, add=[fa], base=after)["_ros_exact"]
+            else:
+                gain = scenario(players, slots, hw, pr, remove=[drop.espn_player_id] if drop else (), add=[fa],
+                                base=base)["_ros_exact"]
+            bound = sp._bound(fa, floors, weeks, pr) + (0.0 if gains else removal)
+            assert gain <= bound + 1e-9, (league, trial, fa)
+
+
+def test_the_flex_solver_leaving_slots_empty_is_never_bounded():
+    # a flex total at or below -1 leaves every flex slot empty: the roster's negative weeks have no bound, so TE 31 is
+    # solved (he gains more than his own projection in every week) rather than skipped
+    slots = lineup_slots({"QB": 1, "FLEX": 1, "OP": 1})
+    w = Window((1, 2, 3), 3)
+    players = [P(1, "RB"), P(2, "WR")]
+    pr = {1: {1: 1.0, 2: 1.0, 3: 1.0}, 2: {1: -2.0, 2: -2.0, 3: -2.0}, 31: {1: 0.0, 2: 0.0, 3: 3.0}}
+    floors = sp._floors(sp.project_team(players, slots, w, pr), list(w.weeks))
+    assert all(f is None for f in floors.values())
+    res = sp.plan_stashes(players, slots, w, pr, free_agents=[P(31, "TE")], free_agent_status={31: "FREEAGENT"},
+                          active_capacity=3, horizon=2, projection_source="ESPN")
+    direct = scenario(players, slots, w, pr, add=[P(31, "TE")])["_ros_exact"]
+    assert res["counts"]["no_possible_gain"] == 0
+    assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["pick_up_now"]] == [(31, round(direct, 2))]
+
+
+def test_an_unsupported_slot_keeps_the_bound():
+    slots = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "LB": 1})
+    base = sp.project_team(roster(), slots, WIN, proj())
+    assert all(f is not None for f in sp._floors(base, list(WIN.weeks)).values())
 
 
 def test_a_drop_whose_removal_adds_points_is_part_of_the_bound():
-    # Codex's case: a forced negative D/ST is the drop, so removing him alone gains +2 a week (+4). The bound includes
-    # that change, so RB 32 (who beats the rostered RB in week 3) is solved, not skipped; RB 31 (1 a week) adds nothing
-    # beyond the drop's own gain and is not credited with it
+    # Codex's case: a forced negative D/ST is the drop, so removing him alone gains +2 a week (+4). That change is
+    # reported on its own and free agents are measured against the roster without him: RB 32 beats the rostered RB in
+    # week 3 (+3), RB 31 (1 a week) adds nothing and is not credited with the drop's gain
     slots = lineup_slots({"RB": 1, "D/ST": 1})
     w = Window((1, 2, 3), 3)
     players = [P(1, "RB"), P(2, "D/ST")]
@@ -245,7 +277,7 @@ def test_a_drop_whose_removal_adds_points_is_part_of_the_bound():
                           projection_source="ESPN")
     assert res["drop"]["espn_player_id"] == 2 and res["drop"]["horizon_cost"] == 4.0
     assert "alone changes the starting lineup by +4" in res["drop_notes"][0]
-    assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["stashes"]] == [(32, 7.0)]
+    assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["stashes"]] == [(32, 3.0)]
     assert res["counts"]["no_possible_gain"] == 1 and res["counts"]["evaluated"] == 1
 
 

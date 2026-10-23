@@ -20,9 +20,11 @@ drop. Only QB, RB, WR and TE are planned: K and D/ST are streamed week by week (
 Candidates are free agents whose availability is known (FREEAGENT or WAIVERS), projected in every horizon week. Before
 any lineup is solved, each gets an upper bound on what he can add: per week, his projection (0 in a week he is verified
 NFL-ineligible) minus the lowest starter he could displace through the slots his position reaches in the lineup without
-the drop (0 for an empty slot), plus the drop's exact removal change (which can be positive when a negative projection
-was forced into a slot). Adding one player changes an optimal lineup by one replacement chain that ends with that
-starter leaving, so a bound of 0 or less means no gain (counted, not solved). The rest are evaluated exactly, at most MAX_PER_POSITION per position in bound order; every cut is counted.
+the drop (0 for an empty slot), plus the drop's exact removal cost. Adding one player changes an optimal lineup by one
+replacement chain that ends with that starter leaving, so a bound of 0 or less means no gain (counted, not solved). A
+week with a missing or negative projection on the roster, or a negative one for him, has no bound (he is solved). When
+removing the drop alone adds points (a negative projection forced into a starting slot), every free agent is measured
+against the roster without him and the drop's own change is reported separately. The rest are evaluated exactly, at most MAX_PER_POSITION per position in bound order; every cut is counted.
 
 Ranking policy (deterministic): net horizon gain, then the earliest later week he starts, then player id.
 
@@ -80,12 +82,16 @@ def _effective(proj, p: RosterPlayer, week: int) -> float:
 def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]:
     """Per week and position: the lowest starter a player at that position could push out of the current lineup (0 for
     an empty slot it reaches), following the replacement chain through the slots each displaced starter can take. None
-    for a week whose lineup is not exact (no bound: the candidate is solved and comes out unknown)."""
+    (no bound: the candidate is solved) for a week with a missing projection, or with a negative one anywhere on the
+    roster: a negative player can be forced into a fixed slot and the flex solver may leave flex slots empty below a
+    threshold, so the replacement-chain argument does not hold there."""
     out = {}
     by_week = {w["week"]: w for w in base["weeks"]}
     for wk in hweeks:
         week = by_week[wk]
-        if not week["projection_complete"]:
+        values = [a["points"] for a in week["assignment"] if slot_filled(a)] + [b["points"] for b in week["bench"]]
+        if not week.get("_projections_complete", week["projection_complete"]) or any(
+                v is None or v < 0 for v in values):
             out[wk] = None
             continue
         rows = week["assignment"]
@@ -117,9 +123,12 @@ def _bound(p: RosterPlayer, floors: dict, hweeks: list[int], proj) -> float:
         f = floors[wk]
         if f is None:
             return float("inf")
+        v = _effective(proj, p, wk)
+        if v < 0:
+            return float("inf")
         if f.get(p.position) is None:                   # no slot takes him: he cannot start
             continue
-        total += max(0.0, _effective(proj, p, wk) - f[p.position])
+        total += max(0.0, v - f[p.position])
     return total
 
 
@@ -162,11 +171,12 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     drop_notes = []
     if drop_why == "roster_count_unverified":
         drop_notes.append(roster_count_unverified + " An open spot is not assumed, so the least-cost drop is used.")
-    # a drop whose removal alone adds points (a negative projection in a starting slot) is not the free agent's gain
-    floor_gain = max(0.0, drop_exact or 0.0)
-    if floor_gain > EPS:
-        drop_notes.append(f"Dropping {drop.name} alone changes the starting lineup by {_signed(floor_gain)} (a negative "
-                          "projection in a starting slot); a free agent is listed only for what he adds beyond that.")
+    # a drop whose removal alone adds points (a negative projection in a starting slot) is not the free agent's gain:
+    # every free agent is then measured against the roster without him, and that change is reported on its own
+    drop_gains = drop_exact is not None and drop_exact > EPS
+    if drop_gains:
+        drop_notes.append(f"Dropping {drop.name} alone changes the starting lineup by {_signed(drop_exact)} (a negative "
+                          "projection in a starting slot); free agents are measured against the roster without him.")
     if undroppable_list_in_use and drop is not None:
         drop_notes.append(f"This league uses an undroppable list; whether {drop.name} is on it is not known here.")
     rostered = {p.espn_player_id for p in players}
@@ -178,13 +188,17 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     after_drop = without(players, [drop.espn_player_id]) if drop is not None else list(players)
     legal = _legal(projected, after_drop, players, position_limits or {})
     counts["excluded_position_limit"] = len(projected) - len(legal)
-    # the gain of add + drop = the add's gain on the roster without the drop + the drop's exact removal change (which
-    # can be positive: a negative projection forced into a slot), so the bound is taken on the lineup after the drop
-    floors = _floors(base if drop is None else project_team(after_drop, slots, hw, proj), hweeks)
-    bounded = [(_bound(p, floors, hweeks, proj) + (drop_exact or 0.0), p) for p in legal]
-    possible = [(b, p) for b, p in bounded if b > floor_gain + EPS]
+    # the gain of add + drop = the add's gain on the roster without the drop + the drop's removal change (counted only
+    # when it is a cost: a drop that gains is the baseline instead), so the bound is taken on the lineup after the drop
+    base_after = base if drop is None else project_team(after_drop, slots, hw, proj)
+    ref_players, ref_base, ref_remove = (after_drop, base_after, ()) if drop_gains else \
+        (players, base, [drop.espn_player_id] if drop else ())
+    floors = _floors(base_after, hweeks)
+    cost = 0.0 if drop_gains else (drop_exact or 0.0)
+    bounded = [(_bound(p, floors, hweeks, proj) + cost, p) for p in legal]
+    possible = [(b, p) for b, p in bounded if b > EPS]
     counts["no_possible_gain"] = len(legal) - len(possible)
-    possible.sort(key=lambda bp: (-bp[0], bp[1].espn_player_id))
+    possible.sort(key=lambda bp: (-bp[0], -sum(_effective(proj, bp[1], w) for w in later), bp[1].espn_player_id))
     per_pos, evaluated = {}, []
     for _, p in possible:
         per_pos[p.position] = per_pos.get(p.position, 0) + 1
@@ -200,13 +214,13 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     names = {p.espn_player_id: p.name for p in [*players, *free_agents]}
     drop_id = drop.espn_player_id if drop else None
     for fa in evaluated:
-        s = scenario(players, slots, hw, proj, remove=[drop_id] if drop else (), add=[fa], base=base)
+        s = scenario(ref_players, slots, hw, proj, remove=ref_remove, add=[fa], base=ref_base)
         exact = s["_weeks_exact"]
         if s["_ros_exact"] is None or any(d is None for d in exact):
             unknown += 1
             continue
         total, d_now, d_later = s["_ros_exact"], exact[0], sum(exact[1:])
-        if total <= floor_gain + EPS:
+        if total <= EPS:
             no_gain += 1
             continue
         by_week = {w["week"]: w for w in s["weeks"]}

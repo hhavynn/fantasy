@@ -31,10 +31,12 @@ Only a candidate whose net difference over the whole horizon is positive is list
   drop. Every cut is counted (`counts`).
 - **Gain bound.** Before any lineup is solved, each candidate gets an upper bound: per week, his projection (0 in a week
   he is verified NFL-ineligible) minus the lowest starter he could push out through the slots his position reaches in
-  the lineup without the drop (0 for an empty slot), plus the drop's exact removal change (positive when a negative
-  projection was forced into a slot). Adding one player changes an optimal lineup by one replacement chain that ends
-  with that starter leaving, so a bound of 0 or less is no gain (`no_possible_gain`, exact, not solved). When removing
-  the drop alone adds points, a free agent is listed only for what he adds beyond that (a `drop_notes` entry says so). A randomized test checks the bound against the evaluator. The rest are
+  the lineup without the drop (0 for an empty slot), plus the drop's exact removal cost. Adding one player changes an
+  optimal lineup by one replacement chain that ends with that starter leaving, so a bound of 0 or less is no gain
+  (`no_possible_gain`, exact, not solved). A week with a missing or negative projection on the roster (or a negative one
+  for him) has no bound, so he is solved: a negative player can be forced into a fixed slot and the flex solver may
+  leave flex slots empty. When removing the drop alone adds points, every free agent is measured against the roster
+  without him and a `drop_notes` entry reports the drop's own change. A randomized test checks the bound against the evaluator. The rest are
   evaluated exactly, at most 50 per position in bound order (`not_evaluated_cap`), so free agents who can never start
   (a backup QB in a one-QB league) never crowd out a real stash.
 - **Unknown is not 0.** A missing projection in a horizon week excludes the candidate (`excluded_unprojected`). If every
