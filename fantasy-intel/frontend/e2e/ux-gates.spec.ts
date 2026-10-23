@@ -24,6 +24,7 @@ const CORE: Core[] = [
   { name: "Weekly recap", path: "/weekly-recap" },
   { name: "Playoff race", path: "/playoff-race" },
   { name: "Manager", path: "/managers/1" },
+  { name: "League analyzer", path: "/league-analyzer?vs=1", verdict: true },
   // The league connection page; with MULTILEAGUE_UI_ENABLED unset (as here) it explains the single-league setup.
   { name: "Leagues", path: "/leagues" },
 ];

@@ -60,7 +60,8 @@ async function userAuth(path: string): Promise<Record<string, string>> {
 export type ApiResult<T> =
   /** `stale`: the backend served this league's previous files (it could not load the newest in time): data may be older. */
   | { ok: true; data: T; error: null; stale?: true }
-  | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number };
+  /** `code`: the route's machine-readable case (the X-FI-Error-Code header) when it names one. */
+  | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number; code?: string };
 
 /** One timed backend call (API_TIMING; lib/api-timing.ts), or the thrown network error. */
 async function timedFetch(path: string, init: RequestInit): Promise<Response> {
@@ -74,6 +75,9 @@ async function timedFetch(path: string, init: RequestInit): Promise<Response> {
     throw err;
   }
 }
+
+/** A route's machine-readable error case (e.g. the league analyzer's unknown_vs), beside its readable `detail`. */
+export const ERROR_CODE_HEADER = "x-fi-error-code";
 
 const staleMark = (res: Response): { stale?: true } => (res.headers.get(DEGRADED_HEADER) ? { stale: true } : {});
 
@@ -105,7 +109,8 @@ export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>
       const payload = await res.json();
       if (payload?.detail) detail = String(payload.detail);
     } catch {}
-    return { ok: false, data: null, error: detail, kind: classifyHttpError(detail), status: res.status };
+    const code = res.headers.get(ERROR_CODE_HEADER);
+    return { ok: false, data: null, error: detail, kind: classifyHttpError(detail), status: res.status, ...(code ? { code } : {}) };
   }
   try {
     return { ok: true, data: (await res.json()) as T, error: null, ...staleMark(res) };

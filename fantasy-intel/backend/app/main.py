@@ -39,6 +39,7 @@ from .api.projection_ranges import router as projection_ranges_router
 from .api.league_rules import router as league_rules_router
 from .api.transactions import router as transactions_router
 from .api.trade_values import router as trade_values_router
+from .api.league_analyzer import router as league_analyzer_router
 from .api.pace_lab import router as pace_lab_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
@@ -112,6 +113,7 @@ app.include_router(projection_ranges_router)
 app.include_router(league_rules_router)
 app.include_router(transactions_router)
 app.include_router(trade_values_router)
+app.include_router(league_analyzer_router)
 app.include_router(pace_lab_router)
 
 
@@ -127,7 +129,7 @@ mount_legacy_routers(app, [
     research_router, player_compare_router, projection_compare_router, rankings_router, kicker_projections_router,
     dst_projections_router, injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
     transactions_router, add_drop_router, claim_plan_router, faab_router, trade_scenarios_router, trade_values_router,
-    pace_lab_router,
+    league_analyzer_router, pace_lab_router,
 ], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router,
                                 pace_lab_router])
 app.middleware("http")(add_scope_headers)
