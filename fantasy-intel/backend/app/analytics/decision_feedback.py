@@ -40,6 +40,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Any
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
@@ -59,25 +60,25 @@ CLOSE_CALL_POINTS = 3.0          # forecast gap below which a call is a close ca
 TOP_ITEMS = 5
 WATCH_ITEMS = 3
 
-SOURCE_LABEL = {"espn": "ESPN", "independent": "Ours"}
+SOURCE_LABEL = MappingProxyType({"espn": "ESPN", "independent": "Ours"})
 SKILL = ("QB", "RB", "WR", "TE")
-COVERED_POSITIONS = {"espn": FIXED_SLOTS, "independent": SKILL}
+COVERED_POSITIONS = MappingProxyType({"espn": FIXED_SLOTS, "independent": SKILL})
 OURS_ZERO = ("withheld_unavailable",)   # Ours says he cannot score this week: a real 0.0 forecast (a "sit" call)
 
 # Why a rostered player is not part of the week's decision set (counted, never imputed).
-EXCLUSION_TEXT = {
+EXCLUSION_TEXT = MappingProxyType({
     "reserve_slot": "in the IR slot at the roster snapshot (not startable)",
     "position_not_covered": "a position this source does not forecast, or no starting slot takes",
     "bye": "no game that week",
     "kickoff_unknown": "his kickoff is unknown, so no forecast can be shown to be pregame",
     "no_pregame_forecast": "no forecast archived before his kickoff",
-}
-CALL_EXCLUSION_TEXT = {
+})
+CALL_EXCLUSION_TEXT = MappingProxyType({
     "outcome_missing": "the starter or the alternative has no recorded points for the week (unknown, not zero)",
-}
+})
 NO_ARCHIVE = "No archived recommendations for this week."
 
-GRADE_DEFINITIONS = {
+GRADE_DEFINITIONS = MappingProxyType({
     "decision_set": ("Players on your roster snapshot taken before the week's first kickoff, not in the IR slot, whose "
                      "team plays that week and who have a forecast from the source archived before their own kickoff."),
     "archived_lineup": ("The lineup that maximises the archived forecasts over the decision set in the league's starting "
@@ -102,7 +103,7 @@ GRADE_DEFINITIONS = {
     "coverage": "decision-set players / (decision-set players + players without a pregame forecast or known kickoff).",
     "exclusions": ("Missing data is never zero: players and calls without an archived input or a recorded outcome are "
                    "excluded and counted by reason."),
-}
+})
 
 
 # ----------------------------------------------------------------------------------------------------- helpers
@@ -470,7 +471,7 @@ def build_feedback(data: FeedbackData) -> dict:
                        "covered_positions": list(COVERED_POSITIONS[data.source]),
                        "unavailable_reason": data.ours_unavailable if data.source == "independent" else None,
                        "versions": {str(w): v for w, v in sorted(data.ours_versions.items())} if data.source == "independent" else {}},
-            "definitions": GRADE_DEFINITIONS, "exclusion_reasons": {**EXCLUSION_TEXT, **CALL_EXCLUSION_TEXT},
+            "definitions": dict(GRADE_DEFINITIONS), "exclusion_reasons": {**EXCLUSION_TEXT, **CALL_EXCLUSION_TEXT},
             "scoring_periods": [], "weeks": [], "feedback": None, "season_to_date": None, "message": None}
     if data.week is None:
         return {**base, "status": "no_completed_week", "message": "No completed week yet."}
