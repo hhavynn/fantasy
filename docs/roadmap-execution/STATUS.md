@@ -94,6 +94,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
+- IN PROGRESS `perf/ci-critical-path` (one agent): CI critical-path audit → parallel E2E jobs, docs-only classifier, caching where measured. Baseline run 39884539280: E2E 11m57s, slowest shard 7m08s.
 - MERGED #246 → 9faee55: quick budget timeout → UNVERIFIED unless a failure was already printed; typed `timed_out` flag; test_schedule_intelligence (73 s) deferred. Codex P2 + review LOWs fixed.
 - MERGED #243 → ef21c42: response-cache key re-encoded so `%3D`/`%26` can't forge another URL's key (LOW from #242 review).
 - MERGED #240 → e234416: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
