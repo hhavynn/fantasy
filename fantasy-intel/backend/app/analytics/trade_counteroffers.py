@@ -41,7 +41,7 @@ TIME_CAP_SECONDS = 6.0        # a safety net under hosted request limits; the wo
 EDIT_ORDER = {"remove": 0, "swap": 1, "add": 2}
 NOTE = ("Each counteroffer changes the original offer by at most a few players and is evaluated exactly for both "
         "teams, the same computation as the manual analyzer. It is listed because the team the original offer treats "
-        "worse projects to do better; nothing here estimates whether a manager would accept.")
+        "worse projects to do better. No acceptance odds are estimated.")
 
 
 @dataclass(frozen=True)
@@ -322,7 +322,7 @@ def _search_out(s: _Search) -> dict:
             "unit": "lineup totals (exact package sides, forced-drop sets and ordering signals)",
             "statuses": dict(s.status), "seconds": round(time.perf_counter() - s.t0, 3),
             "stop_reason": _stop_text(s) or None,
-            "scope": "single edits of the offer" + (" plus one more addition to the best few"
+            "scope": "single edit of the offer" + (", plus one more addition to the best few"
                                                      if s.c.max_added_per_side >= 2 else "")}
 
 

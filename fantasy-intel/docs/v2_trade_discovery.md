@@ -306,6 +306,47 @@ goes through the league-scoped connection, so a player id from another league is
 golden suite records three targeted queries, which the league-scope parity and colliding-ids tests replay through
 `/v2`.
 
+## Counteroffers (issue #214)
+
+`POST /api/trades/counteroffers` (`analytics/trade_counteroffers.py`) repairs one existing offer instead of searching
+every trade: team A sends `team_a_sends` to team B for `team_b_sends`, and the answer is at most three small changes to
+that offer that make it better for the side it treats worse. The analyzer shows them under the evaluation once asked
+("Find counteroffers", `co=1`), each with both teams' change against the offer and a link that opens it in the builder.
+Nothing is submitted to the provider.
+
+**Edits.** A counteroffer removes one unlocked player from a side (each side keeps one), adds one player from either
+roster, or swaps one unlocked player for another from the same roster. With `max_added_per_side` 2 (the cap; default 1)
+the four best single edits also get one more addition. Locked players (`locked`, the analyzer's "Keep in the deal") stay
+on their side; `excluded` players are never added; added players come from `positions` (default QB, RB, WR and TE, as in
+discovery). An edit that breaks the per-side limit, a lock or the cap is never built, and an illegal request (crossed
+owners, a duplicate, a lock not in the offer, an excluded id on neither roster) is a 422 before any evaluation.
+
+**Exact, and checked twice.** Every package is the exact two-team evaluation of stage B (`TradeSearch._pair`: both
+optimal lineups every remaining week, forced drops, missing projections unknown and never 0). The ones shown are re-run
+through the manual evaluator (`trades.evaluate_trade`); a package whose deltas or forced drops differ is dropped and
+counted (`inconsistent_dropped`), never shown.
+
+**What qualifies, and the order.** Both teams' rest-of-season deltas must be known, and the smaller of the two must be
+larger than in the original offer. This is the same sign-based reading as the discovery categories: no threshold, no
+weight, no acceptance estimate. Ties go to the larger combined delta, then fewer edits, then player ids, so the answer is
+deterministic. A package whose effects on both teams equal a better-ranked one's is hidden (`equivalent_hidden`), and so
+is one that changes nothing (`no_effect`).
+
+**Bounded.** The candidates are ordered by signals (each player's value to his own lineup and to the other team's) and
+evaluated under a work budget of 15,000 lineup totals (the beam's per-opponent budget, counted the same way, signals
+included) and a 6-second wall-clock cap. A search that stops says so (`termination`, `packages_not_evaluated`,
+`exhaustive: false`, `stop_reason`). On the synthetic FX-17 superflex league a 1-for-2 offer takes about 1,200 lineup
+totals (94 packages, 0.07 s), or 3,800 (236 packages, 0.14 s) with two additions per side.
+
+**When nothing is listed**, `status` and `reason` say why: `original_unknown` (the offer's own impact is unknown: a
+missing projection, an unsupported slot, or forced drops too many to resolve), `no_legal_edit` (everything is locked or
+nothing may be added), `none_better` (every package was evaluated and none helps the worse side) or `none_within_budget`
+(the search stopped first, and an unevaluated package may qualify).
+
+**Snapshot.** The analyzer sends the data version its options were read on (`data_version`, the signal-provenance league
+snapshot); if the league data has changed since, the answer is a 409 asking for a fresh evaluation. Counteroffers use the
+default horizon, so the action is not offered on an evaluation with an explicit start week.
+
 ## Safeguards
 
 * Read-only: the module never touches the database; the API opens it read-only. Tests check that no table
