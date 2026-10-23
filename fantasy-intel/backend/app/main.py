@@ -1,6 +1,7 @@
 """FastAPI entrypoint:  cd backend && uv run uvicorn app.main:app --reload"""
 
 import hmac
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +43,14 @@ from .api.trade_values import router as trade_values_router
 from .api.league_analyzer import router as league_analyzer_router
 from .api.pace_lab import router as pace_lab_router
 
-app = FastAPI(title="fantasy-intel", version="0.1.0")
+def docs_urls(settings, env=os.environ) -> dict:
+    """FastAPI's interactive docs and OpenAPI schema for a local run only. Their route docstrings name settings and
+    operator steps, so a hosted deployment (an API key, MotherDuck, the R2 snapshot or Vercel) serves none of them."""
+    hosted = bool(settings.api_key or settings.motherduck_database or settings.snapshot_enabled or env.get("VERCEL"))
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None} if hosted else {}
+
+
+app = FastAPI(title="fantasy-intel", version="0.1.0", **docs_urls(get_settings()))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

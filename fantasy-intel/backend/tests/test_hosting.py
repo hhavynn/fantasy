@@ -285,3 +285,31 @@ def test_the_legacy_app_does_not_load_the_control_plane_libraries():
                          env={"PATH": "/usr/bin:/bin", "TZ": "UTC"})
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "", f"loaded at import: {out.stdout.strip()}"
+
+
+def test_hosted_deployments_serve_no_interactive_docs_or_openapi_schema():
+    """FastAPI's /docs, /redoc and /openapi.json show every route's docstring, and those name settings and operator
+    steps (SLEEPER_SOURCE, SIGNUPS_ENABLED, sync scripts). A hosted deployment serves none of them; a local run keeps
+    them for the developer."""
+    from app.main import docs_urls
+    off = {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    local = SimpleNamespace(api_key=None, motherduck_database=None, snapshot_enabled=False)
+    assert docs_urls(local, env={}) == {}
+    for hosted in (SimpleNamespace(api_key="k", motherduck_database=None, snapshot_enabled=False),
+                   SimpleNamespace(api_key=None, motherduck_database="fantasy_intel", snapshot_enabled=False),
+                   SimpleNamespace(api_key=None, motherduck_database=None, snapshot_enabled=True)):
+        assert docs_urls(hosted, env={}) == off
+    assert docs_urls(local, env={"VERCEL": "1"}) == off
+
+
+def test_the_app_wires_the_docs_switch_at_import():
+    """In a fresh process (the shared test app may have been imported under a hosted environment): a local run serves
+    the docs and the schema, an API-keyed (hosted) one serves neither."""
+    probe = ("from fastapi.testclient import TestClient; from app.main import app; "
+             "c = TestClient(app, headers={'x-api-key': 'test-key'}); "     # past the API-key check: is the route there?
+             "print(c.get('/openapi.json').status_code, c.get('/docs').status_code)")
+    base = {"PATH": "/usr/bin:/bin", "TZ": "UTC"}
+    for env, expected in ((base, "200 200"), ({**base, "FANTASY_API_KEY": "test-key"}, "404 404")):
+        out = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, capture_output=True, text=True, env=env)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().splitlines()[-1] == expected, (env.keys(), out.stdout)
