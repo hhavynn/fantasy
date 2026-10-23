@@ -96,10 +96,11 @@ class LeagueState:
     availability: dict = field(default_factory=dict)  # espn_player_id -> player_availability record (explanation)
     free_agent_status: dict = field(default_factory=dict)  # free agent id -> ESPN FREEAGENT | WAIVERS; absent = unknown
     projection_source: str = "espn"                # "independent": Ours (a league without provider projections)
-    # team -> rostered players (current lineup rows) missing from the player data, so absent from `rosters` (Sleeper
-    # stores no individual defensive players): their roster spots are invisible to every count here (#253 G4). 0 = every
-    # rostered player is counted; no entry = no count for the team (trades.roster_legality)
-    players_missing: dict | None = None
+    # REQUIRED (keyword-only, no default, #253 G4): team -> rostered players (current lineup rows) missing from the
+    # player data, so absent from `rosters` (Sleeper stores no individual defensive players); their roster spots are
+    # invisible to every count here. 0 = every rostered player is counted; a team with no entry has no count, so its
+    # roster legality is unverified (roster_legality). A state built in memory passes {team: 0} for complete rosters.
+    players_missing: dict = field(kw_only=True)
 
     def window(self, start_week: int | None = None) -> Window:
         start = self.start_week if start_week is None else start_week
@@ -138,11 +139,10 @@ def roster_legality(state: LeagueState, team_id: int | None) -> dict | None:
     """None when the active roster count is exact. `unverified` only when it is not (issue #253 G4): the team has
     rostered players missing from the player data (Sleeper stores no individual defensive players, so their spots are
     invisible and an open spot may not exist), or there is no player count for the team at all (`players_missing` has
-    no entry; a state built without `players_missing` (None) has complete rosters by construction). A provider that stores every rostered player (ESPN, IDP,
-    P and HC included) keeps an exact count. A roster the count already shows over capacity stays illegal: players left
+    no entry). A provider that stores every rostered player (ESPN, IDP, P and HC included) keeps an exact count. A roster the count already shows over capacity stays illegal: players left
     out can only add to it."""
     unsupported = unsupported_of(state.slots)
-    counts = state.players_missing or {}       # None: a pure state whose rosters the caller supplies complete
+    counts = state.players_missing
     if team_id is None:
         return None
     missing = int(counts.get(team_id) or 0)
@@ -150,7 +150,7 @@ def roster_legality(state: LeagueState, team_id: int | None) -> dict | None:
         why = (f"{missing} rostered player{'s are' if missing != 1 else ' is'} not in the synced player data "
                "(positions Fantasy Intel does not store, such as individual defensive players), so the active roster "
                "count leaves them out and an open spot may not exist.")
-    elif state.players_missing is not None and team_id not in counts:
+    elif team_id not in counts:
         why = ("The synced rosters hold no lineup rows for this team this week, so whether every rostered player is "
                "counted is unknown and the active roster count may be short.")
     else:

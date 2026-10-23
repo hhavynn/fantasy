@@ -96,7 +96,8 @@ def race(n_teams: int = 6, reg_periods: int = 8, spots: int | None = 4, start_we
     last_regular = last_regular_season_week(reg_periods, final_week, sched)
     state = LeagueState(season=2026, slots=SLOTS, final_week=final_week, last_regular=last_regular,
                         start_week=start_week, rosters=rosters, free_agents=[], projections=proj, active_capacity=4,
-                        team_names={t: f"Team {t}" for t in team_ids}, league_id=1, first_projection_week=start_week)
+                        team_names={t: f"Team {t}" for t in team_ids}, league_id=1, first_projection_week=start_week,
+                        players_missing={t: 0 for t in rosters})
     league = {"league_id": 1, "season": 2026, "name": "Synthetic", "current_week": start_week,
               "current_matchup_period": current_period or start_week, "final_scoring_period": final_week,
               "reg_season_matchups": reg_periods, "playoff_teams": spots, "last_regular_season_week": last_regular}

@@ -382,6 +382,29 @@ def test_idp_slots_are_partial_for_lineups_and_unverified_legality_only_when_pla
     assert tool(sleeper, "start_sit")["roster"]["status"] == "partial"
 
 
+def test_a_team_without_a_synced_roster_makes_capacity_tools_unverified(league):
+    """N3: a standard league (M1) whose team 1 has no lineup rows this week: its roster cannot be counted, so every
+    tool that checks roster capacity says legality is unverified; tools that do not check capacity are unaffected."""
+    con = league("M1")
+    con.execute("DELETE FROM lineup_snapshots WHERE team_id = 1 AND scoring_period = ?", [cf.CURRENT])
+    out = diagnostic(con)
+    for code, (_, _, _, capacity) in TOOLS.items():
+        r = tool(out, code)["roster"]
+        if capacity:
+            assert r["status"] == "unverified" and "roster_legality" in codes(r), code
+            assert "1 team of 4 have no synced roster" in r["reason"], code
+        else:
+            assert "roster_legality" not in {e["code"] for e in r["evidence"]}, code
+
+
+def test_missing_players_and_teams_without_rosters_are_both_named(league):
+    con = league("M8s")
+    con.execute("DELETE FROM lineup_snapshots WHERE team_id = 1 AND scoring_period = ?", [cf.CURRENT])
+    r = tool(diagnostic(con), "trades")["roster"]
+    assert {"players_missing", "roster_legality"} <= codes(r)
+    assert "not in the player data" in r["reason"] and "have no synced roster" in r["reason"]
+
+
 def test_punter_and_head_coach_slots_are_reported_unsupported(league):
     con = league("M8p")
     out, rules = diagnostic(con), build_league_rules(latest_league(con))

@@ -57,9 +57,10 @@ def league(proj_over=None, start_week=10, rosters=None):
             proj.pop(pid, None)
         else:
             proj[pid] = v
+    rosters = rosters or {1: a, 2: b, 3: c}
     return LeagueState(season=2026, slots=SLOTS, final_week=12, last_regular=11, start_week=start_week,
-                       rosters=rosters or {1: a, 2: b, 3: c}, free_agents=[], projections=proj, active_capacity=20,
-                       team_names={1: "A", 2: "B", 3: "C"})
+                       rosters=rosters, free_agents=[], projections=proj, active_capacity=20,
+                       team_names={1: "A", 2: "B", 3: "C"}, players_missing={t: 0 for t in rosters})
 
 
 def S(ta, tb, a, b):

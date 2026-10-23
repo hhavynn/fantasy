@@ -53,7 +53,8 @@ def league(a=None, b=None, proj_over=None, fas=(), capacity=20, limits=None):
             proj[pid] = v
     return LeagueState(season=2026, slots=SLOTS, final_week=12, last_regular=11, start_week=10,
                        rosters={1: a or pa, 2: b or pb}, free_agents=list(fas), projections=proj,
-                       active_capacity=capacity, position_limits=limits or {}, team_names={1: "A", 2: "B"})
+                       active_capacity=capacity, position_limits=limits or {}, team_names={1: "A", 2: "B"},
+                       players_missing={1: 0, 2: 0})
 
 
 def usage(side, pid):

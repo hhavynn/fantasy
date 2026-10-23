@@ -215,7 +215,7 @@ function RosterNotices({ r, pv }: { r: TradeResult; pv: string }) {
                   {" "}must be dropped to fit the roster. Lineup cost {cost}.
                 </p>
                 {ro.forced_drop_unverified && <p>{ro.forced_drop_unverified.note}</p>}
-                <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
+                <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points; players who start only in slots no engine fills (IDP, P, HC) are never the automatic choice. {pv} undroppable-list restrictions are not modeled.</p>
               </Notice>
             </Fragment>
           );
@@ -411,7 +411,7 @@ function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
         </Notice>
       )}
       {ro.forced_drops.length > 0 && (
-        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
+        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points; players who start only in slots no engine fills (IDP, P, HC) are never the automatic choice. {pv} undroppable-list restrictions are not modeled.</p>
       )}
 
       <Method title="Weekly lineups before and after" className={styles.details}>

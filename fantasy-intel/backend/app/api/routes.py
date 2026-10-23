@@ -21,7 +21,7 @@ from ..analytics.reserve_slots import is_taxi
 from ..analytics import trade_dual_value
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.trade_discovery import _side_detail
-from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
+from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, roster_legality, with_streaming
 from ..config import get_settings
 from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
@@ -709,7 +709,9 @@ def team_lineup_projection(team_id: int):
                     "evaluation": _window_info(state), "summary": None, "weeks": [], "marginal_values": []}
         team = project_team(roster, state.slots, window, state.projections)
         names = player_names(con, [p.espn_player_id for p in roster])
-        open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
+        # an unverified roster count (players missing from the player data, #253 G4) has no known open spot
+        legality = roster_legality(state, team_id)
+        open_spots = None if legality else max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
         marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team,
                      **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team,
                                              open_spots)}
@@ -717,7 +719,8 @@ def team_lineup_projection(team_id: int):
         marginal.sort(key=lambda m: -(m["known_marginal_lineup_points"] or 0))
         return {"league": lg, "team_id": team_id, "team_name": state.team_names.get(team_id),
                 "evaluation": _window_info(state), "summary": team["summary"],
-                "weeks": named_weeks(public_weeks(team), names), "marginal_values": marginal}
+                "weeks": named_weeks(public_weeks(team), names), "marginal_values": marginal,
+                **({"legality": legality} if legality else {})}
 
 
 @router.get("/trades/options")

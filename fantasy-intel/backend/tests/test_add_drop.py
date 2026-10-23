@@ -62,7 +62,7 @@ def state(mine=None, capacity=10, limits=None, proj_over=None, fas=None, start_w
     return LeagueState(season=2026, slots=SLOTS, final_week=12, last_regular=11, start_week=start_week,
                        rosters={1: mine or roster(), 2: [P(201, "QB"), P(202, "RB")]}, free_agents=fas,
                        projections=proj, active_capacity=capacity, position_limits=limits or {},
-                       team_names={1: "Mine", 2: "Rival"}, free_agent_status=st)
+                       team_names={1: "Mine", 2: "Rival"}, free_agent_status=st, players_missing={1: 0, 2: 0})
 
 
 def best_total(players, week, proj):
@@ -323,7 +323,8 @@ def test_a_large_flex_league_evaluates_quickly():
     proj = {p.espn_player_id: {w: round(2 + ((p.espn_player_id * 37 + w * 11) % 230) / 10, 2) for w in weeks}
             for p in mine + fas}
     st = LeagueState(season=2026, slots=slots, final_week=17, last_regular=14, start_week=1, rosters={1: mine},
-                     free_agents=fas, projections=proj, active_capacity=len(slots) + 10, team_names={1: "A"})
+                     free_agents=fas, projections=proj, active_capacity=len(slots) + 10, team_names={1: "A"},
+                     players_missing={1: 0})
     t = time.perf_counter()
     out = evaluate_add_drop(st, 1, 5000, 1010)
     full = evaluate_add_drop(replace(st, active_capacity=len(mine)), 1, 5001, None)   # forced-drop suggestion path

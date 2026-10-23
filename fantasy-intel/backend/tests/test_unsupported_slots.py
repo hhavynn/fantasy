@@ -250,8 +250,10 @@ def test_no_player_count_falls_back_to_unverified():
     assert roster_legality(replace(state, players_missing={1: 0}), 1) is None
     # F4: in every league, not only one with unsupported slots
     assert roster_legality(replace(state, slots=lineup_slots({"QB": 1, "BE": 2})), 1)["status"] == "unverified"
-    # a pure state built without `players_missing` holds complete rosters by construction
-    assert roster_legality(replace(state, players_missing=None), 1) is None
+    # N2: the count is required, never silently assumed complete
+    with pytest.raises(TypeError):
+        LeagueState(season=2026, slots=state.slots, final_week=17, last_regular=14, start_week=5, rosters={1: []},
+                    free_agents=[], projections={}, active_capacity=4)
 
 
 @pytest.mark.parametrize("row, unverified", [("M8s", True), ("M8", False)])
@@ -440,3 +442,52 @@ def test_power_rankings_team_value_and_playoff_race_name_the_left_out_slots(leag
                                            for w in ranks["excluded_weeks"])
     side = race_side(projected[1], [window.weeks[0]], {})
     assert side["projected_points"] is None and side["gap"] == "lineup totals leave out DL, LB, slots no engine fills"
+
+
+# ---- N1: no phantom open spot in team value or lineup projections ------------------------------------------------------
+
+def test_team_value_and_lineup_projections_show_no_phantom_open_spot(league, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.analytics.team_value import build_team_value, load_team_value_inputs
+    con = league("M8s")
+    race, extras = load_team_value_inputs(con, now=NOW)
+    tv = build_team_value(race, extras, team_id=1, trades=False)
+    text = repr(tv)
+    assert "free addition into an open spot" not in text.lower()
+    assert "Free addition into an open active roster spot" not in text
+    found = [v for v in _walk(tv) if isinstance(v, dict) and "open_active_roster_spots" in v and "realistic" in v]
+    assert found and all(v["open_active_roster_spots"] is None and v["realistic"] is False
+                         and v["legality"]["status"] == "unverified" for v in found)
+    # the lineup-projection marginal values (IR activation) get no open-spot count either
+    db = tmp_path / "m8s.duckdb"
+    c2 = duckdb.connect(str(db))
+    init_db(c2)
+    cf.import_row(c2, cf.MATRIX["M8s"])
+    c2.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db))
+    for name in ("FANTASY_API_KEY", "MULTILEAGUE_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    from app.main import app
+    r = TestClient(app, raise_server_exceptions=False).get("/api/teams/1/lineup-projection")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["legality"]["status"] == "unverified"
+    for m in body["marginal_values"]:
+        ir = m.get("ir_activation_sensitivity")
+        assert ir is None or ir["open_active_roster_spots"] is None
+
+
+def _walk(x):
+    yield x
+    if isinstance(x, dict):
+        for v in x.values():
+            yield from _walk(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _walk(v)
+
+
+def test_a_loaded_league_state_always_counts_every_team(league):
+    st = load_league_state(league("M1"), now=NOW)
+    assert isinstance(st.players_missing, dict) and set(st.players_missing) == set(st.rosters)

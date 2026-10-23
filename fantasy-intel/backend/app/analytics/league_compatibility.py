@@ -232,16 +232,14 @@ class _League:
         """trades.roster_legality (G4): legality is unverified only where the roster count is unknown. Rostered players
         missing from the player data are reported by missing_players_finding; a team without any synced roster has no
         count at all. When every rostered player is stored, the count is exact; only their lineup value is unmodelled."""
-        if self.facts.get("players_missing"):
-            return []
         slots = ", ".join(self.unfilled)
         teams, have = self.facts.get("teams") or 0, self.facts.get("teams_with_roster") or 0
-        if teams and have < teams:
+        if teams and have < teams:          # named even when missing players are reported too (players_missing)
             return [finding("roster_legality", UNVERIFIED, f"{_plural(teams - have, 'team')} of {teams} have no synced "
                             "roster, so their players cannot be counted and roster legality is unverified for them.",
                             missing_input=f"rosters for {self.wk()}", action="Sync the league again.",
                             value=teams - have)]
-        if not self.unfilled:
+        if self.facts.get("players_missing") or not self.unfilled:
             return []
         return [finding("roster_legality", HANDLED, f"Every rostered player is in the player data, so roster counts "
                         f"are exact; who may fill {slots} is not modelled, so players there are not valued.",

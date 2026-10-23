@@ -33,7 +33,7 @@ from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_
                            projection, r, replacement_market, roster_marginal_value, slot_filled, slot_flags, source_label,
                            starters, stream_summary, without)
 from .trade_discovery import TradeSearch, detail
-from .trades import TradeError, with_streaming
+from .trades import TradeError, roster_legality, with_streaming
 
 # A waiver score missing its lineup-gain term (components.roster.fit_status "partial": a player without a value) is not
 # a measured score: shown as unknown and ranked after the known ones (#253 G5).
@@ -388,7 +388,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                        "league_ranks": ranks}
 
     # B. player marginal value -----------------------------------------------
-    open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
+    # An unverified roster count (players missing from the player data, #253 G4) has no known open spot.
+    legality = roster_legality(state, tid)
+    open_spots = None if legality else max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
     byes = extras.get("bye_weeks", {})
     players, rests = [], {}
     for p in sorted(roster, key=lambda p: p.espn_player_id):
@@ -518,9 +520,12 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                                             "candidates", "excluded_unprojected", "projection_complete")},
                 "excluded_position_limit": len(state.free_agents) - len(addable),
                 "open_active_roster_spots": open_spots,
-                "realistic": open_spots > 0,
-                "label": ("Free addition into an open active roster spot" if open_spots > 0 else
-                          "Optimistic: no open active roster spot, so this addition would require a drop (see add/drop)")}
+                "realistic": bool(open_spots),
+                "label": ("Unverified: the roster count leaves players out, so whether an active roster spot is open "
+                          "is unknown (see add/drop)" if open_spots is None else
+                          "Free addition into an open active roster spot" if open_spots > 0 else
+                          "Optimistic: no open active roster spot, so this addition would require a drop (see add/drop)"),
+                **({"legality": legality} if legality else {})}
     # an IR or taxi player frees no active roster spot, so dropping one never makes room for an addition
     drops = sorted([x for x in players if not x["on_ir"] and not x.get("on_taxi")],
                    key=lambda x: ((x["marginal"]["known_all"] or 0), (x["espn_projected"]["all"]["known_points"] or 0),
@@ -562,7 +567,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                 waiver_checks.append({**row, "status": f"not allowed: over ESPN's {add.position} roster limit "
                                                         f"({state.position_limits[add.position]})"})
                 continue
-            if drop is None and open_spots == 0:
+            if drop is None and open_spots is None:
+                row["status"] = "unverified: the roster count leaves players out, so an open spot is unknown"
+            elif drop is None and open_spots == 0:
                 row["status"] = "optimistic: no open active roster spot and no suggested drop"
             else:
                 row["status"] = "add/drop" if drop else "free addition into an open spot"
