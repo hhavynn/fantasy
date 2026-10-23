@@ -100,6 +100,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
+    # A shard takes about 6 minutes; without a limit a hung test holds the PR's CI for GitHub's 6-hour default.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -170,6 +172,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: fantasy-intel/social
@@ -205,6 +208,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: fantasy-intel/frontend
