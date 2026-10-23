@@ -235,7 +235,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
             <li><b>Player quality.</b> Historical opportunity and production, role trend, stored forward {proj} projections and context headlines. Unknown value stays unknown in a comparison.</li>
             <li><b>Roster benefit.</b> The optimal current and fully comparable future starting lineups before and after the actual add and drop. A missing projection is never zero; a supplied zero is real. Future weeks use {proj === "ESPN" ? "unmodified ESPN points" : "Fantasy Intel's own projections (Ours)"} and known byes, with IR excluded.</li>
             <li><b>Feasibility and sacrifice.</b> Active capacity, positional caps, IR eligibility, snapshot freshness (72 hours) and starting-slot coverage. Every active single-player drop is considered; rejected choices and defensible alternatives are listed.</li>
-            <li><b>Resources.</b> Free agent, waiver priority, FAAB or unknown rules. Priority in the top three is preserved for marginal gains. No precise bids and no claim-success probabilities.</li>
+            <li><b>Resources.</b> Free agent, waiver priority, FAAB or unknown rules. Priority in the top three is preserved for marginal gains. No precise bids and no claim-success probabilities; the claim plan below gives heuristic FAAB ranges where the league supplies enough.</li>
           </ol>
           <p>
             Thresholds are decision aids, not calibrated probabilities: a historical starter gain of at least 1 on the internal 0–10 value scale (about 10 points of the 0–100 value rating), a fully comparable forward gain of at least
@@ -252,8 +252,18 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
           <p>
             The claim plan is the shortlist in your claim order, saved only on this device for this league and team. Each claim is checked with the
             add/drop simulator above against the current roster; claims that share a drop or an open roster spot are flagged on the later claim, and
-            bids are checked only against the FAAB budget and spend {pv} supplies. No bid is suggested. A claim shows Checks pass only when every rule it
+            bids are checked only against the FAAB budget and spend {pv} supplies. A claim shows Checks pass only when every rule it
             depends on is in the synced data and the league data is current. Nothing is submitted to {pv}.
+          </p>
+          <p>
+            FAAB guidance appears only in a league whose synced settings confirm FAAB bidding and whose budget and your spend are both synced; an
+            unknown budget is never taken as $0. Each claim&apos;s range is a heuristic, labelled as one: urgency comes from the simulator&apos;s
+            rest-of-season lineup gain per remaining week, and the range is a band of the share of your remaining FAAB you choose (at least an even
+            split over the remaining weeks), rounded down and never above what you have left. The plan&apos;s ranges are also checked together:
+            claims that drop the same player or need the same open spot cannot all go through, and when the rest would still overspend, each
+            claim shows a top that fits. League winning bids are shown as observed, from executed waiver claims only, and never change a range;
+            losing and pending bids are private. What {pv} does not supply (a minimum bid, bid history, the next deadline) is listed as unknown.
+            No claim-success probability is given.
           </p>
         </div>
         <p>
