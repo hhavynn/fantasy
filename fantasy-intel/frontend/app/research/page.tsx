@@ -27,6 +27,7 @@ export default async function ResearchOverview() {
       >
         <nav className={styles.posLinks} aria-label="Positions">
           {SLUGS.map((s) => <Link key={s} href={`/research/${s}`} className={`${styles.posLink} pos-${POSITION_OF[s]}`}>{POSITION_NAME[POSITION_OF[s]]} →</Link>)}
+          <Link href="/research/splits" className={styles.posLink}>Game splits →</Link>
         </nav>
       </PageHeader>
 

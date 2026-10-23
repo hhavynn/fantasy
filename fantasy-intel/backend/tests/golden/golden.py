@@ -77,6 +77,10 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         return q
     if path == "/api/research/opportunity":
         return {"position": "WR"}
+    if path == "/api/research/game-splits":
+        # The synthetic SPL world (tests/synthetic_splits.py, written in 2023 by scripts/build_e2e_db.py): the receiver
+        # and his inactive/reserve teammate.
+        return {"player": "00-SPLWR01", "teammate": "00-SPLWR02", "season_from": 2023}
     if path == "/api/trades/discover/evidence":
         rows = client.get("/api/trades/discover").json() if client is not None else {}
         key = next((x["key"] for items in (rows.get("sections") or {}).values() for x in items), None)
