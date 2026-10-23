@@ -368,6 +368,12 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
         run: npm run e2e:signup
 
+      # "Why it changed" on /movers (e2e/movers-attribution.spec.ts, issue #225) against its own fixture database
+      # (scripts/build_e2e_attribution.py: the Sleeper league plus two stored forecast cycles), at 1440 and 375px.
+      - name: Run projection attribution flow
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
+        run: npm run e2e:attribution
+
       # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
       # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
       # Runs even when the Sleeper smoke failed, so one red job reports both.
@@ -391,6 +397,8 @@ jobs:
             fantasy-intel/frontend/playwright-report-multileague/
             fantasy-intel/frontend/test-results-signup/
             fantasy-intel/frontend/playwright-report-signup/
+            fantasy-intel/frontend/test-results-attribution/
+            fantasy-intel/frontend/playwright-report-attribution/
           retention-days: 14
 
   e2e:

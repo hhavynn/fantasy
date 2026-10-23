@@ -45,7 +45,7 @@ from .team_lineups import compare
 from . import trade_dual_value as dual
 from .trade_assets import AGAINST_THEM, NOTE as ASSET_NOTE, AssetBoard, league_needs
 from .trade_discovery import TradeSearch, TradeTarget, _rank_key, detail
-from .trades import TradeError
+from .trades import EvaluationUnavailable, TradeError
 
 MODES = {
     "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete "
@@ -472,6 +472,16 @@ def _detail(ts: TradeSearch, row: dict) -> dict:
     return dict(cache[row["key"]])
 
 
+def _detail_or_none(ts: TradeSearch, row: dict) -> dict | None:
+    """_detail, or None when the manual evaluator abstains on this one trade (EvaluationUnavailable: its exact forced-drop
+    resolution is over a budget). The view then leaves that row out and counts it (`excluded.evaluation_unavailable`);
+    one abstaining row never fails the whole response, and it is never shown without the evaluator's check."""
+    try:
+        return _detail(ts, row)
+    except EvaluationUnavailable:
+        return None
+
+
 def _phase_pair(x: dict, phase: str) -> tuple:
     return _phase_delta(x["mine"], phase), _phase_delta(x["theirs"], phase)
 
@@ -614,13 +624,16 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         state, window, ts.anchor, d["sends"], d["receives"], d["mine_detail"], d["theirs_detail"], phase=phase,
         asset_board=asset_board, fa_board=fa_board, fa_context=ctx, labels=(anchor_label, d["opponent_name"] or "They"))
 
-    assessed, raw = [], {}
+    assessed, raw, unavailable = [], {}, set()          # unavailable: keys of rows the evaluator abstained on
     for row in rows:
         bal = asset_board.package(row["sends"], row["receives"])
         inj = injury_flags(state, row["sends"] + row["receives"])
         if lens:
             # The verdict needs both sides' full evaluator views, so the whole pool is evaluated (cached per row).
-            d = _detail(ts, row)
+            d = _detail_or_none(ts, row)
+            if d is None:
+                unavailable.add(row["key"])
+                continue
             d.update(asset_balance=bal, injury_flags=inj, opp_cost_advantage=None)
             d["dual_value"] = dual_value(d)
             v = d["dual_value"]["plausibility"]
@@ -690,7 +703,11 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
             if lens:
                 d = x                              # already the full evaluation, with its dual_value
             else:
-                d = {**_detail(ts, raw[x["key"]]), **x}
+                base = _detail_or_none(ts, raw[x["key"]])
+                if base is None:
+                    unavailable.add(x["key"])
+                    continue
+                d = {**base, **x}
                 d["dual_value"] = dual_value(d)
             d["rationale"] = rationale(d, needs, asset_board, names, n)
             if mode == "targeted" or target is not None or focus:
@@ -698,9 +715,11 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
             full.append(d)
         sections[k] = full
         shown += full
+    if unavailable:                                # present only when it happened: other views are unchanged
+        excluded["evaluation_unavailable"] = len(unavailable)
     per_opp = []
     for opp in ts.opponents:
-        best = next((x for x in assessed if x["opponent_team_id"] == opp and
+        best = next((x for x in assessed if x["opponent_team_id"] == opp and x["key"] not in unavailable and
                      (mode != "practical" or x["tier"] == "practical")), None)
         per_opp.append({"opponent_team_id": opp, "team_name": state.team_names.get(opp),
                         "best": None if best is None else {k: best[k] for k in ("key", "shape", "sends", "receives",

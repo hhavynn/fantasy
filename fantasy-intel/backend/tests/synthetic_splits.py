@@ -8,8 +8,8 @@ team code and number is a made-up test input; no real player, game or nflverse r
   * 00-SPLTE01  a TE traded from OTH to SPL after week 3 (weeks 1-3 are "without": on another team).
   * 00-SPLQB01 / 00-SPLQB02  SPL's quarterbacks: QB1 starts weeks 1-6, QB2 weeks 8-12 (a quarterback change).
 
-The scripts/build_e2e_db.py fixture writes it next to the 2026 league so the browser test has a full split; the unit
-tests (tests/test_game_splits.py) build it alone and then change single rows for each edge case.
+The scripts/build_e2e_db.py fixture writes it, relabelled to 2023, next to the 2026 league and the pace lab's 2024-2025
+seasons so the browser test has a full split; the unit tests (tests/test_game_splits.py) build it alone and then change single rows for each edge case.
 """
 
 from app.db.connection import replace_where
@@ -105,18 +105,31 @@ def _insert(con, table: str, rows: list[dict]) -> None:
         con.execute(f"INSERT INTO {table} ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})", list(r.values()))
 
 
-def write(con) -> dict:
-    """Write the world into a database that already has the app schema (player_week_usage, nfl_players)."""
-    usage = usage_rows()
-    replace_where(con, "player_week_usage", usage, "season = ? AND gsis_id LIKE '00-SPL%'", [SEASON])
+def _in_season(rows: list[dict], season: int) -> list[dict]:
+    """The same rows relabelled to `season` (season, game day and game id); the world itself does not change."""
+    out = []
+    for r in rows:
+        r = {**r, "season": season}
+        for k in ("gameday", "game_id"):
+            if k in r:
+                r[k] = f"{season}{r[k][4:]}"
+        out.append(r)
+    return out
+
+
+def write(con, season: int = SEASON) -> dict:
+    """Write the world into a database that already has the app schema (player_week_usage, nfl_players). `season`
+    relabels it: the E2E fixture moves it clear of the pace lab's synthetic seasons, whose schedules it would join."""
+    usage = _in_season(usage_rows(), season)
+    replace_where(con, "player_week_usage", usage, "season = ? AND gsis_id LIKE '00-SPL%'", [season])
     con.execute("DELETE FROM nfl_players WHERE gsis_id LIKE '00-SPL%'")
     replace_where(con, "nfl_players", [{"gsis_id": g, "display_name": n, "position": p, "latest_team": TEAM}
                                        for g, (n, p) in sorted(NAMES.items())], "gsis_id LIKE '00-SPL%'")
     con.execute(ROSTER_DDL)
     con.execute("DELETE FROM nfl_rosters_weekly WHERE gsis_id LIKE '00-SPL%'")
-    _insert(con, "nfl_rosters_weekly", roster_rows())
+    _insert(con, "nfl_rosters_weekly", _in_season(roster_rows(), season))
     con.execute(SCHEDULE_DDL)
     con.execute("DELETE FROM nfl_schedules WHERE season = ? AND (home_team IN ('SPL', 'OTH') OR away_team IN ('SPL', 'OTH'))",
-                [SEASON])
-    _insert(con, "nfl_schedules", schedule_rows())
+                [season])
+    _insert(con, "nfl_schedules", _in_season(schedule_rows(), season))
     return {"usage_rows": len(usage)}

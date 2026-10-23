@@ -13,7 +13,8 @@
     "e2e:sleeper": "playwright test -c playwright.sleeper.config.ts",
     "e2e:multileague": "playwright test -c playwright.multileague.config.ts",
     "e2e:visual": "playwright test -c playwright.visual.config.ts",
-    "e2e:signup": "playwright test -c playwright.signup.config.ts"
+    "e2e:signup": "playwright test -c playwright.signup.config.ts",
+    "e2e:attribution": "playwright test -c playwright.attribution.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

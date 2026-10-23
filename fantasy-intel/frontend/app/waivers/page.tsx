@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import Link from "@/components/LeagueLink";
+import { SavedViews } from "@/components/SavedViews";
 import { RulesLink } from "@/components/RulesLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
@@ -199,6 +200,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
           )}
           </div>
         </details>
+        <SavedViews tool="waivers" />
       </div>
 
       <Section

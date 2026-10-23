@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // Game splits (issue #210) against the synthetic SPL world in the E2E database (backend/tests/synthetic_splits.py):
 // a receiver with and without a teammate who was inactive, on the reserve list, partial and unknown in different weeks.
 // Every assertion waits on rendered data, not on the loading skeleton.
-const SPLIT = "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2025";
+const SPLIT = "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023";
 
 async function noHorizontalScroll(page: Page) {
   const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
@@ -39,7 +39,7 @@ test("a full split shows separate samples, unknown status excluded, and a reprod
 });
 
 test("too few games withholds the differences and says why", async ({ page }) => {
-  await page.goto(`${SPLIT}&as_of=2025-10-01`);
+  await page.goto(`${SPLIT}&as_of=2023-10-01`);
   await expect(page.getByText("Too few games to compare")).toBeVisible();
   await expect(page.getByText(/each group needs at least 3 games \(with: 4, without: 0\)/)).toBeVisible();
   await expect(page.getByRole("table", { name: "Weekly source rows for the split" })).toContainText("On or after the cutoff date");
@@ -47,7 +47,7 @@ test("too few games withholds the differences and says why", async ({ page }) =>
 });
 
 test("the form picks a player, then a teammate, and keeps the window in the URL", async ({ page }) => {
-  await page.goto("/research/splits?season_from=2025");
+  await page.goto("/research/splits?season_from=2023");
   await expect(page.getByText("Choose a player", { exact: true })).toBeVisible();
   await page.locator("select[name=player]").selectOption("00-SPLWR01");
   await page.getByRole("button", { name: "Compare" }).click();
@@ -56,7 +56,7 @@ test("the form picks a player, then a teammate, and keeps the window in the URL"
   await page.locator("select[name=teammate]").selectOption("00-SPLQB02");
   await page.getByRole("button", { name: "Compare" }).click();
   await expect(page).toHaveURL(/teammate=00-SPLQB02/);
-  await expect(page).toHaveURL(/season_from=2025/);
+  await expect(page).toHaveURL(/season_from=2023/);
   await expect(page.getByRole("heading", { name: /with and without Split Backup/ })).toBeVisible();
   await expect(page.getByText(/More than one quarterback started/)).toBeVisible();
   await noHorizontalScroll(page);

@@ -26,7 +26,7 @@ const ROUTES = [
   "/research/wr?vol=40",
   // Game splits (backend/tests/synthetic_splits.py): an empty start and a full split.
   "/research/splits",
-  "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2025",
+  "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023",
 ];
 
 const THEMES = ["light", "dark"] as const;

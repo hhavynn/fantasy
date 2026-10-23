@@ -11,7 +11,7 @@ from golden.golden import build_e2e_db
 from league_fixtures import publish_local
 from test_leagues_api import bearer, env  # noqa: F401  (fixture)
 
-VALID = "/api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2025"
+VALID = "/api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023"
 INVALID = "/api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&week_to=19"
 
 
@@ -59,7 +59,7 @@ def test_game_splits_need_a_platform_admin_before_validation(pg, served, client,
     body = ok.json()
     assert (body["counts"]["with"], body["counts"]["without"], body["counts"]["excluded"]) == (5, 4, 2)
     # every input is in the query: another window is another cache entry, never the first answer
-    other = client.get(f"/v2/leagues/{pub.league_id}{VALID}&as_of=2025-10-01", headers=bearer(U2))
+    other = client.get(f"/v2/leagues/{pub.league_id}{VALID}&as_of=2023-10-01", headers=bearer(U2))
     assert other.status_code == 200 and other.json()["status"] == "low_n"
     again = client.get(f"/v2/leagues/{pub.league_id}{VALID}", headers=bearer(U2))
     assert again.json() == body and again.headers.get("x-fi-cache") == "hit"

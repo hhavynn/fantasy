@@ -123,7 +123,15 @@ def _matching_bound(flex: list[str], elig: dict, cands: list[dict], vals: list[f
     the search (a leaf is a matching). Greedy in candidate order is exact: the players that can start together form
     a transversal matroid, and since players of one position fit the same slots, a set fits iff for every set S of
     positions it has no more players at S than slots taking one of S (Hall). None when a player is listed under two
-    of these positions (the fast path is then skipped)."""
+    of these positions (the fast path is then skipped).
+
+    -inf when the first leaf is optimal without it: every slot takes all the positions the slot before it takes (one
+    flex type, or FLEX then OP), no value is negative and no player is listed twice. An optimum that first differs from
+    the first leaf at slot i holds the first leaf's pick there at a later, wider slot or not at all, and exchanging the
+    two never lowers the total; so the fast path returns the first leaf, as it would after computing the matching."""
+    if (not vals or vals[-1] >= 0.0) and all(set(elig[a]) <= set(elig[b]) for a, b in zip(flex, flex[1:])) \
+            and len({c["espn_player_id"] for c in cands}) == len(cands):
+        return float("-inf")
     full = 1 << len(pidx)
     slot_masks = [sum(1 << pidx[q] for q in elig[s]) for s in flex]
     cap = [sum(1 for m in slot_masks if m & S) for S in range(full)]

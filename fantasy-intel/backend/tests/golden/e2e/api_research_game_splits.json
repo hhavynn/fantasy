@@ -1,8 +1,8 @@
-// /api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2025
+// /api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023
 {
  "body": {
   "abstention": null,
-  "cache_key": "game-splits.v1|player=00-SPLWR01|teammate=00-SPLWR02|from=2025w1|to=2025w18|as_of=-",
+  "cache_key": "game-splits.v1|player=00-SPLWR01|teammate=00-SPLWR02|from=2023w1|to=2023w18|as_of=-",
   "cautions": [
    "A group has fewer than 6 games: one game moves its mean noticeably.",
    "More than one quarterback started across these games: compare the quarterback counts under Environment before reading the split as being about this teammate.",
@@ -111,23 +111,23 @@
     },
     "weeks": [
      {
-      "season": 2025,
+      "season": 2023,
       "week": 1
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 2
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 3
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 4
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 12
      }
     ]
@@ -206,19 +206,19 @@
     },
     "weeks": [
      {
-      "season": 2025,
+      "season": 2023,
       "week": 5
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 6
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 8
      },
      {
-      "season": 2025,
+      "season": 2023,
       "week": 9
      }
     ]
@@ -227,8 +227,8 @@
   "inputs": {
    "as_of": null,
    "player": "00-SPLWR01",
-   "season_from": 2025,
-   "season_to": 2025,
+   "season_from": 2023,
+   "season_to": 2023,
    "teammate": "00-SPLWR02",
    "week_from": 1,
    "week_to": 18
@@ -344,7 +344,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-09-01",
+    "gameday": "2023-09-01",
     "home": true,
     "opponent": "FOE",
     "outcome": "with",
@@ -352,7 +352,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "appeared",
     "reason_label": "Played",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 16.4,
@@ -381,7 +381,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-09-08",
+    "gameday": "2023-09-08",
     "home": true,
     "opponent": "VSX",
     "outcome": "with",
@@ -389,7 +389,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "appeared",
     "reason_label": "Played",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 13.2,
@@ -418,7 +418,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-09-15",
+    "gameday": "2023-09-15",
     "home": true,
     "opponent": "FOE",
     "outcome": "with",
@@ -426,7 +426,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "appeared",
     "reason_label": "Played",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 10.0,
@@ -455,7 +455,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-09-22",
+    "gameday": "2023-09-22",
     "home": true,
     "opponent": "RIV",
     "outcome": "with",
@@ -463,7 +463,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "appeared",
     "reason_label": "Played",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 17.2,
@@ -492,7 +492,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-10-01",
+    "gameday": "2023-10-01",
     "home": true,
     "opponent": "FOE",
     "outcome": "without",
@@ -500,7 +500,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "inactive",
     "reason_label": "Game-day inactive",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 18.8,
@@ -529,7 +529,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-10-08",
+    "gameday": "2023-10-08",
     "home": true,
     "opponent": "VSX",
     "outcome": "without",
@@ -537,7 +537,7 @@
     "primary_qb_name": "Split Starter",
     "reason": "reserve",
     "reason_label": "Reserve list (injured, PUP or NFI)",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 15.6,
@@ -574,7 +574,7 @@
     "primary_qb_name": null,
     "reason": "bye",
     "reason_label": "Bye",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": "SPL",
     "team_points": null,
@@ -584,7 +584,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-10-22",
+    "gameday": "2023-10-22",
     "home": true,
     "opponent": "RIV",
     "outcome": "without",
@@ -592,7 +592,7 @@
     "primary_qb_name": "Split Backup",
     "reason": "reserve",
     "reason_label": "Reserve list (injured, PUP or NFI)",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 21.2,
@@ -621,7 +621,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-11-01",
+    "gameday": "2023-11-01",
     "home": true,
     "opponent": "FOE",
     "outcome": "without",
@@ -629,7 +629,7 @@
     "primary_qb_name": "Split Backup",
     "reason": "reserve",
     "reason_label": "Reserve list (injured, PUP or NFI)",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 18.0,
@@ -658,7 +658,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-11-08",
+    "gameday": "2023-11-08",
     "home": true,
     "opponent": "VSX",
     "outcome": "excluded",
@@ -666,7 +666,7 @@
     "primary_qb_name": "Split Backup",
     "reason": "partial_game",
     "reason_label": "Partial game (well below his usual snap share)",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 14.8,
@@ -695,7 +695,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-11-15",
+    "gameday": "2023-11-15",
     "home": true,
     "opponent": "FOE",
     "outcome": "excluded",
@@ -703,7 +703,7 @@
     "primary_qb_name": "Split Backup",
     "reason": "active_no_record",
     "reason_label": "Active, but no box-score or snap record",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 22.0,
@@ -732,7 +732,7 @@
    {
     "env": {},
     "final": true,
-    "gameday": "2025-11-22",
+    "gameday": "2023-11-22",
     "home": true,
     "opponent": "RIV",
     "outcome": "with",
@@ -740,7 +740,7 @@
     "primary_qb_name": "Split Backup",
     "reason": "appeared",
     "reason_label": "Played",
-    "season": 2025,
+    "season": 2023,
     "subject": {
      "carries": 0,
      "fantasy_points_ppr": 14.0,
@@ -777,7 +777,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -795,7 +795,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -813,7 +813,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -831,7 +831,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -849,7 +849,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -867,7 +867,7 @@
     "primary_qb_name": null,
     "reason": "no_record",
     "reason_label": "No record",
-    "season": 2025,
+    "season": 2023,
     "subject": null,
     "team": null,
     "team_points": null,
@@ -878,11 +878,11 @@
   "window": {
    "as_of": null,
    "end": {
-    "season": 2025,
+    "season": 2023,
     "week": 18
    },
    "start": {
-    "season": 2025,
+    "season": 2023,
     "week": 1
    },
    "usage_through_week": 12,

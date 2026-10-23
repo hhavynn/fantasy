@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sortRows } from "./sort.ts";
 import {
-  API_SORTS, analyzerHref, defaultSort, discoverQuery, evidencePath, evidenceSrc, horizonOptions, isApiSort, resolveSort, sortValue,
+  API_SORTS, analyzerHref, beamBudgetText, defaultSort, discoverQuery, evidencePath, evidenceSrc, horizonOptions, isApiSort, resolveSort, sortValue,
   targetHrefParams, targetQuery, type SortableTrade,
 } from "./trade-discovery.ts";
 
@@ -199,4 +199,21 @@ test("a row's evidence request from a league page stays in that league end to en
   assert.deepEqual(proxyDecision({ enabled: true, pathname: bare.pathname, search: bare.search, cookie: LG }), { kind: "next" });
   // The classic site keeps its unprefixed URL.
   assert.equal(leagueRouteHref(src, null), src);
+});
+
+test("a larger-shape search cut short by its work budget is disclosed in words; one that finished says nothing", () => {
+  assert.equal(beamBudgetText(undefined), null);
+  assert.equal(beamBudgetText(null), null);
+  const t = beamBudgetText({
+    per_opponent: 15000, unit: "lineup totals", opponents_cut: [2, 3, 4, 5, 6], opponents: 5,
+    packages_evaluated: 657, packages_generated: 1803, note: "",
+  });
+  assert.equal(t?.notice, "A work limit stopped it early for 5 of 5 managers: 657 of the 1,803 packages it generated "
+    + "were evaluated, so a better package may exist. ");
+  assert.equal(t?.tile, "work limit reached · 657 of 1,803 packages evaluated exactly");
+  const one = beamBudgetText({
+    per_opponent: 15000, unit: "lineup totals", opponents_cut: [2], opponents: 1, packages_evaluated: 1,
+    packages_generated: 2, note: "",
+  });
+  assert.match(one?.notice ?? "", /for 1 of 1 manager: 1 of the 2 packages/);
 });
