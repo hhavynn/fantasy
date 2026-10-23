@@ -13,6 +13,8 @@ import { withLeague } from "@/lib/league-scope";
 import { plural } from "@/lib/plural";
 import { signalsOf, type ProvenanceStatus } from "@/lib/signal-provenance";
 import { shortlistKey } from "@/lib/waiver-shortlist";
+import { DEFAULT_SHARE } from "@/lib/faab";
+import { FaabClaimGuidance, FaabSummary, useFaabGuidance } from "./FaabGuidance";
 import { SavePlayer, useShortlist } from "./Shortlist";
 import styles from "./claim-plan.module.css";
 
@@ -153,6 +155,10 @@ function Planner({ players, team, teamName, provider, leagueName }: {
     ...(last?.claims ?? []).flatMap((c) => (c.add?.name ? [[c.add.espn_player_id, c.add.name] as [number, string]] : [])),
   ]);
   const faab = last?.rules.acquisition === "FAAB";
+  // FAAB guidance (#179): asked for unless the synced rules say claims go by waiver priority; the answer gates itself.
+  const [share, setShare] = useState(DEFAULT_SHARE);
+  const guidance = useFaabGuidance(leagueId, team, claims, share, canPlan && last?.rules.acquisition !== "PRIORITY");
+  const byRank = new Map((guidance.data?.claims ?? []).map((g) => [g.rank, g]));
   const freshness = checked?.freshness ?? "unknown";
   const shown = claims.slice(0, MAX_CLAIMS).map((c) => {
     const r = byAdd.get(c.add);
@@ -184,7 +190,11 @@ function Planner({ players, team, teamName, provider, leagueName }: {
         <p className={styles.sub}>Pick a team at the top of the page to order claims, choose drops and check them.</p>
       )}
       {claims.length === 0
-        ? <p>No saved players yet. Use Save beside a waiver player to plan claims here.</p>
+        ? <>
+          <p>No saved players yet. Use Save beside a waiver player to plan claims here.</p>
+          {canPlan && <FaabSummary res={guidance.data} error={guidance.error} pending={guidance.pending}
+            freshness={guidance.freshness} share={share} onShare={setShare} provider={provider} />}
+        </>
         : <>
           {canPlan && (
             <div className={styles.status} aria-live="polite" aria-busy={pending || undefined}>
@@ -212,6 +222,8 @@ function Planner({ players, team, teamName, provider, leagueName }: {
               )}
             </div>
           )}
+          {canPlan && <FaabSummary res={guidance.data} error={guidance.error} pending={guidance.pending}
+            freshness={guidance.freshness} share={share} onShare={setShare} provider={provider} />}
           <ol className={styles.rows} aria-label="Claim order">
             {claims.map((c, i) => {
               const r = byAdd.get(c.add);
@@ -262,6 +274,10 @@ function Planner({ players, team, teamName, provider, leagueName }: {
                     </div>
                   )}
                   {!canPlan && <div className={styles.order}><SavePlayer id={c.add} name={name} /></div>}
+                  {canPlan && i < MAX_CLAIMS && byRank.get(i + 1)?.add.espn_player_id === c.add
+                    && byRank.get(i + 1)?.drop === c.drop && guidance.data && (
+                    <FaabClaimGuidance g={byRank.get(i + 1)!} bid={c.bid} minObserved={guidance.data.inputs.min_observed} />
+                  )}
                   {canPlan && i >= MAX_CLAIMS && <p className={styles.reason}>Not checked: only the first {MAX_CLAIMS} claims are checked.</p>}
                   {canPlan && fresh && <Details claim={fresh} freshness={freshness} faab={faab}
                     onUseDrop={(d) => save(updateClaim(claims, c.add, { drop: d }))} />}

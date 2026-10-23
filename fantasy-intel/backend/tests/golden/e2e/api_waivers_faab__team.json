@@ -1,0 +1,410 @@
+// /api/waivers/faab?claims=209%3A-16002%2C405%3A-16002%2C309&team_id=2
+{
+ "body": {
+  "assumptions": [
+   "Not submitted: nothing is bid, claimed or sent to ESPN. Enter any bid in ESPN yourself.",
+   "Ranges are a heuristic, not a market price or a prediction: urgency comes from the add/drop simulator's rest-of-season lineup gain per remaining week (high at 3 or more projected points, medium at 1 or more, low above 0).",
+   "Budget share: one claim may take up to 25% of your remaining FAAB (your input), or an even split of it over the remaining weeks when that is larger. High urgency is 50-100% of that cap, medium 20-50%, low 0-20%, rounded down to whole dollars.",
+   "Every range stays within your remaining FAAB from the last sync; an unknown budget or spend gives no range.",
+   "League winning bids are shown as observed, beside the heuristic, and never change it. Losing and pending bids are private to each manager and are not read."
+  ],
+  "budget": {
+   "acquisition": "FAAB",
+   "budget": 100.0,
+   "even_split_per_week": 5.33,
+   "minimum_bid": null,
+   "other_teams": {
+    "known": 3,
+    "max_remaining": 90.0,
+    "teams": 3
+   },
+   "remaining": 80.0,
+   "spent": 20.0,
+   "weeks_left": 15
+  },
+  "capability": {
+   "fields": [
+    {
+     "display": "FAAB bidding",
+     "field": "acquisition_type",
+     "label": "Claim type (FAAB or waiver priority)",
+     "reason": null,
+     "source": "acquisitionSettings.isUsingAcquisitionBudget",
+     "status": "supplied",
+     "value": "FAAB"
+    },
+    {
+     "display": "$100",
+     "field": "faab_budget",
+     "label": "League FAAB budget",
+     "reason": null,
+     "source": "acquisitionSettings.acquisitionBudget",
+     "status": "supplied",
+     "value": 100
+    },
+    {
+     "display": "$20",
+     "field": "faab_spent",
+     "label": "Your FAAB spent",
+     "reason": null,
+     "source": "teams[].transactionCounter.acquisitionBudgetSpent",
+     "status": "supplied",
+     "value": 20.0
+    },
+    {
+     "display": "$80",
+     "field": "faab_remaining",
+     "label": "Your remaining FAAB",
+     "reason": null,
+     "source": "derived: league budget minus your spend",
+     "status": "supplied",
+     "value": 80.0
+    },
+    {
+     "display": "3 of 3 teams",
+     "field": "league_spend",
+     "label": "Other teams' FAAB spent",
+     "reason": null,
+     "source": "teams[].transactionCounter.acquisitionBudgetSpent (every team)",
+     "status": "supplied",
+     "value": {
+      "known": 3,
+      "teams": 3
+     }
+    },
+    {
+     "display": null,
+     "field": "minimum_bid",
+     "label": "Minimum bid",
+     "reason": "The synced settings do not include a minimum bid, so whether a $0 bid is accepted is unknown.",
+     "source": null,
+     "status": "missing",
+     "value": null
+    },
+    {
+     "display": "1 executed waiver claim",
+     "field": "observed_bids",
+     "label": "League winning bids",
+     "reason": null,
+     "source": "transactions[].bidAmount (executed waiver claims)",
+     "status": "supplied",
+     "value": 1
+    },
+    {
+     "display": null,
+     "field": "processing",
+     "label": "Claim processing days",
+     "reason": "The synced settings do not include the waiver processing days.",
+     "source": null,
+     "status": "missing",
+     "value": null
+    },
+    {
+     "display": null,
+     "field": "next_deadline",
+     "label": "Next claim deadline",
+     "reason": "The synced data does not include when claims next process; check the provider before the deadline.",
+     "source": null,
+     "status": "not_supplied",
+     "value": null
+    },
+    {
+     "display": "#2",
+     "field": "waiver_priority",
+     "label": "Your waiver priority (FAAB tie-break)",
+     "reason": "The synced settings do not say how tied bids are broken.",
+     "source": "teams[].waiverRank",
+     "status": "supplied",
+     "value": 2
+    },
+    {
+     "display": null,
+     "field": "waiver_status",
+     "label": "Whether a player is on waivers",
+     "reason": null,
+     "source": "players[].status (WAIVERS or FREEAGENT)",
+     "status": "supplied",
+     "value": null
+    }
+   ],
+   "flag": "handled",
+   "guidance": "available",
+   "observed_bids": "available",
+   "reasons": []
+  },
+  "claims": [
+   {
+    "add": {
+     "espn_player_id": 209,
+     "name": "Waiver RB",
+     "position": "RB"
+    },
+    "basis": {
+     "gain_per_week": -2.0,
+     "known_ros_gain": -30.0,
+     "ros_gain": -30.0,
+     "share_pct": 25,
+     "weeks": 15
+    },
+    "claim_kind": "free_agent",
+    "drop": -16002,
+    "notes": [],
+    "observed": null,
+    "range": null,
+    "rank": 1,
+    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
+    "status": "blocked",
+    "urgency": null,
+    "validation": "invalid"
+   },
+   {
+    "add": {
+     "espn_player_id": 405,
+     "name": "Waiver TE",
+     "position": "TE"
+    },
+    "basis": {
+     "gain_per_week": -3.0,
+     "known_ros_gain": -45.0,
+     "ros_gain": -45.0,
+     "share_pct": 25,
+     "weeks": 15
+    },
+    "claim_kind": "free_agent",
+    "drop": -16002,
+    "notes": [],
+    "observed": null,
+    "range": null,
+    "rank": 2,
+    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
+    "status": "blocked",
+    "urgency": null,
+    "validation": "invalid"
+   },
+   {
+    "add": {
+     "espn_player_id": 309,
+     "name": "Waiver WR",
+     "position": "WR"
+    },
+    "basis": {
+     "gain_per_week": 0.0,
+     "known_ros_gain": 0.0,
+     "ros_gain": 0.0,
+     "share_pct": 25,
+     "weeks": 15
+    },
+    "claim_kind": "waiver_claim",
+    "drop": null,
+    "notes": [],
+    "observed": null,
+    "range": null,
+    "rank": 3,
+    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
+    "status": "blocked",
+    "urgency": null,
+    "validation": "invalid"
+   }
+  ],
+  "combined": {
+   "complete": true,
+   "exclusive_groups": [],
+   "fits": null,
+   "high_total": null,
+   "max_spend_if_won": null,
+   "ranged_claims": 0,
+   "remaining": 80.0,
+   "scaled": false,
+   "unranged_ranks": []
+  },
+  "contract": "waiver-faab/v1",
+  "evaluation": {
+   "earliest_actionable_week": 3,
+   "evaluated_at": "<masked>",
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "inputs": {
+   "bands_pct": {
+    "high": [
+     50,
+     100
+    ],
+    "low": [
+     0,
+     20
+    ],
+    "medium": [
+     20,
+     50
+    ]
+   },
+   "default_share_pct": 25,
+   "high_per_week": 3.0,
+   "medium_per_week": 1.0,
+   "min_observed": 3,
+   "share_choices": [
+    10,
+    25,
+    50,
+    100
+   ],
+   "share_pct": 25
+  },
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "limitations": [
+   "Other managers' bids, needs and strategies are unknown; no claim-success probability is given.",
+   "Claims you have already entered in the provider, and any spend since the last sync, are not visible here.",
+   "Projections can be wrong, and the lineup gain assumes the rest of the roster stays as it is."
+  ],
+  "observed": {
+   "by_position": {
+    "RB": {
+     "count": 1,
+     "max": 12.0,
+     "median": 12.0,
+     "median_share_pct": 12.0,
+     "min": 12.0
+    }
+   },
+   "claims": 1,
+   "overall": {
+    "count": 1,
+    "max": 12.0,
+    "median": 12.0,
+    "median_share_pct": 12.0,
+    "min": 12.0
+   },
+   "recent": [
+    {
+     "bid": 12.0,
+     "espn_player_id": 203,
+     "name": "Golf RB",
+     "position": "RB",
+     "week": 1
+    }
+   ],
+   "with_bid": 1,
+   "without_bid": 0
+  },
+  "perspective": {
+   "abbrev": "T2",
+   "is_owner_default": true,
+   "league_id": 999,
+   "league_synced_at": "<masked>",
+   "name": "Team 2",
+   "roster_players": 12,
+   "roster_synced_at": "<masked>",
+   "season": 2026,
+   "source": "query",
+   "team_id": 2
+  },
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 11,
+      "label": "active players with a projection",
+      "total": 11
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "status": "evaluated",
+  "submitted": false,
+  "team": {
+   "id": 2,
+   "name": "Team 2"
+  }
+ },
+ "status": 200
+}

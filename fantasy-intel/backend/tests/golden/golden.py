@@ -91,6 +91,13 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
             return None
         d = drop["espn_player_id"]
         return {"claims": f"{adds[0]}:{d}:5,{adds[1]}:{d}:3,{adds[2]}"}
+    if path == "/api/waivers/faab":
+        # The claim plan's three claims without bids (guidance never depends on one): two sharing a drop, then an
+        # add-only claim, so the combined check has an exclusive group.
+        q = _required_query("/api/waivers/claim-plan", ids, client)
+        if not q:
+            return None
+        return {"claims": ",".join(":".join(c.split(":")[:2]).rstrip(":") for c in q["claims"].split(","))}
     return {}
 
 
