@@ -5,6 +5,11 @@
 export const RULES_PATH = "/league-rules";
 export const CONTRACT = "league-rules/v1";
 
+/** When the shown settings were captured: the sync time, or "age unknown" when the backend holds none (#168 R1). */
+export function capturedAge<T>(capturedAt: string | null | undefined, when: (iso: string) => T): T | string {
+  return capturedAt ? when(capturedAt) : "age unknown";
+}
+
 export type Fact<T = unknown> = { value: T | null; display: string | null; reason: string | null };
 
 export type EngineStatus = "handled" | "partial" | "unsupported" | "unverified";
