@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
-  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, searchSrc,
+  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItems, pushRecent, searchSrc,
   wrapIndex,
 } from "@/lib/palette";
+import type { Provider } from "@/lib/labels";
 import { withTeam } from "@/lib/team-perspective";
 import { leagueRouteHref, withLeague } from "@/lib/league-scope";
 import { useLeagueId } from "./useAppPathname";
@@ -42,8 +43,12 @@ function isEditable(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-/** The app bar's search trigger and the palette dialog it opens. Mounted once, in the root layout. */
-export function CommandPalette() {
+/**
+ * The app bar's search trigger and the palette dialog it opens. Mounted once, in the root layout, which passes the
+ * league's provider so player results name roster states in that provider's terms (the layout re-renders when the
+ * league changes, ScopeRefresh).
+ */
+export function CommandPalette({ provider = "espn" }: { provider?: Provider }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -87,7 +92,7 @@ export function CommandPalette() {
         <span className={styles.triggerLabel}>Search players, pages…</span>
         <kbd className={styles.kbd} aria-hidden="true">{mac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
-      {open && createPortal(<PaletteDialog onClose={close} team={team} />, document.body)}
+      {open && createPortal(<PaletteDialog onClose={close} team={team} provider={provider} />, document.body)}
     </>
   );
 }
@@ -95,7 +100,7 @@ export function CommandPalette() {
 /** `key`: the league and query the players answer, so another league's results are never shown for the same text. */
 type PlayerResult = { key: string; players: PaletteItem[]; failed: boolean };
 
-function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | null }) {
+function PaletteDialog({ onClose, team, provider }: { onClose: () => void; team: string | null; provider: Provider }) {
   const league = useLeagueId();
   const router = useRouter();
   const uid = useId();
@@ -130,7 +135,7 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
         const res = await fetch(leagueRouteHref(searchSrc(q), league), { signal: ctrl.signal });
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { players: SearchPlayer[] };
-        setResult({ key, players: body.players.map(playerItem), failed: false });
+        setResult({ key, players: playerItems(body.players, provider), failed: false });
       } catch {
         if (!ctrl.signal.aborted) setResult({ key, players: [], failed: true });
       }
@@ -139,7 +144,7 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q, league, key]);
+  }, [q, league, key, provider]);
 
   // Lock page scroll while open (the stable gutter in globals.css keeps the layout from shifting).
   useEffect(() => {

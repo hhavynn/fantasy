@@ -116,7 +116,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
               )}
-              <CommandPalette />
+              <CommandPalette provider={profile.provider} />
               {showSwitch && <ProjectionSwitch value={projection} className="topbar-proj" />}
               <ThemeSwitch className="topbar-theme" />
               {classicRetired ? null : <SyncPill status={s ?? null} provider={profile.provider} degraded={degraded} />}

@@ -1,0 +1,65 @@
+/* Saved views (issue #200): a disclosure beside a page's filters. Tokens only; see globals.css. */
+
+.box { min-width: 0; max-width: 100%; }
+.summary {
+  display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 12px; list-style: none; max-width: 100%;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.summary::-webkit-details-marker { display: none; }
+.summary::after {
+  content: ""; flex: none; width: 7px; height: 7px; margin-left: auto; border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted); transform: translateY(-2px) rotate(45deg);
+}
+.box[open] > .summary::after { transform: translateY(2px) rotate(-135deg); }
+.summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.title { flex: none; font-weight: 600; font-size: 13px; }
+.current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); font-size: 13px; }
+
+.body {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; margin-top: 8px; padding: 14px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.now { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font-size: 13px; min-width: 0; }
+.label {
+  color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.what { color: var(--ink-muted); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+
+.group { display: grid; gap: 6px; min-width: 0; }
+.heading { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.count { margin-left: 8px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.list { display: grid; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; min-width: 0;
+  padding: 6px 0; border-top: 1px solid var(--line);
+}
+.item:first-child { border-top: 0; }
+.item > .what { grid-column: 1; }
+.item > .delete { grid-column: 2; grid-row: 1 / span 2; }
+.open { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.open[aria-current] { color: var(--ink); }
+.open[aria-current]::after { content: " · open now"; color: var(--ink-faint); font-size: 12px; font-weight: 400; }
+.open:focus-visible, .delete:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.delete {
+  height: 30px; padding: 0 10px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-muted);
+  font-weight: 500;
+}
+.delete:hover { color: var(--negative); border-color: var(--negative); filter: none; }
+
+.form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; min-width: 0; }
+.field { display: grid; gap: 4px; flex: 1 1 220px; min-width: 0; }
+.field input { width: 100%; min-width: 0; }
+.save { flex: none; }
+.note, .fine { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.fine { color: var(--ink-faint); font-size: 12px; }
+.ok, .error { margin: 0; font-size: 13px; min-height: 0; }
+.ok:empty, .error:empty { display: none; }
+.ok { color: var(--positive); }
+.error { color: var(--caution); }
+
+@media (max-width: 720px) {
+  .summary { min-height: var(--tap); }
+  .delete { height: var(--tap); }
+  .open { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .save { width: 100%; }
+}

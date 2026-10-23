@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { leagueRouteHref, proxyDecision, scopeApiPath } from "./league-scope.ts";
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
-  FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
+  FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, normalize, pageItems, parseRecents, playerItem, playerItems, pushRecent,
   rankItems, scoreItem, searchPath, searchResponse, searchSrc, wrapIndex, type PaletteItem,
 } from "./palette.ts";
 
@@ -137,7 +137,47 @@ test("playerItem builds the profile link and a compact hint", () => {
   assert.equal(players[0].href, "/players?id=1");
   assert.equal(players[0].hint, "C · TEN");
   assert.equal(players[1].hint, "WR · BAL · Gridiron Ghosts");
-  assert.equal(playerItem({ id: 3, name: "X", position: "RB", team: null, owner: null }).hint, "RB · FA");
+  // No NFL team is said in words: "FA" would read as a fantasy free agent.
+  assert.equal(playerItem({ id: 3, name: "X", position: "RB", team: null, owner: null }).hint, "RB · No NFL team");
+});
+
+test("player results say who holds him in this league, in the provider's terms, with any injury designation", () => {
+  const p = (availability: "ONTEAM" | "WAIVERS" | "FREEAGENT" | null, owner: string | null = null, injury: string | null = null) =>
+    ({ id: 9, name: "Echo RB", position: "RB", team: "KC", owner, availability, injury });
+  assert.equal(playerItem(p("ONTEAM", "Team 1")).hint, "RB · KC · Team 1");
+  assert.equal(playerItem(p("ONTEAM")).hint, "RB · KC · Rostered");
+  assert.equal(playerItem(p("WAIVERS")).hint, "RB · KC · On waivers");
+  assert.equal(playerItem(p("FREEAGENT")).hint, "RB · KC · Free agent");
+  // Sleeper says only whether he is rostered: an unrostered player may be on waivers, so he is never "Free agent".
+  assert.equal(playerItem(p("FREEAGENT"), "sleeper").hint, "RB · KC · Not rostered");
+  assert.equal(playerItem(p(null)).hint, "RB · KC · Roster status unknown");
+  assert.equal(playerItem(p("FREEAGENT", null, "OUT")).hint, "RB · KC · Out · Free agent");
+  assert.equal(playerItem(p("ONTEAM", "Team 3", "INJURY_RESERVE")).hint, "RB · KC · IR · Team 3");
+  assert.equal(playerItem(p("ONTEAM", "Team 3", "ACTIVE")).hint, "RB · KC · Team 3");
+});
+
+test("same-name players stay distinguishable; only identical lines gain the player ID", () => {
+  const twins = playerItems([
+    { id: 11, name: "Daniel Jones", position: "QB", team: "NYG", owner: "Team 1", availability: "ONTEAM", injury: null },
+    { id: 12, name: "Daniel Jones", position: "WR", team: null, owner: null, availability: "FREEAGENT", injury: null },
+    { id: 13, name: "José Núñez", position: "TE", team: "LV", owner: null, availability: "FREEAGENT", injury: null },
+    { id: 14, name: "Jose Nunez", position: "TE", team: "LV", owner: null, availability: "FREEAGENT", injury: null },
+  ]);
+  assert.deepEqual(twins.map((i) => i.id), ["player:11", "player:12", "player:13", "player:14"]);
+  assert.equal(twins[0].hint, "QB · NYG · Team 1");
+  assert.equal(twins[1].hint, "WR · No NFL team · Free agent");
+  // Accents aside these two read the same, so each shows its ID.
+  assert.equal(twins[2].hint, "TE · LV · Free agent · ID 13");
+  assert.equal(twins[3].hint, "TE · LV · Free agent · ID 14");
+  assert.equal(normalize(twins[2].label), normalize(twins[3].label));
+});
+
+test("empty and accented queries: nothing is sent for blank text, accents reach the backend intact", () => {
+  for (const q of ["", "   ", "\t\n"]) assert.equal(searchPath(new URLSearchParams({ q })), null);
+  const path = searchPath(new URLSearchParams({ q: "  José Núñez " }))!;
+  assert.equal(new URL(path, "http://x").searchParams.get("q"), "José Núñez");
+  // The palette matches pages and recents without accents too.
+  assert.ok(scoreItem("nunez", { id: "p", kind: "player", label: "José Núñez", href: "/players?id=1" }) > 0);
 });
 
 test("pages in a labelled cluster say so in their hint, and their summary finds them", () => {
@@ -202,12 +242,19 @@ test("searchPath caps by code points, so an emoji at the cap never splits into a
 
 test("search responses are never shared-cacheable: results, empty query and backend failure", async () => {
   const ok = searchResponse({ ok: true, error: null, data: [
-    { espn_player_id: 201, full_name: "Echo RB", position: "RB", pro_team: "KC", fantasy_team: "Team 1" },
+    { espn_player_id: 201, full_name: "Echo RB", position: "RB", pro_team: "KC", fantasy_team: "Team 1", availability_status: "ONTEAM",
+      injury_status: "QUESTIONABLE" },
     { espn_player_id: 7, full_name: null, position: "WR", pro_team: null, fantasy_team: null },
+    { espn_player_id: 202, full_name: "Foxtrot RB", position: "RB", pro_team: null, fantasy_team: null, availability_status: "SOMETHING",
+      injury_status: "<b>free text</b>" },
   ] });
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("cache-control"), "private, no-store");
-  assert.deepEqual(await ok.json(), { players: [{ id: 201, name: "Echo RB", position: "RB", team: "KC", owner: "Team 1" }] });
+  // Unknown roster states and anything but a short designation code are sent as null, never passed through.
+  assert.deepEqual(await ok.json(), { players: [
+    { id: 201, name: "Echo RB", position: "RB", team: "KC", owner: "Team 1", availability: "ONTEAM", injury: "QUESTIONABLE" },
+    { id: 202, name: "Foxtrot RB", position: "RB", team: null, owner: null, availability: null, injury: null },
+  ] });
 
   const empty = searchResponse(null);
   assert.equal(empty.status, 200);
