@@ -29,7 +29,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | PR OPEN (BLOCKED) | PR #241 (b0b4280) | security review: isolation clean; 1 MEDIUM (pool/anyio starvation) + 3 LOW being fixed |
-| #171 what-if lineup | 2 | IN PROGRESS | `feature/fi-171-what-if-lineup` from abe7664 | one agent; backend-validated swaps, URL scenario, no provider writes |
+| #171 what-if lineup | 2 | PR OPEN (BLOCKED) | PR #242 (01e9077) | `GET .../start-sit/what-if`; q/a/s pass; phone tap overlap being fixed; security review running (D-10) |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
