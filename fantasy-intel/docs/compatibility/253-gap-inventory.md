@@ -360,7 +360,7 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
   as it behaves: a submitted lineup's total counts its IDP, P or HC starters while the recommendation cannot start them,
   so Start/Sit and what-if get a feature-level `unsupported` `gain_unfilled_slots` finding whenever such a slot holds
   a starter (the gain fix itself is phase 3). The Start/Sit page shows the missing marker ("No projections for this
-  week") instead of a 0.0 recommended or unconstrained total, and the action center's decision context carries no
+  week") instead of a 0.0 submitted, recommended or unconstrained total, and the action center's decision context carries no
   projection source for such a week.
 - **S1 label (no algorithm change).** `league_rules.skill_runs_rescored(con, lg)` checks whether the league's own skill
   runs carry `evaluation.rescored_from`, which `rescore.py` writes for a ratio re-score of reference-scoring runs. When

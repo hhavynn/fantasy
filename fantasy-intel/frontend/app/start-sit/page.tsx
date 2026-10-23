@@ -25,9 +25,9 @@ import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import {
   actionabilityBadge,
   emptyStartingSlots,
-  lineupTotal,
   NO_PROJECTIONS_TEXT,
   noProjections,
+  projectedTotal,
   projectionsMeta,
   lockStatusBadge,
   slotChange,
@@ -115,11 +115,10 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     actionableMoves: actionable,
     emptySlots,
   });
-  const actual = lineupTotal(hasLineup, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
-  // A week without any projection has no recommended total at all, never a measured or partial 0.0.
+  // A week without any projection has no submitted or recommended total at all, never a measured or partial 0.0.
   const noProj = noProjections(d.projection_source, recommended_lineup);
-  const recommended = noProj ? { value: null, partial: false }
-    : lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
+  const actual = projectedTotal(hasLineup, noProj, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
+  const recommended = projectedTotal(true, noProj, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
   const gainKnown = summary.projection_complete && summary.projected_gain !== null;
 
   return (
@@ -127,7 +126,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       <PageHeader
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
-        meta={`${team.name} (${team.abbrev}) · ${projectionsMeta(d.projection_source)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        meta={`${team.name} (${team.abbrev}) · ${projectionsMeta(d.projection_source, noProj)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
         provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
@@ -152,8 +151,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
           <>
             <VerdictFigure
               label="Submitted (proj)"
-              value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : `Current ${provider} starters, projected pts`}
+              value={actual.value === null ? <Missing why={hasLineup ? NO_PROJECTIONS_TEXT : "No submitted lineup for this week"} /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
+              note={!hasLineup ? "No submitted lineup" : noProj ? NO_PROJECTIONS_TEXT : actual.partial ? "*Partial: some starters lack a projection" : `Current ${provider} starters, projected pts`}
             />
             <VerdictFigure
               label="Recommended (proj)"

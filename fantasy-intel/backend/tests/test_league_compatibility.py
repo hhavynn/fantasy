@@ -197,6 +197,44 @@ def test_a_verified_run_whose_rows_all_abstain_is_no_projections_not_ours(league
     assert sc["status"] == "unsupported" and "every one of its rows abstains" in sc["reason"]
 
 
+def test_a_stored_run_whose_rows_all_abstain_reads_as_no_projections_end_to_end(league):
+    """The same case through the real selection: a sealed independent run under M3's scoring whose rows are all
+    `insufficient_data` (written with independent_projection_store.write_run, read by projection_source.weekly,
+    select_run and league_projections / forward_ours._select_batch, nothing patched)."""
+    from app.analytics import independent_projection_store as ips
+    from app.analytics import projection_source as ps
+    from app.analytics.league_scoring import resolve_skill_scoring
+
+    con = league("M3")
+    lg = latest_league(con)
+    fp = resolve_skill_scoring(json.loads(lg["scoring_items"])).fingerprint
+    created = datetime(cf.SEASON, 9, 1, 12, 0)
+    rows = [{"season": cf.SEASON, "week": cf.CURRENT, "espn_player_id": p.pid, "gsis_id": f"00-FX{abs(p.pid):05d}",
+             "position": p.position, "nfl_team": None, "opponent": None, "is_home": None, "projected_points": None,
+             "interval_low": None, "interval_high": None, "model": "fx", "coverage_status": "insufficient_data",
+             "games_used": 0, "latest_usage_season": None, "latest_usage_week": None, "missing_inputs": ["usage"],
+             "flags": [], "explanation": [], "p_play": None, "expected_points": None, "participation": None}
+            for p in cf.league_players(cf.MATRIX["M3"]) if p.position in ("QB", "RB", "WR", "TE")]
+    ips.write_run(con, {"season": cf.SEASON, "week": cf.CURRENT, "forecast_horizon": 0, "projected_from_week": cf.CURRENT,
+                        "data_through_season": cf.SEASON, "data_through_week": cf.CURRENT - 1, "created_at": created,
+                        "artifact_id": "fx-abstaining", "artifact_created_at": created.isoformat(),
+                        "run_id": "fx-abstaining", "model_version": ps.MODEL_VERSION, "scoring_fingerprint": fp,
+                        "model_status": {}, "evaluation": {}, "participation_version": None,
+                        "participation_status": None, "participation_evaluation": None, "nfl_synced_at": created}, rows)
+
+    assert ps.select_run(con, cf.SEASON, cf.CURRENT)["run"]["run_id"] == "fx-abstaining"
+    shown = ps.weekly(con, cf.SEASON, cf.CURRENT, "independent")
+    assert shown["available"] is True and not any(v is not None for v in shown["values"].values())
+    assert not ps.league_projections(con, cf.SEASON, [cf.CURRENT], "independent")
+
+    out = load_start_sit_evaluation(con, team_id=1, now=NOW)
+    assert out["projection_source"] == NO_PROJECTIONS and out["summary"]["recommended_projected_total"] is None
+    facts = load_facts(con, lg)
+    assert facts["independent"] == {"available": True} and facts["projection_source"] == "none"
+    sc = build_compatibility(lg, facts)["dimensions"]["scoring"]
+    assert sc["status"] == "unsupported" and "every one of its rows abstains" in sc["reason"]
+
+
 # ---- S1: Ours re-scored from the reference scoring is partial ------------------------------------------------------------
 
 def _run(con, run_id: str, fingerprint: str, evaluation: dict) -> None:

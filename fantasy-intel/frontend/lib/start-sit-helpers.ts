@@ -92,9 +92,27 @@ export function noProjections(
   return source === NO_PROJECTIONS || !rows.some((r) => r.player_id !== null && r.projected_points !== null);
 }
 
-/** The page's "· … projections" meta text: whose projections, or that the week has none. */
-export function projectionsMeta(source: string): string {
-  return source === NO_PROJECTIONS ? "no projections" : `${source} projections`;
+/**
+ * A Start/Sit total (submitted or recommended) for display. When the week has no projection (`noProjections`) there is
+ * no total at all, never a 0.0 or a partial 0.0; otherwise lineupTotal's rule.
+ */
+export function projectedTotal(
+  hasLineup: boolean,
+  noProj: boolean,
+  complete: boolean,
+  total: number | null | undefined,
+  known: number | null | undefined,
+): TotalDisplay {
+  return noProj ? { value: null, partial: false } : lineupTotal(hasLineup, complete, total, known);
+}
+
+/**
+ * The page's "· … projections" meta text: whose projections, or that the week has none. `noProj` (this team's lineup
+ * has no projected starter while the league's source has numbers) keeps the source and says so for this team.
+ */
+export function projectionsMeta(source: string, noProj = false): string {
+  if (source === NO_PROJECTIONS) return "no projections";
+  return noProj ? `${source} projections, none for this team this week` : `${source} projections`;
 }
 
 export type VerdictTone = "info" | "caution" | "positive";
