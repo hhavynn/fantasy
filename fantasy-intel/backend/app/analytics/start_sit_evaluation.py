@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
+from .lineup import assign_lineup, eligible, is_flex, lineup_slots
 from .reserve_slots import TAXI
 
 UTC = timezone.utc
@@ -219,7 +219,7 @@ def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping
                 kind = "same_position" if ci["position"] == cj["position"] else "flex"
                 if kind == "flex" and not (slots_cfg and any(
                         eligible(s, ci["position"]) and eligible(s, cj["position"])
-                        for s, n in slots_cfg.items() if s in FLEX_ELIGIBILITY and n)):
+                        for s, n in slots_cfg.items() if is_flex(s) and n)):
                     continue                      # no flex slot both could fill: not a decision
                 bad = next((st["reason"] for st in (states[id(ci)], states[id(cj)]) if not st["ok"]), None)
                 if bad:
