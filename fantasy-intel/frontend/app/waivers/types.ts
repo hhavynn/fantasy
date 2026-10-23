@@ -26,7 +26,10 @@ export type WaiverRow = {
   competitors: Competitor[];
   /** Whether the suggested drop is still on the team's latest synced roster (null: no drop). */
   drop_on_roster?: boolean | null;
-  components: { player: { basis: string; basis_description?: string; value: number | null; value_100?: number | null }; decision?: Decision };
+  components: { player: { basis: string; basis_description?: string; value: number | null; value_100?: number | null }; decision?: Decision;
+    /** fit_status "partial": the lineup gain is unknown (a player has no historical value), so waiver_score lacks a term. */
+    roster?: { fit_status?: "complete" | "partial"; value_status?: "complete" | "partial";
+      value_unknown?: { espn_player_id: number; name: string | null }[] } | null };
 };
 export type WaiversResponse = {
   players: WaiverRow[]; computed_at: string | null; coverage: Coverage | null; total: number;

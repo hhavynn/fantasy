@@ -10,7 +10,8 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
-import { Missing, num } from "@/lib/format";
+import { Missing, PartialMark, num } from "@/lib/format";
+import { needPartialReason } from "@/lib/waivers";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
@@ -164,7 +165,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
                   {o.needs.filter((x) => x.starters_required > 0).map((x) => (
                     <tr key={x.position}>
                       <td><Pos value={x.position} /></td>
-                      <td><Score value={x.need_score * 10} /></td>
+                      <td><Score value={x.need_score * 10} /><PartialMark why={needPartialReason(x.details)} /></td>
                       <td className="num" title={`${x.starters_required} start${x.starters_required === 1 ? "" : "s"}${x.details.flex_slots_filled ? " incl. FLEX" : ""} · ${x.unavailable} out`}>
                         {avail(x.effective_available ?? x.healthy)} / {x.details.depth_target}
                       </td>

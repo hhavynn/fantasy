@@ -10,6 +10,17 @@ export function Missing({ why = "No data available" }: { why?: string }) {
   );
 }
 
+/** Marks a value shown from its known parts only; `why` names what is unknown (null: complete, renders nothing).
+ * Text, so status is never colour alone. */
+export function PartialMark({ why }: { why: string | null }) {
+  if (!why) return null;
+  return (
+    <span className="missing" title={why}>
+      {" "}partial
+    </span>
+  );
+}
+
 type Num = number | null | undefined;
 
 export function num(v: Num, digits = 1, why?: string): ReactNode {

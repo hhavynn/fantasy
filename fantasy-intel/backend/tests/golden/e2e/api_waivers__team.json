@@ -295,7 +295,8 @@
        "ranking_utility": 4.55,
        "starter_gain": 0.0,
        "stash": false,
-       "summary": "Improves covered future lineups by 4.0 projected points per week."
+       "summary": "Improves covered future lineups by 4.0 projected points per week.",
+       "unknown_value_ids": []
       },
       "version": 3,
       "weeks": [
@@ -352,6 +353,7 @@
       "displaced_id": null,
       "enters_lineup": false,
       "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "fit_status": "complete",
       "lineup_gain": 0.0,
       "lineup_slot": null,
       "my_starter_value": 5.0,
@@ -359,7 +361,10 @@
       "need": 0.275,
       "suggested_drop": null,
       "upgrade": 0.0,
-      "value_margin_vs_drop": null
+      "value_margin_vs_drop": null,
+      "value_scale": "0-10 position percentile, not fantasy points",
+      "value_status": "complete",
+      "value_unknown": []
      }
     },
     "computed_at": "<masked>",
@@ -606,7 +611,8 @@
        "ranking_utility": 3.0,
        "starter_gain": 0.0,
        "stash": false,
-       "summary": "Improves covered future lineups by 3.0 projected points per week."
+       "summary": "Improves covered future lineups by 3.0 projected points per week.",
+       "unknown_value_ids": []
       },
       "version": 3,
       "weeks": [
@@ -663,6 +669,7 @@
       "displaced_id": null,
       "enters_lineup": false,
       "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "fit_status": "complete",
       "lineup_gain": 0.0,
       "lineup_slot": null,
       "my_starter_value": 5.0,
@@ -670,7 +677,10 @@
       "need": 0.0,
       "suggested_drop": null,
       "upgrade": 0.0,
-      "value_margin_vs_drop": null
+      "value_margin_vs_drop": null,
+      "value_scale": "0-10 position percentile, not fantasy points",
+      "value_status": "complete",
+      "value_unknown": []
      }
     },
     "computed_at": "<masked>",
@@ -918,7 +928,8 @@
        "ranking_utility": 0,
        "starter_gain": 0.0,
        "stash": false,
-       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated."
+       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated.",
+       "unknown_value_ids": []
       },
       "version": 3,
       "weeks": [
@@ -975,6 +986,7 @@
       "displaced_id": null,
       "enters_lineup": false,
       "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "fit_status": "complete",
       "lineup_gain": 0.0,
       "lineup_slot": null,
       "my_starter_value": 5.0,
@@ -982,7 +994,10 @@
       "need": 0.0,
       "suggested_drop": null,
       "upgrade": 0.0,
-      "value_margin_vs_drop": null
+      "value_margin_vs_drop": null,
+      "value_scale": "0-10 position percentile, not fantasy points",
+      "value_status": "complete",
+      "value_unknown": []
      }
     },
     "computed_at": "<masked>",
@@ -1232,7 +1247,8 @@
        "ranking_utility": 0,
        "starter_gain": 0.0,
        "stash": false,
-       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated."
+       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated.",
+       "unknown_value_ids": []
       },
       "version": 3,
       "weeks": [
@@ -1289,6 +1305,7 @@
       "displaced_id": null,
       "enters_lineup": false,
       "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "fit_status": "complete",
       "lineup_gain": 0.0,
       "lineup_slot": null,
       "my_starter_value": 5.0,
@@ -1296,7 +1313,10 @@
       "need": 0.0,
       "suggested_drop": null,
       "upgrade": 0.0,
-      "value_margin_vs_drop": null
+      "value_margin_vs_drop": null,
+      "value_scale": "0-10 position percentile, not fantasy points",
+      "value_status": "complete",
+      "value_unknown": []
      }
     },
     "computed_at": "<masked>",

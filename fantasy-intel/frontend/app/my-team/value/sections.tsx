@@ -449,7 +449,7 @@ export function WaiverMoves({ d, words = ESPN_WORDS }: { d: TeamValue; words?: T
               <li key={w.add_id}>
                 {w.recommendation} {w.add_name ?? w.add_id}{w.drop_name ? ` / drop ${w.drop_name}` : ""}:{" "}
                 {w.known_ros_delta !== undefined ? <b><Exact value={w.ros_delta} known={w.known_ros_delta} /></b> : null}{" "}
-                <span className="faint">({w.status}; waiver score {num(w.waiver_score, 2)})</span>
+                <span className="faint">({w.status}; waiver score {num(w.waiver_score, 2, "Partial score: lineup gain unknown (a player has no historical value); unknown is not zero.")})</span>
               </li>
             ))}
           </ul>

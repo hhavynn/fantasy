@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { SavePlayer } from "./Shortlist";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
-import { Badge, Score, Verdict } from "@/components/ui";
+import { Badge, Verdict } from "@/components/ui";
 import type { TopClaims as Top } from "@/lib/waivers";
-import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
+import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, WaiverScore, actionLabel } from "./WaiverParts";
 import { hasInjuryDesignation } from "../players/helpers";
 import styles from "./waivers.module.css";
 import type { WaiverRow } from "./types";
@@ -78,7 +78,7 @@ function ClaimCard({ row: w, rank, informational, ownership, simulate }: {
       </div>
       {summary && <p className={styles.claimSummary}>{summary}</p>}
       <dl className={styles.claimFacts}>
-        <dt>Waiver score</dt><dd><Score value={w.waiver_score} /></dd>
+        <dt>Waiver score</dt><dd><WaiverScore row={w} /></dd>
         <dt>Role trend</dt><dd><RoleTrend trend={w.role_trend} /></dd>
         <dt>Competition</dt>
         <dd>

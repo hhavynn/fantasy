@@ -1,6 +1,7 @@
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Method, Notice, Pos, Score, Section } from "@/components/ui";
-import { date, int, num, pct, when } from "@/lib/format";
+import { PartialMark, date, int, num, pct, when } from "@/lib/format";
+import { needPartialReason } from "@/lib/waivers";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { formatMetric } from "@/lib/managers";
@@ -117,7 +118,7 @@ export async function ScoutingEvidence({ report: d }: { report: Report }) {
           <div className={styles.table} tabIndex={0} role="region" aria-label="Current positional need evidence"><table>
             <thead><tr><th scope="col">Position</th><th scope="col">Need / 100</th><th scope="col" className="num">Rostered</th><th scope="col" className="num">Healthy</th><th scope="col" className="num">Effective available</th><th scope="col" className="num">Starter quality / league</th><th scope="col">Source / rule</th></tr></thead>
             <tbody>{d.current_needs.map((n) => <tr key={n.position}>
-              <th scope="row"><Pos value={n.position} /></th><td><Score value={n.need_score === null ? null : n.need_score * 100} max={100} /></td>
+              <th scope="row"><Pos value={n.position} /></th><td><Score value={n.need_score === null ? null : n.need_score * 100} max={100} /><PartialMark why={needPartialReason(n.details)} /></td>
               <td className="num">{int(n.rostered)}</td><td className="num">{int(n.healthy)}</td><td className="num">{num(n.effective_available, 2)}</td>
               <td className="num">{num(n.starter_value, 2)} / {num(n.league_starter_average, 2)}</td>
               <td><details className={styles.rule}><summary>Stored analytics · {when(n.computed_at)}</summary><p>{JSON.stringify(n.details)}</p></details></td>

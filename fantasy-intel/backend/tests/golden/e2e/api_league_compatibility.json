@@ -252,7 +252,7 @@
      ],
      "missing_input": "usage data for every player",
      "provider_boundary": null,
-     "reason": "A player without usage data counts as 0 in the waiver lineup math, and flex and superflex choices compare position percentiles, not points.",
+     "reason": "A player without usage data has no value in the waiver lineup math: lineup gains, drop costs and needs that depend on him are marked partial, never counted as 0. Flex and superflex choices compare position percentiles, not points.",
      "status": "partial"
     },
     "import": {
