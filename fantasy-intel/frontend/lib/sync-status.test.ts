@@ -25,6 +25,14 @@ test("backend unreachable (null input) is offline", () => {
   assert.equal(r.activeFailures.length, 0);
 });
 
+test("a league whose first sync has not published is not offline (the API's 409, backend up)", () => {
+  const r = computeSyncSummary(null, NOW, "espn", false, true);
+  assert.equal(r.state, "stale");
+  assert.equal(r.text, "First sync in progress");
+  assert.equal(r.firstSync, true);
+  assert.equal(computeSyncSummary(null, NOW, "espn", false, false).text, "Backend offline");
+});
+
 test("completely unsynced data reports Not synced", () => {
   const r = computeSyncSummary(status({ last_success: { espn: null, nfl: null, analytics: null }, latest_runs: [] }), NOW);
   assert.equal(r.state, "stale");

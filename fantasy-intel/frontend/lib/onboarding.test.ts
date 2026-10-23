@@ -81,7 +81,11 @@ test("every connect failure has a clear title and a next action, and keeps the b
     [422, "Enter an ESPN league id or the league's URL.", "fix_input"],
     [429, "You have added too many leagues today. Try again tomorrow.", "retry_later"],
     [403, "Your ESPN account does not own a team in this league. Ask a member for an invite.", "invite"],
-    [403, "Sign-ups are not open yet.", "none"],
+    [403, "Sign-ups are not open yet.", "demo"],
+    [403, "Only a league admin can do that.", "manage"],
+    [409, "Another member's cookies already sync this league.", "invite"],
+    [409, "Syncing is paused for this league: its ESPN cookies stopped working or ESPN no longer has it.", "manage"],
+    [409, "A league needs at least one admin.", "manage"],
     [400, "ESPN did not accept these cookies for this league.", "cookies"],
     [409, "You already follow 25 leagues. Unpin one first.", "manage"],
     [409, "This league is public on ESPN: import it without cookies.", "fix_input"],
@@ -95,6 +99,12 @@ test("every connect failure has a clear title and a next action, and keeps the b
     assert.ok(p.title.length > 0);
   }
   assert.match(connectProblem(404, "Sleeper has no NFL league with that id.", "sleeper").hint ?? "", /sleeper\.com/);
+  // No failure is a dead end: every one names something to do next (#167).
+  for (const [status, message] of cases) assert.notEqual(connectProblem(status, message, "espn").next, "none", `${status} ${message}`);
+  // Sleeper switched off is not "could not be reached".
+  const off = connectProblem(503, "Sleeper leagues are temporarily unavailable.", "sleeper");
+  assert.equal(off.title, "Sleeper leagues are not available right now");
+  assert.doesNotMatch(off.title + (off.hint ?? ""), /reached/);
 });
 
 test("the first sync reads as three steps, and the dashboard opens only once the snapshot is ready", () => {

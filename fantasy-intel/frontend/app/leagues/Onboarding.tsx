@@ -156,7 +156,8 @@ export function SyncProgress({ league, note }: { league: MyLeague; note: "alread
         <p className={styles.plain}>Not in this league on ESPN yourself? Ask a member for an invite link from the league&apos;s settings.</p>
       ) : null}
       {p.ready ? null : (
-        <ProgressActions leagueId={league.id} polling={p.polling} canRetry={p.actions.includes("refresh")} />
+        <ProgressActions leagueId={league.id} polling={p.polling} canRetry={p.actions.includes("refresh")}
+                         pinned={league.pinned} member={league.role !== null} />
       )}
     </div>
   );

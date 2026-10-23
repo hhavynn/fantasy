@@ -123,6 +123,8 @@ function Problem({ state }: { state: AddState }) {
         <p className={styles.problemText}><Link href="/login?next=/leagues" prefetch={false}>Sign in</Link>, then try again.</p>
       ) : state.next === "manage" ? (
         <p className={styles.problemText}><a href="#your-leagues">Go to your leagues</a></p>
+      ) : state.next === "demo" ? (
+        <p className={styles.problemText}><Link href="/leagues/demo" prefetch={false}>Explore the demo league</Link></p>
       ) : state.next === "invite" ? (
         <p className={styles.problemText}>An invite link works once, for 7 days; open it while signed in and the league appears in your list.</p>
       ) : null}

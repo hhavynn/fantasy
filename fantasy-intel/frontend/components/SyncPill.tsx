@@ -7,12 +7,19 @@ import { SyncPopover } from "./SyncPopover";
 
 /** One health dot for every feed; the details (and Data quality) open from it. Rendered per request
  * (the root layout is force-dynamic), so the ages are as of this request. `degraded`: the status read came back
- * `stale` (lib/api.ts), the backend serving the league's previous files. */
-export function SyncPill({ status, provider = "espn", degraded = false }: { status: StatusPayload; provider?: Provider; degraded?: boolean }) {
-  const s = computeSyncSummary(status, undefined, provider, degraded);
+ * `stale` (lib/api.ts), the backend serving the league's previous files. `firstSync`: the status read answered the
+ * API's 409 "first sync in progress", so the league has no data yet and the backend is up (never "offline"). */
+export function SyncPill({ status, provider = "espn", degraded = false, firstSync = false }:
+  { status: StatusPayload; provider?: Provider; degraded?: boolean; firstSync?: boolean }) {
+  const s = computeSyncSummary(status, undefined, provider, degraded, firstSync);
   return (
     <SyncPopover state={s.state} text={s.text}>
-      {s.state === "offline" && isLocalRun() ? (
+      {s.firstSync ? (
+        <div className="sync-callout warn">
+          <b>This league is still syncing for the first time.</b> Its pages fill in once the first sync finishes.{" "}
+          <Link href="/leagues" prefetch={false}>See its progress</Link>
+        </div>
+      ) : s.state === "offline" && isLocalRun() ? (
         <div className="sync-callout bad">
           <b>Cannot reach the local API.</b> Start it from <code>fantasy-intel/backend</code>:
           <code className="block">uv run uvicorn app.main:app --reload</code>
