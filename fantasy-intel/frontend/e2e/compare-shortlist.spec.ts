@@ -58,8 +58,8 @@ test("four players for FLEX: best projected, N/A not zero, no sideways page scro
 test("the start pick is the viewer's, and any pair opens the full comparison with a way back", async ({ page }) => {
   await page.goto(FOUR);
   const players = page.getByRole("region", { name: "Players" });
-  await expect(players.getByRole("link", { name: "Mark as my start: Mike WR" })).toBeVisible({ timeout: 20_000 });
-  await press(players.getByRole("link", { name: "Mark as my start: Mike WR" }));
+  await expect(players.getByRole("link", { name: "Mark as my start for Mike WR" })).toBeVisible({ timeout: 20_000 });
+  await press(players.getByRole("link", { name: "Mark as my start for Mike WR" }));
   await expect(page).toHaveURL(/start=301/);
   await expect(page.getByText("Your pick, Mike WR, is projected 5.0 points below the best projected (ESPN).")).toBeVisible();
   // the headline still names who is best projected, never who to start
@@ -76,7 +76,7 @@ test("the start pick is the viewer's, and any pair opens the full comparison wit
 
 test("add a player from search and remove one", async ({ page }) => {
   await page.goto("/compare?ids=201");
-  await expect(page.getByRole("heading", { name: "One player is on the shortlist" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { level: 2, name: "Add another player" })).toBeVisible({ timeout: 20_000 });
   const box = page.getByRole("combobox", { name: /Add a player \(1 of 4\)/ });
   await box.fill("Uniform");
   await press(page.getByRole("option", { name: /Uniform TE/ }).first());

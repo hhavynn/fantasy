@@ -373,7 +373,7 @@ function PlayerRow({ p, i, r, state, teamName }: { p: ShortlistPlayer; i: number
               <span className={styles.pickTag}>Your start pick</span>
               <Link className="chip reset" href={shortlistHref({ ...state, start: null })}>Clear pick<VisuallyHidden> for {name}</VisuallyHidden></Link>
             </>
-          : <Link className="chip" href={shortlistHref({ ...state, start: id })}>Mark as my start<VisuallyHidden>: {name}</VisuallyHidden></Link>}
+          : <Link className="chip" href={shortlistHref({ ...state, start: id })}>Mark as my start<VisuallyHidden> for {name}</VisuallyHidden></Link>}
         <Link className="chip" href={shortlistHref({ ...state, ids: withoutPlayer(state.ids, id), start: picked ? null : state.start })}>
           Remove<VisuallyHidden> {name}</VisuallyHidden>
         </Link>
