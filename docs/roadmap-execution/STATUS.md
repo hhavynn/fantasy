@@ -34,7 +34,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #186 player news | 2 | RESEARCH MERGED | PR #247 → 2d2c1c4 | NO-GO headlines; GO "Availability events" from nflverse (D-11); implementation not started |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
-| #178 add/drop simulator | 3 | PR OPEN | PR #249 (f4ef8e2) | security clean except MEDIUM shared-optimizer cost (pre-existing `_best_flex`, widened by add-only path); Codex P2 fixed; merges after `fix/lineup-flex-solver` |
+| #178 add/drop simulator | 3 | PR OPEN | PR #249 (f4ef8e2) | security MEDIUM resolved by #252 (ea9e664); Codex P2 fixed; merging main next |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
@@ -107,7 +107,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 
 ## Active wave
 
-**Now (2026-10-23 02:50Z):** #248 and #250 merged. #251 = live docs-only CI demo. `fix/lineup-flex-solver` (shared optimizer: polynomial, identical assignments, goldens unchanged) in progress; #249 waits on it and conflicts with main in `app/waivers/page.tsx`.
+**Now (2026-10-23 03:10Z):** #248, #250, #251, #252 merged. #249 agent merging main (waivers/page.tsx conflict) + 422 test; then CI and merge. Next: #179/#180 (waivers), Phase 4 trades #182–#184.
 
 
 **Wave 1** (parallel, isolated worktrees under `.worktrees/`, all from `5315c96`):
@@ -134,6 +134,8 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #247 | c5cc957 | docs only (full CI ~10 min) | green | Codex P1 (ESPN events leak) fixed |
 | #250 | 90b8e5f | q a s + kdst e2e | green | security re-check RESOLVED; withLeague hash-drop fixed |
 | #248 | 8ce062a | ci_changes/agent_check 104 + actionlint | green, 6m30s | CI 9.5–12 min → 6.5–7.5 min; review HIGH (docs-only skipped credential scan) + MEDIUM (always()) fixed |
+| #251 | 3f83350 | docs only | green, 33 s (first live docs-only run) | release-review wording |
+| #252 | 69fd25d | quick + lineup suites (657) | green | shared `_best_flex` polynomial, oracle parity 0/100k; review approve; `LineupTooLargeError` → 422 app-wide |
 | #244 | 766044f | bye_planner 17 + a 546 + s 627 + fe + bye-planner e2e 6 | green | security review + re-check; Codex clean |
 | #245 | 2e267dc | fe 686 + player-tabs/ux-gates e2e + multileague 2 locally | green | D-10 correctness review, Codex stalled |
 | #246 | 625b7ca | test_agent_check 40 (real run_command timeout) | green | Codex P2 + D-10 review LOWs fixed |
