@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api", tags=["playoff race"])
 def playoff_race(team_id: int | None = None,
                  base: str = Query("projected", description="projected | actual"),
                  override: list[str] | None = Query(None, description="MATCHUP_ID:home|away|tie|none, repeatable")):
-    """Standings, all-play, projected remaining matchups and a deterministic scenario with overrides."""
+    """Standings, all-play, projected remaining matchups and a deterministic scenario with overrides. With at least one
+    override the answer adds a `whatif` block (inputs, assumptions, method, changes and gated record bounds)."""
     with db() as con:
         try:
             return build_playoff_race(load_race_data(con), team_id=team_id, base=base.lower(),

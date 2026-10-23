@@ -46,3 +46,14 @@
 
 .remaining { white-space: normal; min-width: 260px; }
 .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* What-if (issue #192). */
+.whatif { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.setList { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 13px; line-height: 19px; }
+.setLinks { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
+.padSide { padding: 0 16px; }
+.copy { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.copyStatus { color: var(--ink-muted); font-size: 12px; }
+@media (max-width: 720px) {
+  .setLinks a, .copy button { min-height: var(--tap); display: inline-flex; align-items: center; }
+}
