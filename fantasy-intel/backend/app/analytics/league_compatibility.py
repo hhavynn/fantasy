@@ -29,7 +29,7 @@ from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
 from .league_rules import HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED, build_league_rules
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, separable
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, is_flex, separable, slot_positions
 from .reserve_slots import is_reserved
 
 CONTRACT = "league-compatibility/v1"
@@ -139,7 +139,7 @@ def load_facts(con, lg: dict) -> dict:
                                  WHERE availability_status IN ('FREEAGENT', 'WAIVERS')"""):
         if r["espn_player_id"] not in rostered and r["espn_player_id"] in projected:
             fa_projected[r["position"]] = fa_projected.get(r["position"], 0) + 1
-    fillable = {*FIXED_SLOTS, *FLEX_ELIGIBILITY}
+    fillable = {*FIXED_SLOTS, *FLEX_SLOTS}
     return {
         "provider": provider, "week": week, "teams": len(teams),
         # starters the engines load (in the player data) who sit in a slot no engine fills (IDP, P, HC, ...)
@@ -157,7 +157,8 @@ def load_facts(con, lg: dict) -> dict:
 def _started_positions(slot_codes: set[str]) -> set[str]:
     out = {s for s in slot_codes if s in FIXED_SLOTS}
     for s in slot_codes:
-        out |= set(FLEX_ELIGIBILITY.get(s, ()))
+        if is_flex(s):
+            out |= set(slot_positions(s))
     return out
 
 

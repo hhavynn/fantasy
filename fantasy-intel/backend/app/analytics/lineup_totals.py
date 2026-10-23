@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total, separable, unsupported_of
+from .lineup import assign_lineup, is_flex, lineup_total, separable, slot_positions, unsupported_of
 from .team_lineups import STREAMER_IDS, lineup_relevant, stream_levels
 
 
@@ -30,21 +30,21 @@ class LineupTotals:
                  teams: dict[int, str | None], blocked: dict[int, frozenset] | None = None,
                  exact_negative: bool = False):
         self.slots = state.slots
-        fixed = [s for s in state.slots if s not in FLEX_ELIGIBILITY]
+        fixed = [s for s in state.slots if not is_flex(s)]
         self.fixed_groups = [(s, fixed.count(s)) for s in dict.fromkeys(fixed)]   # slot order (contiguous)
-        flex = [s for s in state.slots if s in FLEX_ELIGIBILITY]
+        flex = [s for s in state.slots if is_flex(s)]
         self.m = len(flex)
         runs = [s for i, s in enumerate(fixed) if i == 0 or fixed[i - 1] != s]
         # Nested flex types: every flex slot's eligible positions include the previous slot's (lineup_slots orders the
         # flex types narrowest first, so FLEX + OP is nested and RB/WR + WR/TE is not).
-        nested = len(set(flex)) > 1 and all(set(FLEX_ELIGIBILITY[a]) <= set(FLEX_ELIGIBILITY[b])
+        nested = len(set(flex)) > 1 and all(set(slot_positions(a)) <= set(slot_positions(b))
                                             for a, b in pairwise(flex))
         # Non-nested mixed flex types need the exact search; non-contiguous fixed slots would change the summation order.
         self.general = (len(set(flex)) > 1 and not nested) or len(runs) != len(self.fixed_groups)
-        self.nested = [tuple(FLEX_ELIGIBILITY[s]) for s in flex] if nested and not self.general else None
-        self.elig = set(FLEX_ELIGIBILITY[flex[0]]) if flex else set()
+        self.nested = [tuple(slot_positions(s)) for s in flex] if nested and not self.general else None
+        self.elig = set(slot_positions(flex[0])) if flex else set()
         if self.nested:
-            self.elig = set(FLEX_ELIGIBILITY[flex[-1]])          # the widest flex type takes every flex position
+            self.elig = set(slot_positions(flex[-1]))          # the widest flex type takes every flex position
         self.flex_only = [p for p in sorted(self.elig) if p not in dict(self.fixed_groups)]
         self.fixed_plan = [(pos, n, pos in self.elig) for pos, n in self.fixed_groups]
         self.pos = positions

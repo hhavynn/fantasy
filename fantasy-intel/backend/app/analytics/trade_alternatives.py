@@ -59,7 +59,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .lineup import FLEX_ELIGIBILITY
+from .lineup import is_flex, slot_positions
 from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, source_label, Window, _pareto, compare, lineup_relevant, project_team,
                            project_week, projection, r, slot_filled, starters)
 from .trade_discovery import _Totals
@@ -492,7 +492,7 @@ def statements(label: str, cmp: dict, alt: dict, waiver: dict | None, position_a
     # flex-eligible position's points move between its slots and FLEX, so only the whole-lineup gain
     # of its best available player is stated.
     by_slot = {s["slot"]: s for s in slots}
-    flexible = {pos for s in by_slot if s in FLEX_ELIGIBILITY for pos in FLEX_ELIGIBILITY[s]}
+    flexible = {pos for s in by_slot if is_flex(s) for pos in slot_positions(s)}
     for pa in position_alts:
         pos, pl = pa["position"], pa["player"]
         whole = pa["gain"]["ros_delta"]

@@ -48,7 +48,7 @@ from ..espn.constants import ESPN_TO_NFLVERSE_TEAM, IR_SLOT
 from . import production_forecasts as pf
 from . import projection_source as ps
 from .legacy_league import latest_league
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
+from .lineup import FIXED_SLOTS, assign_lineup, eligible, lineup_slots, slot_positions
 from .playoff_race import period_weeks
 from .weekly_recap import NotFound, NotSynced, completed_periods, resolve_week
 
@@ -278,12 +278,12 @@ def outcome(data: FeedbackData, week: int, pid: int) -> float | None:
 def covered_slots(data: FeedbackData) -> list[str]:
     """The league's starting slots every eligible position of which the source forecasts."""
     covered = set(COVERED_POSITIONS[data.source])
-    return [s for s in lineup_slots(data.roster_slots) if set(FLEX_ELIGIBILITY.get(s, (s,))) <= covered]
+    return [s for s in lineup_slots(data.roster_slots) if set(slot_positions(s)) <= covered]
 
 
 def decision_positions(slots: list[str]) -> set[str]:
     """Positions that can fill at least one of `slots` (a kicker in a league without a K slot is no decision)."""
-    return {p for s in slots for p in FLEX_ELIGIBILITY.get(s, (s,))}
+    return {p for s in slots for p in slot_positions(s)}
 
 
 # ---------------------------------------------------------------------------------------------- one week

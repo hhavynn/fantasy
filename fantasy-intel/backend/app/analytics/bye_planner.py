@@ -18,7 +18,7 @@ Players in an IR or taxi slot are never coverage (analytics/reserve_slots.py), a
 not on the roster today.
 
 Coverage is a maximum bipartite matching of players to the league's starting slot instances, with the eligibility the
-lineup engine uses (analytics/lineup.eligible / FLEX_ELIGIBILITY), found by augmenting paths in two phases:
+lineup engine uses (analytics/lineup.eligible), found by augmenting paths in two phases:
 
   1. a maximum matching that uses only players who certainly can play (every free slot, in lineup order, gets one
      augmenting-path search: a free slot with no augmenting path never gains one later, so one pass is maximum);
@@ -46,7 +46,7 @@ from dataclasses import replace
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT, NON_STARTER_SLOTS
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible, lineup_slots
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, eligible, lineup_slots, slot_positions
 from .player_availability import (
     ELIGIBLE_UNCONFIRMED,
     INELIGIBLE,
@@ -236,10 +236,6 @@ def week_coverage(slots: list[str], players: list[RosterPlayer], states: dict[in
             for s, pid in zip(slots, matched)]
 
 
-def slot_positions(slot: str) -> tuple[str, ...]:
-    return FLEX_ELIGIBILITY.get(slot, (slot,))
-
-
 def plan_week(week: int, slots: list[str], unresolved: list[dict], players: list[RosterPlayer],
               states: dict[int, dict], starters: set[int], *, phase: str | None = None,
               matchup_period: int | None = None, slots_known: bool = True, cache: dict | None = None) -> dict:
@@ -312,13 +308,13 @@ def starting_slots(roster_slots) -> tuple[list[str], list[dict], bool]:
             continue
         if n > 0:
             counts[str(k)] = n
-    known = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | NON_STARTING
+    known = set(FIXED_SLOTS) | set(FLEX_SLOTS) | NON_STARTING
     unresolved = [{"slot": k or "?", "count": n, "reason": "No lineup engine fills this slot, so its eligible players "
                                                            "are not established here."}
                   for k, n in sorted(counts.items()) if k not in known]
     # Capped before expanding (a provider can store any count): slots in lineup order up to MAX_STARTING_SLOTS.
     room, capped = MAX_STARTING_SLOTS, {}
-    for label in (*FIXED_SLOTS, *sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k]))):
+    for label in (*FIXED_SLOTS, *FLEX_SLOTS):
         n = counts.get(label, 0)
         capped[label] = min(n, room)
         room -= capped[label]

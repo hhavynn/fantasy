@@ -30,7 +30,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible, unsupported_of
+from .lineup import FIXED_SLOTS, eligible, is_flex, unsupported_of
 from .team_lineups import (
     IR_HOLD_NOTE,
     STREAM_NOTE,
@@ -203,7 +203,7 @@ def depth(before: list[RosterPlayer], after: list[RosterPlayer] | None, slots: l
         mine = sorted((p for p in players if p.position == pos), key=lambda p: (p.reserved, p.name or "", p.espn_player_id))
         return {"active": sum(1 for p in mine if not p.reserved), "reserved": sum(1 for p in mine if p.reserved),
                 "players": [{"espn_player_id": p.espn_player_id, "name": p.name, "reserved": p.reserved} for p in mine]}
-    flex = Counter(s for s in slots if s in FLEX_ELIGIBILITY)
+    flex = Counter(s for s in slots if is_flex(s))
     out = []
     for pos in positions:
         b = side(before, pos)

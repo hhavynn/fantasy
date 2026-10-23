@@ -146,7 +146,7 @@ _ESPN_OTHER = {"P": ("starter", ("P",), "Punter"), "HC": ("starter", ("HC",), "H
                # NON_STARTER_SLOTS), as does the provider adapter, so it is a bench slot here too (issue #253 G12)
                BLANK_SLOT_LABEL: ("bench", (), "Unlabelled bench slot")}
 FIXED = ("QB", "RB", "WR", "TE", "K", "D/ST")          # app/analytics/lineup.FIXED_SLOTS
-FLEX = ("RB/WR", "WR/TE", "FLEX", "OP")                # app/analytics/lineup.FLEX_ELIGIBILITY
+FLEX = ("RB/WR", "WR/TE", "FLEX", "OP")                # app/analytics/lineup.FLEX_SLOTS
 _ORDER = ("QB", "RB", "WR", "TE", "RB/WR", "WR/TE", "FLEX", "OP", "K", "D/ST", "DT", "DE", "DL", "LB", "CB", "S", "DB",
           "DP", "P", "HC")
 _TAIL = ("BE", "IR", "TAXI")
