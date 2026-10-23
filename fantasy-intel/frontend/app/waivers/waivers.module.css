@@ -82,12 +82,6 @@
 .save:disabled { opacity: .6; cursor: default; }
 .save:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .who .save { margin-top: 8px; }
-.shortlist { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); }
-.shortlist h2 { margin: 0 0 8px; font-size: 1rem; }
-.shortlistRows { list-style: none; padding: 0; margin: 12px 0 0; }
-.shortlistRows li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
-.shortlistRows li > div { min-width: 0; overflow-wrap: anywhere; }
-.shortlistRows .save { flex-shrink: 0; }
 
 /* Claim card actions: save to the shortlist, or load the move in the add/drop simulator. */
 .claimButtons { display: flex; flex-wrap: wrap; gap: 8px; }

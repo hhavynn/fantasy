@@ -7,7 +7,9 @@ on the trade analyzer's league state and lineup simulation). League-scoped throu
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -42,46 +44,73 @@ def get_add_drop(
     acquisition rules. Read-only: nothing is stored, claimed or sent anywhere."""
     if add is not None and add == drop:
         raise HTTPException(422, "The same player cannot be both added and dropped.")
-    with db() as con:
-        lg = latest_league(con)
-        if not lg:
-            raise HTTPException(503, "League not synced yet. Run scripts/sync_espn.py.")
-        perspective = resolve_team(con, lg, team_id)          # 404 for a team outside this league
-        ids = [x for x in (add, drop) if x is not None]
-        directory = {r["espn_player_id"]: r for r in fetch_dicts(
-            con, f"""SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status
-                     FROM fantasy_players WHERE espn_player_id IN ({", ".join("?" for _ in ids)})""", ids)} if ids else {}
+
+    def known(directory: dict) -> None:
         for role, pid in (("add", add), ("drop", drop)):
             if pid is not None and pid not in directory:
                 raise HTTPException(422, f"The {role} player ({pid}) is not in this league's player data.")
-        now = datetime.now(timezone.utc)
-        state = load_league_state(con, now=now)
-        if state is None:
-            raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
-        state = with_streaming(state)            # as the trade analyzer: K and D/ST valued against weekly streaming
-        rules = build_league_rules(lg)
-        provider = _PROVIDERS.get(rules["source"]["provider"], "ESPN")
-        window = state.window()
-        games, covered = load_schedule(con, state.season, list(window.weeks))
-        tid = perspective["team_id"] if perspective else None
-        team_row = (fetch_dicts(con, "SELECT * FROM fantasy_teams WHERE league_id = ? AND season = ? AND team_id = ?",
-                                [lg["league_id"], lg["season"], tid]) or [{}])[0] if tid is not None else {}
-        teams = sorted({p.pro_team for p in ([q for ps in state.rosters.values() for q in ps] + state.free_agents)
-                        if p.espn_player_id in set(ids)}, key=str)
-        locks = detect_player_locks(con, state.season, int(lg["current_week"]), teams, now) if teams else {}
-        ctx = AddDropContext(provider=provider, team_row=team_row, rules=waiver_rules(lg), waivers=rules["waivers"],
-                             directory=directory, locks=locks, lock_week=int(lg["current_week"]), games=games,
-                             covered=covered, evaluated_at=now.isoformat())
+
+    with db() as con:
+        sim = load_simulation(con, team_id, [x for x in (add, drop) if x is not None], known)
         try:
-            out = evaluate_add_drop(state, tid, add, drop, ctx)
+            out = evaluate_add_drop(sim.state, sim.team_id, add, drop, sim.ctx)
         except AddDropError as err:
             raise HTTPException(422, str(err))
         except LookupError as err:
             raise HTTPException(404, str(err))
-        out["league"] = {k: lg.get(k) for k in ("league_id", "season", "name", "current_week", "final_scoring_period")}
-        out["perspective"] = perspective
-        out["provenance"] = _provenance(con, lg, state, tid)
+        return sim.finish(con, out)
+
+
+@dataclass
+class Simulation:
+    """What one add/drop or claim-plan request evaluates against: the league row, the team, the trade analyzer's
+    league state (with K and D/ST streaming) and the simulator's context for the requested players."""
+    lg: dict
+    perspective: dict | None
+    team_id: int | None
+    state: Any
+    ctx: AddDropContext
+
+    def finish(self, con, out: dict) -> dict:
+        out["league"] = {k: self.lg.get(k) for k in ("league_id", "season", "name", "current_week", "final_scoring_period")}
+        out["perspective"] = self.perspective
+        out["provenance"] = _provenance(con, self.lg, self.state, self.team_id)
         return out
+
+
+def load_simulation(con, team_id: int | None, ids: list[int], check: Callable[[dict], None] | None = None) -> Simulation:
+    """Load everything the add/drop simulator reads for `team_id` (None: the owner's team) and the requested player
+    ids. `check` sees the requested players' directory before the league state is loaded (to refuse unknown ids)."""
+    lg = latest_league(con)
+    if not lg:
+        raise HTTPException(503, "League not synced yet. Run scripts/sync_espn.py.")
+    perspective = resolve_team(con, lg, team_id)          # 404 for a team outside this league
+    ids = sorted(set(ids))
+    directory = {r["espn_player_id"]: r for r in fetch_dicts(
+        con, f"""SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status
+                 FROM fantasy_players WHERE espn_player_id IN ({", ".join("?" for _ in ids)})""", ids)} if ids else {}
+    if check is not None:
+        check(directory)
+    now = datetime.now(timezone.utc)
+    state = load_league_state(con, now=now)
+    if state is None:
+        raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+    state = with_streaming(state)            # as the trade analyzer: K and D/ST valued against weekly streaming
+    rules = build_league_rules(lg)
+    provider = _PROVIDERS.get(rules["source"]["provider"], "ESPN")
+    window = state.window()
+    games, covered = load_schedule(con, state.season, list(window.weeks))
+    tid = perspective["team_id"] if perspective else None
+    team_row = (fetch_dicts(con, "SELECT * FROM fantasy_teams WHERE league_id = ? AND season = ? AND team_id = ?",
+                            [lg["league_id"], lg["season"], tid]) or [{}])[0] if tid is not None else {}
+    wanted = set(ids)
+    teams = sorted({p.pro_team for p in ([q for ps in state.rosters.values() for q in ps] + state.free_agents)
+                    if p.espn_player_id in wanted}, key=str)
+    locks = detect_player_locks(con, state.season, int(lg["current_week"]), teams, now) if teams else {}
+    ctx = AddDropContext(provider=provider, team_row=team_row, rules=waiver_rules(lg), waivers=rules["waivers"],
+                         directory=directory, locks=locks, lock_week=int(lg["current_week"]), games=games,
+                         covered=covered, evaluated_at=now.isoformat())
+    return Simulation(lg, perspective, tid, state, ctx)
 
 
 def _provenance(con, lg: dict, state, team_id: int | None) -> dict:

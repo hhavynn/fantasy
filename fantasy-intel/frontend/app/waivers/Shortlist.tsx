@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
-import { withLeague } from "@/lib/league-scope";
 import { readShortlist, shortlistKey, toggleShortlist, writeShortlist } from "@/lib/waiver-shortlist";
 import styles from "./waivers.module.css";
 
@@ -49,6 +47,11 @@ function createStore(leagueId: string | null) {
 type Value = Snapshot & { leagueId: string | null; toggle: (id: number) => void };
 const ShortlistContext = createContext<Value | null>(null);
 
+/** The shortlist of the mounted league boundary, or null outside a ShortlistProvider. */
+export function useShortlist(): Value | null {
+  return useContext(ShortlistContext);
+}
+
 /** Parent keys this provider by canonical server league ID, resetting state on every scope transition. */
 export function ShortlistProvider({ leagueId, children }: { leagueId: string | null; children: ReactNode }) {
   const [store] = useState(() => createStore(leagueId));
@@ -66,42 +69,5 @@ export function SavePlayer({ id, name }: { id: number; name: string }) {
       data-player-id={id} onClick={() => value.toggle(id)}>
       {saved ? "Remove" : "Save"}
     </button>
-  );
-}
-
-export type ShortlistPlayer = { id: number; name: string; position: string; team: string | null };
-
-export function WaiverShortlist({ players }: { players: ShortlistPlayer[] }) {
-  const value = useContext(ShortlistContext);
-  if (!value) return null;
-  const loaded = new Map(players.map((player) => [player.id, player]));
-  return (
-    <section className={styles.shortlist} aria-label="Waiver shortlist">
-      <h2>Shortlist <span className={styles.count}>{value.ids.length}</span></h2>
-      <p className="sub">Saved on this device for this league. Not synced between devices.</p>
-      {!shortlistKey(value.leagueId)
-        ? <p>Open a league to save waiver candidates.</p>
-        : !value.ready ? <p role="status">Loading saved players…</p>
-          : <>
-            {!value.available && <p role="status">Browser storage is unavailable. Changes last for this visit only.</p>}
-            {value.ids.length === 0
-              ? <p>No saved players yet. Use Save beside a waiver player to compare them here later.</p>
-              : <ul className={styles.shortlistRows}>
-                {value.ids.map((id) => {
-                  const player = loaded.get(id);
-                  const name = player?.name ?? `Player #${id}`;
-                  return <li key={id}>
-                    <div>
-                      <Link href={withLeague(`/players?id=${id}`, value.leagueId)}>{name}</Link>
-                      <span className="sub">{player
-                        ? ` ${player.position}${player.team ? ` · ${player.team}` : ""}`
-                        : " · Current data not loaded. This player may be outside the current filters or evaluated pool."}</span>
-                    </div>
-                    <SavePlayer id={id} name={name} />
-                  </li>;
-                })}
-              </ul>}
-          </>}
-    </section>
   );
 }
