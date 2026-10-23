@@ -319,3 +319,52 @@ The original review notes behind STATUS's "L2" and "D1-D3" were not recorded. Ph
   section 6 item 4); #260 widened it.
 - **D3**: stale anchors: the header's base commit and "this PR" wording, and line references into code changed since
   (`league_rules.py:737-742`, `:752-761`, `team_lineups.py:48-51`), now function names.
+
+---
+
+## 8. Phase 3 (section 7.6 items 1, 2, 6 and 7)
+
+### 8.1 Trade labels (item 1)
+
+`trades.evaluate_trade`, `trade_alternatives.analyze` and `trade_scenarios.compare_scenarios` pass the state's
+projections to `team_lineups.source_label`, like the other team_lineups tools. A state with no projected number is named
+"Unavailable" (on the M3 Sleeper fixture, evaluation and trade vs. free agency said "Ours"). On the frontend,
+`labels.projectionName` returns "Unavailable" for that label, and `labels.projectionWord` drops the name before a noun,
+so the trade pages, ScenarioComparison, TradeVsFreeAgency and `trade-format.resultText` read "no projection" and
+"projected weeks", never "no Unavailable projection" or "no ESPN projection" over numbers ESPN did not supply. Test:
+`test_trade_tools_never_name_ours_over_a_state_without_numbers`.
+
+Trade discovery (`trade_practical.projection_source_for`, `trade_dual_value`) names the source it used from the league's
+switch (`used: espn | independent`), not from the values. On a state without numbers it lists no trade, so nothing is
+labelled with a number it did not supply; the meta line still names the switch's source. Not changed here.
+
+### 8.2 S3 readers (item 2)
+
+- **Waiver fallback percentile** (`waivers.load_values`): a player valued from recent league points whose recent weeks
+  include a `box_score` row gets the basis `box_score_points` ("recent league-points percentile, including weeks
+  Fantasy Intel scored from the NFL box score") and `recent_box_score_weeks`. ESPN rows (NULL source) and rows Sleeper
+  scored keep `espn_points`. An older file without `actual_source` reads as before. Test:
+  `test_the_waiver_fallback_names_box_score_weeks`.
+- **Player usage `league_points`** and the **player page**: the usage table keeps its shape (no schema change). The
+  page marks a box-score week from the player route's per-row `actual_source` (sent only when a player's rows mix
+  sources, section 7.3): a † on the game log's league-points cell (usage rows and the league log), a data note naming the
+  weeks, and the weeks named under the points chart (`lib/player-tabs.boxScoreWeeks`, node test).
+
+### 8.3 Start/Sit counts (item 6)
+
+`projection_source.weekly` counts an ESPN-origin player with no ESPN number under `counts.unavailable`, never under
+`counts.espn`. The key is present only when such a player exists, so every response whose shown players all have a
+number keeps its shape; the counts still sum to the number of origins. Test:
+`test_an_espn_origin_player_without_a_number_is_counted_unavailable_not_espn`.
+
+### 8.4 ESPN leagues with no ESPN number (item 7)
+
+`team_lineups.source_label` names "Unavailable" for an ESPN state that holds no ESPN number at all, as it already did
+for an Ours state. The label is per response (the tool's whole window): a response with ESPN numbers in some weeks is
+still ESPN's, and its missing weeks stay unknown per row. No golden moved: no recorded ESPN golden comes from a state
+without a single ESPN number, so the reviewed golden update section 7.6 expected was not needed.
+
+### 8.5 Remaining after phase 3
+
+Section 7.6 items 3 (S2 basis: waiver values in league points), 4 (re-score backtest) and 5 (modelling choices), and
+section 8.1's discovery meta line.
