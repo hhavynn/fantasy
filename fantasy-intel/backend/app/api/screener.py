@@ -12,14 +12,24 @@ from the per-league response cache (league, versions, visibility epoch, perspect
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 from fastapi import APIRouter, HTTPException, Query
 
-from ..analytics.screener import CONTRACT, ScreenerError, build_screen, limits, presets, registry, validate
+from ..analytics.screener import (
+    CONTRACT,
+    ScreenerError,
+    build_screen,
+    limits,
+    presets,
+    registry,
+    validate,
+)
 from .deps import db
 
 router = APIRouter(prefix="/api/screener", tags=["screener"])
 
-_SHORT = dict(max_length=8)
+_SHORT = MappingProxyType({"max_length": 8})     # short scalar params; immutable like every module table
 
 
 @router.get("")
