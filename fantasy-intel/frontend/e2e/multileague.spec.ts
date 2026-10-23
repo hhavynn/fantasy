@@ -115,6 +115,32 @@ test("a link across the league boundary re-renders the header, both ways", async
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
 
+// Player profile tabs (#187): a deep-linked tab, a tab switch and a week window all stay under /l/<lg>/, and the
+// profile's Save writes only that league's device-local shortlist.
+test("a player profile tab keeps its league, and Save writes only that league's shortlist", async ({ page }) => {
+  const { espn_public: a, sleeper: b } = manifest().leagues;
+  const errors = collectErrors(page);
+  await page.goto(`/l/${a}/players?id=209&tab=usage`, { waitUntil: "load" });
+  const tabs = page.getByRole("tablist", { name: /profile$/ });
+  await expect(tabs.getByRole("tab", { name: "Usage", exact: true })).toHaveAttribute("aria-selected", "true");
+  await tabs.getByRole("tab", { name: "Game log", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=209&tab=game-log$`));
+  await page.getByRole("group", { name: "Weeks shown" }).getByRole("link", { name: "Last 3 weeks" }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=209&tab=game-log&weeks=3$`));
+  const save = page.locator("main").getByRole("button", { name: /^Save .* to shortlist$/ });
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.locator("main").getByRole("button", { name: /^Remove .* from shortlist$/ })).toHaveAttribute("aria-pressed", "true");
+  const stored = await page.evaluate(([ka, kb]) => [localStorage.getItem(ka), localStorage.getItem(kb)],
+    [`fi:waiver-shortlist:v1:${a}`, `fi:waiver-shortlist:v1:${b}`]);
+  expect(stored).toEqual(["[209]", null]);
+  // A rostered player has nothing to save for.
+  await page.goto(`/l/${a}/players?id=201`, { waitUntil: "load" });
+  await expect(page.getByRole("tablist", { name: /profile$/ }).getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("main").getByRole("button", { name: /shortlist$/ })).toHaveCount(0);
+  expect(errors, "console errors").toEqual([]);
+});
+
 // Shortlist uses the real scoped page/API and browser storage; no mocked waiver responses.
 for (const width of [1440, 375]) {
   test(`shortlist save reload remove and league isolation at ${width}px`, async ({ page }) => {

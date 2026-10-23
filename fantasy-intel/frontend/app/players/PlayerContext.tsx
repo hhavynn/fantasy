@@ -107,7 +107,7 @@ export function ScheduleLink({ id }: { id: number }) {
   return (
     <p className={styles.note}>
       <Link href={`/schedule-intelligence?player=${id}`}>Schedule intelligence</Link>: remaining opponents
-      and what each defense has observed allowing (descriptive; separate from the projection above).
+      and what each defense has observed allowing (descriptive; separate from the projection in Outlook).
     </p>
   );
 }

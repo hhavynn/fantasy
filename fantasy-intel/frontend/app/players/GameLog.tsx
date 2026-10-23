@@ -3,6 +3,7 @@ import { providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { EmptyState, Method, Section, Tabs } from "@/components/ui";
 import { int, num, pct } from "@/lib/format";
+import { inRange, type WeekRange } from "@/lib/player-tabs";
 import { FTN_READ1_NOTE } from "@/lib/types";
 import type { UsageWeek } from "@/lib/types";
 import styles from "./players.module.css";
@@ -61,11 +62,16 @@ function columns(pos: string | null, provider = "ESPN"): Col[] {
   return all.filter((c) => !c.when || c.when(pos));
 }
 
-/** Week-by-week table. `all` shows every column; the default shows the core set. */
-export function GameLog({ d, all, id, profile = ESPN_PROFILE }: { d: Detail; all: boolean; id: string; profile?: LeagueProfile }) {
+/**
+ * Week-by-week table. `all` shows every column; the default shows the core set. `colsHref` links the two column sets
+ * (relative hrefs that keep the rest of the profile URL); `range` narrows the rows to a week window.
+ */
+export function GameLog({ d, all, colsHref, range = null, profile = ESPN_PROFILE }: {
+  d: Detail; all: boolean; colsHref: { core: string; all: string }; range?: WeekRange | null; profile?: LeagueProfile;
+}) {
   const provider = providerName(profile.provider);
   const pos = d.player.position;
-  const weeks = d.weekly;
+  const weeks = d.weekly.filter((w) => inRange(w.week, range));
   const route = d.route_data;
 
   const notes = (
@@ -84,18 +90,27 @@ export function GameLog({ d, all, id, profile = ESPN_PROFILE }: { d: Detail; all
     </Method>
   );
 
-  if (weeks.length === 0) return <LeagueLog d={d} notes={notes} provider={provider} espnProjections={profile.providerProjections} />;
+  if (d.weekly.length === 0) return <LeagueLog d={d} notes={notes} provider={provider} espnProjections={profile.providerProjections} range={range} />;
+  if (weeks.length === 0) {
+    return (
+      <Section title="Game log">
+        <EmptyState title="No games recorded in these weeks">
+          No NFL usage is stored for weeks {range?.from}–{range?.to}. A week without a record is unknown, not zero; widen the window to see earlier games.
+        </EmptyState>
+        <div className={styles.logNotesBare}>{notes}</div>
+      </Section>
+    );
+  }
 
   const cols = columns(pos, provider).filter((c) => all || c.tier === "core");
-  const base = `?id=${encodeURIComponent(id)}`;
   return (
     <Section
       title="Game log"
       actions={
         <Tabs
           label="Game log columns"
-          current={all ? `${base}&cols=all` : base}
-          items={[{ href: base, label: "Core columns" }, { href: `${base}&cols=all`, label: "All columns" }]}
+          current={all ? colsHref.all : colsHref.core}
+          items={[{ href: colsHref.core, label: "Core columns" }, { href: colsHref.all, label: "All columns" }]}
         />
       }
       flush
@@ -125,13 +140,21 @@ export function GameLog({ d, all, id, profile = ESPN_PROFILE }: { d: Detail; all
 
 /** Kickers, defenses and unmatched players have no NFL usage rows: show what ESPN scored and projected (a Sleeper league:
  * what Sleeper scored; it publishes no projections). */
-function LeagueLog({ d, notes, provider, espnProjections }: { d: Detail; notes: ReactNode; provider: string; espnProjections: boolean }) {
+function LeagueLog({ d, notes, provider, espnProjections, range }: {
+  d: Detail; notes: ReactNode; provider: string; espnProjections: boolean; range: WeekRange | null;
+}) {
   const asOf = d.forward_projection?.summary.as_of_week ?? null;
-  const rows = d.league_points.filter((r) => r.actual_points !== null || (asOf !== null && r.scoring_period === asOf));
+  const rows = d.league_points
+    .filter((r) => r.actual_points !== null || (asOf !== null && r.scoring_period === asOf))
+    .filter((r) => inRange(r.scoring_period, range));
   if (rows.length === 0) {
     return (
       <Section title="Game log">
-        <EmptyState title="No games recorded">No NFL games or {provider} weekly points are stored for this player this season.</EmptyState>
+        <EmptyState title="No games recorded">
+          {range
+            ? `No ${provider} weekly points are stored for weeks ${range.from}–${range.to}.`
+            : `No NFL games or ${provider} weekly points are stored for this player this season.`}
+        </EmptyState>
         <div className={styles.logNotesBare}>{notes}</div>
       </Section>
     );
