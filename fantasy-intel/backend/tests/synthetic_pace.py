@@ -8,6 +8,7 @@ season LV is listed as OAK in every source."""
 
 from __future__ import annotations
 
+import pyarrow as pa
 from synthetic_nfl import TEAMS, rounds
 
 from app.db.connection import table_columns, table_exists
@@ -62,6 +63,15 @@ def team_row(season: int, week: int, team: str, opp: str, pf: int, pa: int, ot: 
             "proe_plays": plays}
 
 
+def _bulk_insert(con, table: str, rows: list[dict]) -> None:
+    cols = list(rows[0])
+    con.register("_pace_rows", pa.table({c: [r[c] for r in rows] for c in cols}))
+    try:
+        con.execute(f"INSERT INTO {table} ({', '.join(cols)}) SELECT {', '.join(cols)} FROM _pace_rows")
+    finally:
+        con.unregister("_pace_rows")
+
+
 def write(con, seasons: tuple[int, ...] = (2024, 2025)) -> dict:
     """Writes the seasons' rows; any other season's rows are left alone."""
     first = seasons[0]
@@ -74,28 +84,26 @@ def write(con, seasons: tuple[int, ...] = (2024, 2025)) -> dict:
     lo, hi = seasons[0], seasons[-1]
     for t in ("nfl_schedules", "nfl_team_week", "nfl_team_game_drives"):
         con.execute(f"DELETE FROM {t} WHERE season BETWEEN ? AND ?", [lo, hi])
-    n_tw = 0
+    sched, tw, drv = [], [], []
     for g in games(seasons):
         s, w = g["season"], g["week"]
         row = {"season": s, "week": w, "game_type": "REG", "game_id": g["game_id"],
                "gameday": f"{s}-09-{min(w, 28):02d}", "gametime": "13:00",
                "home_team": _listed(g["home"], s, first), "away_team": _listed(g["away"], s, first),
                "home_score": g["hs"], "away_score": g["as"], "overtime": int(g["ot"])}
-        row = {k: v for k, v in row.items() if k in sched_cols}
-        con.execute(f"INSERT INTO nfl_schedules ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
-                    list(row.values()))
+        sched.append({k: v for k, v in row.items() if k in sched_cols})
         for team, opp, pf, pa, home in ((g["home"], g["away"], g["hs"], g["as"], True),
                                         (g["away"], g["home"], g["as"], g["hs"], False)):
             if (w, team) == MISSING:
                 continue
             r = team_row(s, w, team, opp, pf, pa, g["ot"])
             r["team"], r["opponent"] = _listed(team, s, first), _listed(opp, s, first)
-            r = {k: v for k, v in r.items() if k in tw_cols}
-            con.execute(f"INSERT INTO nfl_team_week ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})",
-                        list(r.values()))
-            n_tw += 1
+            tw.append({k: v for k, v in r.items() if k in tw_cols})
             drives = 11 + (w + TEAMS.index(team)) % 3 + (2 if g["ot"] else 0)
-            con.execute("INSERT INTO nfl_team_game_drives (season, week, game_id, team, opponent, is_home, drives, "
-                        "plays, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [s, w, g["game_id"], r["team"], r["opponent"], home, drives, r["offense_plays"], float(pf)])
+            drv.append([s, w, g["game_id"], r["team"], r["opponent"], home, drives, r["offense_plays"], float(pf)])
+    drive_cols = ["season", "week", "game_id", "team", "opponent", "is_home", "drives", "plays", "points"]
+    for table, rows in (("nfl_schedules", sched), ("nfl_team_week", tw),
+                        ("nfl_team_game_drives", [dict(zip(drive_cols, r)) for r in drv])):
+        _bulk_insert(con, table, rows)
+    n_tw = len(tw)
     return {"team_weeks": n_tw, "seasons": list(seasons)}

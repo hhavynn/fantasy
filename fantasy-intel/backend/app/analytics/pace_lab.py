@@ -605,7 +605,9 @@ def build_pace_lab(con, q: PaceQuery) -> dict:
     first = max(seasons[0], season - span + 1)
     games, source = load_games(con, first, season)
     weeks = sorted({g.week for g in games if g.season == season and g.counted})
-    through = q.through_week if q.through_week is not None else (weeks[-1] if weeks else None)
+    # The default cut-off is the newest week with any stored row, so a later missing or not-final game is reported.
+    last_week = max((g.week for g in games if g.season == season), default=None)
+    through = q.through_week if q.through_week is not None else last_week
     ref = [g for g in games if g.season < season or through is None or g.week <= through]
     teams = sorted({g.team for g in ref if g.counted})
     team, opp = canon(q.team), canon(q.opponent)
