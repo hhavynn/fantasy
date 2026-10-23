@@ -12,7 +12,8 @@ const manifest = (): Manifest =>
   JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../data/e2e-multileague/manifest.json"), "utf8"));
 
 // Owner-only research pages need a platform admin: for these visitors they answer "not found", checked separately.
-const OWNER_ONLY = new Set(["/research", "/projection-performance"]);
+// Owner research pages (the API answers platform admins only): from the nav entries themselves, so a new one is covered.
+const OWNER_ONLY = new Set(ALL_NAV_PAGES.filter((p) => p.ownerOnly).map((p) => p.href));
 const PAGES = [...ALL_NAV_PAGES.map((p) => p.href).filter((h) => !OWNER_ONLY.has(h)), "/managers/2", "/players?id=201"];
 const FAILURE_TEXT = /Can't reach the backend|The backend returned an error|database schema is out of date|Something went wrong|This page couldn't be rendered|League not found/;
 const PIXEL_PNG = Buffer.from(
@@ -76,6 +77,9 @@ test("owner-only research pages are not shown to a member who is not a platform 
   await page.goto(`/l/${lg}/rankings`, { waitUntil: "load" });         // the Players group, where both live
   await expect(page.getByRole("link", { name: "Research lab" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Game splits" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Pace lab" })).toHaveCount(0);
+  expect([...OWNER_ONLY].sort()).toEqual(["/pace-lab", "/projection-performance", "/research", "/research/splits"]);
 });
 
 test("the terms, the privacy policy and account settings render, unscoped, for visitors and members", async ({ page, context }) => {

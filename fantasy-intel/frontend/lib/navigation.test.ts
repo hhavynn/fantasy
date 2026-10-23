@@ -107,11 +107,16 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
   assert.deepEqual(clusters.map((c) => c.title), [null, "Research"]);
   assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare"]);
   assert.deepEqual(clusters[1].pages.map((p) => p.href).sort(),
-    ["/movers", "/projection-performance", "/rankings/compare", "/research", "/schedule-intelligence", "/schedule-intelligence/sos"].sort());
+    ["/movers", "/pace-lab", "/projection-performance", "/rankings/compare", "/research", "/research/splits", "/schedule-intelligence",
+      "/schedule-intelligence/sos"].sort());
   assert.equal(getActiveRoute("/rankings/compare").activeHref, "/rankings/compare");
   assert.equal(getActiveRoute("/rankings").activeHref, "/rankings");
   assert.equal(group("/schedule-intelligence"), "Players");
   assert.equal(getActiveRoute("/research/wr").activeHref, "/research");
+  // Game splits and the pace lab have their own entries; a position page still activates the lab overview.
+  assert.equal(getActiveRoute("/research/splits").activeHref, "/research/splits");
+  assert.equal(getActiveRoute("/pace-lab").activeHref, "/pace-lab");
+  assert.equal(group("/pace-lab"), "Players");
 });
 
 test("groups without a labelled cluster are one cluster", () => {
@@ -209,7 +214,7 @@ test("the availability timeline follows injury impact and marks itself, not Inju
 test("owner research pages are hidden only when asked, and nothing else is", () => {
   const all = ALL_NAV_PAGES.map((p) => p.href);
   const shown = visibleGroups(true).flatMap((g) => g.pages.map((p) => p.href));
-  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/projection-performance", "/research"]);
+  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/pace-lab", "/projection-performance", "/research", "/research/splits"]);
   assert.equal(visibleGroups(false), NAV_GROUPS);
 });
 
