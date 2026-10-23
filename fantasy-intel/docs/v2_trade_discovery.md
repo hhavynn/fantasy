@@ -210,8 +210,8 @@ Measured on the 4-core container (one request, fresh process, before = f805d5e; 
 
 | request | before | after | after, budget off |
 |---|---|---|---|
-| FX-17, discover, team 1 | 465.8 / 469.6 s | 12.6 s | 22.2 s (response identical to before) |
-| FX-17, discover, team 2 | 285.2 s | 10.2 s | 14.7 s (identical) |
+| FX-17, discover, team 1 | 465.8 / 469.6 s | 12.6 s | 21.0 s (response identical to before) |
+| FX-17, discover, team 2 | 285.2 s | 10.2 s | 13.8 s (identical) |
 | FX-17, team value (trade preview) | 19.9 / 18.3 s | 2.4 s | same |
 | FX-17, team value, `trades=false` | 0.55 s | 0.51 s | same |
 | M1 standard, discover, team 1 / team 2 | 6.0 / 5.0 s | 2.5 / 2.3 s | budget not reached |
