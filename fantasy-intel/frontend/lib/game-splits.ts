@@ -39,9 +39,13 @@ export function parseSplitsState(sp: Params): SplitsState {
   const teammate = first(sp.teammate);
   const show = first(sp.show);
   const p = player && GSIS.test(player) ? player : null;
+  // The form carries the player its teammate list was built for (`for_player`): when the submitted player differs,
+  // the teammate belonged to the previous player and is dropped, so the page goes back to choosing a teammate.
+  const forPlayer = first(sp.for_player);
+  const stale = forPlayer !== undefined && forPlayer !== "" && forPlayer !== p;
   return {
     player: p,
-    teammate: p && teammate && GSIS.test(teammate) && teammate !== p ? teammate : null,
+    teammate: p && !stale && teammate && GSIS.test(teammate) && teammate !== p ? teammate : null,
     seasonFrom: intIn(first(sp.season_from), 1999, 2100),
     weekFrom: intIn(first(sp.week_from), 1, 18),
     seasonTo: intIn(first(sp.season_to), 1999, 2100),

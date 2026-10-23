@@ -201,6 +201,21 @@ def test_the_partial_game_reference_uses_eligible_games_only(con):
     assert w10["teammate"]["reference_games"] == 2 and w10["outcome"] == "with"
 
 
+def test_the_partial_game_reference_ignores_games_the_player_did_not_count(con):
+    # Without xFP for the player in weeks 1-3, those games are not samples, so the teammate's snap shares there must
+    # not feed the baseline: only weeks 4 and 10 remain (two games), too few to call week 10 partial. Counting the
+    # out-of-sample weeks would give five games and exclude week 10 as partial.
+    con.execute("UPDATE player_week_usage SET xfp = NULL WHERE gsis_id = '00-SPLWR01' AND week IN (1, 2, 3)")
+    out = split(con, as_of="2025-11-20")
+    w10 = by_week(out)[10]
+    assert [by_week(out)[w]["reason"] for w in (1, 2, 3)] == ["subject_metrics_missing"] * 3
+    assert w10["teammate"]["reference_games"] == 2 and w10["teammate"]["reference_share"] == pytest.approx(0.475)
+    assert w10["outcome"] == "with"
+    # the same holds when the player missed the games outright
+    con.execute("DELETE FROM player_week_usage WHERE gsis_id = '00-SPLWR01' AND week IN (1, 2, 3)")
+    assert by_week(split(con, as_of="2025-11-20"))[10]["teammate"]["reference_games"] == 2
+
+
 def test_a_game_that_is_not_final_is_not_counted(con):
     con.execute("UPDATE nfl_schedules SET home_score = NULL, away_score = NULL WHERE week = 12 AND home_team = 'SPL'")
     w12 = by_week(split(con))[12]

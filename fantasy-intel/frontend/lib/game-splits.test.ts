@@ -52,3 +52,16 @@ test("window sentence, reason lists, drilldown filter and season options", () =>
   assert.equal(visibleWeeks(weeks, "all").length, 4);
   assert.deepEqual(seasonOptions([2024, 2025], 2023), [2025, 2024, 2023]);
 });
+
+test("a teammate chosen for another player is dropped when the form submits a new player", () => {
+  // The form posts the player its teammate list was built for; a changed player select must not keep that teammate.
+  const changed = parseSplitsState({ player: "00-SPLTE01", teammate: "00-SPLWR02", for_player: "00-SPLWR01", season_from: "2025" });
+  assert.equal(changed.player, "00-SPLTE01");
+  assert.equal(changed.teammate, null);
+  assert.equal(splitsHref(changed), "/research/splits?player=00-SPLTE01&season_from=2025");
+  const same = parseSplitsState({ player: "00-SPLWR01", teammate: "00-SPLWR02", for_player: "00-SPLWR01" });
+  assert.equal(same.teammate, "00-SPLWR02");
+  // a shared link without the form field keeps its teammate; for_player never reaches the backend query
+  assert.equal(parseSplitsState({ player: "00-SPLWR01", teammate: "00-SPLWR02" }).teammate, "00-SPLWR02");
+  assert.equal(splitsApiQuery(same), "player=00-SPLWR01&teammate=00-SPLWR02");
+});

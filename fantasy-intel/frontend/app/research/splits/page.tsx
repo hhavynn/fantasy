@@ -35,6 +35,8 @@ export default async function GameSplitsPage({ searchParams }: { searchParams: P
   const pick = (options?.ok ? options.data : result) as GameSplitsResponse | null;
   const teammates = pick?.status === "needs_teammate" ? pick.teammate_options : [];
   const ready = result && (result.status === "ok" || result.status === "low_n") ? result : null;
+  // The picker answers 200 with status "no_data" when the NFL tables are missing: show the setup message, not a form.
+  const noData = players.ok && players.data.status === "no_data";
 
   return (
     <div className="stack">
@@ -54,20 +56,25 @@ export default async function GameSplitsPage({ searchParams }: { searchParams: P
       </p>
 
       {!players.ok && <BackendProblem error={players.error} kind={players.kind} status={players.status} />}
-      {players.ok && <SplitsForm state={state} players={players.data} teammates={teammates} />}
+      {players.ok && players.data.status === "no_data" && (
+        <Section>
+          <EmptyState title="No NFL data for splits">{players.data.message ?? "Game splits need stored nflverse usage, rosters and schedules."}</EmptyState>
+        </Section>
+      )}
+      {players.ok && !noData && <SplitsForm state={state} players={players.data} teammates={teammates} />}
 
       {res && !res.ok && (res.status === 404 || res.status === 422
         ? <Notice tone="caution" title={res.status === 404 ? "Not found" : "Check the window"}>{res.error}</Notice>
         : <BackendProblem error={res.error} kind={res.kind} status={res.status} />)}
 
-      {!state.player && players.ok && (
+      {!state.player && players.ok && !noData && (
         <Section>
           <EmptyState title="Choose a player">
             Pick a wide receiver, running back or tight end, then a teammate who played with him in the window.
           </EmptyState>
         </Section>
       )}
-      {result?.status === "no_data" && <Section><EmptyState title="No NFL data for splits">{result.message}</EmptyState></Section>}
+      {result?.status === "no_data" && !noData && <Section><EmptyState title="No NFL data for splits">{result.message}</EmptyState></Section>}
       {result?.status === "needs_teammate" && <ChooseTeammate r={result} state={state} />}
       {ready && <SplitResult r={ready} state={state} />}
       <SplitsMethod />
@@ -87,6 +94,8 @@ async function SplitsForm({ state, players, teammates }: {
   const known = players.players.some((p) => p.gsis_id === state.player);
   return (
     <form className={styles.form} action={action} method="get" aria-label="Game split inputs">
+      {/* The player the teammate list below was built for: a different submitted player drops the teammate. */}
+      {state.player && <input type="hidden" name="for_player" value={state.player} />}
       <label className={`${styles.field} ${styles.wide}`}>
         <span>Player</span>
         <select name="player" defaultValue={state.player ?? ""} required>

@@ -14,7 +14,8 @@ Definitions (docs/game_splits.md):
                   (a roster row of any status, or an appearance). Subject games for another team are not samples.
   with            the teammate appeared for T in that game (a box-score row or offensive snaps) with a snap record
                   that is not a partial game: below PARTIAL_SHARE_RATIO of his median snap share for T over the
-                  eligible window, once that median rests on PARTIAL_REFERENCE_MIN_GAMES games.
+                  player's counted games (played, xFP and PPR, final, before the cutoff), once that median rests
+                  on PARTIAL_REFERENCE_MIN_GAMES games.
   without         confirmed not on the field for T: game-day inactive (INA), a reserve list, the practice squad,
                   suspended or another non-active roster status on T; on another team's roster or playing for
                   another team that week; or a snap record for T showing no offensive snap.
@@ -486,10 +487,14 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
     for (s, w), rows in mate_usage_by.items():
         pair_teams.update(u["team"] for u in rows if eligible_week(s, w, u["team"]))
     pair_teams &= set(subject_teams)
+    # The partial-game baseline is the teammate's snap share over the subject's counted games only (played, with
+    # xFP and PPR, final, before the cutoff): a game the subject missed or lacks numbers for never moves it.
+    counted = {(u["season"], u["week"], u["team"]) for u in subject_all
+               if is_qualifying(u) and eligible_week(u["season"], u["week"], u["team"])}
     ref: dict[str, list[float]] = defaultdict(list)
     for (s, w), rows in mate_usage_by.items():
         for u in rows:
-            if appeared(u) and u.get("offense_pct") is not None and eligible_week(s, w, u["team"]):
+            if appeared(u) and u.get("offense_pct") is not None and (s, w, u["team"]) in counted:
                 ref[u["team"]].append(u["offense_pct"])
     reference = {t: (median(v), len(v)) for t, v in ref.items()}
 
