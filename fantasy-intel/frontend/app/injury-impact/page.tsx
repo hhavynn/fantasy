@@ -1,11 +1,11 @@
 import Link from "@/components/LeagueLink";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
-  EmptyState, Glossary, Method, Notice, PageHeader, Section, Tabs,
+  EmptyState, Glossary, Method, Notice, PageHeader, Section, Skeleton, Tabs,
 } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
 import { when } from "@/lib/format";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -13,10 +13,12 @@ import {
   filterEntries, groupEntries, injuryHref, INJURY_POSITIONS, parseInjuryFilters, type InjuryEntry,
   type InjuryImpactResponse, type InjuryNotice,
 } from "@/lib/injury-impact";
+import type { OpportunityTreeResponse } from "@/lib/opportunity-tree";
 import { plural } from "@/lib/plural";
 import type { SearchParams } from "@/lib/sort";
 import { isUnknownTeam, readTeamSelection, selectedTeamId, teamParamFrom, withTeamId } from "@/lib/team-perspective";
 import { ImpactEntry } from "./ImpactEntry";
+import { OpportunityTree } from "./OpportunityTree";
 import { RosterActions } from "./RosterActions";
 import styles from "./injury-impact.module.css";
 
@@ -77,6 +79,10 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
   const sel = readTeamSelection(sp);
   if (sel.kind === "invalid") return <Shell sp={sp} current={null}><UnknownTeam path={PATH} sel={sel} /></Shell>;
   const filters = parseInjuryFilters(sp);
+  // The opportunity tree is a second, slower read: started now, rendered in its own Suspense boundary below.
+  // An early return below never awaits it, so a failure must never become an unhandled rejection.
+  const tree = api<OpportunityTreeResponse>(withTeamId("/api/injury-impact/opportunity-tree", sel))
+    .catch((): ApiResult<OpportunityTreeResponse> => ({ ok: false, data: null, error: "Request failed.", kind: "unknown" }));
   const [res, profile] = await Promise.all([api<InjuryImpactResponse>(withTeamId("/api/injury-impact", sel)), getLeagueProfile()]);
   const prov = providerName(profile.provider);
   const labels = { prov, espn: profile.providerProjections };
@@ -143,6 +149,13 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
           <RosterActions entries={data.players} team={team} />
         </Section>
       )}
+
+      <Section title="Depth charts and opportunity"
+        subtitle="Teams with an injured or returning starter. A teammate is named only when observed games support it, or as a labelled hypothesis; otherwise the scenario abstains.">
+        <Suspense fallback={<Skeleton w="100%" h={120} radius={8} />}>
+          <OpportunityTree tree={tree} team={team} prov={prov} />
+        </Suspense>
+      </Section>
 
       <div className={styles.controls}>
         <Tabs label="Position" items={INJURY_POSITIONS.map((p) => ({ href: posHref(p), label: p === "ALL" ? "All" : p }))}

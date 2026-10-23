@@ -7,11 +7,13 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { rosterText, type Roster } from "@/lib/injury-impact";
 import styles from "./injury-impact.module.css";
 
-/** Marks a number's kind. Observed = counted from games; estimate = a rule or a model (dashed, never solid). */
-export function Kind({ kind }: { kind: "observed" | "estimate" | "espn" }) {
-  const text = kind === "observed" ? "Observed" : kind === "estimate" ? "Estimate" : "ESPN model";
+/** Marks a number's kind. Observed = counted from games; estimate = a rule or a model; hypothesis = a depth chart or a
+ *  rule with no observed games behind it (both dashed, never solid). */
+export function Kind({ kind }: { kind: "observed" | "estimate" | "espn" | "hypothesis" }) {
+  const text = kind === "observed" ? "Observed" : kind === "estimate" ? "Estimate" : kind === "hypothesis" ? "Hypothesis" : "ESPN model";
   const title = kind === "observed" ? "Counted from this season's games"
-    : kind === "estimate" ? "Pro-rata split estimate" : "ESPN's own weekly projection";
+    : kind === "estimate" ? "Pro-rata split estimate"
+      : kind === "hypothesis" ? "Not observed: a depth chart or a pro-rata rule, not a confirmed role change" : "ESPN's own weekly projection";
   return <span className={kind === "observed" ? styles.kindObserved : styles.kindEstimate} title={title}>{text}</span>;
 }
 

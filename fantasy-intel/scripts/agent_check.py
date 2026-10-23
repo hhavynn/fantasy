@@ -185,7 +185,14 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
                                          "tests/test_golden_legacy.py"]),
     ("analytics/kdst_streaming", ["tests/test_kdst_streaming_planner.py", "tests/test_kdst_streaming.py",
                                   "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py"]),
-    ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py"]),
+    # Opportunity tree (issue #190) over the injury-impact context: its own tests, the injury-impact engine it shares and
+    # the goldens of both endpoints (the injury_impact router also serves it under /v2).
+    ("analytics/opportunity_tree", ["tests/test_opportunity_tree.py", "tests/test_injury_impact.py", "tests/test_golden_legacy.py",
+                                    "tests/test_league_scope_audit.py", "tests/test_v2_authorization_matrix.py"]),
+    ("api/injury_impact", ["tests/test_injury_impact.py", "tests/test_opportunity_tree.py", "tests/test_golden_legacy.py",
+                           "tests/test_v2_authorization_matrix.py"]),
+    ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py",
+                          "tests/test_opportunity_tree.py"]),
     ("analytics/projections", ["tests/test_espn_projections.py", "tests/test_independent_projections.py", "tests/test_projection_performance.py"]),
     ("analytics/waiver", ["tests/test_waivers.py", "tests/test_waiver_data.py", "tests/test_waiver_decisions.py"]),
     ("analytics/rescore", ["tests/test_rescore.py", "tests/test_sleeper_scoring.py", "tests/test_forward_ours.py"]),
