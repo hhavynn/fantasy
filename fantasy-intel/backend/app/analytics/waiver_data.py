@@ -92,6 +92,15 @@ def select_candidates(pool: list[dict], values: dict, projections: dict, depth: 
                       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players."}
 
 
+def waiver_rules(league: dict) -> dict:
+    """The acquisition rules waiver_decisions.resource_diagnostics reads, from one `leagues` row."""
+    acq = object_value(league.get("settings_raw")).get("acquisitionSettings") or {}
+    # Only explicit strings are decoded. Numeric ESPN enum values aren't guessed.
+    rule = str(acq.get("waiverOrderType") or "").upper()
+    rule = "ROLLING" if rule in ("ROLLING", "MOVE_TO_LAST_AFTER_CLAIM", "MOVE_TO_LAST_AFTER_SUCCESSFUL_CLAIM") else "RESET" if rule in ("RESET", "INVERSE_STANDINGS") else "UNKNOWN"
+    return {"is_faab": league.get("is_faab"), "faab_budget": league.get("faab_budget"), "waiver_rule": rule}
+
+
 def load_waiver_context(con, league: dict, now: datetime | None = None, source: str | None = None) -> dict:
     """`source`: None = the league's default (projection_source.default_source). Ours values carry their run's
     creation time; the 72-hour staleness rule is for daily provider snapshots and does not apply to them."""
@@ -157,12 +166,7 @@ def load_waiver_context(con, league: dict, now: datetime | None = None, source: 
     lines = {(r["team"], r["week"]): r for r in fetch_dicts(con, "SELECT * FROM team_game_lines WHERE season=?", [league["season"]])}
     offenses = {r["team"]: r for r in fetch_dicts(con, "SELECT * FROM team_context WHERE season=? AND through_week < ?", [league["season"], start])}
     defenses = {r["defteam"]: r for r in fetch_dicts(con, "SELECT * FROM defense_context WHERE season=? AND through_week < ?", [league["season"], start])}
-    raw = object_value(league.get("settings_raw"))
-    acq = raw.get("acquisitionSettings") or {}
-    # Only explicit strings are decoded. Numeric ESPN enum values aren't guessed.
-    rule = str(acq.get("waiverOrderType") or "").upper()
-    rule = "ROLLING" if rule in ("ROLLING", "MOVE_TO_LAST_AFTER_CLAIM", "MOVE_TO_LAST_AFTER_SUCCESSFUL_CLAIM") else "RESET" if rule in ("RESET", "INVERSE_STANDINGS") else "UNKNOWN"
-    rules = {"is_faab": league.get("is_faab"), "faab_budget": league.get("faab_budget"), "waiver_rule": rule}
+    rules = waiver_rules(league)
     if league.get("reception_points") != 1:
         warnings.append("Historical player value and xFP use PPR-based usage; they are not recalibrated to this league. ESPN projections use league scoring.")
     constraints = roster_constraints(league)

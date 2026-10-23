@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
@@ -16,6 +17,9 @@ import { signalsOf } from "@/lib/signal-provenance";
 import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
 import { WAIVER_SORT_KEYS, competitionRank, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
 import { POSITIONS, PAGE_SIZE, RECS, REC_LABEL, VIEWS } from "./helpers";
+import { addDropHref, readAddDrop } from "@/lib/add-drop";
+import { AddDropPanel, AddDropSkeleton } from "./AddDropPanel";
+import adStyles from "./add-drop.module.css";
 import { TopClaims } from "./TopClaims";
 import { WaiverTable } from "./WaiverTable";
 import type { WaiverRow, WaiversResponse } from "./types";
@@ -62,6 +66,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   const recParam = first(sp.rec);
   const rec = recParam && ["CLAIM", "WAIT", "IGNORE"].includes(recParam) ? recParam : "ALL";
   const offset = Math.max(0, Number.parseInt(first(sp.offset) ?? "", 10) || 0);
+  const addDrop = readAddDrop(sp);
   // A link from the bye planner names the week it was planning for; waiver results are always for the current period.
   const plannedWeek = /^\d{1,2}$/.test(first(sp.week) ?? "") ? Number(first(sp.week)) : null;
   const profile = await getLeagueProfile();
@@ -145,9 +150,18 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         </Notice>
       )}
 
-      {band.ok
-        ? <TopClaims top={top} position={pos} provider={pv} ownership={ownership} />
-        : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
+      <div className={adStyles.decisions}>
+        {band.ok
+          ? <TopClaims top={top} position={pos} provider={pv} ownership={ownership}
+            simulateHref={(row) => addDropHref("", sp, {
+              add: row.espn_player_id,
+              drop: row.drop_on_roster === false ? null : row.components.decision?.roster_move.drop?.espn_player_id ?? null,
+            })} />
+          : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
+        <Suspense fallback={<AddDropSkeleton />}>
+          <AddDropPanel apiPath={withTeamId("/api/waivers/add-drop", sel)} sel={addDrop} sp={sp} provider={pv} />
+        </Suspense>
+      </div>
 
       <WaiverShortlist players={[...players, ...(band.ok ? band.data.players : [])].map((player) => ({
         id: player.espn_player_id, name: player.full_name, position: player.position, team: player.pro_team,

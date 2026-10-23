@@ -88,3 +88,12 @@
 .shortlistRows li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .shortlistRows li > div { min-width: 0; overflow-wrap: anywhere; }
 .shortlistRows .save { flex-shrink: 0; }
+
+/* Claim card actions: save to the shortlist, or load the move in the add/drop simulator. */
+.claimButtons { display: flex; flex-wrap: wrap; gap: 8px; }
+.simulate {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 64px; padding: 8px 12px;
+  border: 1px solid var(--line-control); border-radius: 6px; color: var(--ink); font-size: inherit;
+}
+.simulate:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.simulate:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

@@ -10,6 +10,15 @@ from .reserve_slots import TAXI, active_capacity, is_reserved, is_taxi
 from .team_lineups import STREAMER_IDS
 
 
+# A fantasy IR slot may hold only a player with one of these provider injury statuses; while an IR occupant has any
+# other (healthy or unknown) status, the provider blocks adds until he is moved (plan_roster_move, add_drop).
+IR_ELIGIBLE_STATUSES = ("IR", "INJURY_RESERVE", "OUT")
+
+
+def ir_slot_eligible(injury_status: str | None) -> bool:
+    return injury_status in IR_ELIGIBLE_STATUSES
+
+
 def object_value(value) -> dict:
     return json.loads(value) if isinstance(value, str) else (value or {})
 
@@ -85,7 +94,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
               "warnings": warnings, "summary": "Roster legality cannot be established from the available settings."}
     if capacity is None or not slots or not constraints.get("snapshot_complete", True):
         return result
-    if any(p.get("lineup_slot_id") == IR_SLOT and p.get("injury_status") not in ("IR", "INJURY_RESERVE", "OUT") for p in players):
+    if any(p.get("lineup_slot_id") == IR_SLOT and not ir_slot_eligible(p.get("injury_status")) for p in players):
         result["summary"] = "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
         return result
     if constraints.get("settings_complete") is False:

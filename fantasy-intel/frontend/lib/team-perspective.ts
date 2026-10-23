@@ -13,8 +13,8 @@ export const TEAM_SCOPED_PATHS = [
 ] as const;
 
 /** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset, a Start/Sit
- *  what-if lineup) and are dropped when the team changes. */
-export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override", "whatif"];
+ *  what-if lineup, a Waivers add/drop scenario) and are dropped when the team changes. */
+export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override", "whatif", "add", "drop"];
 
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
