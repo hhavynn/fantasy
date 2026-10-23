@@ -212,6 +212,11 @@ export function leadsText(c: Pick<LaCompare, "a" | "b" | "leads">, plural: (n: n
  *  except `vs`, so the comparison the link was shared for survives the pick. */
 export const PICK_TEAM_RESET: readonly string[] = TEAM_SPECIFIC_PARAMS.filter((p) => p !== "vs");
 
+/** The teams that picker leaves out: the compared team itself (picking it would compare a team with itself). */
+export function pickTeamExclude(view: Pick<LaView, "vs">): number[] {
+  return view.vs === null ? [] : [view.vs];
+}
+
 /** Every way the analyzer can fail to show a matrix, decided from the API's X-FI-Error-Code (never from its wording). */
 export type LaErrorState =
   | { kind: "unknown_team"; team: number | null }            // the focus team is not in this league

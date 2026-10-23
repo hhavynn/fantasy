@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  apiPath, errorState, knownView, leadsText, PICK_TEAM_RESET, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
+  apiPath, errorState, knownView, leadsText, PICK_TEAM_RESET, pickTeamExclude, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
   viewHref, visibleGroups, type LaCell, type LaGroup, type LaTeam,
 } from "./league-analyzer.ts";
 import { plural } from "./plural.ts";
@@ -108,4 +108,10 @@ test("picking a team from a shared compare link keeps the comparison", () => {
   assert.equal(perspectiveHref("/league-analyzer", sp, 2, PICK_TEAM_RESET), "/league-analyzer?vs=1&horizon=week&team=2");
   assert.ok(!PICK_TEAM_RESET.includes("vs") && PICK_TEAM_RESET.includes("offset"));
   assert.equal(perspectiveHref("/league-analyzer", sp, 2), "/league-analyzer?horizon=week&team=2", "the default reset still drops vs");
+  // the compared team is not offered, so no pick lands on the same team twice (the same_team error)
+  const exclude = pickTeamExclude(readView(sp));
+  assert.deepEqual(exclude, [1]);
+  const offered = [1, 2, 3].filter((t) => !exclude.includes(t)).map((t) => perspectiveHref("/league-analyzer", sp, t, PICK_TEAM_RESET));
+  assert.deepEqual(offered, ["/league-analyzer?vs=1&horizon=week&team=2", "/league-analyzer?vs=1&horizon=week&team=3"]);
+  assert.deepEqual(pickTeamExclude(readView({})), []);
 });
