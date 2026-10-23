@@ -50,7 +50,7 @@ def league(rosters: dict[int, list[tuple]], capacity=20, limits=None, start_week
     return LeagueState(season=2026, slots=SLOTS, final_week=12, last_regular=11, start_week=start_week,
                        rosters=players, free_agents=[], projections=proj, active_capacity=capacity,
                        position_limits=limits or {}, team_names={t: f"T{t}" for t in rosters},
-                       first_projection_week=10)
+                       first_projection_week=10, players_missing={t: 0 for t in players})
 
 
 def two_teams(extra_a=(), extra_b=(), **kw):

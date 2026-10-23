@@ -286,6 +286,15 @@ def evaluate_what_if(con: Any, *, team_id: int | None = None, week: int | None =
 
     rec, scen = totals(board, board.baseline), totals(board, state)
     delta, known_delta = _delta(scen, rec)
+    coverage = ev["summary"].get("lineup_coverage")
+    if coverage:
+        # Slots no engine fills (#253 G3): both totals leave them out, so neither is complete. The starters there are
+        # kept as they are in both lineups, so the delta stays exact.
+        for t in (rec, scen):
+            t["total"] = None
+            t["projections_complete"] = t["complete"]       # the delta's condition; the totals are not complete
+            t["complete"] = False
+            t["unsupported_slots"] = coverage["unsupported_slots"]
     order = _sort_key(board)
 
     # each applied move, and the scenario without it (None when a later move depends on it)
@@ -380,7 +389,8 @@ def evaluate_what_if(con: Any, *, team_id: int | None = None, week: int | None =
         "slots": slot_rows,
         "players": player_rows,
         "totals": {"recommended": rec, "scenario": scen, "delta": delta, "known_delta": known_delta,
-                   "complete": rec["complete"] and scen["complete"]},
+                   "complete": rec["complete"] and scen["complete"],
+                   **({"lineup_coverage": coverage} if coverage else {})},
         "lineup_lock": {"rule": lock_rule, "engine_status": (support or {}).get("status"),
                         "engine_detail": (support or {}).get("detail")},
         "freshness": ev["freshness"],

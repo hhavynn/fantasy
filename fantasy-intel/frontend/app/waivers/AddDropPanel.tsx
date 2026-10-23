@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
+import { dropCostText, slotList, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
 import {
   addDropHref, carriedParams, headline, optionLabel, shownChange, windowLabel, withAddDrop,
   type AddDropResponse, type AddDropSelection, type AddDropWeek,
@@ -76,6 +77,9 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
   ]);
   const clearHref = addDropHref("", sp, { add: null, drop: null });
   const suggested = d.roster.suggested_drop;
+  // Slots no engine fills (#253 G3): every total leaves them out; a week is known-only for that reason, or a missing projection.
+  const slots = d.impact?.rest_of_season.unsupported_slots?.length ? d.impact.rest_of_season.unsupported_slots : null;
+  const partialWhy = slots ? `leaves out ${slotList(slots)}, or a projection is missing` : "a projection is missing";
   const changedDepth = d.depth.filter((p) => p.active_change !== null && p.active_change !== 0);
 
   return (
@@ -120,7 +124,8 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
                 <Link href={addDropHref("", sp, { add: d.request.add, drop: suggested.espn_player_id })} scroll={false}>
                   Try dropping {suggested.name ?? `player ${suggested.espn_player_id}`}
                 </Link>
-                {" "}(costs {suggested.lineup_cost !== null ? `${suggested.lineup_cost.toFixed(1)}` : `${suggested.known_lineup_cost.toFixed(1)} known-only`} projected starting points; the trade analyzer&apos;s forced-drop rule).
+                {" "}({suggested.unsupported_slot_player ? "not valued: no other single drop is legal, so this choice is unverified"
+                  : `costs ${dropCostText(suggested.lineup_cost, suggested.known_lineup_cost)} projected starting points`}; the trade analyzer&apos;s forced-drop rule).
               </>
             )}
           </Notice>
@@ -132,8 +137,9 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
               note={first.week === ev.earliest_actionable_week ? "first week a move can change" : undefined} />
             <Stat label={span ? `Rest of season, ${span.toLowerCase()}` : "Rest of season"} value={<Change full={ros.ros_delta} known={ros.known_ros_delta} what="change" />}
               note={`${ros.weeks_improved} better · ${ros.weeks_worsened} worse${ros.weeks_incomplete.length ? ` · ${ros.weeks_incomplete.length} incomplete` : ""}`} />
-            <Stat label="Active roster" value={d.roster.active_after !== null ? `${d.roster.active_after} of ${d.roster.active_capacity}` : <Missing />}
-              note={d.roster.open_spots_after !== null ? `${d.roster.open_spots_after} open ${plural(d.roster.open_spots_after, "spot")}` : undefined} />
+            <Stat label="Active roster" value={d.roster.legality ? "Unverified" : d.roster.active_after !== null ? `${d.roster.active_after} of ${d.roster.active_capacity}` : <Missing />}
+              note={d.roster.legality ? <span title={d.roster.legality.reason}>Legality unverified</span>
+                : d.roster.open_spots_after !== null ? `${d.roster.open_spots_after} open ${plural(d.roster.open_spots_after, "spot")}` : undefined} />
           </StatStrip>
         )}
 
@@ -152,6 +158,13 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
           </p>
         )}
 
+        {slots && (
+          <Notice tone="caution" title={unsupportedSlotsTitle(slots)}>
+            Lineup totals leave {slotList(slots)} out, so each one is partial (known points only). A change that moves
+            nobody who can start there is still measured exactly.
+          </Notice>
+        )}
+
         {d.impact && (
           <details className={styles.details}>
             <summary>Week by week, depth and byes</summary>
@@ -165,8 +178,8 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
                   {d.impact.weeks.map((w) => (
                     <tr key={w.week}>
                       <th scope="row">{w.week}{w.phase === "playoff" ? " (playoffs)" : ""}</th>
-                      <td>{num(w.before ?? null, 1, `Known-only: ${w.known_before.toFixed(1)} (a projection is missing)`)}</td>
-                      <td>{num(w.after ?? null, 1, `Known-only: ${w.known_after.toFixed(1)} (a projection is missing)`)}</td>
+                      <td>{num(w.before ?? null, 1, `Known-only: ${w.known_before.toFixed(1)} (${partialWhy})`)}</td>
+                      <td>{num(w.after ?? null, 1, `Known-only: ${w.known_after.toFixed(1)} (${partialWhy})`)}</td>
                       <td><Change full={w.delta} known={w.known_delta} what="change" />{w.open_slots_after > w.open_slots_before && <span className={styles.partial}> {w.open_slots_after - w.open_slots_before} empty {plural(w.open_slots_after - w.open_slots_before, "slot")}</span>}</td>
                       <td>{w.on_bye_after === null ? <Missing why="The NFL schedule does not cover this week" /> : byeText(w, who) ?? "None"}</td>
                     </tr>

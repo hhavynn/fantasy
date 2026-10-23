@@ -41,7 +41,7 @@ from datetime import datetime
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
 from . import production_forecasts as pf
-from .lineup import FIXED_SLOTS
+from .lineup import FIXED_SLOTS, slots_left_out, unsupported_of
 from .playoff_race import NotSynced, RaceData, all_play, classify_matchups, load_race_data
 from .projection_backtest import _utc
 from .reserve_slots import is_taxi
@@ -231,11 +231,14 @@ def edition(state: LeagueState, regular: list[dict], team_ids: list[int], team_n
                     "replacement": repl["value"] if repl else None, "all_play": ap[t]["pct"] if g else None,
                     "all_play_record": {k: ap[t][k] for k in ("wins", "losses", "ties")}, "all_play_periods": ap[t]["periods"],
                     "unranked_reason": None if ranked else ("no roster snapshot" if base is None else
+                                                            f"no comparable week: {slots_left_out(unsupported_of(slots))}"
+                                                            if unsupported_of(slots) else
                                                             "no comparable week with a complete projection"),
                     **({"_depth": depth, "_replacement": repl} if detail else {})}
     pos = position_strength(projections, slots, window, {"all": comparable}) if detail and comparable else None
     return {"weeks": list(window.weeks), "comparable_weeks": comparable,
             "excluded_weeks": ranks["excluded_weeks"] if ranks else [], "teams": teams, "positions": pos,
+            **({"unsupported_slots": list(unsupported_of(slots))} if unsupported_of(slots) else {}),
             "all_play_periods": sorted({p for x in ap.values() for p in x["periods"]})}
 
 
@@ -486,11 +489,15 @@ def build_power_rankings(race: RaceData, previous: Previous | None, extras: dict
     window_note = None
     if cur["excluded_weeks"]:
         n = len(cur["excluded_weeks"])
+        why = (f"{slots_left_out(cur['unsupported_slots'])}, so no lineup total is complete"
+               if cur.get("unsupported_slots") else "some team's projection is incomplete there")
         window_note = (f"{n} remaining {'week is' if n == 1 else 'weeks are'} left out of lineup strength, depth and "
-                       "replacement because some team's projection is incomplete there.")
+                       f"replacement because {why}.")
     return {**out, "week": week, "empty": not sc["ranks"], "teams": rows, "weights": sc["weights"],
             "window": {"weeks": cur["weeks"], "comparable_weeks": cur["comparable_weeks"],
                        "excluded_weeks": cur["excluded_weeks"], "note": window_note,
                        "all_play_periods": cur["all_play_periods"]},
             "previous": prev_info,
-            "message": None if sc["ranks"] else "No team has a complete lineup projection to rank."}
+            "message": None if sc["ranks"] else
+            (f"No team can be ranked: {slots_left_out(cur['unsupported_slots'])}, so no lineup total is complete."
+             if cur.get("unsupported_slots") else "No team has a complete lineup projection to rank.")}

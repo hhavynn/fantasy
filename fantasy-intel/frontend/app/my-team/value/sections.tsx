@@ -593,7 +593,7 @@ export function ValueMethod({ d, words = ESPN_WORDS }: { d: TeamValue; words?: T
         {d.notes.map((n, i) => <li key={i}>{n}</li>)}
         <li>{ov.league_ranks.rule}</li>
         {ov.league_ranks.excluded_weeks.length > 0 && (
-          <li>Weeks left out of league ranks: {ov.league_ranks.excluded_weeks.map((w) => `week ${w.week} (${w.incomplete_teams.join(", ")} incomplete)`).join("; ")}.</li>
+          <li>Weeks left out of league ranks: {ov.league_ranks.excluded_weeks.map((w) => `week ${w.week} (${w.reason ?? `${w.incomplete_teams.join(", ")} incomplete`})`).join("; ")}.</li>
         )}
         {ov.league_ranks.teams_unranked.length > 0 && <li>Teams without a roster snapshot are not ranked: {ov.league_ranks.teams_unranked.join(", ")}.</li>}
         {d.window.reason && <li>Projection window: {d.window.reason}</li>}

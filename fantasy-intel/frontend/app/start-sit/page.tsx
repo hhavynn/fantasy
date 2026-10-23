@@ -37,6 +37,7 @@ import { StartSitControls } from "./StartSitControls";
 import { WhatIf } from "./WhatIf";
 import { readWhatIf } from "@/lib/what-if";
 import { signalsOf } from "@/lib/signal-provenance";
+import { partialSlotsNote, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
 import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
@@ -119,7 +120,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const noProj = noProjections(d.projection_source, recommended_lineup);
   const actual = projectedTotal(hasLineup, noProj, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
   const recommended = projectedTotal(true, noProj, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
-  const gainKnown = summary.projection_complete && summary.projected_gain !== null;
+  // With slots no engine fills the totals are partial (projection_complete false), yet the gain needs only every
+  // projection it compares (`projections_complete`).
+  const projectionsComplete = summary.projections_complete ?? summary.projection_complete;
+  const gainKnown = projectionsComplete && summary.projected_gain !== null;
+  // Slots no engine fills: both totals leave them out (partial); the gain compares the other slots, exactly (#253).
+  const coverage = summary.lineup_coverage;
+  const slotsNote = partialSlotsNote(coverage?.unsupported_slots);
 
   return (
     <div className="stack">
@@ -152,12 +159,12 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
             <VerdictFigure
               label="Submitted (proj)"
               value={actual.value === null ? <Missing why={hasLineup ? NO_PROJECTIONS_TEXT : "No submitted lineup for this week"} /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-              note={!hasLineup ? "No submitted lineup" : noProj ? NO_PROJECTIONS_TEXT : actual.partial ? "*Partial: some starters lack a projection" : `Current ${provider} starters, projected pts`}
+              note={!hasLineup ? "No submitted lineup" : noProj ? NO_PROJECTIONS_TEXT : actual.partial ? (slotsNote ?? "*Partial: some starters lack a projection") : `Current ${provider} starters, projected pts`}
             />
             <VerdictFigure
               label="Recommended (proj)"
               value={recommended.value === null ? <Missing why={NO_PROJECTIONS_TEXT} /> : <>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
-              note={noProj ? NO_PROJECTIONS_TEXT : recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
+              note={noProj ? NO_PROJECTIONS_TEXT : recommended.partial ? (slotsNote ?? "*Partial: some players lack a projection") : "Best lineup under kickoff locks, projected pts"}
             />
             <VerdictFigure
               label="Projected gain"
@@ -166,7 +173,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
               value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
               note={
                 !hasLineup ? "Needs a submitted lineup"
-                  : !summary.projection_complete ? "Needs every starter projected"
+                  : !projectionsComplete ? "Needs every starter projected"
+                  : coverage ? "Over the submitted lineup, in the slots the engines fill"
                   : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
                   : "Submitted lineup is already the best"
               }
@@ -189,6 +197,15 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <Notice tone="info" title={`Future week preview (week ${d.scoring_period})`}>
           Lineup assignments are an informational projection based on current roster assets.
           {profile.provider === "espn" ? " ESPN does not accept lineup submissions for a future scoring period until the current week concludes." : null}
+        </Notice>
+      )}
+
+      {coverage && (
+        <Notice tone="caution" title={unsupportedSlotsTitle(coverage.unsupported_slots)}>
+          {coverage.reason}
+          {coverage.held_starters.length > 0 && (
+            <> Kept as set: {coverage.held_starters.map((h) => `${h.name ?? `Player ${h.player_id}`} (${h.slot ?? h.position ?? "?"})`).join(", ")}.</>
+          )}
         </Notice>
       )}
 

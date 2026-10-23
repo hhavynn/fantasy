@@ -350,29 +350,70 @@ def test_a_sparse_pool_flags_the_trade_replacement_level(league):
     assert tool(out, "trades")["feature"]["status"] == "handled"
 
 
-def test_idp_slots_are_partial_for_lineups_and_unsupported_for_capacity_when_players_are_missing(league):
+def test_idp_slots_are_partial_for_lineups_and_unverified_legality_only_when_players_are_missing(league):
     espn = diagnostic(league("M8"))
     assert espn["dimensions"]["roster"]["status"] == "partial"
     ss = tool(espn, "start_sit")["roster"]
     assert ss["status"] == "partial" and ss["evidence"][0]["value"] == ["DL", "LB"]
-    assert ss["reason"] == ("DL, LB: no engine fills these slots, so the recommendation leaves them out while your "
-                            "submitted lineup's total counts your starters there.")
-    for code in ("start_sit", "what_if"):                                          # G2: the gain is understated
+    assert ss["reason"] == ("DL, LB: no engine fills these slots, so your starters there are kept as they are, and "
+                            "the submitted and recommended totals cover the other slots only and are marked partial.")
+    for code in ("start_sit", "what_if"):                                          # G2 fixed: the gain is exact
         ft = tool(espn, code)["feature"]
-        assert ft["status"] == "unsupported" and "gain_unfilled_slots" in codes(ft)
-        assert "understated and can be negative" in ft["reason"]
+        gain = next(f for f in ft["evidence"] if f["code"] == "gain_unfilled_slots")
+        assert gain["status"] == "handled" and gain["value"] == 8                  # 2 IDP starters x 4 teams
     assert "gain_unfilled_slots" not in codes(tool(espn, "trades")["feature"])
-    assert codes(tool(espn, "playoff_race")["roster"]) == {"unfilled_slots"}       # G3
+    assert codes(tool(espn, "playoff_race")["roster"]) == {"unfilled_slots"}       # G3: totals partial
+    race = tool(espn, "playoff_race")["roster"]["reason"]
+    assert "are marked partial; a lineup change is still measured exactly" in race
     assert tool(espn, "bye_planner")["roster"]["status"] == "partial"
     assert tool(espn, "kdst_streaming")["roster"]["status"] == "handled"
-    assert tool(espn, "trades")["roster"]["status"] == "partial"                   # ESPN stores IDP players
+    for code in ("trades", "add_drop", "team_value", "trade_discovery"):    # G4: ESPN stores IDP players: exact count
+        r = tool(espn, code)["roster"]
+        assert r["status"] == "partial" and codes(r) == {"unfilled_slots"}, code
+        legal = next(e for e in r["evidence"] if e["code"] == "roster_legality")
+        assert legal["status"] == "handled" and legal["value"] == ["DL", "LB"]
 
     sleeper = diagnostic(league("M8s"))
     assert sleeper["dimensions"]["import"]["status"] == "partial"                  # G4: IDP players not stored
     for code in ("trades", "trade_discovery", "add_drop", "team_value", "waivers"):
         r = tool(sleeper, code)["roster"]
-        assert r["status"] == "unsupported" and "players_missing" in codes(r), code
+        assert r["status"] == "unverified" and "players_missing" in codes(r), code
+        assert "roster legality is unverified" in r["reason"]
     assert tool(sleeper, "start_sit")["roster"]["status"] == "partial"
+
+
+def test_a_team_without_a_synced_roster_makes_capacity_tools_unverified(league):
+    """N3: a standard league (M1) whose team 1 has no lineup rows this week: its roster cannot be counted, so every
+    tool that checks roster capacity says legality is unverified; tools that do not check capacity are unaffected."""
+    con = league("M1")
+    con.execute("DELETE FROM lineup_snapshots WHERE team_id = 1 AND scoring_period = ?", [cf.CURRENT])
+    out = diagnostic(con)
+    for code, (_, _, _, capacity) in TOOLS.items():
+        r = tool(out, code)["roster"]
+        if capacity:
+            assert r["status"] == "unverified" and "roster_legality" in codes(r), code
+            assert "1 team of 4 have no synced roster" in r["reason"], code
+        else:
+            assert "roster_legality" not in {e["code"] for e in r["evidence"]}, code
+
+
+def test_missing_players_and_teams_without_rosters_are_both_named(league):
+    con = league("M8s")
+    con.execute("DELETE FROM lineup_snapshots WHERE team_id = 1 AND scoring_period = ?", [cf.CURRENT])
+    r = tool(diagnostic(con), "trades")["roster"]
+    assert {"players_missing", "roster_legality"} <= codes(r)
+    assert "not in the player data" in r["reason"] and "have no synced roster" in r["reason"]
+
+
+def test_punter_and_head_coach_slots_are_reported_unsupported(league):
+    con = league("M8p")
+    out, rules = diagnostic(con), build_league_rules(latest_league(con))
+    assert {s["code"]: s["engine"]["status"] for s in rules["roster"]["slots"]}["P"] == UNSUPPORTED
+    assert {s["code"]: s["engine"]["status"] for s in rules["roster"]["slots"]}["HC"] == UNSUPPORTED
+    ss = tool(out, "start_sit")["roster"]
+    assert ss["status"] == "partial" and ss["evidence"][0]["value"] == ["P", "HC"]
+    assert tool(out, "trades")["roster"]["status"] == "partial"                    # exact count, slots unvalued
+    assert out["dimensions"]["import"]["status"] == "handled"                      # ESPN stores P and HC players
 
 
 def test_two_kickers_are_planned_as_one_streaming_slot(league):
