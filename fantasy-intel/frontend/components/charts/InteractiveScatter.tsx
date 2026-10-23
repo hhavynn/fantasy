@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
+import { useLeagueHref } from "@/components/useAppPathname";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { formatMetric, type Format } from "@/lib/research";
@@ -65,6 +66,8 @@ export function InteractiveScatter({ points, xLabel, yLabel, xFormat, yFormat, x
   emptyText?: string;
 }) {
   const router = useRouter();
+  // A point's href is built on the server without the league; on a league page the navigation stays in it.
+  const leagueHref = useLeagueHref();
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(760);
   const [hover, setHover] = useState<string | null>(null);
@@ -127,13 +130,13 @@ export function InteractiveScatter({ points, xLabel, yLabel, xFormat, yFormat, x
       setPinned(null);
       return;
     }
-    if (e.pointerType === "mouse") router.push(p.href, { scroll: false });
+    if (e.pointerType === "mouse") router.push(leagueHref(p.href), { scroll: false });
     else setPinned((cur) => (cur === p.id ? null : p.id));   // touch: first tap shows the card, which links to the evidence
   };
   const onKey = (p: (typeof placed)[number]) => (e: KeyboardEvent<SVGCircleElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      router.push(p.href, { scroll: false });
+      router.push(leagueHref(p.href), { scroll: false });
     } else if (e.key === "Escape") {
       setPinned(null);
       setHover(null);

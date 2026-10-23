@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { cx } from "@/lib/cx";
 import { ScrollToActive } from "./ScrollToActive";

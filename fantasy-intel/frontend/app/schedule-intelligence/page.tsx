@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { ChooseTeam, needsTeam } from "@/components/TeamPerspective";
 import { PlayerLink } from "@/components/PlayerLink";
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import type { ByePlanner } from "@/lib/bye-planner";
+import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { cx } from "@/lib/cx";
 import { when } from "@/lib/format";
@@ -129,7 +130,7 @@ function Body({ d, detail, position, phase, sp, planner, streaming, league }: {
       <Alerts d={d} />
 
       <Section>
-        <form action="/schedule-intelligence" className={styles.controls}>
+        <form action={withLeague("/schedule-intelligence", league)} className={styles.controls}>
           <label>Team <select name="team" defaultValue={d.query.team_id ?? ""}>
             {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
           </select></label>

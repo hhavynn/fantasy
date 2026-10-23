@@ -3,15 +3,18 @@ import { Badge, Delta, EmptyState, Rating, Section, TrendArrow } from "@/compone
 import { cx } from "@/lib/cx";
 import { int, num } from "@/lib/format";
 import { ownershipAvailable, type Provider } from "@/lib/labels";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { PlayerListRow } from "./types";
 
-/** GET form that keeps the query in the URL (`/players?q=`). */
-export function SearchForm({ q, compact = false, autoFocus = false }: { q: string; compact?: boolean; autoFocus?: boolean }) {
+/** GET form that keeps the query in the URL (`/players?q=`); on a league page it stays there (`/l/<lg>/players?q=`). */
+export async function SearchForm({ q, compact = false, autoFocus = false }: { q: string; compact?: boolean; autoFocus?: boolean }) {
+  const action = withLeague("/players", (await currentLeague())?.id);
   return (
-    <form className={cx(styles.search, compact ? styles.searchCompact : styles.searchBar)} action="/players" role="search">
+    <form className={cx(styles.search, compact ? styles.searchCompact : styles.searchBar)} action={action} role="search">
       <input
         className={styles.input}
         type="search"

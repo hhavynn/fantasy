@@ -1,4 +1,6 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import { POSITIONS, VIEW_NAME, moversHref, type MoversState, type MoverSource, type MoverView, type SnapshotRef } from "@/lib/projection-movers";
 import styles from "./movers.module.css";
 
@@ -12,9 +14,10 @@ const SOURCES: { value: MoverSource; label: string; title: string }[] = [
  * View, position and source as link chips (shareable URLs, no client state) and the comparison point as a plain
  * GET form, so everything works without JavaScript. Every control resets the selected player, because the
  * player may not exist in the new view. `sourceChoice` false (a league whose provider publishes no projections,
- * Sleeper) replaces the source chips with a note: only Fantasy Intel's forecasts exist there.
+ * Sleeper) replaces the source chips with a note: only Fantasy Intel's forecasts exist there. On a league page the links
+ * and the form stay in that league (`/l/<lg>/movers`), with or without JavaScript.
  */
-export function Controls({ state, baselines, currentId, effectiveBaseline, sourceChoice = true }: {
+export async function Controls({ state, baselines, currentId, effectiveBaseline, sourceChoice = true }: {
   state: MoversState;
   baselines: SnapshotRef[];
   currentId: string | null;
@@ -23,6 +26,7 @@ export function Controls({ state, baselines, currentId, effectiveBaseline, sourc
   sourceChoice?: boolean;
 }) {
   const options = baselines.filter((b) => b.id !== currentId);
+  const action = withLeague("/movers", (await currentLeague())?.id);
   const filtered = state.position !== null || state.baseline !== null || state.view !== "ros" || (sourceChoice && state.source !== "espn");
   return (
     <div className={styles.controls}>
@@ -57,7 +61,7 @@ export function Controls({ state, baselines, currentId, effectiveBaseline, sourc
         </p>
       )}
       {options.length > 1 && (
-        <form className={styles.compare} action="/movers" method="get" aria-label="Comparison point">
+        <form className={styles.compare} action={action} method="get" aria-label="Comparison point">
           {state.source !== "espn" && <input type="hidden" name="source" value={state.source} />}
           {state.view !== "ros" && <input type="hidden" name="view" value={state.view} />}
           {state.position && <input type="hidden" name="position" value={state.position} />}

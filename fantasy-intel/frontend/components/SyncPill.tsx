@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { when } from "@/lib/format";
 import type { Provider } from "@/lib/labels";
 import { type StatusPayload, computeSyncSummary } from "@/lib/sync-status";
