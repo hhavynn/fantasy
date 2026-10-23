@@ -37,7 +37,9 @@ export type LaTeam = {
 
 export type LaStarter = { espn_player_id: number | null; streamer: boolean; name: string | null; position: string | null;
   weeks: number; average_points: number | null };
-export type LaBench = { best_bench: number | null; best_free_agent: number | null; edge: number | null; has_backup: boolean };
+/** `edge` is null with a `reason` when a horizon week has no projected free agent or the position is unknown. */
+export type LaBench = { best_bench: number | null; best_free_agent: number | null; edge: number | null; has_backup: boolean;
+  reason: string | null };
 export type LaSideCell = LaCell & { starters: LaStarter[]; bench: LaBench | null; depth: number };
 export type LaCompareRow = { slot: string; count: number; streamable: boolean; a: LaSideCell; b: LaSideCell;
   difference_per_slot: number | null; leader: "a" | "b" | "even" | null };
@@ -175,6 +177,12 @@ export function sortForPosition(teams: LaTeam[], slot: string | null): LaTeam[] 
   const ranked = teams.filter((t) => t.positions[slot]?.rank != null)
     .sort((a, b) => (a.positions[slot].rank! - b.positions[slot].rank!) || a.team_id - b.team_id);
   return [...ranked, ...teams.filter((t) => t.positions[slot]?.rank == null)];
+}
+
+/** The view with its position filter kept only when it names one of this league's slot groups (`?pos=OP` in a league
+ *  without OP, from a stale or another league's link, is cleared: the title, the All chip and every link then agree). */
+export function knownView(v: LaView, groups: Pick<LaGroup, "slot">[]): LaView {
+  return v.pos !== null && !groups.some((g) => g.slot === v.pos) ? { ...v, pos: null } : v;
 }
 
 /** The groups a view shows: one when a position filter names a group of this league, else all. */

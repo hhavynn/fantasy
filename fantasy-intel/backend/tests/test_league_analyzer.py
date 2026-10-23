@@ -292,3 +292,31 @@ def test_api_route_contract_and_validation(monkeypatch, race):
 def test_week_lists_read_as_ranges():
     assert la._weeks_text([7]) == "week 7"
     assert la._weeks_text([3, 4, 5, 9, 11, 12]) == "weeks 3–5, 9, 11–12"
+
+
+def test_a_week_without_a_projected_free_agent_keeps_the_bench_edge_unknown(race):
+    """replacement_options counts a missing wire projection as 0; the compare view never shows that edge as a number."""
+    week = race.state.start_week
+    proj = {k: dict(v) for k, v in race.state.projections.items()}
+    for fa in race.state.free_agents:
+        if fa.position == "TE":
+            proj.get(fa.espn_player_id, {}).pop(week, None)
+    data = replace(race, state=replace(race.state, projections=proj))
+    res = la.build_league_analyzer(data, {}, team_id=1, vs=2, side={})
+    te = next(x for x in res["compare"]["positions"] if x["slot"] == "TE")
+    for side in ("a", "b"):
+        bench = te[side]["bench"]
+        assert bench["edge"] is None and bench["best_free_agent"] is None
+        assert bench["reason"].startswith("Bench edge unknown: no free agent at TE has a projection in week ")
+    assert group(res, "TE")["replacement_per_slot"] is None             # the same response's replacement level agrees
+    # a position with a projected wire every week keeps its measured edge
+    rb = next(x for x in res["compare"]["positions"] if x["slot"] == "RB")
+    assert rb["a"]["bench"]["edge"] is not None and rb["a"]["bench"]["reason"] is None
+
+
+def test_an_unknown_position_has_no_bench_edge(race):
+    res = la.build_league_analyzer(drop_projection(race, pid(1, RB_INDEX)), {}, team_id=1, vs=2, side={})
+    rb = next(x for x in res["compare"]["positions"] if x["slot"] == "RB")
+    assert rb["a"]["bench"]["edge"] is None and rb["a"]["bench"]["best_bench"] is None
+    assert "this team's RB is unknown" in rb["a"]["bench"]["reason"]
+    assert rb["b"]["bench"]["edge"] is not None

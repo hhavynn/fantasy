@@ -184,7 +184,8 @@
        "best_bench": null,
        "best_free_agent": 5.3,
        "edge": 0.0,
-       "has_backup": false
+       "has_backup": false,
+       "reason": null
       },
       "depth": 1,
       "of": 4,
@@ -212,7 +213,8 @@
        "best_bench": null,
        "best_free_agent": 5.3,
        "edge": 0.0,
-       "has_backup": false
+       "has_backup": false,
+       "reason": null
       },
       "depth": 1,
       "of": 4,
@@ -247,7 +249,8 @@
        "best_bench": 6.3,
        "best_free_agent": 11.3,
        "edge": 0.0,
-       "has_backup": true
+       "has_backup": true,
+       "reason": null
       },
       "depth": 3,
       "of": 4,
@@ -283,7 +286,8 @@
        "best_bench": null,
        "best_free_agent": 11.3,
        "edge": 0.0,
-       "has_backup": false
+       "has_backup": false,
+       "reason": null
       },
       "depth": 3,
       "of": 4,
@@ -326,7 +330,8 @@
        "best_bench": 8.3,
        "best_free_agent": 6.3,
        "edge": 2.0,
-       "has_backup": true
+       "has_backup": true,
+       "reason": null
       },
       "depth": 4,
       "of": 4,
@@ -362,7 +367,8 @@
        "best_bench": 5.3,
        "best_free_agent": 6.3,
        "edge": 0.0,
-       "has_backup": true
+       "has_backup": true,
+       "reason": null
       },
       "depth": 3,
       "of": 4,
@@ -405,7 +411,8 @@
        "best_bench": null,
        "best_free_agent": 11.3,
        "edge": 0.0,
-       "has_backup": false
+       "has_backup": false,
+       "reason": null
       },
       "depth": 1,
       "of": 4,
@@ -433,7 +440,8 @@
        "best_bench": null,
        "best_free_agent": 11.3,
        "edge": 0.0,
-       "has_backup": false
+       "has_backup": false,
+       "reason": null
       },
       "depth": 1,
       "of": 4,

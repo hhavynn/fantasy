@@ -168,7 +168,9 @@ function SideCell({ c, slot }: { c: LaSideCell; slot: string }) {
       )}
       <span className={styles.sub}>
         {c.bench ? (
-          c.bench.has_backup
+          c.bench.edge === null && c.bench.reason
+            ? <span title={c.bench.reason}>Bench edge unknown</span>
+            : c.bench.has_backup
             ? <>Bench best {c.bench.best_bench?.toFixed(1) ?? "—"} · {signedText(c.bench.edge) ?? "—"} over the wire</>
             : <>No bench backup · wire {c.bench.best_free_agent?.toFixed(1) ?? "—"}</>
         ) : null}

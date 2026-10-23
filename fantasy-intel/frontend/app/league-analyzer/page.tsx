@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { projectionsPhrase } from "@/lib/labels";
 import {
-  apiPath, ordinal, PATH, rankText, readView, signedText, viewHref, type LaTeam, type LeagueAnalyzer,
+  apiPath, knownView, ordinal, PATH, rankText, readView, signedText, viewHref, type LaTeam, type LeagueAnalyzer,
 } from "@/lib/league-analyzer";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
@@ -30,8 +30,8 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
   if (sel.kind === "invalid") {
     return <div className="stack">{header()}<UnknownTeam path={PATH} sel={sel} /></div>;
   }
-  const view = readView(sp);
-  const [res, league] = await Promise.all([api<LeagueAnalyzer>(apiPath(selectedTeamId(sel), view)), currentLeague()]);
+  const asked = readView(sp);
+  const [res, league] = await Promise.all([api<LeagueAnalyzer>(apiPath(selectedTeamId(sel), asked)), currentLeague()]);
   if (!res.ok) {
     // A shared compare link opened by a visitor without a team (anonymous, public league): ask for one, never call the
     // compared team unknown.
@@ -41,12 +41,12 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
     if (isUnknownTeam(res, sel) || (res.status === 404 && /team/i.test(res.error ?? ""))) {
       return <div className="stack">{header()}<UnknownTeam path={PATH} sel={sel} detail={res.error} /></div>;
     }
-    if (res.status === 422 && view.vs !== null) {
+    if (res.status === 422 && asked.vs !== null) {
       return (
         <div className="stack">
           {header()}
           <Notice tone="caution" title="Pick two different teams">
-            {res.error} <Link href={viewHref(selectedTeamId(sel), view, { vs: null })}>Show the league matrix</Link>.
+            {res.error} <Link href={viewHref(selectedTeamId(sel), asked, { vs: null })}>Show the league matrix</Link>.
           </Notice>
         </div>
       );
@@ -67,6 +67,8 @@ export default async function LeagueAnalyzerPage({ searchParams }: PageProps<"/l
     );
   }
   const d = res.data;
+  // a position filter this league does not have (a stale or another league's link) is dropped, never half-applied
+  const view = knownView(asked, d.groups);
   const focus = d.teams.find((t) => t.team_id === d.focus_team_id) ?? null;
   const action = withLeague(PATH, league?.id);
   const team = selectedTeamId(sel);

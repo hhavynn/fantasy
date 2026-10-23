@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  apiPath, leadsText, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
+  apiPath, knownView, leadsText, ordinal, rankText, readView, signedText, sortForPosition, targetHref, tradesWithHref, unknownLabel,
   viewHref, visibleGroups, type LaCell, type LaGroup, type LaTeam,
 } from "./league-analyzer.ts";
 import { plural } from "./plural.ts";
@@ -71,4 +71,14 @@ test("the compare summary counts leads in words", () => {
   assert.equal(leadsText({ a: side("A"), b: side("B"), leads: { a: 3, b: 1, even: 1 } }, plural),
     "A leads at 3 positions, B at 1, even at 1");
   assert.equal(leadsText({ a: side("A"), b: side("B"), leads: { a: 1, b: 4, even: 0 } }, plural), "A leads at 1 position, B at 4");
+});
+
+test("a position filter this league does not have is cleared, so the title, chips and links agree", () => {
+  const groups = [{ slot: "QB" }, { slot: "RB" }, { slot: "FLEX" }];
+  const stale = readView({ pos: "OP", vs: "3" });
+  assert.equal(stale.pos, "OP", "syntactically valid, so readView keeps it");
+  assert.deepEqual(knownView(stale, groups), { vs: 3, horizon: "ros", pos: null, kdst: true });
+  assert.equal(viewHref(2, knownView(stale, groups)), "/league-analyzer?team=2&vs=3");
+  const rb = readView({ pos: "RB" });
+  assert.equal(knownView(rb, groups), rb);
 });

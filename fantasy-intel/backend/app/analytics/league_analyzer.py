@@ -410,6 +410,31 @@ def _bench(base: dict | None, market: dict, slots: list[str], weeks: list[int]) 
     return {x["position"]: x for x in res["positions"]}
 
 
+def bench_view(bn: dict | None, cell: dict, market: dict, group: str, weeks: list[int]) -> dict | None:
+    """power_rankings.replacement_options' bench row, kept honest for this page. That helper (shared, unchanged) counts a
+    week without a projected free agent as a wire of 0 and an unprojected bench player as no backup, so its `edge` would
+    be a precise number built on invented zeros. Here the edge (and the wire level) is unknown, with the reason, whenever
+    a horizon week has no projected free agent at the position or the team's own position is unknown."""
+    if bn is None:
+        return None
+    _, wire_missing = _replacement(market, group, weeks)
+    reasons = []
+    if wire_missing:
+        reasons.append(f"no free agent at {group} has a projection in {_weeks_text(wire_missing)}")
+    if cell["status"] != RANKED:
+        reasons.append(f"this team's {group} is unknown")
+    out = {k: bn[k] for k in ("best_bench", "best_free_agent", "edge", "has_backup")}
+    if reasons:
+        out.update(edge=None, reason="Bench edge unknown: " + "; ".join(reasons) + ".")
+        if wire_missing:
+            out["best_free_agent"] = None
+        if cell["status"] != RANKED:
+            out["best_bench"] = None
+    else:
+        out["reason"] = None
+    return out
+
+
 def _depth(roster: list[RosterPlayer], group: str, slots: list[str]) -> int:
     elig = eligible_positions(group)
     return sum(1 for p in roster if not p.reserved and p.position in elig and lineup_relevant(p.position, slots))
@@ -467,7 +492,7 @@ def _compare(a: int, b: int, projections: dict, cells: dict, state, market: dict
             p = projections[t]
             bn = bench[t].get(g)
             return {**c, "starters": _starters(p, g, weeks, names) if p is not None else [],
-                    "bench": {k: bn[k] for k in ("best_bench", "best_free_agent", "edge", "has_backup")} if bn else None,
+                    "bench": bench_view(bn, c, market, g, weeks),
                     "depth": _depth(state.rosters.get(t) or [], g, slots)}
         rows.append({"slot": g, "count": slots.count(g), "streamable": g in STREAM_POSITIONS,
                      "a": one(a, ca), "b": one(b, cb), "difference_per_slot": diff, "leader": leader})

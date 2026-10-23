@@ -237,6 +237,7 @@ QUICK_EXCLUDED_TESTS: dict[str, str] = {
     "tests/test_v2_authorization_matrix.py": "~28 s",
     "tests/test_schedule_intelligence.py": "~73 s",
     "tests/test_sos_heatmap.py": "~45 s",
+    "tests/test_league_compatibility.py": "~45-60 s",   # the #253 matrix imports six league files and serves every tool
 }
 QUICK_MAX_FILES = 3
 QUICK_BUDGET_S = 60.0
