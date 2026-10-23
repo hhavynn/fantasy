@@ -25,7 +25,9 @@ def trade_values():
     explained when none exists, never 0). Not a trade price. 503 when the league is not synced."""
     with db() as con:
         lg = latest_league(con, ["league_id", "season", "name", "current_week", "final_scoring_period", "synced_at"])
-        state = load_league_state(con) if lg else None
+        detail: dict = {}          # the served origin and version per week, from the same single projection read
+        state = load_league_state(con, projection_detail=detail) if lg else None
         if lg is None or state is None:
             raise HTTPException(503, "League current/final week unknown. Run a sync first.")
-        return build_trade_values(con, lg, state, provenance=trade_provenance(con, lg, state))
+        return build_trade_values(con, lg, state, provenance=trade_provenance(con, lg, state),
+                                  projection_detail=detail if state.projection_source == "independent" else None)

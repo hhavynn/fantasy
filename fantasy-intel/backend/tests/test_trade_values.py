@@ -20,6 +20,26 @@ from fastapi.testclient import TestClient
 from golden.golden import E2E_SEASON, build_e2e_db
 from test_independent_projections import live  # noqa: F401  (fixture used by `stored`)
 from test_projection_source import stored  # noqa: F401  (fixture)
+DST_ID = -16001                     # an ESPN-style D/ST id (projection_source carries those forward)
+
+
+@pytest.fixture
+def dst_stored(live):  # noqa: F811
+    """test_dst_production's `stored` setup (the week-6 run of the synthetic league with a D/ST, AAA, in the league),
+    with an ESPN-style D/ST id (projection_source carries only those forward) and AAA playing week 7."""
+    from app.analytics.independent_projection_store import build_live, write_live
+    from test_projection_source import FALLBACK_SHA, _fallback
+    con, src, _ = live
+    con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, on_team_id) "
+                "VALUES (?, 'AAA D/ST', 'D/ST', 'AAA', 1)", [DST_ID])
+    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, 5.0, '2026-10-13 12:00:00')", [DST_ID])
+    meta, rows = build_live(con, src, _fallback(src), 2026, 6, artifact_sha256=FALLBACK_SHA)
+    write_live(con, meta, rows)
+    if not con.execute("SELECT count(*) FROM nfl_schedules WHERE season = 2026 AND week = 7 "
+                       "AND 'AAA' IN (home_team, away_team)").fetchone()[0]:
+        con.execute("INSERT INTO nfl_schedules (season, week, game_type, home_team, away_team) "
+                    "VALUES (2026, 7, 'REG', 'AAA', 'ZZZ')")
+    return con
 
 EARLIER_DAY = "2026-09-02"            # synced before week 2's first kickoff (2026-09-02 17:00 UTC): a week-2 forecast
 SAME_WEEK_DAY = "2026-10-01"          # after week 2's kickoff, before week 3's: a forecast for the window's own week
@@ -338,3 +358,67 @@ def test_league_projections_detail_names_the_run_kicker_model_and_provider_fallb
     assert six[5] == ("kicker_model", "kfp-1.1.0")
     assert six[7] == ("espn", "ESPN")                                # the models abstain: the provider's number
     assert set(six) == set(plain)
+
+
+def test_a_carried_dst_week_is_tagged_with_its_model_never_espn(dst_stored):
+    """N1: the state loads projections from its first projection week (the current week) while the window starts a week
+    later once it kicked off. The D/ST model projects week 6 only; week 7 carries it forward. Tags are read over the
+    loaded weeks, so week 7 is `dst_carried` with the D/ST model's version, and a projection with no reported origin is
+    unknown, never ESPN."""
+    from types import SimpleNamespace
+
+    from app.analytics.team_lineups import Window
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_values import _calc, _projection_tags, _tag
+    from synthetic_v3 import league
+    from test_dst_production import _dst_run
+    DST = DST_ID
+    _dst_run(dst_stored, pid=DST)
+    window = Window((7,), 12)
+    tags = _projection_tags(dst_stored, SimpleNamespace(season=2026, first_projection_week=6), window)
+    assert tags[6][DST] == ("dst_model", "dfp-r1")
+    assert tags[7][DST] == ("dst_carried", "dfp-r1")
+    st = league({1: [(11, "QB", 20), (12, "RB", 12), (13, "TE", 8), (DST, "D/ST", 6.4)],
+                 2: [(21, "QB", 18), (22, "RB", 10), (23, "TE", 6), (24, "D/ST", 3)]},
+                [(91, "QB", 12), (92, "RB", 5), (93, "TE", 3), (94, "D/ST", 2)], weeks=(7,), last_regular=12,
+                slots=_dst_slots())
+    p = next(x for x in st.rosters[1] if x.espn_player_id == DST)
+    c = _calc(AssetBoard(st, window), p, tags)
+    assert c["weekly"][0]["origin"] == "dst_carried" and c["weekly"][0]["version"] == "dfp-r1"
+    assert "ESPN" not in c["versions"] and c["versions"] == ["dfp-r1"]
+    assert _tag(tags, 999999, 7) == ("unknown", None)            # not reported: unknown, never ESPN
+    assert _tag(None, 999999, 7) == ("espn", "ESPN")              # ESPN projections carry no tags: one source
+
+
+def _dst_slots():
+    from app.analytics.lineup import lineup_slots
+    return lineup_slots({"QB": 1, "RB": 1, "TE": 1, "D/ST": 1})
+
+
+@pytest.mark.parametrize("fa_tag,blocked", [(("espn", "ESPN"), True), (None, True), (("ours", "ifp-2.2.0"), False)])
+def test_a_replacement_level_from_another_version_blocks_the_change(fa_tag, blocked):
+    """N2: the free agent who sets the QB replacement level is served from ESPN (or an unreported source) now, while
+    the earlier snapshot is ifp-2.2.0: the change is unavailable, with the reason. Same version: computed."""
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_values import _calc, _change, _position_ranks, _setters
+    from synthetic_v3 import league
+    st = league({1: [(11, "QB", 20), (12, "RB", 12), (13, "TE", 8), (14, "K", 9)],
+                 2: [(21, "QB", 18), (22, "RB", 10), (23, "TE", 6), (24, "K", 7)]},
+                [(91, "QB", 12), (95, "QB", 7), (92, "RB", 5), (93, "TE", 3), (94, "K", 4)], slots=_small_slots())
+    board = AssetBoard(st, st.window())
+    assert _setters(board, "QB", 10) == [91]                       # the best projected free agent sets the level
+    weeks = st.window().weeks
+    tags = {w: {pid: ("ours", "ifp-2.2.0") for pid in (11, 12, 13, 14, 21, 22, 23, 24, 92, 93, 94, 95)} for w in weeks}
+    if fa_tag is not None:
+        for w in weeks:
+            tags[w][91] = fa_tag
+    p = next(x for x in st.rosters[1] if x.espn_player_id == 11)
+    now, before = _calc(board, p, tags), _calc(board, p)
+    ranks = _position_ranks(board, {11: now}, {11: p})
+    ch = _change(p, board, board, now, before, ranks, ranks, "ifp-2.2.0", tags)
+    if blocked:
+        assert ch["delta"] is None and ch["value_before"] is None
+        assert "QB replacement level in weeks 10-13" in ch["reason"] and "never compared" in ch["reason"]
+        assert ("ESPN" if fa_tag else "an unknown source") in ch["reason"]
+    else:
+        assert ch["delta"] == 0.0 and ch["reason"] is None

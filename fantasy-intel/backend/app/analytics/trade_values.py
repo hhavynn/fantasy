@@ -74,6 +74,7 @@ CHANGE_METHOD = ("The earlier value uses the earlier stored projections with tod
 ESPN_SCORING_NOTE = ("ESPN does not store the league scoring with each snapshot, so a scoring change between the two "
                      "snapshots could not be told apart from a change in the projections.")
 ESPN_TAG = ("espn", "ESPN")
+UNKNOWN_TAG = ("unknown", None)          # a served projection whose origin was not reported: never assumed to be ESPN
 
 
 def projection_name(source: str) -> str:
@@ -118,7 +119,27 @@ def _apportion(raws: list[float], total_cents: int) -> list[float]:
 
 
 def _tag(tags: dict | None, pid: int, w: int) -> tuple[str, str | None]:
-    return ESPN_TAG if tags is None else (tags.get(w) or {}).get(pid, ESPN_TAG)
+    """ESPN projections carry no tags (one source). For Fantasy Intel's, a projection without a reported origin is
+    unknown, never ESPN."""
+    return ESPN_TAG if tags is None else (tags.get(w) or {}).get(pid, UNKNOWN_TAG)
+
+
+def _setters(board: AssetBoard, pos: str, w: int) -> list[int]:
+    """The players whose projection IS the replacement level at `pos` in week `w` (AssetBoard's own rule: the best
+    projected free agent, else the first rostered player beyond the starters); [] when the level is unmeasured."""
+    lvl = (board.base.get(pos) or {}).get(w)
+    if not _measured(lvl):
+        return []
+    pool = ([p for ps_ in board.state.rosters.values() for p in ps_] if lvl.get("source") == LEAGUE_STRUCTURE
+            else board.state.free_agents)
+    return sorted(p.espn_player_id for p in pool if p.position == pos and w not in p.unavailable_weeks
+                  and projection(board.state.projections, p.espn_player_id, w) == lvl["level"])
+
+
+def _version_text(versions) -> str:
+    named = sorted(v for v in versions if v)
+    unknown = any(v is None for v in versions)
+    return ", ".join(named + (["an unknown source"] if unknown else []))
 
 
 def _calc(board: AssetBoard, p, tags: dict | None = None) -> dict:
@@ -216,6 +237,10 @@ def _uncertainty(pr: dict, p, c: dict, source: str) -> list[dict]:
                     "text": f"No free agent at {p.position} is projected in {_weeks(c['structure'])}, so the "
                             f"league-structure replacement level is used there and the value is not ranked against "
                             f"other positions (different replacement baseline)."})
+    unknown = [w["week"] for w in c["weekly"] if w["projection"] is not None and w["origin"] == "unknown"]
+    if unknown:
+        out.append({"code": "unknown_source",
+                    "text": f"The source of his projection for {_weeks(unknown)} was not reported, so it is not named."})
     if len(c["versions"]) > 1:
         out.append({"code": "mixed_versions",
                     "text": f"His weekly projections come from more than one source or version "
@@ -266,19 +291,34 @@ def _baseline(con, state, window: Window) -> tuple[dict, AssetBoard | None, Asse
 
 
 def _change(p, now: AssetBoard, before: AssetBoard, a: dict, b: dict, ranks_now: dict, ranks_before: dict,
-            baseline_version: str | None) -> dict:
+            baseline_version: str | None, tags: dict | None = None) -> dict:
     pid, pos = p.espn_player_id, p.position
     out = {"value_before": b["value"], "value_now": a["value"], "delta": None, "reason": None,
            "projection_change": None, "replacement_change": None,
            "position_rank_before": (ranks_before.get(pid) or {}).get("position_rank"),
            "position_rank_now": (ranks_now.get(pid) or {}).get("position_rank")}
-    other = sorted({x["week"] for x in a["weekly"] if x["version"] and baseline_version
+    other = sorted({x["week"] for x in a["weekly"] if baseline_version and x["projection"] is not None
                     and x["version"] != baseline_version})
     if other:
-        used = sorted({x["version"] for x in a["weekly"] if x["week"] in other})
-        out["reason"] = (f"His current projection for {_weeks(other)} comes from {', '.join(used)}, not "
+        used = {x["version"] for x in a["weekly"] if x["week"] in other}
+        out["reason"] = (f"His current projection for {_weeks(other)} comes from {_version_text(used)}, not "
                          f"{baseline_version} like the earlier snapshot; different sources or versions are never "
                          f"compared.")
+        out["value_before"] = None
+        return out
+    # The replacement level is part of the value: the projection that sets it must be from the same version too.
+    repl_weeks, repl_versions = [], set()
+    for w in (now.weeks if baseline_version else ()):
+        if w in p.unavailable_weeks:
+            continue
+        vs = {_tag(tags, s, w)[1] for s in _setters(now, pos, w)}
+        if vs - {baseline_version}:
+            repl_weeks.append(w)
+            repl_versions |= vs - {baseline_version}
+    if repl_weeks:
+        out["reason"] = (f"The {pos} replacement level in {_weeks(repl_weeks)} is set by a projection from "
+                         f"{_version_text(repl_versions)}, not {baseline_version} like the earlier snapshot; different "
+                         f"sources or versions are never compared.")
         out["value_before"] = None
         return out
     if b["value"] is None:
@@ -305,19 +345,22 @@ def _change(p, now: AssetBoard, before: AssetBoard, a: dict, b: dict, ranks_now:
     return out
 
 
-def _projection_tags(con, state, window: Window) -> dict | None:
-    """Per week and player, the origin and version actually served (projection_source.league_projections' own detail,
-    the same selection load_league_state made). None for ESPN projections (one source, no versions)."""
-    if state.projection_source != "independent":
-        return None
+def _projection_tags(con, state, window: Window) -> dict:
+    """Per week and player, the origin and version actually served (projection_source.league_projections' own detail),
+    read over the SAME weeks load_league_state loaded (from its first projection week, not the window's start), so a
+    D/ST projection carried forward from an already-started week keeps its model's tag. For a caller that did not
+    collect it while loading the state (load_league_state(projection_detail=...))."""
     detail: dict = {}
-    ps.league_projections(con, state.season, window.weeks, "independent", detail=detail)
+    first = state.first_projection_week or window.start
+    ps.league_projections(con, state.season, range(first, window.final + 1), "independent", detail=detail)
     return detail
 
 
-def build_trade_values(con, lg: dict, state, *, provenance: dict | None = None) -> dict:
+def build_trade_values(con, lg: dict, state, *, provenance: dict | None = None,
+                       projection_detail: dict | None = None) -> dict:
     """The `trade-values/v1` payload for the loaded league state (trade_data.load_league_state, the league's default
-    projections), over the trade analyzer's window."""
+    projections), over the trade analyzer's window. `projection_detail`: the origin and version detail collected while
+    loading the state (load_league_state(projection_detail=...)); read again when absent."""
     from ..db.connection import fetch_dicts
     window = state.window()
     source = state.projection_source
@@ -337,7 +380,9 @@ def build_trade_values(con, lg: dict, state, *, provenance: dict | None = None) 
         out["reason"] = reason.get("warning") or "Every fantasy week has already kicked off, so no value remains."
         return out
     players = {p.espn_player_id: p for ps_ in state.rosters.values() for p in ps_}
-    tags = _projection_tags(con, state, window)
+    tags = None
+    if source == "independent":
+        tags = projection_detail if projection_detail is not None else _projection_tags(con, state, window)
     board = AssetBoard(state, window)
     calcs = {pid: _calc(board, p, tags) for pid, p in players.items()}
     pos_ranks = _position_ranks(board, calcs, players)
@@ -352,7 +397,7 @@ def build_trade_values(con, lg: dict, state, *, provenance: dict | None = None) 
         r_now = pos_ranks if now_sub is None else _position_ranks(now_b, now_c, players)
         r_before = _position_ranks(before, before_c, players)
         version = (change["baseline"] or {}).get("model_version") if source == "independent" else None
-        cmp = {pid: _change(p, now_b, before, now_c[pid], before_c[pid], r_now, r_before, version)
+        cmp = {pid: _change(p, now_b, before, now_c[pid], before_c[pid], r_now, r_before, version, tags)
                for pid, p in players.items()}
     n = len(window.weeks)
     rows = []
