@@ -165,19 +165,25 @@ def _order_key(phase, focus, sort):
 
 @pytest.mark.parametrize("phase", ["ros", "regular", "playoff"])
 def test_targeted_rows_are_sorted_by_verdict_front_then_my_horizon_gain(phase):
-    ts = TradeSearch(market_league(), 1, tuple(SHAPES) + HEURISTIC)
+    st = market_league()
+    reg = practical.regular_season_weeks(st.window()) if phase == "regular" else None
+    ts = TradeSearch(st, 1, tuple(SHAPES) + HEURISTIC, focus_weeks=reg)
     out = discover(ts, "targeted", phase=phase, limit=8, target=TradeTarget(position="RB"))
     lens = LENSES["targeted"]
     assert list(out["sections"]) == list(lens["sections"]) and out["mode"] == "targeted"
     rows = shown(out)
     assert rows
     eff = out["phase"]
-    assert rows == sorted(rows, key=_order_key(eff, False, practical.TARGET_PHASE_SORT[eff]))
+    focus = phase == "regular"
+    assert out["horizon"]["label"] == practical.PHASE_TEXT[eff]          # a regular-season focus keeps its label
+    assert rows == sorted(rows, key=_order_key(eff, focus, "focus_gain" if focus else practical.TARGET_PHASE_SORT[eff]))
     for verdict, items in out["sections"].items():
         assert all(x["tier"] == verdict == x["dual_value"]["plausibility"]["verdict"] for x in items)
     for x in rows:
-        h = practical.horizon_delta(x["mine"], eff, False)
+        h = practical.horizon_delta(x["mine"], eff, focus)
         assert h is None or h > 0
+        if focus:
+            assert h == x["mine"]["regular_season_delta"]
         assert "RB" in positions_of(ts, x["receives"])
     assert set(out["excluded"]) == {"no_gain_in_horizon", "similar_variants"}
 
@@ -196,6 +202,87 @@ def test_a_bye_or_short_horizon_ranks_by_the_focus_weeks_and_states_the_trade_of
         kinds = [t["kind"] for t in fit["tradeoffs"]]
         assert kinds[0] == "horizon" and "partner" in kinds
         assert f"week {ts.focus_weeks[0]}" in fit["tradeoffs"][0]["text"]
+
+
+def test_the_targeted_regular_season_horizon_needs_its_focus_weeks():
+    with pytest.raises(ValueError):
+        discover(TradeSearch(market_league(), 1, tuple(SHAPES)), "targeted", phase="regular")
+
+
+@pytest.fixture(scope="module")
+def small_regular():
+    """The seed-11 league searched over its regular season (weeks 12-14) as focus weeks; every candidate exact."""
+    st = synthetic_league(n_teams=3, weeks=range(12, 18), roster=SMALL_ROSTER, seed=11)
+    reg = practical.regular_season_weeks(st.window())
+    ts = TradeSearch(st, 1, positions=None, focus_weeks=reg)
+    plain = TradeSearch(st, 1, positions=None)
+    exact = {}
+    for opp in (2, 3):
+        mine = sorted(p.espn_player_id for p in st.rosters[1])
+        theirs = sorted(p.espn_player_id for p in st.rosters[opp])
+        cands = [("1-for-1", opp, (s,), (t,)) for s in mine for t in theirs]
+        cands += [("2-for-1", opp, ss, (t,)) for ss in combinations(mine, 2) for t in theirs]
+        cands += [("1-for-2", opp, (s,), tt) for s in mine for tt in combinations(theirs, 2)]
+        for c in cands:
+            try:
+                exact[_key(*c)] = (c, ts._side(1, c[2], c[3]), ts._side(c[1], c[3], c[2]))
+            except TradeError:
+                pass
+    return st, ts, plain, exact
+
+
+def test_regular_season_only_gains_are_screened_qualified_and_ranked(small_regular):
+    """Codex P1 / review finding 1: a trade whose only gain is in the regular season (it loses in the playoffs and
+    over the rest of the season) used to be screened out of a regular-season targeted view. With the regular season as
+    focus weeks every such trade qualifies, and the best-first top K by regular-season gain equals brute force."""
+    st, ts, plain, exact = small_regular
+    for _, mine, _ in exact.values():
+        assert mine["focus_delta"] == mine["regular_season_delta"]
+    reg_only = {k for k, (c, m, _) in exact.items() if m["regular_season_delta"] is not None
+                and m["regular_season_delta"] > 0 and (m["ros_delta"] or 0) <= 0 and (m["playoff_delta"] or 0) <= 0}
+    assert len(reg_only) > 100 and "1-for-2:3:1002:1026-1031" in reg_only
+    for k in reg_only:
+        assert ts.evaluate(exact[k][0]) is not None, k                     # qualified with the regular-season focus
+    assert plain.evaluate(exact["1-for-2:3:1002:1026-1031"][0]) is None   # the old search dropped it
+    rows = [ts._row(c[0], c[1], c[2], c[3], dict(m), dict(t)) for c, m, t in exact.values()
+            if m["focus_delta"] is not None and any((m[x] or 0) > 0 for x in ("ros_delta", "playoff_delta", "focus_delta"))]
+    for target in (None, TradeTarget(position="RB"), TradeTarget(position="WR")):
+        want = [r for r in rows if target is None or target.matches(r["receives"], ts.position_of)]
+        brute = sorted(want, key=_rank_key("focus_gain"))[:15]
+        got = ts.top("focus_gain", limit=15, include_redundant=True, target=target)
+        assert [r["key"] for r in got["results"]] == [r["key"] for r in brute], target
+        assert got["search"]["exhaustive"]
+
+
+def test_a_regular_season_gain_that_costs_the_playoffs_is_called_short_term():
+    """The incoming RB plays big in the regular season (weeks 10-12); the outgoing RB is a playoff (week 13) starter."""
+    st = market_league()
+    st.projections[302] = {10: 30.0, 11: 30.0, 12: 30.0, 13: 0.0}
+    st.projections[102] = {10: 0.0, 11: 0.0, 12: 0.0, 13: 120.0}
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[3], focus_weeks=practical.regular_season_weeks(st.window()))
+    out = discover(ts, "targeted", phase="regular", limit=20, target=TradeTarget(player=302))
+    x = next(r for r in shown(out) if r["sends"] == [102])
+    assert x["mine"]["regular_season_delta"] > 0 > x["mine"]["ros_delta"] and x["mine"]["playoff_delta"] < 0
+    first = x["target_fit"]["tradeoffs"][0]
+    assert first["kind"] == "horizon" and "regular season" in first["text"] and "short-term" in first["text"]
+
+
+def test_a_missing_projection_outside_the_focus_weeks_does_not_hide_a_focus_gain():
+    """Codex P1: with weeks=10, a missing week-13 projection makes the rest-of-season total unknown, but the week-10
+    gain is complete: the trade qualifies (it is no longer excluded as missing data) and says the rest is unknown."""
+    st = market_league()
+    st.projections[302].pop(13)
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[3], focus_weeks=(10,))
+    rows = shown(discover(ts, "targeted", limit=20, target=TradeTarget(player=302)))
+    unknown = [x for x in rows if x["mine"]["ros_delta"] is None]
+    assert unknown and all(x["mine"]["focus_delta"] > 0 for x in unknown)
+    for x in unknown:
+        assert x["combined_ros_delta"] is None and x["min_side_ros_delta"] is None
+        assert "unknown" in x["target_fit"]["tradeoffs"][0]["text"]
+        assert x["consistent_with_manual_evaluator"]
+    whole = TradeSearch(st, 1, ("1-for-1",), opponents=[3])                # no focus: still excluded as missing data
+    assert whole.top("my_gain", limit=50, target=TradeTarget(player=302))["search"]["excluded_missing_data"] > 0
+    assert ts.top("focus_gain", limit=50, target=TradeTarget(player=302))["search"]["excluded_missing_data"] == 0
 
 
 def test_short_term_gain_with_a_rest_of_season_loss_is_called_short_term():
@@ -228,7 +315,7 @@ def test_depth_and_roster_fit_trade_offs_are_stated_from_the_evaluator():
 
 
 def test_every_targeted_row_deep_links_to_a_reproducible_analyzer_scenario(market_focus):
-    st = market_focus.state
+    st, focus = market_focus.state, set(market_focus.focus_weeks)
     for t in (None, TradeTarget(position="RB"), TradeTarget(player=204)):
         for x in shown(discover(market_focus, "targeted", limit=6, target=t)):
             link = x["manual_evaluator_link"]
@@ -237,6 +324,11 @@ def test_every_targeted_row_deep_links_to_a_reproducible_analyzer_scenario(marke
             assert res["team_a"]["deltas"]["ros_delta"] == x["mine"]["ros_delta"]
             assert res["team_b"]["deltas"]["ros_delta"] == x["theirs"]["ros_delta"]
             assert x["consistent_with_manual_evaluator"]
+            # The focus delta is the analyzer's own weekly deltas over the focus weeks (review: pin it to them).
+            for side, mine in ((res["team_a"], x["mine"]), (res["team_b"], x["theirs"])):
+                weekly = [w["delta"] for w in side["weekly"] if w["week"] in focus]
+                assert len(weekly) == len(focus)
+                assert mine["focus_delta"] == (None if None in weekly else round(sum(weekly), 2))
 
 
 def test_no_targeted_text_promises_or_predicts_a_deal(market_focus):
@@ -341,6 +433,47 @@ def test_api_named_player_implies_his_team_and_rejects_other_leagues_players(api
 def test_api_query_bounds_are_enforced(api, params):
     for path in ("summary", "context", "targets"):
         assert api.get(f"/api/trades/discover/{path}", params=params).status_code == 422, (path, params)
+
+
+def test_api_need_resolution_is_cached_per_streaming_baseline(api):
+    """Codex P2: the K/D/ST streaming baseline changes the lineups behind need=weakest, so the resolved need is cached
+    separately for each baseline: a view with one baseline never reuses the other's resolved position."""
+    from app.api import trade_discovery as td
+    td._NEED_CACHE.clear()
+    for stream in ("true", "false"):
+        r = api.get("/api/trades/discover/summary", params={"mode": "targeted", "need": "weakest", "kdst_streaming": stream})
+        assert r.status_code == 200
+    keys = [k for k in td._NEED_CACHE if k[4] == "weakest"]
+    assert len(keys) == 2 and {k[-1] for k in keys} == {True, False}
+    assert {k[:-1] for k in keys} == {keys[0][:-1]}                          # the same league, team and window
+    assert all(td._NEED_CACHE[k]["kind"] == "weakest" for k in keys)
+
+
+def test_api_weakest_need_with_a_named_player_must_agree_on_the_position(api):
+    """Review LOW: need=weakest with target_player would silently require both; a conflict is a 422 naming both."""
+    tg = api.get("/api/trades/discover/targets").json()
+    weakest = tg["need_resolution"]["weakest"]
+    assert weakest["resolved"]
+    other = next(p for p in tg["players"] if p["position"] != weakest["position"])
+    r = api.get("/api/trades/discover/summary", params={"mode": "targeted", "need": "weakest",
+                                                         "target_player": other["espn_player_id"]})
+    assert r.status_code == 422
+    assert other["position"] in r.json()["detail"] and weakest["position"] in r.json()["detail"]
+    same = next(p for p in tg["players"] if p["position"] == weakest["position"])
+    ok = api.get("/api/trades/discover/summary", params={"mode": "targeted", "need": "weakest",
+                                                          "target_player": same["espn_player_id"]})
+    assert ok.status_code == 200 and ok.json()["target"]["player"]["espn_player_id"] == same["espn_player_id"]
+
+
+def test_api_regular_season_targeted_view_searches_the_regular_season_as_focus(api):
+    body = api.get("/api/trades/discover/summary", params={"mode": "targeted", "phase": "regular"}).json()
+    assert body["horizon"]["kind"] == "phase" and body["horizon"]["label"] == "regular-season"
+    last = body["evaluation"]["last_regular_season_week"]
+    assert body["horizon"]["weeks"] == [w for w in body["evaluation"]["weeks"] if w <= last]
+    assert body["target"]["weeks"] is None                                   # a phase, not an explicit horizon
+    for x in shown(body):
+        assert x["mine"]["focus_delta"] == x["mine"]["regular_season_delta"]
+        assert x["mine"]["regular_season_delta"] is None or x["mine"]["regular_season_delta"] > 0
 
 
 def test_api_weeks_and_needs_resolve_to_a_horizon(api):

@@ -204,7 +204,8 @@ def _parse_weeks(raw: str, weeks: tuple[int, ...]) -> tuple[int, ...]:
 
 
 def _need_cached(con, state, team_id: int, need: str, compute):
-    key = (data_version(con), state.league_id, state.season, team_id, need, state.start_week)
+    # The K/D/ST streaming baseline changes every team's lineups, so the resolved need too (as in the search key).
+    key = (data_version(con), state.league_id, state.season, team_id, need, state.start_week, streaming_enabled(state))
     with _NEED_LOCK:
         if key in _NEED_CACHE:
             _NEED_CACHE.move_to_end(key)
@@ -301,6 +302,9 @@ def _resolve_target(con, p: DiscoverParams, state, team_id: int, teams: list[dic
     if p.need == "weakest" and live:
         need = _weakest(con, state, team_id)
         position = need["position"]
+        if player is not None and position is not None and player["position"] != position:
+            raise HTTPException(422, f"{player['name'] or 'That player'} plays {player['position']}, but your weakest "
+                                     f"position is {position} (need=weakest); choose the player or the need")
     if p.weeks is not None and live:
         focus = _parse_weeks(p.weeks, state.window().weeks)
     elif p.need == "bye" and live:
@@ -343,6 +347,10 @@ def _resolve(con, p: DiscoverParams) -> _Resolved:
     pos = tuple(sorted({x.strip() for x in p.positions.split(",") if x.strip()})) if p.positions else \
         tuple(SKILL_POSITIONS) + (("K", "D/ST") if p.include_kdst else ())
     target, focus, info = _resolve_target(con, p, state, team_id, teams)
+    if p.mode == "targeted" and p.phase == "regular" and focus is None and state.start_week is not None:
+        # The regular-season horizon is searched as focus weeks (trade_practical.regular_season_weeks), so a trade
+        # whose only gain is in the regular season is screened, bounded and qualified like any other.
+        focus = practical.regular_season_weeks(state.window()) or None
     if target is not None:
         # A target's position is always tradeable (e.g. a kicker without include_kdst).
         wanted = {target.position} | ({info["player"]["position"]} if info["player"] else set())

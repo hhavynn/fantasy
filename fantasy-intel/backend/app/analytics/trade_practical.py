@@ -81,8 +81,15 @@ LENSES = {
                  "sections": (*SENSIBLE, "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete"),
                  "excluded": ("no_gain_in_horizon",), "measure": "anchor_horizon"},
 }
-# The anchor-side sort a targeted search ranks its pool by, per phase (focus weeks use focus_gain).
-TARGET_PHASE_SORT = {"ros": "my_gain", "regular": "regular_gain", "playoff": "playoff_gain"}
+# The anchor-side sort a targeted search ranks its pool by, per phase. Focus weeks use focus_gain, and so does the
+# regular-season horizon, which is searched as focus weeks (regular_season_weeks): stage A screens and the search
+# qualifies on rest-of-season, playoff and focus gains, so a regular-season-only gain needs the focus to be found.
+TARGET_PHASE_SORT = {"ros": "my_gain", "playoff": "playoff_gain"}
+
+
+def regular_season_weeks(window) -> tuple[int, ...]:
+    """The evaluation window's regular-season weeks: the focus weeks of a targeted regular-season horizon."""
+    return tuple(w for w in window.weeks if window.phase(w) == "regular")
 LENS_LABELS = {"practical": "Practical trades", "mutual": "Mutual improvement", "upside": "Maximum upside",
                "all": "All candidates", **{k: v["label"] for k, v in LENSES.items()}}
 SECTION_TEXT = {v: t.format(who="one side's") for v, t in dual.VERDICTS.items()}
@@ -344,8 +351,9 @@ def weeks_label(weeks) -> str:
 
 
 def horizon_info(ts: TradeSearch, phase: str) -> dict:
-    """The horizon a targeted view judges the anchor's gain over: the focus weeks, else the phase's weeks."""
-    if ts.focus:
+    """The horizon a targeted view judges the anchor's gain over: the focus weeks, else the phase's weeks. A
+    regular-season view whose focus weeks are exactly the regular season keeps its phase label."""
+    if ts.focus and not (phase == "regular" and ts.focus_weeks == regular_season_weeks(ts.window)):
         weeks = list(ts.focus_weeks)
         return {"kind": "weeks", "phase": None, "weeks": weeks, "label": weeks_label(weeks),
                 "phrase": weeks_label(weeks)}
@@ -548,6 +556,9 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
                      + ", so the targeted search uses the rest-of-season horizon.")
         phase = "ros"
     phase_sort = PHASES[phase][0]
+    if mode == "targeted" and phase == "regular" and not focus:
+        raise ValueError("the targeted regular-season horizon is searched as focus weeks: build the TradeSearch with "
+                         "focus_weeks=regular_season_weeks(window)")
     target_sort = ("focus_gain" if focus else TARGET_PHASE_SORT[phase]) if mode == "targeted" else None
     horizon = horizon_info(ts, phase)
     mutual = "MUTUAL_PROJECTED_IMPROVEMENT"

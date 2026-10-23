@@ -180,7 +180,7 @@ engine, not another engine and not a new valuation. Every discovery endpoint (`/
 |---|---|---|
 | `target_player` | receive this player | integer >= 1; must be on another team's roster in the scoped league, else 422. With no `opponent`, his team becomes the partner; a different `opponent` is a 422 |
 | `target_position` | receive at least one player at this position | `QB`, `RB`, `WR`, `TE`, `K`, `D/ST` (422 otherwise; at most 4 characters). A K or D/ST target is tradeable even without `include_kdst` |
-| `need` | a roster need resolved by the backend | `weakest`: your lowest-ranked starting position strictly below the league median of projected points per slot (`trade_assets.league_needs`), used as `target_position` (422 together with `target_position`). `bye`: the first evaluation week the bye planner (`bye-planner.v1`) marks short, a bye cluster or with a current starter on bye, used as `weeks` (targeted mode only; 422 together with `weeks`). An unresolved need is reported with its reason and applies no filter |
+| `need` | a roster need resolved by the backend | `weakest`: your lowest-ranked starting position strictly below the league median of projected points per slot (`trade_assets.league_needs`), used as `target_position` (422 together with `target_position`; with `target_player`, a 422 when his position is not the resolved one). `bye`: the first evaluation week the bye planner (`bye-planner.v1`) marks short, a bye cluster or with a current starter on bye, used as `weeks` (targeted mode only; 422 together with `weeks`). An unresolved need is reported with its reason and applies no filter |
 | `weeks` | the horizon: week `N` or weeks `A-B` | targeted mode only (422 elsewhere); every week inside the evaluation window; at most 7 characters |
 
 Without any of them every response is what it was, apart from new echo fields (`query.target_player`,
@@ -198,16 +198,25 @@ other than the targeted one links without it.
 **Focus weeks.** `weeks` (or a resolved `need=bye`) gives the search focus weeks. Each side gets a `focus_delta`: the
 same canonical weekly deltas summed over those weeks, NULL when any of them is incomplete. Stage A gets a focus bound
 (a sum of the same weekly bounds, so it is an upper bound). The internal sort `focus_gain` uses it, and a candidate
-also qualifies when its focus delta is positive. The stage-A cache key includes the focus weeks. The public `sort`
-values are unchanged.
+also qualifies when its focus delta is positive. Missing data is judged over the focus weeks: an unknown
+rest-of-season total (a missing projection outside them) does not exclude a candidate whose focus delta is complete.
+That row's rest-of-season, combined and smaller-side values stay unknown and say so. The stage-A and need cache keys
+include the focus weeks and the K/D/ST streaming baseline. The public `sort` values are unchanged.
 
-**The targeted mode** (`mode=targeted`, lens "Targeted search"). Its pool is the exact top 100 by your gain over the
-horizon (focus weeks, else the phase: `my_gain`, `regular_gain` or `playoff_gain`) among matching trades, plus the
-heuristic rows. Rows whose horizon delta is known and not positive are counted as `no_gain_in_horizon`; unknown
-deltas stay in the view as incomplete. Like the other lenses, it ranks by verdict, then Pareto front within the
-verdict, then your horizon gain, then the exact search order, with every verdict shown in its own section. When no
-regular-season or playoff week remains (or the league has no split), the targeted mode uses the rest of the season
-and says so (`lens_note`).
+**The targeted mode** (`mode=targeted`, lens "Targeted search"). The horizon is one of:
+
+* the focus weeks;
+* the regular season, searched as focus weeks (`trade_practical.regular_season_weeks`), so a trade whose only gain is
+  in the regular season is screened, bounded and qualified like any other, and the label stays "regular-season";
+* the playoffs (`playoff_gain`, already screened and qualified);
+* the rest of the season (`my_gain`).
+
+The pool is the exact top 100 by your gain over that horizon among matching trades, plus the heuristic rows.
+Rows whose horizon delta is known and not positive are counted as `no_gain_in_horizon`; unknown deltas stay in the
+view as incomplete. Like the other lenses, it ranks by verdict, then Pareto front within the verdict, then your
+horizon gain, then the exact search order, with every verdict shown in its own section. When no regular-season or
+playoff week remains (or the league has no split), the targeted mode uses the rest of the season and says so
+(`lens_note`).
 
 **Trade-offs (`target_fit`).** Every row of a targeted view, and of any view with a target or focus weeks, states in
 plain words:

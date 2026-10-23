@@ -47,7 +47,10 @@ which is a weight or a new valuation:
     every package it grows still matches);
   * focus weeks (a short horizon or a bye week inside the window) add the anchor's focus delta: the same canonical
     weekly deltas summed over those weeks (NULL when any of them is incomplete), its own stage-A bound (a sum of the
-    same weekly bounds) and its own sort, `focus_gain`. A candidate whose focus delta is positive also qualifies.
+    same weekly bounds) and its own sort, `focus_gain`. A candidate whose focus delta is positive also qualifies, and
+    missing data is judged over the focus weeks: an unknown rest-of-season total does not exclude a candidate whose
+    focus delta is complete. The targeted regular-season horizon is the regular-season weeks as focus weeks
+    (trade_practical.regular_season_weeks), so a regular-season-only gain is screened, bounded and qualified too.
 """
 
 from __future__ import annotations
@@ -397,7 +400,7 @@ class TradeSearch:
         row, status = None, "not_qualified"
         try:
             mine = self._side(self.anchor, sends, receives)
-            if mine["ros_delta"] is None:
+            if self._incomplete(mine):
                 status = "excluded_missing_data"
             elif _qualifies(mine):
                 theirs = self._side(opp, receives, sends)
@@ -417,9 +420,14 @@ class TradeSearch:
                 "opponent_team_id": opp, "opponent_name": self.state.team_names.get(opp),
                 "sends": list(sends), "receives": list(receives),
                 "mine": mine, "theirs": theirs,
-                "combined_ros_delta": r(m + t) if t is not None else None,
-                "min_side_ros_delta": min(m, t) if t is not None else None,
+                "combined_ros_delta": r(m + t) if m is not None and t is not None else None,
+                "min_side_ros_delta": min(m, t) if m is not None and t is not None else None,
                 "forced_drops": drops, "categories": _categories(shape, mine, theirs)}
+
+    def _incomplete(self, mine: dict) -> bool:
+        """The anchor's canonical total is unknown over the horizon the search judges: the focus weeks when it has
+        them (a missing projection outside them never hides a complete focus gain), else the rest of the season."""
+        return (mine.get("focus_delta") if self.focus else mine["ros_delta"]) is None
 
     def position_of(self, pid: int) -> str | None:
         p = self.players.get(pid)
@@ -544,7 +552,7 @@ class TradeSearch:
                         if padding:
                             continue
                         nxt.append((nx, nt, mine, theirs))
-                        if shape in self.heuristic_shapes and mine["ros_delta"] is not None and _qualifies(mine) \
+                        if shape in self.heuristic_shapes and not self._incomplete(mine) and _qualifies(mine) \
                                 and self._matches(target, nt):
                             rows.append(self._row(shape, opp, nx, nt, dict(mine), dict(theirs)))
                             made += 1
@@ -717,9 +725,8 @@ def _key(shape, opp, sends, receives) -> str:
 
 
 def _qualifies(mine: dict) -> bool:
-    """The anchor gains: rest of season, playoffs or (in a focus search) the focus weeks."""
-    return mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0) \
-        or (mine.get("focus_delta") is not None and mine["focus_delta"] > 0)
+    """The anchor gains: rest of season, playoffs or (in a focus search) the focus weeks. Unknown is never a gain."""
+    return any(mine.get(k) is not None and mine[k] > 0 for k in ("ros_delta", "playoff_delta", "focus_delta"))
 
 
 def _bound(c: tuple, sort: str) -> float:
