@@ -8,6 +8,7 @@ import {
   type EvidenceSignal, type Mover, type MoversResponse,
 } from "@/lib/projection-movers";
 import styles from "./movers.module.css";
+import { WhyItChanged } from "./WhyItChanged";
 
 const oneDecimal = (v: number) => String(Math.round(v * 10) / 10);
 
@@ -166,6 +167,7 @@ export function Detail({ d, m, requestedMissing }: { d: MoversResponse; m: Mover
         </div>
         <EvidencePanel m={m} />
       </div>
+      <WhyItChanged m={m} />
     </Section>
   );
 }

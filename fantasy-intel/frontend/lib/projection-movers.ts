@@ -2,6 +2,7 @@
 // "projection-movers/v1"). Every number, rank and evidence signal comes from the backend; these helpers
 // validate the URL, select, order and phrase those values. They never recompute a projection, a delta or a
 // rank, and they never decide what caused a change.
+import type { Attribution } from "./projection-attribution.ts";
 import type { ProjectionGovernance } from "./projection-source.ts";
 import type { SortState } from "./sort.ts";
 
@@ -87,6 +88,9 @@ export type Mover = {
   weeks: MoverWeek[];
   components: { availability: number; per_game: number } | null;
   evidence: Evidence | null;
+  /** Why the forecast changed (projection-attribution/v1): listed risers, fallers and the requested player; absent on
+   * older payloads. */
+  attribution?: Attribution | null;
 };
 
 export type Thresholds = { min_delta: number; relevant_per_week: number; pct_floor: number; flat: number };
@@ -173,6 +177,15 @@ export function moversQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
   if (state.position) qs.set("position", state.position);
   if (state.baseline) qs.set("baseline", state.baseline);
   return qs.toString();
+}
+
+/**
+ * The query the page sends: `moversQuery` plus, for Fantasy Intel's forecasts, the selected player, so the backend also
+ * explains why his forecast changed when he is not among the listed risers and fallers.
+ */
+export function moversApiQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
+  const q = moversQuery(state, limit);
+  return state.source === "independent" && state.player ? `${q}&player=${state.player}` : q;
 }
 
 /**
