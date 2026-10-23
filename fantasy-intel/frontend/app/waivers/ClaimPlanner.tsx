@@ -139,16 +139,20 @@ function Planner({ players, team, teamName, provider, leagueName }: {
   }, [src, leagueId]);
 
   const save = (next: Claim[]) => store.save(next);
-  const res = checked?.data ?? null;
+  // The last answer still supplies the rules and the drop picker while a new check runs; claim checks come only from
+  // the answer for exactly this plan (claims depend on each other, so an answer for another order or drop is stale).
+  const last = checked?.data ?? null;
+  const res = checked?.src === src ? last : null;
   const pending = src !== null && checked?.src !== src;
   const byAdd = new Map((res?.claims ?? []).map((c) => [c.request.add, c]));
+  const lastByAdd = new Map((last?.claims ?? []).map((c) => [c.request.add, c]));
   const loaded = new Map(players.map((p) => [p.id, p]));
   const names = new Map<number, string>([
     ...players.map((p) => [p.id, p.name] as [number, string]),
-    ...(res?.roster.drop_options ?? []).flatMap((o) => (o.name ? [[o.espn_player_id, o.name] as [number, string]] : [])),
-    ...(res?.claims ?? []).flatMap((c) => (c.add?.name ? [[c.add.espn_player_id, c.add.name] as [number, string]] : [])),
+    ...(last?.roster.drop_options ?? []).flatMap((o) => (o.name ? [[o.espn_player_id, o.name] as [number, string]] : [])),
+    ...(last?.claims ?? []).flatMap((c) => (c.add?.name ? [[c.add.espn_player_id, c.add.name] as [number, string]] : [])),
   ]);
-  const faab = res?.rules.acquisition === "FAAB";
+  const faab = last?.rules.acquisition === "FAAB";
   const freshness = checked?.freshness ?? "unknown";
   const shown = claims.slice(0, MAX_CLAIMS).map((c) => {
     const r = byAdd.get(c.add);
@@ -188,23 +192,22 @@ function Planner({ players, team, teamName, provider, leagueName }: {
                 ? <Notice tone="caution" title="This plan has not been checked">{checked.error} Every claim stays unconfirmed.</Notice>
                 : res
                   ? <p className={styles.summary}>
-                    <b>{counts.legal} of {Math.min(claims.length, MAX_CLAIMS)} {plural(Math.min(claims.length, MAX_CLAIMS), "claim")} {counts.legal === 1 ? "passes" : "pass"} its checks</b>
+                    <b>{counts.legal} of {Math.min(claims.length, MAX_CLAIMS)} {plural(Math.min(claims.length, MAX_CLAIMS), "claim")} {counts.legal === 1 ? "passes its" : "pass their"} checks</b>
                     {counts.unverified > 0 && <> · {counts.unverified} {counts.unverified === 1 ? "needs" : "need"} review</>}
                     {counts.invalid > 0 && <> · {counts.invalid} not valid</>}
-                    {pending && <span className={styles.muted}> · checking</span>}
                   </p>
                   : <p className={styles.summary} role="status">Checking the plan…</p>}
-              {res && (
+              {last && (
                 <div className={styles.rules}>
-                  <span>{rulesText(res.rules, provider)}</span>
-                  {res.summary.total_bid !== null && <span> · bids total ${res.summary.total_bid}</span>}
-                  {res.provenance && <ProvenanceBadge signals={signalsOf(res.provenance)} />}
+                  <span>{rulesText(last.rules, provider)}</span>
+                  {res && res.summary.total_bid !== null && <span>Bids total ${res.summary.total_bid}</span>}
+                  {last.provenance && <ProvenanceBadge signals={signalsOf(last.provenance)} />}
                 </div>
               )}
-              {res && res.rules.unknown.length > 0 && (
+              {last && last.rules.unknown.length > 0 && (
                 <details className={styles.unknown}>
-                  <summary>{res.rules.unknown.length} waiver {plural(res.rules.unknown.length, "rule")} not in the synced settings</summary>
-                  {res.rules.unknown.map((u) => <p key={u.rule}>{u.reason}</p>)}
+                  <summary>{last.rules.unknown.length} waiver {plural(last.rules.unknown.length, "rule")} not in the synced settings</summary>
+                  {last.rules.unknown.map((u) => <p key={u.rule}>{u.reason}</p>)}
                 </details>
               )}
             </div>
@@ -214,7 +217,8 @@ function Planner({ players, team, teamName, provider, leagueName }: {
               const r = byAdd.get(c.add);
               const fresh = r && r.request.drop === c.drop && r.request.bid === c.bid ? r : null;
               const player = loaded.get(c.add);
-              const name = r?.add?.name ?? player?.name ?? `Player #${c.add}`;
+              const known = lastByAdd.get(c.add) ?? null;
+              const name = known?.add?.name ?? player?.name ?? `Player #${c.add}`;
               return (
                 <li key={c.add} className={styles.row} data-dragging={dragFrom === i || undefined}
                   onDragOver={(e) => { if (dragFrom !== null) e.preventDefault(); }} onDrop={drop(i)}>
@@ -227,15 +231,15 @@ function Planner({ players, team, teamName, provider, leagueName }: {
                     <span className={styles.rank}>{i + 1}</span>
                     <div className={styles.who}>
                       <Link href={withLeague(`/players?id=${c.add}`, leagueId)}>{name}</Link>
-                      <span className={styles.meta}>{whoLine(fresh ?? r ?? null, player)}</span>
+                      <span className={styles.meta}>{whoLine(known, player)}</span>
                     </div>
                     {canPlan && i < MAX_CLAIMS && <Check claim={fresh} freshness={freshness} pending={pending} error={!!checked?.error} />}
                   </div>
                   {canPlan && (
                     <div className={styles.controls}>
-                      <DropPicker claim={c} res={res} names={names}
+                      <DropPicker claim={c} res={last} names={names}
                         onChange={(d) => save(updateClaim(claims, c.add, { drop: d }))} />
-                      {(faab || c.bid !== null) && (
+                      {((faab && known?.claim_kind !== "free_agent") || c.bid !== null) && (
                         <div className={styles.field}>
                           <label htmlFor={`bid-${c.add}`}>Bid ($)</label>
                           <input id={`bid-${c.add}`} inputMode="numeric" autoComplete="off" defaultValue={c.bid ?? ""}

@@ -60,7 +60,7 @@ def sample_ids(con) -> dict:
 
 
 # Routes whose required query parameters cannot be inferred from the signature alone.
-def _required_query(path: str, ids: dict, client) -> dict | list | None:
+def _required_query(path: str, ids: dict, client) -> dict | None:
     if path == "/api/compare":
         return {"a": ids["espn_player_id"], "b": ids["other_player_id"]}
     if path == "/api/research/opportunity":
@@ -90,7 +90,7 @@ def _required_query(path: str, ids: dict, client) -> dict | list | None:
         if len(adds) < 3 or drop is None:
             return None
         d = drop["espn_player_id"]
-        return [("claim", f"{adds[0]}:{d}:5"), ("claim", f"{adds[1]}:{d}:3"), ("claim", str(adds[2]))]
+        return {"claims": f"{adds[0]}:{d}:5,{adds[1]}:{d}:3,{adds[2]}"}
     return {}
 
 

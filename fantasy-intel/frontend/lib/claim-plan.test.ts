@@ -86,16 +86,20 @@ test("bids are whole dollars or empty", () => {
   for (const t of ["1.5", "-2", "abc", "1e3", "1000000"]) assert.equal(parseBid(t).ok, false, t);
 });
 
-test("the check is always requested under the league, and only well-formed claims reach the backend", () => {
+test("the check is always requested under the league, in claim order, and only well-formed claims reach the backend", () => {
   const src = claimPlanSrc(A, 2, [c(309, 206, 15), c(209), c(-16002, null, 0)]);
-  assert.equal(src, `/l/${A}/api/waiver-claim-plan?team_id=2&claim=309%3A206%3A15&claim=209%3A%3A&claim=-16002%3A%3A0`);
+  assert.equal(src, `/l/${A}/api/waiver-claim-plan?team_id=2&claims=309%3A206%3A15%2C209%3A%3A%2C-16002%3A%3A0`);
+  // another order is another request (the league-scoped response cache sorts query pairs, not one value's parts)
+  assert.notEqual(claimPlanSrc(A, 2, [c(209), c(309, 206, 15)]), claimPlanSrc(A, 2, [c(309, 206, 15), c(209)]));
   const many = claimPlanSrc(A, 2, Array.from({ length: MAX_CLAIMS + 3 }, (_, i) => c(100 + i)));
-  assert.equal(new URL(many, "http://x").searchParams.getAll("claim").length, MAX_CLAIMS);
+  assert.equal(new URL(many, "http://x").searchParams.get("claims")!.split(",").length, MAX_CLAIMS);
   const path = claimPlanBackendPath(new URL(src, "http://x").searchParams);
-  assert.equal(path, "/api/waivers/claim-plan?team_id=2&claim=309%3A206%3A15&claim=209%3A%3A&claim=-16002%3A%3A0");
-  for (const q of ["claim=1", "team_id=x&claim=1", "team_id=2&claim=1;drop", "team_id=2&claim=1:2:3:4", "team_id=2&league=lg_x&claim=a"])
+  assert.equal(path, "/api/waivers/claim-plan?team_id=2&claims=309%3A206%3A15%2C209%3A%3A%2C-16002%3A%3A0");
+  for (const q of ["claims=1", "team_id=x&claims=1", "team_id=2&claims=1;drop", "team_id=2&claims=1:2:3:4", "team_id=2&claims=1,,2",
+    `team_id=2&claims=${Array.from({ length: MAX_CLAIMS + 1 }, (_, i) => i + 1).join(",")}`])
     assert.equal(claimPlanBackendPath(new URLSearchParams(q)), null, q);
-  assert.equal(claimPlanBackendPath(new URLSearchParams("team_id=2&league_id=9&claim=1")), "/api/waivers/claim-plan?team_id=2&claim=1");
+  assert.equal(claimPlanBackendPath(new URLSearchParams("team_id=2&league_id=9&claims=1")), "/api/waivers/claim-plan?team_id=2&claims=1");
+  assert.equal(claimPlanBackendPath(new URLSearchParams("team_id=2")), "/api/waivers/claim-plan?team_id=2&claims=");
 });
 
 const NOW = Date.parse("2026-10-23T12:00:00Z");

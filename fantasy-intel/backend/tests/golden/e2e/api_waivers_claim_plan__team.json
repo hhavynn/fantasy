@@ -1,4 +1,4 @@
-// /api/waivers/claim-plan?claim=209%3A-16002%3A5&claim=405%3A-16002%3A3&claim=309&team_id=2
+// /api/waivers/claim-plan?claims=209%3A-16002%3A5%2C405%3A-16002%3A3%2C309&team_id=2
 {
  "body": {
   "assumptions": [

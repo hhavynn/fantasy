@@ -279,7 +279,7 @@ def fixture_api(tmp_path, monkeypatch):
 
 
 def test_the_api_checks_a_plan_from_the_synced_league(fixture_api):
-    res = fixture_api.get("/api/waivers/claim-plan?claim=309:206:15&claim=209&claim=99999")
+    res = fixture_api.get("/api/waivers/claim-plan?claims=309:206:15,209,99999")
     assert res.status_code == 200, res.text[:300]
     d = res.json()
     assert d["contract"] == "waiver-claim-plan/v1" and d["submitted"] is False
@@ -292,15 +292,24 @@ def test_the_api_checks_a_plan_from_the_synced_league(fixture_api):
     assert "ESPN" in d["assumptions"][0]
 
 
-@pytest.mark.parametrize("query", ["?claim=abc", "?claim=301:107:-5", "?team_id=-1", "?claim=209:206:5" + "0" * 60,
-                                   "?claim=209:206:5" + "%20" * 60,
-                                   "?" + "&".join(f"claim={300 + i}" for i in range(MAX_CLAIMS + 1))])
+@pytest.mark.parametrize("query", ["?claims=abc", "?claims=301:107:-5", "?claims=209,,301", "?team_id=-1",
+                                   "?claims=209:206:5" + "0" * 60, "?claims=209:206:5" + "%20" * 60,
+                                   "?claims=" + ",".join(str(300 + i) for i in range(MAX_CLAIMS + 1))])
 def test_the_api_refuses_a_malformed_plan(fixture_api, query):
     assert fixture_api.get("/api/waivers/claim-plan" + query).status_code == 422
 
 
+def test_the_api_keeps_the_claim_order(fixture_api):
+    """One ordered parameter: the same claims in another order are another request (and another cache entry)."""
+    a = fixture_api.get("/api/waivers/claim-plan?team_id=2&claims=309:207:15,209:207").json()
+    b = fixture_api.get("/api/waivers/claim-plan?team_id=2&claims=209:207,309:207:15").json()
+    assert [c["request"]["add"] for c in a["claims"]] == [309, 209] and SHARED_DROP in codes(a["claims"][1])
+    assert [c["request"]["add"] for c in b["claims"]] == [209, 309] and SHARED_DROP in codes(b["claims"][1])
+    assert fixture_api.get("/api/waivers/claim-plan?claims=").json()["status"] == "empty"
+
+
 def test_the_api_answers_404_for_a_team_outside_the_league(fixture_api):
-    assert fixture_api.get("/api/waivers/claim-plan?team_id=77&claim=209").status_code == 404
+    assert fixture_api.get("/api/waivers/claim-plan?team_id=77&claims=209").status_code == 404
 
 
 def test_more_flex_slots_than_supported_is_the_app_wide_422(fixture_api, monkeypatch):
@@ -309,5 +318,5 @@ def test_more_flex_slots_than_supported_is_the_app_wide_422(fixture_api, monkeyp
     real = route.load_league_state
     monkeypatch.setattr(route, "load_league_state", lambda con, **kw: replace(
         real(con, **kw), slots=lineup_slots({"QB": 1, "FLEX": MAX_FLEX_SLOTS + 1})))
-    res = fixture_api.get("/api/waivers/claim-plan?claim=209:206")
+    res = fixture_api.get("/api/waivers/claim-plan?claims=209:206")
     assert res.status_code == 422 and res.json() == {"detail": UNSUPPORTED_LINEUP}

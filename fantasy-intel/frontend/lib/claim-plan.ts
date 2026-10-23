@@ -1,6 +1,6 @@
 // Waiver claim planner (issue #180): the device-local shortlist in claim order, each claim with an optional drop and,
 // where the league bids with FAAB, an optional bid. The plan lives only in this browser, under the canonical league
-// ID and the team it is for; the backend (GET /api/waivers/claim-plan, contract waiver-claim-plan/v1, through the
+// ID and the team it is for; the backend (GET /api/waivers/claim-plan?claims=..., contract waiver-claim-plan/v1, through the
 // /api/waiver-claim-plan route) only checks it. Nothing here submits a claim or talks to ESPN or Sleeper.
 
 import { isLeagueId, leaguePath } from "./league-scope.ts";
@@ -123,20 +123,24 @@ export function claimParam(c: Claim): string {
  * request to that league; there is no unscoped form. Only the first MAX_CLAIMS claims are sent.
  */
 export function claimPlanSrc(leagueId: string, team: number, claims: readonly Claim[]): string {
-  const q = new URLSearchParams({ team_id: String(team) });
-  for (const c of claims.slice(0, MAX_CLAIMS)) q.append("claim", claimParam(c));
+  const q = new URLSearchParams({ team_id: String(team), claims: claims.slice(0, MAX_CLAIMS).map(claimParam).join(",") });
   return `${leaguePath(leagueId, "/api/waiver-claim-plan")}?${q}`;
 }
 
-/** The backend path for the browser's query: only `team_id` and well-formed `claim` values are forwarded. */
+const CLAIM = /^-?\d{1,13}(:(-?\d{1,13})?)?(:(\d{1,6})?)?$/;
+
+/**
+ * The backend path for the browser's query: only `team_id` and a well-formed `claims` list are forwarded. The plan is
+ * one ordered parameter (the league-scoped response cache keys on sorted query pairs, so repeated parameters in a
+ * new order would read the answer for the old one).
+ */
 export function claimPlanBackendPath(params: URLSearchParams): string | null {
   const team = params.get("team_id");
   if (team === null || !/^\d{1,6}$/.test(team)) return null;
-  const claims = params.getAll("claim");
-  if (claims.length > MAX_CLAIMS || claims.some((c) => !/^-?\d{1,13}(:(-?\d{1,13})?)?(:(\d{1,6})?)?$/.test(c))) return null;
-  const q = new URLSearchParams({ team_id: team });
-  for (const c of claims) q.append("claim", c);
-  return `/api/waivers/claim-plan?${q}`;
+  const raw = params.get("claims") ?? "";
+  const claims = raw === "" ? [] : raw.split(",");
+  if (claims.length > MAX_CLAIMS || claims.some((c) => !CLAIM.test(c))) return null;
+  return `/api/waivers/claim-plan?${new URLSearchParams({ team_id: team, claims: claims.join(",") })}`;
 }
 
 // ---- the backend contract -----------------------------------------------------------------------------------------

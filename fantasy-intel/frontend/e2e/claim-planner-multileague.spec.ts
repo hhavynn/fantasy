@@ -109,7 +109,8 @@ for (const width of [1440, 375]) {
       v: 1, league: a, team: 2, claims: [{ add: 209, drop: 207, bid: null }, { add: 309, drop: 207, bid: 15 }],
     });
 
-    // Export says plainly it has not been submitted.
+    // Export says plainly it has not been submitted, with each claim's check once it has answered.
+    await expect(section).toContainText(/of 2 claims pass/);
     await section.getByRole("button", { name: "Copy plan as text" }).click();
     await expect(section).toContainText("Copied. The plan has not been submitted.");
     const copied = await page.evaluate(() => navigator.clipboard.readText());
@@ -143,6 +144,6 @@ test("a plan that cannot be checked is never shown as passing", async ({ page })
 });
 
 test("the check refuses an unscoped request and a forged league header", async ({ request }) => {
-  const res = await request.get("/api/waiver-claim-plan?team_id=2&claim=309", { headers: { "x-fi-league": manifest().leagues.espn_public } });
+  const res = await request.get("/api/waiver-claim-plan?team_id=2&claims=309", { headers: { "x-fi-league": manifest().leagues.espn_public } });
   expect(res.status()).toBe(404);
 });
