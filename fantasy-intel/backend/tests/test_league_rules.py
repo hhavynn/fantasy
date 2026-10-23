@@ -345,9 +345,9 @@ def test_dst_tables_and_check_match_the_research_model():
 
 def test_espn_blank_slot_22_is_a_bench_slot_as_the_parser_stores_it():
     """Issue #253 G12: ESPN's blank-labelled slot (id 22) is a non-starter for the parser (constants.NON_STARTER_SLOTS)
-    and the provider adapter, so the rules page counts it as bench, never as an unrecognised starter, and waiver
-    capacity counts it as an active spot instead of becoming unknown. Whether ESPN ever sends a count for it is
-    unverified, so it stays listed under unmapped."""
+    and the provider adapter, so the rules page counts it as bench, never as an unrecognised starter. Whether ESPN ever
+    sends a count for it, and whether it then holds a roster spot, is unverified: it stays listed under unmapped, and
+    waiver capacity stays unknown (the planner abstains) rather than counting a spot nobody has confirmed."""
     from app.analytics.reserve_slots import active_capacity
     from app.analytics.waiver_roster import roster_constraints
     from app.espn.constants import NON_STARTER_SLOTS
@@ -366,4 +366,6 @@ def test_espn_blank_slot_22_is_a_bench_slot_as_the_parser_stores_it():
     assert not any(r["code"] == "unfilled_slots" for r in out["engine_support"])
     assert [u["key"] for u in out["unmapped"] if u["area"] == "Roster slot"] == ["(blank label)"]
     constraints = roster_constraints(row)
-    assert constraints["capacity"] == active_capacity(counts) == 13
+    assert constraints["capacity"] is None and active_capacity(counts) == 13
+    assert any("blank-labelled roster slot" in w for w in constraints["warnings"])
+    assert roster_constraints(espn_row(ef.league_payload()))["capacity"] is not None   # no blank slot: unchanged

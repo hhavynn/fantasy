@@ -511,6 +511,38 @@ def test_sleeper_ir_rules_come_from_the_league_settings_and_abstain_when_absent(
     assert "ir_eligibility" not in {r["code"] for r in build_league_rules(latest_league(league("M2")))["engine_support"]}
 
 
+def test_the_waiver_planner_abstains_on_an_undecided_ir_status_even_with_complete_settings():
+    """G7 in the waiver planner: under a Sleeper league's full IR rules a QUESTIONABLE occupant (no setting covers it)
+    leaves the move UNKNOWN, never legal, even with complete roster settings; a status the rules disallow blocks the
+    add with wording that does not send a Sleeper manager to ESPN."""
+    from app.analytics.reserve_slots import ir_rules
+    from app.analytics.waiver_roster import plan_roster_move, roster_constraints
+
+    slots = {"QB": 1, "BE": 2, "IR": 1}
+    raw = {"provider": "sleeper", **IR_RULES_ALL, "rosterSettings": {"source": "explicit_slots"}}
+    c = roster_constraints({"roster_slots": slots, "settings_raw": raw})
+    assert c["capacity"] == 3 and c["settings_complete"] is True and c["ir_rules"] == ir_rules(raw)
+    cand = {"espn_player_id": 9, "position": "QB", "raw_value": 1.0}
+
+    def move(status):
+        players = [{"espn_player_id": 1, "position": "QB", "lineup_slot_id": 0, "injury_status": None},
+                   {"espn_player_id": 2, "position": "QB", "lineup_slot_id": 21, "injury_status": status}]
+        return plan_roster_move({"players": players, "slots": ["QB"], "roster_slots": slots}, cand, c)
+
+    for undecided in ("QUESTIONABLE", "PROBABLE"):
+        out = move(undecided)
+        assert out["status"] == "UNKNOWN" and "not decided by this league's synced IR rules" in out["summary"]
+    blocked = move("SUSPENSION")                                                   # reserve_allow_sus = 0
+    assert blocked["status"] == "UNKNOWN" and "ESPN" not in blocked["summary"]
+    assert "does not allow the IR slot under this league's rules" in blocked["summary"]
+    assert move("DOUBTFUL")["status"] != "UNKNOWN"                                 # allowed: the planner goes on
+    espn = roster_constraints({"roster_slots": slots, "settings_raw": {"rosterSettings": {"source": "x"}}})
+    assert espn["ir_rules"] is None
+    assert "in ESPN" in plan_roster_move({"players": [{"espn_player_id": 2, "position": "QB", "lineup_slot_id": 21,
+                                                       "injury_status": "QUESTIONABLE"}],
+                                          "slots": ["QB"], "roster_slots": slots}, cand, espn)["summary"]
+
+
 def test_a_league_starting_no_kicker_or_defense_has_nothing_to_stream(league):
     slots = {k: v for k, v in cf.STANDARD.items() if k not in ("K", "D/ST")}
     out = diagnostic(league(cf.Row("M10", "espn", slots)))
