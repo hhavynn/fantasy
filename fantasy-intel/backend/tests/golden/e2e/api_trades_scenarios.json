@@ -1,0 +1,409 @@
+// /api/trades/scenarios?scenarios=2%3A1%3A102%3A101%2C2%3A1%3A102%3A202%2C2%3A1%3A102%3A103%2C1%3A2%3A101%3A102
+{
+ "body": {
+  "assumptions": [
+   "Projected points source: ESPN weekly projections, unmodified (no role, matchup, schedule, injury or market multipliers).",
+   "Trade impact: our exact optimal-lineup simulation for every remaining fantasy week, using the league's real roster slots and FLEX rules.",
+   "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "Only starters count; bench points are never value.",
+   "A projected 0 (bye, injury) is a real value; a missing projection is unknown and is never treated as 0.",
+   "Incoming players occupy active roster spots; they are never assumed to go to IR (a traded IR player arrives as an active-roster asset, subject to capacity and forced drops).",
+   "NFL availability is separate from the fantasy IR slot: in weeks a player is verified NFL-ineligible (reserve list, minimum-games rule not yet met) he cannot start for either team, whatever ESPN projects; his projection is shown, never counted and never treated as 0. An earliest eligible week is a minimum, not a return date.",
+   "Players currently in an IR slot stay rostered but inactive: they never enter the canonical starting lineup and their projection never affects completeness until a future sync shows ESPN moved them off IR.",
+   "Current IR status is held constant for this hypothetical evaluation. This does not predict when a player will return. Activation upside is shown separately and may require a roster move.",
+   "IR activation sensitivity (what an IR player would add if activated for free) is shown separately, is deliberately optimistic, and is never in the canonical delta.",
+   "Evaluation window: a trade proposed now starts at the first scoring period none of whose NFL games has kicked off; weeks already under way are never credited (no partial-week simulation).",
+   "Regular season and playoffs are reported separately and never weighted against each other.",
+   "Apart from that weekly K/D/ST stream, each team's current roster is assumed to be its roster for every remaining week (no other waiver moves)."
+  ],
+  "conflicts": [
+   {
+    "espn_player_id": 102,
+    "scenarios": [
+     0,
+     1,
+     2
+    ]
+   }
+  ],
+  "contract": "trade-scenario-compare/v1",
+  "data_version": "<masked>",
+  "evaluation": {
+   "earliest_actionable_week": 3,
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "short_term_week": 3,
+   "start_week": 3,
+   "start_week_overridden": false,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "kdst_streaming": {
+   "enabled": true,
+   "note": "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "positions": [],
+   "rank": 3
+  },
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "max_scenarios": 5,
+  "names": {
+   "101": {
+    "name": "Alpha QB",
+    "position": "QB",
+    "pro_team": "KC"
+   },
+   "102": {
+    "name": "Bravo QB",
+    "position": "QB",
+    "pro_team": "BUF"
+   },
+   "103": {
+    "name": "Charlie QB",
+    "position": "QB",
+    "pro_team": "DET"
+   },
+   "202": {
+    "name": "Foxtrot RB",
+    "position": "RB",
+    "pro_team": "BUF"
+   }
+  },
+  "notes": [
+   "Each scenario is evaluated alone against the current rosters. They are alternatives: their deltas never add up, and scenarios that share a player cannot both happen as saved.",
+   "All scenarios share one evaluation window and one data snapshot; a missing projection leaves a delta unknown (its known part is shown separately), never 0."
+  ],
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 27,
+      "label": "rostered players with a projection",
+      "total": 27
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "scenarios": [
+   {
+    "conflicts_with": [
+     1,
+     2
+    ],
+    "duplicate_of": null,
+    "index": 0,
+    "moved": [],
+    "reason": null,
+    "request": {
+     "team_a_id": 2,
+     "team_a_sends": [
+      102
+     ],
+     "team_b_id": 1,
+     "team_b_sends": [
+      101
+     ]
+    },
+    "result_label": "TEAM_A_LOSS_TEAM_B_GAIN",
+    "shape": "1-for-1",
+    "status": "evaluated",
+    "team_a": {
+     "forced_drops": [],
+     "known_ros_delta": -15.0,
+     "missing_players": [],
+     "playoff_delta": -3.0,
+     "projection_complete": true,
+     "receives": [
+      101
+     ],
+     "regular_season_delta": -12.0,
+     "ros_delta": -15.0,
+     "sends": [
+      102
+     ],
+     "short_term": {
+      "delta": -1.0,
+      "known_delta": -1.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 2,
+     "team_name": "Team 2",
+     "weeks_incomplete": []
+    },
+    "team_b": {
+     "forced_drops": [],
+     "known_ros_delta": 15.0,
+     "missing_players": [],
+     "playoff_delta": 3.0,
+     "projection_complete": true,
+     "receives": [
+      102
+     ],
+     "regular_season_delta": 12.0,
+     "ros_delta": 15.0,
+     "sends": [
+      101
+     ],
+     "short_term": {
+      "delta": 1.0,
+      "known_delta": 1.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 1,
+     "team_name": "Team 1",
+     "weeks_incomplete": []
+    }
+   },
+   {
+    "conflicts_with": [
+     0,
+     2
+    ],
+    "duplicate_of": null,
+    "index": 1,
+    "moved": [],
+    "reason": null,
+    "request": {
+     "team_a_id": 2,
+     "team_a_sends": [
+      102
+     ],
+     "team_b_id": 1,
+     "team_b_sends": [
+      202
+     ]
+    },
+    "result_label": "BOTH_LOSE",
+    "shape": "1-for-1",
+    "status": "evaluated",
+    "team_a": {
+     "forced_drops": [],
+     "known_ros_delta": -90.0,
+     "missing_players": [],
+     "playoff_delta": -19.8,
+     "projection_complete": true,
+     "receives": [
+      202
+     ],
+     "regular_season_delta": -70.2,
+     "ros_delta": -90.0,
+     "sends": [
+      102
+     ],
+     "short_term": {
+      "delta": -5.3,
+      "known_delta": -5.3,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 2,
+     "team_name": "Team 2",
+     "weeks_incomplete": []
+    },
+    "team_b": {
+     "forced_drops": [],
+     "known_ros_delta": -75.0,
+     "missing_players": [],
+     "playoff_delta": -15.0,
+     "projection_complete": true,
+     "receives": [
+      102
+     ],
+     "regular_season_delta": -60.0,
+     "ros_delta": -75.0,
+     "sends": [
+      202
+     ],
+     "short_term": {
+      "delta": -5.0,
+      "known_delta": -5.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 1,
+     "team_name": "Team 1",
+     "weeks_incomplete": []
+    }
+   },
+   {
+    "conflicts_with": [
+     0,
+     1
+    ],
+    "duplicate_of": null,
+    "index": 2,
+    "moved": [
+     {
+      "current_team_id": 3,
+      "current_team_name": "Team 3",
+      "espn_player_id": 103,
+      "expected_team_id": 1
+     }
+    ],
+    "reason": "A player in this scenario is no longer on the roster that sends him, so it was not re-valued. Rebuild it in the analyzer from the current rosters.",
+    "request": {
+     "team_a_id": 2,
+     "team_a_sends": [
+      102
+     ],
+     "team_b_id": 1,
+     "team_b_sends": [
+      103
+     ]
+    },
+    "shape": "1-for-1",
+    "status": "stale"
+   },
+   {
+    "conflicts_with": [],
+    "duplicate_of": 0,
+    "index": 3,
+    "moved": [],
+    "reason": null,
+    "request": {
+     "team_a_id": 1,
+     "team_a_sends": [
+      101
+     ],
+     "team_b_id": 2,
+     "team_b_sends": [
+      102
+     ]
+    },
+    "result_label": "TEAM_A_GAIN_TEAM_B_LOSS",
+    "shape": "1-for-1",
+    "status": "evaluated",
+    "team_a": {
+     "forced_drops": [],
+     "known_ros_delta": 15.0,
+     "missing_players": [],
+     "playoff_delta": 3.0,
+     "projection_complete": true,
+     "receives": [
+      102
+     ],
+     "regular_season_delta": 12.0,
+     "ros_delta": 15.0,
+     "sends": [
+      101
+     ],
+     "short_term": {
+      "delta": 1.0,
+      "known_delta": 1.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 1,
+     "team_name": "Team 1",
+     "weeks_incomplete": []
+    },
+    "team_b": {
+     "forced_drops": [],
+     "known_ros_delta": -15.0,
+     "missing_players": [],
+     "playoff_delta": -3.0,
+     "projection_complete": true,
+     "receives": [
+      101
+     ],
+     "regular_season_delta": -12.0,
+     "ros_delta": -15.0,
+     "sends": [
+      102
+     ],
+     "short_term": {
+      "delta": -1.0,
+      "known_delta": -1.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "team_id": 2,
+     "team_name": "Team 2",
+     "weeks_incomplete": []
+    }
+   }
+  ],
+  "submitted": false,
+  "summary": {
+   "evaluated": 3,
+   "incomplete": 0,
+   "invalid": 0,
+   "scenarios": 4,
+   "stale": 1
+  },
+  "teams": [
+   {
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ],
+  "trade_impact_source": "exact optimal-lineup simulation"
+ },
+ "status": 200
+}
