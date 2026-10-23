@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 # so a few searches are kept in memory; any database write (or hosted publish) changes data_version and the key.
 _CACHE: OrderedDict = OrderedDict()
 _CACHE_SIZE = 4
+_CACHE_LOCK = threading.Lock()       # concurrent discovery requests share the memo (#201)
 # The finished view (every row with its evidence) for the split page endpoints: the table summary and each
 # row's evidence come from the same computation, so the evidence a row shows is the one it was ranked with.
 _VIEWS: OrderedDict = OrderedDict()
@@ -61,13 +62,20 @@ def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[s
     # League identity and the anchor team are in every key: a search for one team is never served for another.
     key = (data_version(con), state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
            streaming_enabled(state), focus)
-    if key in _CACHE:
+    # The memo is read, refreshed and trimmed under a lock: unlocked, another request's eviction between the lookup and
+    # move_to_end raised KeyError (a 500). The search is built outside it, so leagues never wait on one another; two
+    # requests building the same key keep the first one stored.
+    with _CACHE_LOCK:
+        ts = _CACHE.get(key)
+        if ts is not None:
+            _CACHE.move_to_end(key)
+            return ts
+    built = TradeSearch(state, anchor, shapes, positions=positions, focus_weeks=focus)
+    with _CACHE_LOCK:
+        ts = _CACHE.setdefault(key, built)
         _CACHE.move_to_end(key)
-        return _CACHE[key]
-    ts = TradeSearch(state, anchor, shapes, positions=positions, focus_weeks=focus)
-    _CACHE[key] = ts
-    while len(_CACHE) > _CACHE_SIZE:
-        _CACHE.popitem(last=False)
+        while len(_CACHE) > _CACHE_SIZE:
+            _CACHE.popitem(last=False)
     return ts
 
 
