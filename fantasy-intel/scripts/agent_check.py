@@ -168,6 +168,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     # Trade discovery, trade-vs-free-agency and the lineup solvers they share with the evaluator (#277).
     ("analytics/trade_discovery", ["tests/test_trade_discovery.py", "tests/test_trade_discovery_budget.py",
                                    "tests/test_trade_v3.py", "tests/test_trade_lenses.py", "tests/test_golden_legacy.py"]),
+    ("analytics/trade_practical", ["tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_lenses.py",
+                                   "tests/test_trade_discovery_budget.py", "tests/test_golden_legacy.py"]),
     ("analytics/trade_alternatives", ["tests/test_trade_alternatives.py", "tests/test_trade_discovery.py",
                                       "tests/test_trade_discovery_budget.py", "tests/test_trades.py"]),
     (re.compile(r"analytics/lineup(_totals)?\.py$"), ["tests/test_lineup.py", "tests/test_lineup_flex_solver.py",
