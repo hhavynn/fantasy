@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  changeText, eventTimeText, formatEt, injuryImpactHref, levelBadge, newestFirst, relationText, signalText,
-  type TimelineEvent, type TimelinePlayer,
+  changeText, eventTimeText, formatEt, injuryImpactHref, levelBadge, licenseCredits, newestFirst, relationText, signalText,
+  type TimelineEvent, type TimelinePlayer, type TimelineSource,
 } from "./availability-timeline.ts";
 
 const ev = (over: Partial<TimelineEvent> = {}): TimelineEvent => ({
@@ -72,4 +72,13 @@ test("injury impact links anchor only designated players", () => {
   assert.equal(injuryImpactHref(player({ gsis_id: null })), "/injury-impact");
   assert.equal(levelBadge("unknown"), null);
   assert.equal(levelBadge("ir"), "INJURY_RESERVE");
+});
+
+test("each licence the sources carry is credited once; sources without one add none (#186)", () => {
+  const cc = { name: "CC BY 4.0", url: "https://creativecommons.org/licenses/by/4.0/", source_url: "https://github.com/nflverse",
+    credit: "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel." };
+  const src = (key: string, license?: TimelineSource["license"]): TimelineSource => ({ key, type: "official", label: key,
+    url: null, available: true, retrieved_at: null, publication_time: "missing", text: "", license });
+  assert.deepEqual(licenseCredits([src("nfl_report", cc), src("provider", null), src("schedule", cc)]), [cc]);
+  assert.deepEqual(licenseCredits([src("provider", null), src("legacy")]), []);
 });

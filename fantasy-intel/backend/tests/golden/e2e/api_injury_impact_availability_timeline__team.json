@@ -1154,6 +1154,12 @@
     "available": false,
     "key": "nfl_report",
     "label": "NFL injury report (via nflverse)",
+    "license": {
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
+     "name": "CC BY 4.0",
+     "source_url": "https://github.com/nflverse",
+     "url": "https://creativecommons.org/licenses/by/4.0/"
+    },
     "publication_time": "missing",
     "retrieved_at": null,
     "text": "Game status, final practice participation and injury per player-week, with the provider's date_modified when published. Practice is one value per report row, not each practice day.",
@@ -1164,6 +1170,12 @@
     "available": null,
     "key": "nfl_roster",
     "label": "NFL weekly roster (via nflverse)",
+    "license": {
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
+     "name": "CC BY 4.0",
+     "source_url": "https://github.com/nflverse",
+     "url": "https://creativecommons.org/licenses/by/4.0/"
+    },
     "publication_time": "missing",
     "retrieved_at": null,
     "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time.",
@@ -1174,6 +1186,7 @@
     "available": true,
     "key": "provider",
     "label": "ESPN player status",
+    "license": null,
     "publication_time": "missing",
     "retrieved_at": "<masked>",
     "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced.",
@@ -1184,6 +1197,7 @@
     "available": true,
     "key": "news",
     "label": "Owner-curated news summaries",
+    "license": null,
     "publication_time": "date_only",
     "retrieved_at": null,
     "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation.",
@@ -1194,6 +1208,12 @@
     "available": true,
     "key": "schedule",
     "label": "NFL schedule (via nflverse)",
+    "license": {
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
+     "name": "CC BY 4.0",
+     "source_url": "https://github.com/nflverse",
+     "url": "https://creativecommons.org/licenses/by/4.0/"
+    },
     "publication_time": "scheduled",
     "retrieved_at": null,
     "text": "This week's kickoffs, to mark reports modified after kickoff.",

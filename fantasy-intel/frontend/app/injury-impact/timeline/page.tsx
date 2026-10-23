@@ -6,7 +6,7 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
-  eventTimeText, formatEt, injuryImpactHref, levelBadge, newestFirst, PRACTICE_REASON, profileHref, relationText,
+  eventTimeText, formatEt, injuryImpactHref, levelBadge, licenseCredits, newestFirst, PRACTICE_REASON, profileHref, relationText,
   signalText, SOURCE_TYPE_LABEL, type AvailabilityTimelineResponse, type TimelineEvent, type TimelinePlayer,
 } from "@/lib/availability-timeline";
 import { providerName } from "@/lib/labels";
@@ -226,11 +226,19 @@ export default async function AvailabilityPage({ searchParams }: PageProps<"/inj
             <li key={s.key}>
               <SourceTag type={s.type} /> <strong>{s.label}</strong>
               {s.url && <>{" · "}<a href={s.url} target="_blank" rel="noopener noreferrer nofollow">dataset</a></>}
+              {s.license && <>{" · "}<a href={s.license.url} target="_blank" rel="noopener noreferrer nofollow">{s.license.name}</a></>}
               {s.retrieved_at && <> · retrieved <time dateTime={s.retrieved_at}>{formatEt(s.retrieved_at)}</time></>}
               <span className={styles.sub}>{s.text}</span>
             </li>
           ))}
         </ul>
+        {licenseCredits(data.sources).map((l) => (
+          <p key={l.credit} className={styles.credit}>
+            {l.credit}{" "}
+            <a href={l.source_url} target="_blank" rel="noopener noreferrer nofollow">nflverse</a>
+            {" · "}<a href={l.url} target="_blank" rel="noopener noreferrer nofollow">{l.name} licence</a>
+          </p>
+        ))}
       </Section>
 
       <Method title="How the availability timeline works">
