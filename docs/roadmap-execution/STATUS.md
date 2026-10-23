@@ -26,7 +26,7 @@ Counted from merged PRs (checked via the GitHub API), not from issue open/closed
 | #205 roadmap | 15 | 1 (#186) | 0 | 24 (1 in progress) | 40 |
 | #227 expansion | 0 | 0 | 0 | 18 | 18 |
 | Correctness #228–#229 | 2 | 0 | 0 | 0 | 2 |
-| Compatibility #253–#254 | 0 | 0 | 1 (#253 → #256) | 1 (in progress) | 2 |
+| Compatibility #253–#254 | 0 (#253 phase 2 merged; issue stays open) | 0 | 1 (#254 → #259) | 1 (#253 phase 3) | 2 |
 | **Total** | **17** | **1** | **1** | **43** | **62** |
 
 GitHub hygiene: 7 issues whose PRs merged are still open on GitHub (#165, #167, #168, #169, #193, #201, #202). Their
@@ -120,8 +120,8 @@ A separate workstream, added 2026-10-23. It does not replace or re-scope #205 or
 
 | Issue | Priority | Workstream | State | Branch / PR |
 |---|---|---|---|---|
-| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | IN PROGRESS (phase 2: FX-17 fixtures + `league-compatibility/v1` + G1 fix) | `feature/fi-253-compat-certification`; inventory 8bf2f4e (local) |
-| [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | IN PROGRESS (phase 1: support table + S1b missing components) | `feature/fi-254-scoring-fidelity` |
+| [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | PHASE 2 MERGED (PR #256 → 668b198); phase 3 (G2–G4 unsupported-slot integrity) + UI/E2E remain | — |
+| [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | PR OPEN #259 (phase 1: support table + S1b) | `feature/fi-254-scoring-fidelity` |
 
 **Roster support is not scoring fidelity.** A league can be fully supported structurally (every slot parsed, filled
 once, flex and superflex solved exactly) while its scoring is only partly reproduced. #253 certifies structure and
@@ -283,6 +283,7 @@ conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
 | #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
+| #256 | 04:25 | 05:12 (99c96de, 3rd full CI) | 04:46 MEDIUM → re-check 05:00 → G1 remainder | 05:13 (48 min) | 3 | 0 |
 | #257 | 04:30 | 04:36 | 04:34 (approve) | 04:37 (7 min) | 0 | 0 |
 | #249 | 02:01 | 03:22 | 02:17 (MEDIUM → fixed by #252, merged 03:07) | 03:22 (81 min) | 0 | 1 (waivers/page.tsx vs #244/#250) |
 
