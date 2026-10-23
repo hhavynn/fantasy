@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DEFAULT_TAB, PLAYER_TABS, inRange, parsePlayerTab, parseWeekWindow, profileHref, profileTabItems, readProfileState,
+  DEFAULT_TAB, PLAYER_TABS, inRange, leagueLogRows, parsePlayerTab, parseWeekWindow, profileHref, profileTabItems, readProfileState,
   weekSpan, weekWindowLabel, windowRange,
 } from "./player-tabs.ts";
 
@@ -68,4 +68,22 @@ test("inRange and weekSpan", () => {
   assert.equal(weekSpan([]), null);
   assert.equal(weekSpan([5]), "wk 5");
   assert.equal(weekSpan([7, 3, 5]), "wk 3–7");
+});
+
+test("leagueLogRows: a week window keeps the current week's projected row", () => {
+  const rows = [
+    { scoring_period: 1, actual_points: 4 },
+    { scoring_period: 5, actual_points: 9 },
+    { scoring_period: 6, actual_points: null },
+    { scoring_period: 7, actual_points: 11 },
+    { scoring_period: 8, actual_points: null },   // as_of_week: projected only
+    { scoring_period: 9, actual_points: null },
+  ];
+  const weeks = (r: typeof rows) => r.map((x) => x.scoring_period);
+  // The window ends at the last completed week (as_of_week - 1), yet this week's projection stays.
+  assert.deepEqual(weeks(leagueLogRows(rows, 8, { from: 5, to: 7 })), [5, 7, 8]);
+  assert.deepEqual(weeks(leagueLogRows(rows, 8, null)), [1, 5, 7, 8]);
+  assert.deepEqual(weeks(leagueLogRows(rows, null, { from: 5, to: 7 })), [5, 7]);
+  // A week with no points and not the current week is not a row (missing is not 0).
+  assert.ok(!weeks(leagueLogRows(rows, 8, null)).includes(6));
 });

@@ -5,13 +5,15 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { cx } from "@/lib/cx";
 import { ScrollToActive } from "./ScrollToActive";
 import { tabDomId, tabPanelDomId } from "./tab-ids";
+import { createRefocus } from "./tab-refocus";
 import styles from "./Tabs.module.css";
 
 export type TabListItem = { id: string; href: string; label: string };
 
-// The tablist whose tab was just activated. A tab is a navigation, and the new page can mount a fresh tablist (the
-// route's loading state replaces the old one), so the newly selected tab takes focus back when it mounts.
-let refocus: string | null = null;
+// The tab just activated. A tab is a navigation, and the new page can mount a fresh tablist (the route's loading
+// state replaces the old one), so the newly selected tab takes focus back when it arrives: only that exact tab, and
+// only shortly after (tab-refocus.ts), so a failed navigation never moves focus on a later page.
+const refocus = createRefocus();
 
 /**
  * A URL-backed ARIA tablist: each tab is a link (`href: "?id=201&tab=usage"`), so a tab can be deep-linked, opened
@@ -32,11 +34,11 @@ export function TabList({ items, current, label, idBase, className }: {
 }) {
   const list = useRef<HTMLDivElement>(null);
 
+  const selectedHref = items.find((item) => item.id === current)?.href;
   useEffect(() => {
-    if (refocus !== idBase) return;
-    refocus = null;
+    if (!refocus.take(idBase, selectedHref, Date.now())) return;
     list.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
-  }, [idBase, current]);
+  }, [idBase, selectedHref]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const tabs = [...(list.current?.querySelectorAll<HTMLAnchorElement>('[role="tab"]') ?? [])];
@@ -75,7 +77,7 @@ export function TabList({ items, current, label, idBase, className }: {
             className={styles.tab}
             onClick={(e) => {
               // A modified click opens a new browser tab: this page stays, so nothing should take focus later.
-              if (!selected && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) refocus = idBase;
+              if (!selected && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) refocus.arm(idBase, item.href, Date.now());
             }}
           >
             {item.label}

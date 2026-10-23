@@ -11,6 +11,7 @@ import { profileTabItems, type ProfileState } from "@/lib/player-tabs";
 import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
 import { signalsOf } from "@/lib/signal-provenance";
+import { isShortlistCandidate } from "@/lib/waiver-shortlist";
 import { BASIS_LABEL } from "@/lib/types";
 import { SavePlayer, ShortlistProvider } from "../waivers/Shortlist";
 import { SearchForm } from "./PlayerSearch";
@@ -84,8 +85,8 @@ function ProfileHeader({ d, q, profile, leagueId }: { d: Detail; q: string; prof
       provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
       actions={<>
         <CompareLink a={p.espn_player_id} aName={p.full_name} />
-        {/* The shortlist holds waiver candidates: a player on a fantasy roster has nothing to save for. */}
-        {leagueId && !p.fantasy_team && p.availability_status !== "ONTEAM" && <SavePlayer id={p.espn_player_id} name={p.full_name} />}
+        {/* The shortlist holds waiver candidates: only a free agent or waiver player, never a rostered or unknown one. */}
+        {leagueId && isShortlistCandidate(p.availability_status, p.fantasy_team) && <SavePlayer id={p.espn_player_id} name={p.full_name} />}
         <RankingsLink position={p.position} />
         <SearchForm q={q} compact />
       </>}

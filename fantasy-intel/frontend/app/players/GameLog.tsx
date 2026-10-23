@@ -3,7 +3,7 @@ import { providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { EmptyState, Method, Section, Tabs } from "@/components/ui";
 import { int, num, pct } from "@/lib/format";
-import { inRange, type WeekRange } from "@/lib/player-tabs";
+import { inRange, leagueLogRows, type WeekRange } from "@/lib/player-tabs";
 import { FTN_READ1_NOTE } from "@/lib/types";
 import type { UsageWeek } from "@/lib/types";
 import styles from "./players.module.css";
@@ -144,9 +144,7 @@ function LeagueLog({ d, notes, provider, espnProjections, range }: {
   d: Detail; notes: ReactNode; provider: string; espnProjections: boolean; range: WeekRange | null;
 }) {
   const asOf = d.forward_projection?.summary.as_of_week ?? null;
-  const rows = d.league_points
-    .filter((r) => r.actual_points !== null || (asOf !== null && r.scoring_period === asOf))
-    .filter((r) => inRange(r.scoring_period, range));
+  const rows = leagueLogRows(d.league_points, asOf, range);
   if (rows.length === 0) {
     return (
       <Section title="Game log">

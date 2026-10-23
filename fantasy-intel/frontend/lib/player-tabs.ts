@@ -108,6 +108,17 @@ export function inRange(week: number, range: WeekRange | null): boolean {
   return range === null || (week >= range.from && week <= range.to);
 }
 
+/**
+ * The rows of the league-points game log (players with no NFL usage): weeks with points inside the window, plus the
+ * current week's row (`asOf`, its projection) whatever the window, since a window ends at the last completed week.
+ */
+export function leagueLogRows<T extends { scoring_period: number; actual_points: number | null }>(
+  rows: readonly T[], asOf: number | null, range: WeekRange | null,
+): T[] {
+  return rows.filter((r) => (asOf !== null && r.scoring_period === asOf)
+    || (r.actual_points !== null && inRange(r.scoring_period, range)));
+}
+
 /** "wk 4–8", "wk 5", or null for an empty list. */
 export function weekSpan(weeks: readonly number[]): string | null {
   if (weeks.length === 0) return null;

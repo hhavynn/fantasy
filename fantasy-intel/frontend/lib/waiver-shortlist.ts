@@ -5,6 +5,14 @@ export function shortlistKey(leagueId: string | null): string | null {
   return isLeagueId(leagueId) ? `fi:waiver-shortlist:v1:${leagueId}` : null;
 }
 
+/**
+ * Whether a player can be saved to the waiver shortlist: only one the provider lists as a free agent or on waivers.
+ * A rostered player, and one whose availability is unknown (a null pool status), is not offered.
+ */
+export function isShortlistCandidate(availability: string | null | undefined, fantasyTeam?: string | null): boolean {
+  return !fantasyTeam && (availability === "FREEAGENT" || availability === "WAIVERS");
+}
+
 const validId = (id: unknown): id is number => typeof id === "number" && Number.isSafeInteger(id) && id !== 0;
 
 export function parseShortlist(raw: string | null): number[] {
