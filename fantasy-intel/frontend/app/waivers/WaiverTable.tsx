@@ -1,5 +1,5 @@
 import { SavePlayer } from "./Shortlist";
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, EmptyState, SortableTh } from "@/components/ui";
 import type { SearchParams, SortState } from "@/lib/sort";

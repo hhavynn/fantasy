@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Delta, Notice, ProvenanceBadge, Skeleton, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";

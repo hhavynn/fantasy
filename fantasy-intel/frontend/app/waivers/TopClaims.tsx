@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { SavePlayer } from "./Shortlist";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Verdict } from "@/components/ui";

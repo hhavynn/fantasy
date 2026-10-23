@@ -11,10 +11,18 @@ const LEAGUE_LINK_MESSAGE = "Use `import Link from \"@/components/LeagueLink\"` 
   + "the page's league (/l/<lg>/...) and goes through the last-viewed-league cookie redirect. See lib/league-scope.ts.";
 const LEAGUE_URL_MESSAGE = "A literal in-app URL here leaves the page's league (/l/<lg>/...). Build it with "
   + "withLeague(path, (await currentLeague())?.id) on the server or useLeagueHref() in a client component.";
-const APP_FILES = ["app/**/*.{ts,tsx,js,jsx}", "components/**/*.{ts,tsx,js,jsx}"];
-// TODO(#264): the waiver pages are being converted in that open PR; drop this entry once it merges and they use
-// LeagueLink and scoped form actions. Both rules below skip it until then.
-const PENDING_CONVERSION = ["app/waivers/**"];
+const APP_FILES = ["app/**/*.{ts,tsx,js,jsx}", "components/**/*.{ts,tsx,js,jsx}", "lib/**/*.tsx"];
+// TODO(#264): the files that open PR edits (it adds FaabGuidance.tsx) keep next/link until it merges, so the two
+// branches do not conflict; convert them and drop this list then. Both rules below skip them until then.
+const PENDING_CONVERSION = ["app/waivers/ClaimPlanner.tsx", "app/waivers/page.tsx", "app/waivers/FaabGuidance.tsx"];
+// A string, or a template literal's first chunk, that is an in-app absolute path ("/x", not "//host" or "?q").
+const IN_APP = "/^\\/(?!\\/)/";
+const inAppUrl = (parent) => [
+  `${parent} > Literal[value=${IN_APP}]`,
+  `${parent} > JSXExpressionContainer > Literal[value=${IN_APP}]`,
+  `${parent} > JSXExpressionContainer > TemplateLiteral > TemplateElement:first-child[value.raw=${IN_APP}]`,
+];
+const ROUTER_CALL = "CallExpression[callee.object.name='router'][callee.property.name=/^(push|replace)$/]";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -33,7 +41,8 @@ const eslintConfig = defineConfig([
       ...PENDING_CONVERSION,
     ],
     rules: {
-      "no-restricted-imports": ["error", { paths: [{ name: "next/link", message: LEAGUE_LINK_MESSAGE }] }],
+      // Type-only imports (`import type { LinkProps } from "next/link"`) render nothing and stay allowed.
+      "no-restricted-imports": ["error", { paths: [{ name: "next/link", message: LEAGUE_LINK_MESSAGE, allowTypeImports: true }] }],
     },
   },
   {
@@ -41,13 +50,15 @@ const eslintConfig = defineConfig([
     ignores: PENDING_CONVERSION,
     rules: {
       "no-restricted-syntax": ["error",
-        // <form action="/page">, action={"/page"} and action={`/page...`}
-        { selector: "JSXAttribute[name.name='action'] > Literal[value=/^\\/(?!\\/)/]", message: LEAGUE_URL_MESSAGE },
-        { selector: "JSXAttribute[name.name='action'] > JSXExpressionContainer > Literal[value=/^\\/(?!\\/)/]", message: LEAGUE_URL_MESSAGE },
-        { selector: "JSXAttribute[name.name='action'] > JSXExpressionContainer > TemplateLiteral > TemplateElement:first-child[value.raw=/^\\/(?!\\/)/]", message: LEAGUE_URL_MESSAGE },
-        // router.push("/page") and router.replace(`/page...`)
-        { selector: "CallExpression[callee.object.name='router'][callee.property.name=/^(push|replace)$/] > Literal.arguments:first-child[value=/^\\/(?!\\/)/]", message: LEAGUE_URL_MESSAGE },
-        { selector: "CallExpression[callee.object.name='router'][callee.property.name=/^(push|replace)$/] > TemplateLiteral.arguments:first-child > TemplateElement:first-child[value.raw=/^\\/(?!\\/)/]", message: LEAGUE_URL_MESSAGE },
+        ...[
+          // <form action="/page">, <button formAction={"/page"}>, action={`/page...`}
+          ...inAppUrl("JSXAttribute[name.name=/^(action|formAction)$/]"),
+          // a raw <a href="/page"> (use LeagueLink, which also passes unscoped pages such as /terms through unchanged)
+          ...inAppUrl("JSXOpeningElement[name.name='a'] > JSXAttribute[name.name='href']"),
+          // router.push("/page") and router.replace(`/page...`)
+          `${ROUTER_CALL} > Literal.arguments:first-child[value=${IN_APP}]`,
+          `${ROUTER_CALL} > TemplateLiteral.arguments:first-child > TemplateElement:first-child[value.raw=${IN_APP}]`,
+        ].map((selector) => ({ selector, message: LEAGUE_URL_MESSAGE })),
       ],
     },
   },
