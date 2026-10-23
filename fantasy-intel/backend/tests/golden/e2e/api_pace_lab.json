@@ -1,0 +1,2381 @@
+// /api/pace-lab
+{
+ "body": {
+  "available_seasons": [
+   2024,
+   2025
+  ],
+  "backtest": {
+   "data": {
+    "fingerprint_sha256": "c80488fc2ce79d2e0b0a0505bcf00ee376406712de4c7f65a3fcd7b1165c08a6",
+    "games": 3742,
+    "ingest_nflreadpy_version": "0.1.5",
+    "ingested_at": "<masked>",
+    "nflreadpy_version": "0.1.5",
+    "overtime_recorded": true,
+    "seasons_stored": [
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025
+    ]
+   },
+   "neutral_pass_rate": {
+    "best_baseline": "team_to_date",
+    "by_season": {
+     "2019": {
+      "league_rate": 0.0721,
+      "n": 479,
+      "shrunk_team": 0.0692,
+      "team_to_date": 0.0743
+     },
+     "2020": {
+      "league_rate": 0.0788,
+      "n": 480,
+      "shrunk_team": 0.0715,
+      "team_to_date": 0.0742
+     },
+     "2021": {
+      "league_rate": 0.0788,
+      "n": 512,
+      "shrunk_team": 0.0748,
+      "team_to_date": 0.078
+     },
+     "2022": {
+      "league_rate": 0.0792,
+      "n": 510,
+      "shrunk_team": 0.0729,
+      "team_to_date": 0.0755
+     },
+     "2023": {
+      "league_rate": 0.0771,
+      "n": 512,
+      "shrunk_team": 0.0753,
+      "team_to_date": 0.0792
+     },
+     "2024": {
+      "league_rate": 0.0739,
+      "n": 512,
+      "shrunk_team": 0.0695,
+      "team_to_date": 0.0731
+     },
+     "2025": {
+      "league_rate": 0.0738,
+      "n": 512,
+      "shrunk_team": 0.0728,
+      "team_to_date": 0.077
+     }
+    },
+    "comparisons": {
+     "shrunk_team": {
+      "league_rate": {
+       "high": -0.003,
+       "low": -0.0049,
+       "mean": -0.004
+      },
+      "team_to_date": {
+       "high": -0.0022,
+       "low": -0.0053,
+       "mean": -0.0036
+      }
+     }
+    },
+    "models": {
+     "league_rate": {
+      "bias": 0.0076,
+      "mae": 0.0763,
+      "rmse": 0.0965
+     },
+     "shrunk_team": {
+      "bias": 0.0077,
+      "mae": 0.0723,
+      "rmse": 0.0917
+     },
+     "team_to_date": {
+      "bias": 0.0072,
+      "mae": 0.0759,
+      "rmse": 0.097
+     }
+    },
+    "n": 3517,
+    "verdicts": {
+     "shrunk_team": "improves"
+    },
+    "weight_total": 120657.0
+   },
+   "overtime_unknown_targets": 0,
+   "plays": {
+    "best_baseline": "league_mean",
+    "by_season": {
+     "2019": {
+      "league_mean": 6.3656,
+      "matchup_additive": 6.3704,
+      "n": 462,
+      "script_mixture": 6.3768,
+      "shrunk_team": 6.2636,
+      "team_to_date": 6.5951
+     },
+     "2020": {
+      "league_mean": 6.5752,
+      "matchup_additive": 6.7938,
+      "n": 460,
+      "script_mixture": 6.8122,
+      "shrunk_team": 6.6626,
+      "team_to_date": 7.117
+     },
+     "2021": {
+      "league_mean": 6.5183,
+      "matchup_additive": 6.6575,
+      "n": 472,
+      "script_mixture": 6.714,
+      "shrunk_team": 6.5941,
+      "team_to_date": 7.0944
+     },
+     "2022": {
+      "league_mean": 6.256,
+      "matchup_additive": 6.3164,
+      "n": 470,
+      "script_mixture": 6.2662,
+      "shrunk_team": 6.2057,
+      "team_to_date": 6.5524
+     },
+     "2023": {
+      "league_mean": 6.5173,
+      "matchup_additive": 6.7009,
+      "n": 486,
+      "script_mixture": 6.7348,
+      "shrunk_team": 6.5389,
+      "team_to_date": 7.0546
+     },
+     "2024": {
+      "league_mean": 6.3264,
+      "matchup_additive": 6.6062,
+      "n": 480,
+      "script_mixture": 6.5673,
+      "shrunk_team": 6.4116,
+      "team_to_date": 7.0079
+     },
+     "2025": {
+      "league_mean": 6.6099,
+      "matchup_additive": 6.6237,
+      "n": 484,
+      "script_mixture": 6.6236,
+      "shrunk_team": 6.5476,
+      "team_to_date": 6.9183
+     }
+    },
+    "comparisons": {
+     "matchup_additive": {
+      "league_mean": {
+       "high": 0.2213,
+       "low": 0.0365,
+       "mean": 0.1289
+      },
+      "team_to_date": {
+       "high": -0.1809,
+       "low": -0.4794,
+       "mean": -0.3249
+      }
+     },
+     "script_mixture": {
+      "league_mean": {
+       "high": 0.222,
+       "low": 0.0359,
+       "mean": 0.1326
+      },
+      "team_to_date": {
+       "high": -0.2168,
+       "low": -0.4393,
+       "mean": -0.3213
+      }
+     },
+     "shrunk_team": {
+      "league_mean": {
+       "high": 0.079,
+       "low": -0.0595,
+       "mean": 0.008
+      },
+      "team_to_date": {
+       "high": -0.3263,
+       "low": -0.5838,
+       "mean": -0.4458
+      }
+     }
+    },
+    "models": {
+     "league_mean": {
+      "bias": -0.0295,
+      "mae": 6.4531,
+      "rmse": 8.0425
+     },
+     "matchup_additive": {
+      "bias": -0.0319,
+      "mae": 6.582,
+      "rmse": 8.2352
+     },
+     "script_mixture": {
+      "bias": -0.0053,
+      "mae": 6.5857,
+      "rmse": 8.2398
+     },
+     "shrunk_team": {
+      "bias": -0.0295,
+      "mae": 6.4611,
+      "rmse": 8.0809
+     },
+     "team_to_date": {
+      "bias": -0.034,
+      "mae": 6.907,
+      "rmse": 8.6687
+     }
+    },
+    "n": 3314,
+    "verdicts": {
+     "matchup_additive": "worse",
+     "script_mixture": "worse",
+     "shrunk_team": "no clear difference"
+    },
+    "weight_total": null
+   },
+   "range_coverage": {
+    "conditional_on_script": {
+     "inside": 2545,
+     "n": 3120,
+     "nominal": 0.8,
+     "share": 0.8157
+    },
+    "pregame_mixture": {
+     "inside": 2584,
+     "n": 3120,
+     "nominal": 0.8,
+     "share": 0.8282
+    }
+   },
+   "run_at": "<masked>",
+   "seasons": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "skipped": {
+    "no_prior_team_game": 16,
+    "overtime": 188,
+    "week_1": 224
+   },
+   "spec_sha256": "2e20c7edede8e6641db29c2150772331617f2a2168b2fd56a7e0a953a61b0d6e",
+   "status": "frozen",
+   "version": "pace-bt-0.1.0"
+  },
+  "contract": "pace-lab.v1",
+  "coverage": {
+   "counted": 543,
+   "games": 544,
+   "missing_pbp": 1,
+   "no_drive": 0,
+   "no_neutral_play": 1,
+   "not_final": 0,
+   "overtime": 0,
+   "overtime_unknown": 543
+  },
+  "definitions": {
+   "drives": "Drives with at least one scrimmage play (nflverse fixed_drive); a drive with no scrimmage play (a kickoff returned for a touchdown, a penalty-only possession) is not a drive.",
+   "final": "A game counts when the stored schedule has both scores and, when a sync time is recorded, its date is before that sync; a team-week row without a final score is not counted.",
+   "neutral": "Neutral situation: win probability between 0.20 and 0.80 with more than two minutes left in the half (nflverse wp). A game with no neutral play has no neutral pass rate (missing, not 0%).",
+   "overtime": "An overtime game (nflverse schedules) is excluded from per-game volume and kept in per-play rates; when the flag is not stored, overtime is unknown and the game is counted.",
+   "pass_rate": "Dropbacks / (dropbacks + designed runs).",
+   "plays": "Run and pass plays (dropbacks including sacks and scrambles, plus designed runs; two-point tries, kneels, spikes and penalty-only snaps excluded), from the stored team-week play-by-play totals.",
+   "range": "Scenario ranges: the 10th to 90th percentile of past team-games shaped like the scenario (the team's per-script estimate plus the league's spread of team-games around their own team's mean in that script, mixed by the scenario's weights). It describes past variation, not a probability for a future game.",
+   "script": "Game script from the final margin: competitive within 8 points, leading when the team won by 9+, trailing when it lost by 9+. Outcome-based: it labels the game, not each play.",
+   "shrinkage": "Estimate = (team total + k x prior) / (team sample + k). Plays and drives per game: k = 4 games toward the league mean. Neutral pass rate: k = 150 neutral plays. Pass rate: k = 120 plays. Targets per dropback: k = 100 dropbacks. Plays per drive: k = 60 plays. Per script: plays per game with k = 3 games and pass rate with k = 120 plays, each toward the team's overall estimate plus the league's offset for that script. Priors are fixed in advance, not fitted."
+  },
+  "gaps": [
+   "Seconds per play: the game clock at each snap is not stored (only team-week and team-game totals are), so pace is measured as plays and drives per game and plays per drive, not seconds per play.",
+   "Play-level score state: run and pass by the score at the snap is not stored. The game script is classified per game from the final margin instead; a final margin is known only after the game and is partly caused by the plays themselves, so script tendencies here describe games that ended that way.",
+   "Overtime length is not stored: overtime games are left out of per-game volume (plays, drives) rather than rescaled, and kept in per-play rates."
+  ],
+  "league": {
+   "drives_per_game": 12.01,
+   "games": 543,
+   "neutral_pass_rate": 0.571,
+   "neutral_plays": 15449,
+   "pass_rate": 0.596,
+   "plays_per_drive": 5.26,
+   "plays_per_game": 63.2,
+   "scripts": {
+    "competitive": {
+     "games": 182,
+     "pass_rate": 0.591,
+     "plays_per_game": 63.1,
+     "share": 0.335,
+     "volume_games": 182
+    },
+    "leading": {
+     "games": 181,
+     "pass_rate": 0.514,
+     "plays_per_game": 60.0,
+     "share": 0.333,
+     "volume_games": 181
+    },
+    "trailing": {
+     "games": 180,
+     "pass_rate": 0.676,
+     "plays_per_game": 66.4,
+     "share": 0.331,
+     "volume_games": 180
+    }
+   },
+   "targets_per_dropback": 0.861,
+   "volume_games": 543
+  },
+  "matchup": null,
+  "model_status": "research_only",
+  "overview": [
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.763,
+     "estimate": 0.517,
+     "excluded": 0,
+     "missing": 0,
+     "n": 483,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.909,
+     "estimate": 0.678,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1197,
+     "observed": 0.686,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.81,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 5.84,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 69.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 70.4,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "TB"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.631,
+     "excluded": 0,
+     "missing": 0,
+     "n": 480,
+     "observed": 0.65,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.909,
+     "estimate": 0.549,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1194,
+     "observed": 0.544,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.85,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.88,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 68.9,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 70.2,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "GB"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.76,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 0,
+     "n": 474,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.908,
+     "estimate": 0.601,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1188,
+     "observed": 0.602,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.79,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.82,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 68.6,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 69.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "IND"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.609,
+     "excluded": 0,
+     "missing": 0,
+     "n": 489,
+     "observed": 0.62,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.907,
+     "estimate": 0.605,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1176,
+     "observed": 0.605,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.74,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.76,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 68.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 69.2,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "SF"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.764,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 0,
+     "n": 486,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.906,
+     "estimate": 0.588,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1161,
+     "observed": 0.587,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.67,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.69,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 67.3,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 68.3,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "MIN"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.767,
+     "estimate": 0.563,
+     "excluded": 0,
+     "missing": 0,
+     "n": 495,
+     "observed": 0.56,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.905,
+     "estimate": 0.512,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1148,
+     "observed": 0.503,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.63,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.66,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 66.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 67.5,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "DET"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.586,
+     "excluded": 0,
+     "missing": 0,
+     "n": 488,
+     "observed": 0.59,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.905,
+     "estimate": 0.604,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1147,
+     "observed": 0.605,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.58,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 5.6,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 66.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 67.5,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "LA"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.766,
+     "estimate": 0.632,
+     "excluded": 0,
+     "missing": 0,
+     "n": 492,
+     "observed": 0.65,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.905,
+     "estimate": 0.658,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1143,
+     "observed": 0.665,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.61,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.63,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 66.5,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 67.2,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "LV"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.608,
+     "excluded": 0,
+     "missing": 0,
+     "n": 481,
+     "observed": 0.62,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.904,
+     "estimate": 0.571,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1129,
+     "observed": 0.569,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.52,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.53,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 65.8,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 66.4,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "BAL"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 0,
+     "n": 488,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.904,
+     "estimate": 0.712,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1127,
+     "observed": 0.724,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.51,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.52,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 65.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 66.3,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "TEN"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.767,
+     "estimate": 0.517,
+     "excluded": 0,
+     "missing": 0,
+     "n": 495,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.903,
+     "estimate": 0.618,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1121,
+     "observed": 0.621,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.46,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 5.47,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 65.4,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 65.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "CHI"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.761,
+     "estimate": 0.563,
+     "excluded": 0,
+     "missing": 0,
+     "n": 477,
+     "observed": 0.56,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.903,
+     "estimate": 0.501,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1119,
+     "observed": 0.491,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.5,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.51,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 65.3,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 65.8,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "ARI"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.76,
+     "estimate": 0.631,
+     "excluded": 0,
+     "missing": 0,
+     "n": 474,
+     "observed": 0.65,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.901,
+     "estimate": 0.618,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1087,
+     "observed": 0.62,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.35,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.35,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.8,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 63.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "NYJ"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.563,
+     "excluded": 0,
+     "missing": 0,
+     "n": 489,
+     "observed": 0.56,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.9,
+     "estimate": 0.634,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1085,
+     "observed": 0.639,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.34,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.34,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 63.8,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "CLE"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.764,
+     "estimate": 0.631,
+     "excluded": 0,
+     "missing": 0,
+     "n": 486,
+     "observed": 0.65,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.9,
+     "estimate": 0.668,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1083,
+     "observed": 0.676,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.33,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.33,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.6,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 63.7,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "SEA"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.1,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.2,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.586,
+     "excluded": 0,
+     "missing": 0,
+     "n": 480,
+     "observed": 0.59,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.9,
+     "estimate": 0.542,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1081,
+     "observed": 0.536,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.948,
+     "estimate": 5.22,
+     "excluded": 0,
+     "missing": 0,
+     "n": 207,
+     "observed": 5.22,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.5,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 63.6,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "NO"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.763,
+     "estimate": 0.608,
+     "excluded": 0,
+     "missing": 0,
+     "n": 483,
+     "observed": 0.62,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.9,
+     "estimate": 0.533,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1079,
+     "observed": 0.526,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.29,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.29,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.4,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 63.5,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "DEN"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.756,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 1,
+     "n": 464,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.899,
+     "estimate": 0.542,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1070,
+     "observed": 0.536,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.25,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 5.25,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 63.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 62.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "BUF"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.761,
+     "estimate": 0.517,
+     "excluded": 0,
+     "missing": 0,
+     "n": 477,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.899,
+     "estimate": 0.579,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1068,
+     "observed": 0.577,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.21,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 5.21,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 62.9,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 62.8,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "HOU"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.563,
+     "excluded": 0,
+     "missing": 0,
+     "n": 481,
+     "observed": 0.56,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.897,
+     "estimate": 0.605,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1041,
+     "observed": 0.606,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.14,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 5.13,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 61.6,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 61.2,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "JAX"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.517,
+     "excluded": 0,
+     "missing": 0,
+     "n": 489,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.896,
+     "estimate": 0.566,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1036,
+     "observed": 0.563,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.06,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 5.05,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 61.4,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 60.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "MIA"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.766,
+     "estimate": 0.586,
+     "excluded": 0,
+     "missing": 0,
+     "n": 492,
+     "observed": 0.59,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.895,
+     "estimate": 0.541,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1021,
+     "observed": 0.535,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 4.98,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 60.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 60.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "PHI"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 0,
+     "n": 480,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.895,
+     "estimate": 0.651,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1018,
+     "observed": 0.657,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 4.99,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 60.5,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 59.9,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "WAS"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.765,
+     "estimate": 0.632,
+     "excluded": 0,
+     "missing": 0,
+     "n": 488,
+     "observed": 0.65,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.894,
+     "estimate": 0.608,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1012,
+     "observed": 0.61,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 5.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 4.99,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 60.2,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 59.5,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "CAR"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.762,
+     "estimate": 0.517,
+     "excluded": 0,
+     "missing": 0,
+     "n": 481,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.894,
+     "estimate": 0.696,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1009,
+     "observed": 0.708,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.94,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 4.92,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 60.1,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 59.4,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "PIT"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.767,
+     "estimate": 0.609,
+     "excluded": 0,
+     "missing": 0,
+     "n": 495,
+     "observed": 0.62,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.893,
+     "estimate": 0.618,
+     "excluded": 0,
+     "missing": 0,
+     "n": 1005,
+     "observed": 0.621,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.94,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 4.93,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 59.9,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 59.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "LAC"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 11.9,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.763,
+     "estimate": 0.563,
+     "excluded": 0,
+     "missing": 0,
+     "n": 483,
+     "observed": 0.56,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.892,
+     "estimate": 0.564,
+     "excluded": 0,
+     "missing": 0,
+     "n": 990,
+     "observed": 0.561,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.9,
+     "excluded": 0,
+     "missing": 0,
+     "n": 203,
+     "observed": 4.88,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 59.2,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 58.2,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "NE"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.76,
+     "estimate": 0.586,
+     "excluded": 0,
+     "missing": 0,
+     "n": 474,
+     "observed": 0.59,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.892,
+     "estimate": 0.527,
+     "excluded": 0,
+     "missing": 0,
+     "n": 987,
+     "observed": 0.519,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.84,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 4.81,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 59.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 58.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "ATL"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.766,
+     "estimate": 0.54,
+     "excluded": 0,
+     "missing": 0,
+     "n": 492,
+     "observed": 0.53,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.89,
+     "estimate": 0.618,
+     "excluded": 0,
+     "missing": 0,
+     "n": 971,
+     "observed": 0.621,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.79,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 4.76,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 58.3,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 57.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "CIN"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.8,
+     "estimate": 12.2,
+     "excluded": 0,
+     "missing": 1,
+     "n": 16,
+     "observed": 12.2,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 16,
+    "missing_pbp": 1,
+    "neutral_pass_rate": {
+     "data_weight": 0.75,
+     "estimate": 0.518,
+     "excluded": 0,
+     "missing": 1,
+     "n": 450,
+     "observed": 0.5,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.884,
+     "estimate": 0.533,
+     "excluded": 0,
+     "missing": 1,
+     "n": 914,
+     "observed": 0.525,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.945,
+     "estimate": 4.72,
+     "excluded": 0,
+     "missing": 1,
+     "n": 195,
+     "observed": 4.69,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.8,
+     "estimate": 58.3,
+     "excluded": 0,
+     "missing": 1,
+     "n": 16,
+     "observed": 57.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "KC"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.1,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.764,
+     "estimate": 0.586,
+     "excluded": 0,
+     "missing": 0,
+     "n": 486,
+     "observed": 0.59,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.889,
+     "estimate": 0.659,
+     "excluded": 0,
+     "missing": 0,
+     "n": 958,
+     "observed": 0.667,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 205,
+     "observed": 4.67,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 57.7,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 56.4,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "DAL"
+   },
+   {
+    "drives_per_game": {
+     "data_weight": 0.81,
+     "estimate": 12.0,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 12.0,
+     "prior": 12.0,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "games": 17,
+    "missing_pbp": 0,
+    "neutral_pass_rate": {
+     "data_weight": 0.761,
+     "estimate": 0.608,
+     "excluded": 0,
+     "missing": 0,
+     "n": 477,
+     "observed": 0.62,
+     "prior": 0.571,
+     "prior_strength": 150.0,
+     "unit": "neutral plays"
+    },
+    "overtime_games": 0,
+    "pass_rate": {
+     "data_weight": 0.886,
+     "estimate": 0.56,
+     "excluded": 0,
+     "missing": 0,
+     "n": 936,
+     "observed": 0.556,
+     "prior": 0.596,
+     "prior_strength": 120.0,
+     "unit": "plays"
+    },
+    "plays_per_drive": {
+     "data_weight": 0.947,
+     "estimate": 4.62,
+     "excluded": 0,
+     "missing": 0,
+     "n": 204,
+     "observed": 4.59,
+     "prior": 5.26,
+     "prior_strength": 11.41,
+     "unit": "drives"
+    },
+    "plays_per_game": {
+     "data_weight": 0.81,
+     "estimate": 56.6,
+     "excluded": 0,
+     "missing": 0,
+     "n": 17,
+     "observed": 55.1,
+     "prior": 63.2,
+     "prior_strength": 4.0,
+     "unit": "games"
+    },
+    "team": "NYG"
+   }
+  ],
+  "query": {
+   "opponent": null,
+   "season": 2025,
+   "seasons": [
+    2025
+   ],
+   "span": 1,
+   "team": null,
+   "through_week": 17,
+   "window": "season"
+  },
+  "residual_games": {
+   "competitive": 182,
+   "leading": 181,
+   "trailing": 180
+  },
+  "scenario": null,
+  "source": {
+   "drives_stored": true,
+   "franchise_codes": [],
+   "neutral_recorded": true,
+   "nfl_synced_at": "<masked>",
+   "overtime_recorded": false,
+   "schedule_stored": true,
+   "tables": [
+    "nfl_team_week",
+    "nfl_team_game_drives",
+    "nfl_schedules"
+   ]
+  },
+  "status": "ok",
+  "team": null,
+  "teams": [
+   "ARI",
+   "ATL",
+   "BAL",
+   "BUF",
+   "CAR",
+   "CHI",
+   "CIN",
+   "CLE",
+   "DAL",
+   "DEN",
+   "DET",
+   "GB",
+   "HOU",
+   "IND",
+   "JAX",
+   "KC",
+   "LA",
+   "LAC",
+   "LV",
+   "MIA",
+   "MIN",
+   "NE",
+   "NO",
+   "NYG",
+   "NYJ",
+   "PHI",
+   "PIT",
+   "SEA",
+   "SF",
+   "TB",
+   "TEN",
+   "WAS"
+  ],
+  "version": "pace-0.1.0",
+  "weeks": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17
+  ]
+ },
+ "status": 200
+}
