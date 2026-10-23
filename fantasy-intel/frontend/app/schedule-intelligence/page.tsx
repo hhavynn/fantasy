@@ -121,6 +121,7 @@ function Body({ d, detail, position, phase, sp, planner, streaming, league }: {
       <PageHeader
         eyebrow="Players · Research"
         title="Schedule intelligence"
+        actions={<TeamLink href="/schedule-intelligence/sos" prefetch={false}>Strength-of-schedule grid</TeamLink>}
         meta={<>
           {d.team?.name ?? "Roster"} · {range}{regular} · first actionable week {w.first_actionable_week ?? "none"}.
           {" "}Upcoming opponents and what each defense has <b>observed</b> allowing; descriptive, not a projection.

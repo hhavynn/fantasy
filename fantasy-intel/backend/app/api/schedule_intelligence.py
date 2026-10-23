@@ -22,6 +22,8 @@ from ..analytics.schedule_intelligence import (
     NotSynced,
     build_schedule_intelligence,
 )
+from ..analytics.sos_heatmap import BadParam as SosBadParam
+from ..analytics.sos_heatmap import build_sos_heatmap
 from ..db.connection import table_exists
 from .deps import db
 from .signal_provenance import Provenance, coverage, payload
@@ -46,6 +48,53 @@ def schedule_intelligence(team_id: int | None = None,
             raise HTTPException(404, str(err))
         except ValueError as err:
             raise HTTPException(422, str(err))
+
+
+@router.get("/schedule-intelligence/sos")
+def sos_heatmap(position: str = Query("QB", description="QB | RB | WR | TE: one grid per position"),
+                horizon: str = Query("ros", description="ros (rest of the regular season) | playoffs"),
+                view: str = Query("teams", description="teams (NFL offenses) | roster | free_agents"),
+                team_id: int | None = Query(None, description="Fantasy team for the roster view (defaults to yours)"),
+                nfl_team: str | None = Query(None, max_length=3, description="Only this NFL team (e.g. KC)"),
+                player_id: int | None = Query(None, description="One player, graded on his own position")):
+    """Position-specific strength of schedule (contract sos-heatmap.v1): each remaining week's opponent defense graded
+    on the position's primary metric against a neutral baseline, with its sample and the reason when it is not graded."""
+    with db() as con:
+        try:
+            out = build_sos_heatmap(con, position=position, horizon=horizon.lower(), view=view.lower(),
+                                    team_id=team_id, nfl_team=nfl_team, player_id=player_id)
+        except NotSynced as err:
+            raise HTTPException(503, str(err))
+        except NotFound as err:
+            raise HTTPException(404, str(err))
+        except SosBadParam as err:       # only the parameter checks' own messages
+            raise HTTPException(422, str(err))
+        out["provenance"] = sos_heatmap_provenance(con, out)
+        return out
+
+
+def sos_heatmap_provenance(con, d: dict) -> dict:
+    """The league (provider sync), the NFL schedule (coverage: horizon weeks with a loaded schedule) and the defensive
+    evidence (coverage: scheduled matchups in view whose opponent could be graded)."""
+    prov = Provenance(con)
+    weeks = d["horizon"]["weeks"]
+    missing = d["source"]["weeks_without_schedule"]
+    schedule = prov.nflverse(
+        "schedule", "NFL schedule and byes (nflverse)",
+        cov=coverage(len(weeks) - len(missing), len(weeks), "horizon weeks with a loaded NFL schedule") if weeks else None,
+        reason=None if d["schedule"]["available"] and not missing else
+        ("No NFL schedule is stored." if not d["schedule"]["available"]
+         else f"No NFL schedule is loaded for week {', '.join(map(str, missing))}."))
+    cov = d["coverage"]
+    defense = prov.nflverse(
+        "defense", "Defensive play-by-play aggregates (nflverse)",
+        cov=coverage(cov["graded"], cov["scheduled"], "scheduled matchups in view with a graded opponent")
+        if cov["scheduled"] else None,
+        reason=d["source"]["reason"] if not d["source"]["available"] else
+        (f"Some opponents are not graded: fewer than {d['min_games']} presumed-complete games, or fewer than "
+         f"{d['min_ranked_defenses']} defenses that can be ranked that week."
+         if cov["graded"] < cov["scheduled"] else None))
+    return payload(prov.league(), schedule, defense)
 
 
 @router.get("/schedule-intelligence/bye-planner")
