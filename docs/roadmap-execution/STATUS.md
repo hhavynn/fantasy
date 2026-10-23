@@ -74,7 +74,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #199 consensus/ADP | 5 | RESEARCH-ONLY | — | |
 | #200 saved views/search | 5 | NOT STARTED | — | |
 | #191 positional strength | 6 | NOT STARTED | — | |
-| #192 playoff what-if | 6 | NOT STARTED | — | |
+| #192 playoff what-if | 6 | MERGED (#278 → 2c5e648) | — | clinch/elimination stays unclaimed until tiebreaks are mapped; Sleeper median games disclosed, not modelled |
 | #194 post-game feedback | 6 | NOT STARTED | — | |
 | #172 confidence/alternatives | 6 | NOT STARTED | — | calibration evidence required |
 | #173 live matchup | 6 | NOT STARTED | — | provider cadence limits |
@@ -298,6 +298,7 @@ conflicts.
 From #261 on: opened and merged times come from GitHub; the CI column is the head's last completed check (approximate where noted); the review column records outcomes only, since review completion times were not captured.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #278 | 14:57 | 16:41 (eaaacd6) | CHANGES (MEDIUM record bounds vs median/records, LOW divisions) + Codex P2 + shard 3 module-cache audit → re-review APPROVE + median disclosure | 16:41 (1h44m) | 3 | 0 |
 | #276 | 14:02 | 14:42 (1bae7e0) | changes requested (F1 MEDIUM provenance, F2/F3 LOW) + Codex P2 → re-review APPROVE | 14:42 (40 min) | 2 | 0 |
 | #275 | 12:27 | 12:57 (83504f7) | approve with changes (audit overstated discovery) + Codex P2 | 12:58 (31 min) | 2 | 0 |
 | #274 | 11:35 | 12:28 (a118337) | changes requested (3 MEDIUM honesty) + Codex 4×P2 → re-check OK, R1 fixed | 12:28 (53 min) | 3 | 0 |
