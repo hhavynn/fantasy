@@ -25,6 +25,7 @@ from app.config import get_settings  # noqa: E402
 from app.db.connection import connect, fetch_dicts, init_db, table_exists  # noqa: E402
 from app.nfl.history import is_history_db  # noqa: E402
 
+# Every position: a game he played listed at another position (FB, QB) is a game, never a gap (the radar decides).
 COLUMNS = ("season", "week", "gsis_id", "position", "team", "xfp")
 
 
@@ -50,7 +51,7 @@ def load(history: Path, seasons: list[int]) -> tuple[list[dict], dict]:
             built[season] = {"rows": present, "built_now": False} if present else {
                 "rows": build_player_week_usage(con, season)["rows"], "built_now": True}
         rows = fetch_dicts(con, f"""SELECT {', '.join(COLUMNS)} FROM player_week_usage
-                                    WHERE season IN ({', '.join('?' for _ in seasons)}) AND position IN ('RB', 'WR', 'TE')
+                                    WHERE season IN ({', '.join('?' for _ in seasons)})
                                     ORDER BY season, week, gsis_id""", seasons)
         source = con.execute("SELECT max(finished_at) FROM sync_runs WHERE source = 'nfl_history' AND status = 'ok'"
                              ).fetchone()
