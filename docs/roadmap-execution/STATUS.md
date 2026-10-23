@@ -72,15 +72,15 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #190 opportunity trees | 5 | MERGED | #274 | observed / hypothesis / abstain; return needs week-W report evidence |
 | #198 defensive matchups | 5 | NOT STARTED | — | data-rights research first |
 | #199 consensus/ADP | 5 | RESEARCH-ONLY | — | |
-| #200 saved views/search | 5 | NOT STARTED | — | |
-| #191 positional strength | 6 | NOT STARTED | — | |
+| #200 saved views/search | 5 | MERGED / 1t PR OPEN | PR #280 → 6d6769b; 1t sign-out purge PR #291 | 1t owned by Session 3 |
+| #191 positional strength | 6 | MERGED | PR #283 → 41e0cbc (2026-10-23) | league analyzer; owner-only pace-lab router kept beside it |
 | #192 playoff what-if | 6 | MERGED (#278 → 2c5e648) | — | clinch/elimination stays unclaimed until tiebreaks are mapped; Sleeper median games disclosed, not modelled |
 | #194 post-game feedback | 6 | NOT STARTED | — | |
 | #172 confidence/alternatives | 6 | NOT STARTED | — | calibration evidence required |
 | #173 live matchup | 6 | NOT STARTED | — | provider cadence limits |
 | #174 win probability | 6 | RESEARCH-ONLY | — | backtest gate; PRODUCT.md bans unsupported probabilities |
-| #175 multi-player compare | 6 | NOT STARTED | — | two-player compare exists |
-| #176 practice timeline | 6 | NOT STARTED | — | |
+| #175 multi-player compare | 6 | MERGED | PR #282 → 19c5237 (2026-10-23) | shortlist start-decision workspace |
+| #176 practice timeline | 6 | MERGED | PR #288 → 42c7295 (2026-10-23) | availability timeline + roster digest; non-blocking follow-ups with Session 3 |
 | #195 alerts/digest | 7 | NOT STARTED | — | consent required |
 | #196 cross-device saved | 7 | NOT STARTED | — | Supabase RLS |
 | #197 shareable reports | 7 | NOT STARTED | — | |
@@ -96,17 +96,17 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 | #228 Sleeper taxi eligibility | fix | MERGED | PR #234 → 3917f7a | Codex P2s fixed |
 | #229 superflex replacement level | fix | MERGED | PR #238 → c419856 (2 Codex P2s fixed) | a 632 + audits/golden 194; rules row → HANDLED (verified waiver needs + flex reference count OP) |
 | #212 Breakout Radar | A | NOT STARTED | — | #168 merged; backtest gate |
-| #210 Game Splits | A | NOT STARTED | — | backend now; UI after #170 |
+| #210 Game Splits | A | MERGED | PR #285 → 79908ce (2026-10-23) | E2E splits world relabelled to 2023 (clear of pace lab 2024-25) |
 | #226 Advanced screener | A | NOT STARTED | — | backend now; UI after #170/#200; feeds #219 |
 | #225 Projection change attribution | A | NOT STARTED | — | reuses projection_movers; audit-restricted modules |
 | #216 Marginal roster utility | B | NOT STARTED | — | #169 + #178 lineup contract |
 | #218 Stash/handcuff planner | B | NOT STARTED | — | #216 |
 | #209 Cross-league portfolio | B | NOT STARTED | — | #166 |
-| #211 Pace / game-script lab | B | NOT STARTED | — | #188 |
+| #211 Pace / game-script lab | B | MERGED | PR #287 → 495557d (2026-10-23) | nav entry = follow-up 1u |
 | #213 NFL what-if lab | C | NOT STARTED | — | #190; never alters production forecasts |
 | #214 Trade counteroffers | C | NOT STARTED | — | #182, #183 |
 | #217 Playoff rooting guide | C | NOT STARTED | — | #192 |
-| #215 Manager trade tendencies | C | NOT STARTED | — | #193 (PR #231), #182 |
+| #215 Manager trade tendencies | C | PR OPEN | PR #290 (799c02a) | Session 2; needs fallback review (Codex quota) |
 | #222 Custom scoring sensitivity | C | NOT STARTED | — | #169 (PR #207) |
 | #219 Ask Fantasy Intel | D | NOT STARTED | — | #226, #200; no paid LLM |
 | #221 Fantasy Wrapped | D | NOT STARTED | — | #194, #197 |
@@ -291,6 +291,8 @@ prerequisites (see table).
 **Wave 2 (next):** #201 perf (backend cache/single-flight + timing), #167 onboarding (`app/leagues/*`), then #165
 weekly hub using the #168 contract. #170 runs after these, alone, because it owns Nav/layout/globals.
 
+
+**Coordination update (2026-10-23 19:00 UTC):** further merges: #288 → 42c7295 · #284 → 7af0942 (1q/1l) · #277 → b69fd28 (canonical trade-discovery perf; #279 closed as superseded) · #282 → 19c5237 · #283 → 41e0cbc · #292 → 716f7de (drain-log test flake) · #285 → 79908ce. #254 phase 3 unblocked (deferred while the queue is busy).
 
 **Coordination (2026-10-23 18:20 UTC):** multi-session merge control moved to GitHub issue #289 (authoritative queue, shared-file map and reservations). Merged in merge-first mode: #278 → 2c5e648, #280 → 6d6769b (#200), #287 → 495557d (#211), #281 → 8fe8bb2 (1k), #286 → d004238 (part of #225).
 
