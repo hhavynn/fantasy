@@ -150,6 +150,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/lineup_what_if", ["tests/test_lineup_what_if.py", "tests/test_start_sit.py", "tests/test_sleeper_taxi.py",
                                   "tests/test_golden_legacy.py"]),
     ("analytics/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py", "tests/test_kdst_streaming.py"]),
+    ("analytics/kdst_streaming", ["tests/test_kdst_streaming_planner.py", "tests/test_kdst_streaming.py",
+                                  "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py"]),
     ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py"]),
     ("analytics/projections", ["tests/test_espn_projections.py", "tests/test_independent_projections.py", "tests/test_projection_performance.py"]),
     ("analytics/waiver", ["tests/test_waivers.py", "tests/test_waiver_data.py", "tests/test_waiver_decisions.py"]),

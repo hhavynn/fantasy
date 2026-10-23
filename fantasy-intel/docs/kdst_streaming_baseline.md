@@ -103,3 +103,26 @@ Synced league, weeks 6–17, your team:
   defenses, FAAB or priority spent on streaming, or the pool thinning when you add one of the top three.
 * Rank 3 is a stated heuristic, not calibrated against observed streaming results.
 * ESPN's future-week D/ST and K projections are matchup-driven and noisy. The baseline uses them unmodified.
+
+## 6. Multi-week streaming planner (issue #181)
+
+Code: `backend/app/analytics/kdst_streaming.py`, `GET /api/schedule-intelligence/kdst-streaming` (contract
+`kdst-streaming.v1`, also under `/v2/leagues/{league_id}` behind `league_scope`), the "K and D/ST streaming plan"
+section of `/schedule-intelligence`. Tests: `backend/tests/test_kdst_streaming_planner.py`.
+
+* **Candidates**: free agents at the position (provider status FREEAGENT or WAIVERS at the last sync, on no roster), with
+  an NFL team and no open injury designation. The same league state (`trade_data.load_league_state`) and projections
+  as the baseline above; the baseline itself is reported per week.
+* **Sequence**: one streaming slot per position for the next 2-4 actionable weeks (`weeks`, default 3). Each week keeps
+  the current holder or adds one free agent (one add/drop, `move_cost` points each, at most `max_moves`). A player is
+  never added for his bye or a week without a projection, and never held through an unknown week; the current roster's
+  player is not planned back once dropped.
+* **Solver**: dynamic programming over weeks x holder x add/drops with the best two predecessors per add/drop count:
+  O(weeks x candidates x moves), deterministic on ties (fewer add/drops, then staying, then the better-ranked player).
+  The pool is bounded at 40 per position by a per-week round-robin of the best projections.
+* **Horizon**: a week is planned only with a loaded NFL schedule and at least 3 projected free agents covering half of
+  those with a game; the plan stops at the first week that fails, with no player and no number after it. Weeks two or
+  more ahead are flagged as an outlook.
+* **Eligibility** is reported apart from points: `free_agent` (this week, ESPN FREEAGENT), `waiver_claim` (ESPN
+  WAIVERS), `hypothetical` (a later week's add or a re-add), `unconfirmed` (a provider without waiver status, Sleeper),
+  `held` (kept from an earlier planned add). The kicker and D/ST model runs are shown beside the plan, not used by it.

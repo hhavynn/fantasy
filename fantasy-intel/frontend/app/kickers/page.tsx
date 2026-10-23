@@ -1,4 +1,5 @@
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -80,6 +81,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
     <form action="/kickers" className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
+      <TeamLink href="/schedule-intelligence#kdst-streaming">Multi-week streaming plan</TeamLink>
     </form>
   );
   const line = usesBettingLine(d.governance.model_version);

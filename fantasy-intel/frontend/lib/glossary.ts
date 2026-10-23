@@ -30,6 +30,7 @@ export const GLOSSARY = {
   Bye: "A week the player's NFL team has no game. A bye is never treated as a projected zero.",
   "Bye cluster": "A week in which two or more of the team's active, lineup-eligible players are on bye. It is listed whether or not a starting slot goes unfilled.",
   "Slot coverage": "Whether a starting slot can be filled from the current roster in a week: covered by a player with a game and no open designation, short when nobody on the roster can fill it, or not confirmed when it depends on a player whose week is unknown.",
+  "Streaming baseline": "For a kicker or D/ST in a week: the projection of the third-best free agent at the position. It stands for what a weekly add/drop can usually still get, since other managers stream too.",
   "—": "A dash means the number is missing or not computed, never zero. A measured zero is shown as 0.",
 } as const;
 

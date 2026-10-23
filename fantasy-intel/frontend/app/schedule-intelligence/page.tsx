@@ -19,6 +19,8 @@ import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "
 import styles from "./schedule.module.css";
 import { TeamLink } from "@/components/TeamLink";
 import { ByePlannerSection } from "./ByePlanner";
+import { StreamingPlanSection } from "./StreamingPlan";
+import { streamingPath, type KdstStreaming } from "@/lib/kdst-streaming";
 
 export const metadata = { title: "Schedule" };
 
@@ -68,9 +70,10 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
   const planned = new URLSearchParams();
   if (team) planned.set("team_id", team);
   const plannerPath = `/api/schedule-intelligence/bye-planner${planned.toString() ? `?${planned}` : ""}`;
-  const [res, planner, league] = await Promise.all([
+  const [res, planner, streaming, league] = await Promise.all([
     api<ScheduleIntelligence>(`/api/schedule-intelligence?${q.toString()}`),
     api<ByePlanner>(plannerPath),
+    api<KdstStreaming>(streamingPath(team, sp)),
     currentLeague(),
   ]);
   let detail: SiPlayer | undefined;
@@ -90,12 +93,12 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
       </div>
     );
   }
-  return <Body d={res.data} detail={detail} position={position} phase={phase} sp={sp} planner={planner} league={league?.id ?? null} />;
+  return <Body d={res.data} detail={detail} position={position} phase={phase} sp={sp} planner={planner} streaming={streaming} league={league?.id ?? null} />;
 }
 
-function Body({ d, detail, position, phase, sp, planner, league }: {
+function Body({ d, detail, position, phase, sp, planner, streaming, league }: {
   d: ScheduleIntelligence; detail?: SiPlayer; position: string; phase: string; sp: SearchParams;
-  planner: ApiResult<ByePlanner>; league: string | null;
+  planner: ApiResult<ByePlanner>; streaming: ApiResult<KdstStreaming>; league: string | null;
 }) {
   const w = d.window;
   const href = (pid?: number) => {
@@ -146,6 +149,8 @@ function Body({ d, detail, position, phase, sp, planner, league }: {
       </Section>
 
       <ByePlannerSection res={planner} league={league} />
+      <StreamingPlanSection res={streaming} league={league}
+        carry={{ team: d.query.team_id !== null ? String(d.query.team_id) : undefined, position, phase }} />
 
       {d.players.length === 0 ? (
         <Notice tone="caution">No {position === "all" ? "QB/RB/WR/TE" : position} players on this roster.</Notice>
@@ -165,7 +170,7 @@ function Body({ d, detail, position, phase, sp, planner, league }: {
 
       {detail && <Detail p={detail} />}
 
-      <Glossary terms={["EPA", "Target share", "Bye", "Bye cluster", "Slot coverage", "—"]} />
+      <Glossary terms={["EPA", "Target share", "Bye", "Bye cluster", "Slot coverage", "Streaming baseline", "—"]} />
       <Method title="What this is (and is not)">
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
         <p>{d.label_rule}</p>

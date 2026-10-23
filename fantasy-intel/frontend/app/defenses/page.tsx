@@ -1,4 +1,5 @@
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlayer, type DstResponse } from "@/lib/defenses";
@@ -69,6 +70,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
     <form action="/defenses" className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
+      <TeamLink href="/schedule-intelligence#kdst-streaming">Multi-week streaming plan</TeamLink>
     </form>
   );
   const meta = (
