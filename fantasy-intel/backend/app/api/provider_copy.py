@@ -25,6 +25,14 @@ from typing import Any
 OURS = "Fantasy Intel's own projections (Ours)"
 
 RULES: list[tuple[re.Pattern, str]] = [(re.compile(p), r) for p, r in (
+    # ---- rankings past the regular season (analytics/rankings.py): nothing ranks, a provider never does
+    (r"so ESPN ranks the full window \(week (\d+) to (\d+)\) and Ours is unavailable",
+     r"so nothing is ranked for weeks \1 to \2: Ours covers regular-season weeks only and this league's provider "
+     r"publishes no projections"),
+    (r"so ESPN ranks the remaining weeks \((\d+) to (\d+)\) and Ours is unavailable",
+     r"so nothing is ranked for weeks \1 to \2: Ours covers regular-season weeks only and this league's provider "
+     r"publishes no projections"),
+    (r"; ranked on ESPN\.", "; nothing is ranked (this league's provider publishes no projections)."),
     # ---- projections: Ours
     (r"espn\.projected_points is ESPN's number as synced; it is shown for comparison only\.",
      "espn.projected_points is empty: this league's provider publishes no projections."),
