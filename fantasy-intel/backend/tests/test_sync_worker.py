@@ -95,17 +95,24 @@ def test_a_public_league_is_fetched_built_and_published(pg, world, files):
     assert world["calls"][0] == {"external_id": 999, "season": 2026, "credential": {}}
 
 
+# The drain line is "job <uuid> league <lg_ token> ...", and the Printer withholds any line containing the external id.
+# With a short id such as "999" a random job or league id contained it in about 0.6% of runs, the line was withheld and
+# the test failed. A UUID has no run of more than 12 hex digits, and a 24-character lg_ token holding this 16-digit run
+# by chance is ~1e-28: the line is withheld only if the id really leaks into it.
+DRAIN_EXTERNAL_ID = "4207718392650183"
+
+
 def test_the_drain_log_names_no_league_data(pg, world, capfd):
     """Spec §3.8 audit: only opaque ids, durations and codes reach the public log."""
     with pg.connect() as su:
-        lid = seed_league(su, external_id="999")
+        lid = seed_league(su, external_id=DRAIN_EXTERNAL_ID)
         su.commit()
     enqueue(pg, lid)
     drain(world["ctx"], budget_s=120)
     captured = world["out"].getvalue() + "".join(capfd.readouterr())
     assert f"league {lid}" in world["out"].getvalue()
-    forbidden = ["Fixture League", "999", *(f"Team {t}" for t in range(1, 5)), *(n for n, _, _ in PLAYERS.values()),
-                 COOKIES["espn_s2"]]
+    forbidden = ["Fixture League", DRAIN_EXTERNAL_ID, *(f"Team {t}" for t in range(1, 5)),
+                 *(n for n, _, _ in PLAYERS.values()), COOKIES["espn_s2"]]
     leaked = [f for f in forbidden if f in world["out"].getvalue()]
     assert leaked == [], leaked
     assert "S2-SECRET" not in captured
