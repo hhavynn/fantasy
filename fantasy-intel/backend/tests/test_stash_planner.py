@@ -220,10 +220,33 @@ def test_the_gain_bound_never_skips_a_real_gain(league):
               for p in players + fas}
         hw = Window((1, 2, 3, 4, 5), 5)
         base = sp.project_team(players, slots, hw, pr)
-        floors = sp._floors(base, list(hw.weeks))
+        drop = rng.choice([None, *players])
+        rest = players if drop is None else [p for p in players if p is not drop]
+        removal = 0.0 if drop is None else scenario(players, slots, hw, pr, remove=[drop.espn_player_id],
+                                                    base=base)["_ros_exact"]
+        floors = sp._floors(sp.project_team(rest, slots, hw, pr), list(hw.weeks))
         for fa in fas:
-            gain = scenario(players, slots, hw, pr, add=[fa], base=base)["_ros_exact"]
-            assert gain <= sp._bound(fa, floors, list(hw.weeks), pr) + 1e-9, (trial, fa)
+            gain = scenario(players, slots, hw, pr, remove=[drop.espn_player_id] if drop else (), add=[fa],
+                            base=base)["_ros_exact"]
+            assert gain <= sp._bound(fa, floors, list(hw.weeks), pr) + removal + 1e-9, (trial, fa)
+
+
+def test_a_drop_whose_removal_adds_points_is_part_of_the_bound():
+    # Codex's case: a forced negative D/ST is the drop, so removing him alone gains +2 a week (+4). The bound includes
+    # that change, so RB 32 (who beats the rostered RB in week 3) is solved, not skipped; RB 31 (1 a week) adds nothing
+    # beyond the drop's own gain and is not credited with it
+    slots = lineup_slots({"RB": 1, "D/ST": 1})
+    w = Window((1, 2, 3), 3)
+    players = [P(1, "RB"), P(2, "D/ST")]
+    pr = {1: {1: 10.0, 2: 10.0, 3: 10.0}, 2: {1: 0.0, 2: -2.0, 3: -2.0}, 31: {1: 1.0, 2: 1.0, 3: 1.0},
+          32: {1: 1.0, 2: 1.0, 3: 13.0}}
+    res = sp.plan_stashes(players, slots, w, pr, free_agents=[P(31, "RB"), P(32, "RB")],
+                          free_agent_status={31: "FREEAGENT", 32: "FREEAGENT"}, active_capacity=2, horizon=2,
+                          projection_source="ESPN")
+    assert res["drop"]["espn_player_id"] == 2 and res["drop"]["horizon_cost"] == 4.0
+    assert "alone changes the starting lineup by +4" in res["drop_notes"][0]
+    assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["stashes"]] == [(32, 7.0)]
+    assert res["counts"]["no_possible_gain"] == 1 and res["counts"]["evaluated"] == 1
 
 
 def test_starter_injuries_follow_projections_and_verified_unavailability_only():

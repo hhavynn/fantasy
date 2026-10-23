@@ -19,10 +19,10 @@ drop. Only QB, RB, WR and TE are planned: K and D/ST are streamed week by week (
 
 Candidates are free agents whose availability is known (FREEAGENT or WAIVERS), projected in every horizon week. Before
 any lineup is solved, each gets an upper bound on what he can add: per week, his projection (0 in a week he is verified
-NFL-ineligible) minus the lowest starter he could displace through the slots his position reaches in this roster's
-current lineup (0 for an empty slot). Adding one player changes an optimal lineup by one replacement chain that ends
-with that starter leaving, and removing the drop never adds points, so a bound of 0 or less means no gain (counted, not
-solved). The rest are evaluated exactly, at most MAX_PER_POSITION per position in bound order; every cut is counted.
+NFL-ineligible) minus the lowest starter he could displace through the slots his position reaches in the lineup without
+the drop (0 for an empty slot), plus the drop's exact removal change (which can be positive when a negative projection
+was forced into a slot). Adding one player changes an optimal lineup by one replacement chain that ends with that
+starter leaving, so a bound of 0 or less means no gain (counted, not solved). The rest are evaluated exactly, at most MAX_PER_POSITION per position in bound order; every cut is counted.
 
 Ranking policy (deterministic): net horizon gain, then the earliest later week he starts, then player id.
 
@@ -133,11 +133,11 @@ def _drop_candidate(roster, slots, hw, proj, base, capacity, count_unverified: s
     for p in active:
         s = scenario(roster, slots, hw, proj, remove=[p.espn_player_id], base=base)
         if s["_ros_exact"] is not None:
-            costs.append((-s["_ros_exact"], p.espn_player_id, p, s["ros_delta"]))
+            costs.append((-s["_ros_exact"], p.espn_player_id, p))
     if not costs:
         return None, None, "unknown"
-    _, _, p, delta = min(costs, key=lambda c: (c[0], c[1]))
-    return p, delta, ("roster_count_unverified" if len(active) < capacity else "least_cost")
+    neg, _, p = min(costs, key=lambda c: (c[0], c[1]))
+    return p, -neg, ("roster_count_unverified" if len(active) < capacity else "least_cost")
 
 
 def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, proj, *, free_agents: list[RosterPlayer],
@@ -158,10 +158,15 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     hw = Window(tuple(hweeks), window.last_regular)
     now, later = hweeks[0], hweeks[1:]
     base = project_team(players, slots, hw, proj)
-    drop, drop_cost, drop_why = _drop_candidate(players, slots, hw, proj, base, active_capacity, roster_count_unverified)
+    drop, drop_exact, drop_why = _drop_candidate(players, slots, hw, proj, base, active_capacity, roster_count_unverified)
     drop_notes = []
     if drop_why == "roster_count_unverified":
         drop_notes.append(roster_count_unverified + " An open spot is not assumed, so the least-cost drop is used.")
+    # a drop whose removal alone adds points (a negative projection in a starting slot) is not the free agent's gain
+    floor_gain = max(0.0, drop_exact or 0.0)
+    if floor_gain > EPS:
+        drop_notes.append(f"Dropping {drop.name} alone changes the starting lineup by {_signed(floor_gain)} (a negative "
+                          "projection in a starting slot); a free agent is listed only for what he adds beyond that.")
     if undroppable_list_in_use and drop is not None:
         drop_notes.append(f"This league uses an undroppable list; whether {drop.name} is on it is not known here.")
     rostered = {p.espn_player_id for p in players}
@@ -173,9 +178,11 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     after_drop = without(players, [drop.espn_player_id]) if drop is not None else list(players)
     legal = _legal(projected, after_drop, players, position_limits or {})
     counts["excluded_position_limit"] = len(projected) - len(legal)
-    floors = _floors(base, hweeks)
-    bounded = [(_bound(p, floors, hweeks, proj), p) for p in legal]
-    possible = [(b, p) for b, p in bounded if b > EPS]
+    # the gain of add + drop = the add's gain on the roster without the drop + the drop's exact removal change (which
+    # can be positive: a negative projection forced into a slot), so the bound is taken on the lineup after the drop
+    floors = _floors(base if drop is None else project_team(after_drop, slots, hw, proj), hweeks)
+    bounded = [(_bound(p, floors, hweeks, proj) + (drop_exact or 0.0), p) for p in legal]
+    possible = [(b, p) for b, p in bounded if b > floor_gain + EPS]
     counts["no_possible_gain"] = len(legal) - len(possible)
     possible.sort(key=lambda bp: (-bp[0], bp[1].espn_player_id))
     per_pos, evaluated = {}, []
@@ -199,7 +206,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
             unknown += 1
             continue
         total, d_now, d_later = s["_ros_exact"], exact[0], sum(exact[1:])
-        if total <= EPS:
+        if total <= floor_gain + EPS:
             no_gain += 1
             continue
         by_week = {w["week"]: w for w in s["weeks"]}
@@ -229,7 +236,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
         reason = "No free agent adds net starting points over the horizon without adding them this week."
     return {**out, "status": "evaluated", "weeks": hweeks, "now_week": now, "later_weeks": later,
             "drop": None if drop is None else {"espn_player_id": drop.espn_player_id, "name": drop.name,
-                                               "position": drop.position, "horizon_cost": drop_cost},
+                                               "position": drop.position, "horizon_cost": r(drop_exact)},
             "drop_basis": drop_why, "drop_notes": drop_notes,
             "stashes": [{k: v for k, v in x.items() if not k.startswith("_")} for x in stashes[:MAX_LISTED]],
             "pick_up_now": [{k: x[k] for k in ("espn_player_id", "name", "position", "pro_team", "availability",
