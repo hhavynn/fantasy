@@ -33,9 +33,10 @@ def weekly_recap_feedback(request: Request,
     inputs archived before kickoff, graded against the week's outcomes, plus the team's season to date.
 
     The route takes no team. It reads fantasy_teams.is_mine: the signed-in viewer's saved team on /v2 (the owner's
-    team on the laptop). A request naming any team_id gets the same 404 as an unknown league: on /v2 a URL team_id
-    becomes the perspective of a viewer without a saved team, so accepting it would let anyone read another team's
-    feedback (and share its cached answer)."""
+    team on the laptop). A request naming any team_id gets the same 404 as an unknown league, so the answer always
+    follows the viewer's own saved team and its cache entry (the perspective is part of the key). This is a
+    perspective rule, not an access control: a member may save any team of a league they can open, and everything
+    graded here comes from tables any member of that league can already read."""
     if "team_id" in request.query_params:
         raise HTTPException(404, NOT_FOUND)
     if source is not None and source.lower() not in dfb.SOURCES:

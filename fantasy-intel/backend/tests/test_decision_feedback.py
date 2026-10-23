@@ -174,6 +174,27 @@ def test_hand_computed_calls_verdicts_and_opportunity_cost_bounds():
     assert w["lineup"]["yours"] == 64.0 and w["lineup"]["yours_outside_decision_set"] == 0
 
 
+def test_a_week_with_no_graded_call_has_unknown_points_lost_never_zero():
+    """Outcomes not recorded yet: every call is excluded, so the points lost are unknown (null), not 0.00, in the
+    week's summary and in the season to date."""
+    res = build_feedback(data(outcomes={}))
+    w = res["weeks"][0]
+    assert w["status"] == "graded" and w["summary"]["graded"] == 0 and w["summary"]["excluded"] > 0
+    assert (w["summary"]["opportunity_cost_lower"], w["summary"]["opportunity_cost_upper"]) == (None, None)
+    assert (res["summary"]["opportunity_cost_lower"], res["summary"]["opportunity_cost_upper"]) == (None, None)
+    totals = res["season_to_date"]["totals"]
+    assert (totals["opportunity_cost_lower"], totals["opportunity_cost_upper"]) == (None, None)
+    assert totals["graded"] == 0 and totals["hit_rate"] is None
+
+
+def test_an_unrecorded_roster_slot_is_never_assumed_startable():
+    rows = [{**r, "lineup_slot_id": None} if r["espn_player_id"] == 50 else r for r in data().rosters]
+    w = week_feedback(data(rosters=rows), 2)                   # Jo (30 forecast): IR in the base fixture
+    assert w["exclusions"].get("slot_unknown") == 1 and "reserve_slot" not in w["exclusions"]
+    assert all(50 not in (c["start"]["espn_player_id"], c["over"]["espn_player_id"]) for c in w["calls"])
+    assert "slot_unknown" in build_feedback(data())["exclusion_reasons"]
+
+
 def test_lineup_grades_and_bounds_once_every_outcome_is_recorded():
     d = data(outcomes={(2, p): v for p, v in {**ACTUAL, 12: 3.0}.items()})
     w = week_feedback(d, 2)
@@ -494,3 +515,13 @@ def test_v2_own_team_only_with_indistinguishable_404s(pg, env, tmp_path, monkeyp
     assert nobody.status_code == 200 and nobody.json()["status"] == "no_team" and nobody.json()["weeks"] == []
     stranger = client.get(purl, headers=bearer(U3))                   # signed in, no saved team here
     assert stranger.json()["status"] == "no_team"
+    # authorization before validation: a supplied invalid token is 401, and a league the caller cannot open is the
+    # same 404 whatever the (invalid) query, never a 422 that would tell it exists
+    bad = {"Authorization": "Bearer " + "x" * 40 + "." + "y" * 40 + "." + "z" * 40}
+    assert client.get(url, headers=bad).status_code == 401
+    base = f"/v2/leagues/{priv.league_id}/api/weekly-recap/feedback"
+    for headers in ({}, bearer(U3)):
+        for q in ("?week=0", "?source=x", "?week=0&source=x"):
+            r = client.get(base + q, headers=headers)
+            assert (r.status_code, r.json()) == (404, not_found), (q, r.text[:200])
+    assert client.get(base + "?source=x", headers=bearer(U1)).status_code == 422    # a member gets the validation

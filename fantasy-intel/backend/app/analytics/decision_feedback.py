@@ -69,6 +69,7 @@ OURS_ZERO = ("withheld_unavailable",)   # Ours says he cannot score this week: a
 # Why a rostered player is not part of the week's decision set (counted, never imputed).
 EXCLUSION_TEXT = MappingProxyType({
     "reserve_slot": "in the IR slot at the roster snapshot (not startable)",
+    "slot_unknown": "his roster slot at the snapshot is not recorded, so he cannot be shown to have been startable",
     "position_not_covered": "a position this source does not forecast, or no starting slot takes",
     "bye": "no game that week",
     "kickoff_unknown": "his kickoff is unknown, so no forecast can be shown to be pregame",
@@ -318,8 +319,9 @@ def _tally(calls: list[dict]) -> dict:
     return {"calls": len(calls), "graded": len(graded), "excluded": len(calls) - len(graded), **n,
             "hit_rate": _r(n["correct"] / decided, 3) if decided else None,
             "close_calls_missed": sum(c["verdict"] == "missed" and c["close_call"] for c in graded),
-            "opportunity_cost_lower": _r(sum(c["opportunity_cost"]["lower"] for c in graded)),
-            "opportunity_cost_upper": None if any(u is None for u in uppers) else _r(sum(uppers))}
+            # no graded call: the points lost are unknown, never a measured 0.00
+            "opportunity_cost_lower": _r(sum(c["opportunity_cost"]["lower"] for c in graded)) if graded else None,
+            "opportunity_cost_upper": None if not graded or any(u is None for u in uppers) else _r(sum(uppers))}
 
 
 def _empty_week(week: int, reason: str, roster: dict | None = None) -> dict:
@@ -343,7 +345,9 @@ def week_feedback(data: FeedbackData, week: int) -> dict:
         seen.add(pid)
         pos = (data.players.get(pid) or {}).get("position")
         reason = None
-        if r.get("lineup_slot_id") == IR_SLOT:
+        if r.get("lineup_slot_id") is None:
+            reason = "slot_unknown"
+        elif r.get("lineup_slot_id") == IR_SLOT:
             reason = "reserve_slot"
         elif pos not in covered:
             reason = "position_not_covered"
@@ -451,14 +455,15 @@ def _season(data: FeedbackData, periods: list[int]) -> dict:
     correct, missed = sum(r["correct"] for r in graded), sum(r["missed"] for r in graded)
     n_err = sum(r["forecast_n"] for r in graded)
     mae = (sum(r["forecast_mae"] * r["forecast_n"] for r in graded if r["forecast_mae"] is not None) / n_err) if n_err else None
-    uppers = [r["opportunity_cost_upper"] for r in graded]
+    costed = [r for r in graded if r["graded"] > 0]      # weeks with an archive but no graded call add no cost
+    uppers = [r["opportunity_cost_upper"] for r in costed]
     return {"weeks": rows, "totals": {
         "weeks": len(rows), "weeks_graded": len(graded), "calls": sum(r["calls"] for r in graded),
         "graded": sum(r["graded"] for r in graded), "excluded": sum(r["excluded"] for r in graded),
         "correct": correct, "missed": missed, "push": sum(r["push"] for r in graded),
         "hit_rate": _r(correct / (correct + missed), 3) if correct + missed else None,
-        "opportunity_cost_lower": _r(sum(r["opportunity_cost_lower"] or 0.0 for r in graded)) if graded else None,
-        "opportunity_cost_upper": None if not graded or any(u is None for u in uppers) else _r(sum(uppers)),
+        "opportunity_cost_lower": _r(sum(r["opportunity_cost_lower"] for r in costed)) if costed else None,
+        "opportunity_cost_upper": None if not costed or any(u is None for u in uppers) else _r(sum(uppers)),
         "forecast_mae": _r(mae), "forecast_n": n_err}}
 
 

@@ -25,7 +25,8 @@
    "no_pregame_forecast": "no forecast archived before his kickoff",
    "outcome_missing": "the starter or the alternative has no recorded points for the week (unknown, not zero)",
    "position_not_covered": "a position this source does not forecast, or no starting slot takes",
-   "reserve_slot": "in the IR slot at the roster snapshot (not startable)"
+   "reserve_slot": "in the IR slot at the roster snapshot (not startable)",
+   "slot_unknown": "his roster slot at the snapshot is not recorded, so he cannot be shown to have been startable"
   },
   "feedback": {
    "changed": [],
@@ -75,8 +76,8 @@
      "hit_rate": null,
      "matchup_period": 1,
      "missed": 0,
-     "opportunity_cost_lower": 0.0,
-     "opportunity_cost_upper": 0.0,
+     "opportunity_cost_lower": null,
+     "opportunity_cost_upper": null,
      "push": 0,
      "status": "no_archive",
      "week": 1
@@ -95,8 +96,8 @@
      "hit_rate": null,
      "matchup_period": 2,
      "missed": 0,
-     "opportunity_cost_lower": 0.0,
-     "opportunity_cost_upper": 0.0,
+     "opportunity_cost_lower": null,
+     "opportunity_cost_upper": null,
      "push": 0,
      "status": "no_archive",
      "week": 2
@@ -128,8 +129,8 @@
    "graded": 0,
    "hit_rate": null,
    "missed": 0,
-   "opportunity_cost_lower": 0.0,
-   "opportunity_cost_upper": 0.0,
+   "opportunity_cost_lower": null,
+   "opportunity_cost_upper": null,
    "push": 0
   },
   "team": {
@@ -155,8 +156,8 @@
      "graded": 0,
      "hit_rate": null,
      "missed": 0,
-     "opportunity_cost_lower": 0.0,
-     "opportunity_cost_upper": 0.0,
+     "opportunity_cost_lower": null,
+     "opportunity_cost_upper": null,
      "push": 0
     },
     "week": 2
