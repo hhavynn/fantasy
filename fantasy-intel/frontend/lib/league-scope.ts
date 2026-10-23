@@ -15,7 +15,7 @@ export const CLEAR_PARAM = "league";
 const LEAGUE_ID = /^lg_[A-Za-z0-9_-]{16,64}$/;
 // Account pages (sign-in, its email callback, invites) and the terms and privacy policy belong to no league: never
 // rewritten or redirected.
-const UNSCOPED_PREFIXES = ["/_next", "/api", "/leagues", "/login", "/auth", "/invite", "/account", "/admin", "/terms", "/privacy", "/favicon",
+export const UNSCOPED_PREFIXES = ["/_next", "/api", "/leagues", "/login", "/auth", "/invite", "/account", "/admin", "/terms", "/privacy", "/favicon",
   "/icon", "/apple-icon", "/robots", "/sitemap"];
 
 export function isLeagueId(value: unknown): value is string {

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { UNSCOPED_REDIRECT_PREFIXES } from "../eslint.config.mjs";
 import {
-  appPath, crossesLeagueScope, leagueRouteHref, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague,
+  UNSCOPED_PREFIXES, appPath, crossesLeagueScope, leagueRouteHref, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath,
+  withLeague,
 } from "./league-scope.ts";
 
 const LG = "lg_" + "a".repeat(24);
@@ -196,4 +198,9 @@ test("client navigations from a league page stay in that league end to end", asy
   const e = new URL(withLeague(evaluate, LG), "http://x").searchParams;
   assert.equal(e.get("team"), "1");
   assert.deepEqual(e.getAll("a"), ["204"]);
+});
+
+test("the lint guard's redirect rule allows exactly the unscoped prefixes the proxy passes through", () => {
+  // eslint.config.mjs flags redirect("/page") to a league page; its allow-list must not drift from UNSCOPED_PREFIXES.
+  assert.deepEqual([...UNSCOPED_REDIRECT_PREFIXES].sort(), UNSCOPED_PREFIXES.map((p) => p.slice(1)).sort());
 });

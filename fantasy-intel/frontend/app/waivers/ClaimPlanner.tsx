@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useEffect, useId, useState, useSyncExternalStore, type DragEvent } from "react";
 import { Delta, Notice, ProvenanceBadge } from "@/components/ui";
 import {
