@@ -475,3 +475,54 @@ def test_targeted_trade_discovery_resolves_players_in_the_scoped_league_only(pg,
     assert 201 in {p["espn_player_id"] for p in ta["players"]} and MARK not in json.dumps(ta)
     assert 201 not in {p["espn_player_id"] for p in tc["players"]}
     assert tc["players"] and all(p["team_name"].startswith(MARK) for p in tc["players"])
+
+
+def test_trade_evidence_is_served_only_for_the_league_in_the_path(pg, served, client, e2e, e2e_b, tmp_path,
+                                                                   monkeypatch):
+    """The row evidence behind the discovery page's "Why this trade" panel (and the #182 targeted views): a member of
+    league A can never read league B's evidence. The league comes only from the /v2 path, authorized per request
+    (league_scope -> authorize_league_in): B is the same 404 as an unknown league for a non-member and for an anonymous
+    caller, a forged league header or a league id in the query never moves A's request to B, and the single-league
+    /api path (which ignores any league) is closed once the classic site is retired."""
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="private", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="private", name="B", stamp="2026-10-20T13:00:00",
+                      external_id="1999")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_user(con, U2)
+        seed_membership(con, U1, a.league_id, "viewer")
+        seed_membership(con, U2, b.league_id, "viewer")
+        for user, lg in ((U1, a.league_id), (U2, b.league_id)):
+            con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
+                        [user, lg])
+        con.commit()
+    q = "mode=targeted&target_position=RB"
+    summary = client.get(f"/v2/leagues/{b.league_id}/api/trades/discover/summary?{q}", headers=bearer(U2))
+    assert summary.status_code == 200, summary.text[:200]
+    key = next(x["key"] for items in summary.json()["sections"].values() for x in items)
+    ev = f"/api/trades/discover/evidence?{q}&key={key}"
+    own = client.get(f"/v2/leagues/{b.league_id}{ev}", headers=bearer(U2))
+    assert own.status_code == 200 and MARK in own.text                     # B's member reads B's evidence
+
+    not_found = (404, {"detail": "League not found."})
+    unknown = client.get(f"/v2/leagues/lg_{'z' * 24}{ev}", headers=bearer(U1))
+    assert (unknown.status_code, unknown.json()) == not_found
+    for path in (ev, f"/api/trades/discover/summary?{q}", f"/api/trades/discover/context?{q}",
+                 "/api/trades/discover/targets"):
+        for headers in (bearer(U1), {}):                                    # A's member, then anonymous
+            r = client.get(f"/v2/leagues/{b.league_id}{path}", headers=headers)
+            assert (r.status_code, r.json()) == not_found, (path, headers)
+
+    # A forged league header and a league id in the query are ignored: A's request answers from A's files only.
+    forged = client.get(f"/v2/leagues/{a.league_id}{ev}&league_id={b.league_id}",
+                        headers={**bearer(U1), "x-fi-league": b.league_id})
+    plain = client.get(f"/v2/leagues/{a.league_id}{ev}", headers=bearer(U1))
+    assert forged.status_code == plain.status_code == 200, forged.text[:200]
+    assert MARK not in forged.text and forged.json() == plain.json()
+
+    # The single-league path never selects a tenant; retired, it answers 404 whatever league header is sent.
+    monkeypatch.setenv("CLASSIC_SITE_ENABLED", "0")
+    for path in (ev, "/api/trades/discover/targets"):
+        r = client.get(path, headers={"x-fi-league": b.league_id})
+        assert r.status_code == 404 and MARK not in r.text, path
+    assert client.get(f"/v2/leagues/{b.league_id}{ev}", headers=bearer(U2)).status_code == 200

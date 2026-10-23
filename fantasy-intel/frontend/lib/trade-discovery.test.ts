@@ -177,3 +177,26 @@ test("every discovered trade links to the analyzer with exactly its teams and pa
   assert.deepEqual(u.searchParams.getAll("b"), ["208"]);
   assert.deepEqual([...u.searchParams.keys()].sort(), ["a", "a", "b", "ta", "tb"]);
 });
+
+test("a row's evidence request from a league page stays in that league end to end", async () => {
+  const { leagueRouteHref, proxyDecision } = await import("./league-scope.ts");
+  const LG = "lg_" + "b".repeat(24);
+  const src = evidenceSrc(discoverQuery({ mode: "targeted", team: "2", pos: "RB" }).toString(), "1-for-1:3:204:208");
+  // What TradeEvidence fetches on /l/<lg>/trades/discover: the league-prefixed route handler URL ...
+  const fetched = new URL(leagueRouteHref(src, LG), "http://x");
+  assert.equal(fetched.pathname, `/l/${LG}/api/trade-evidence`);
+  // ... which proxy.ts rewrites to the handler with that league's header (api() then calls /v2/leagues/<lg>/...) ...
+  const d = proxyDecision({ enabled: true, pathname: fetched.pathname, search: fetched.search });
+  assert.equal(d.kind, "rewrite");
+  assert.equal(d.kind === "rewrite" && d.league, LG);
+  // ... carrying only the view's own discovery parameters to the backend.
+  const path = evidencePath(new URL(d.kind === "rewrite" ? d.path : "", "http://x").searchParams)!;
+  assert.match(path, /^\/api\/trades\/discover\/evidence\?/);
+  assert.equal(new URL(path, "http://x").searchParams.get("target_position"), "RB");
+  // The old bare URL is unscoped: the proxy passes it on without a league (and strips any league header the browser
+  // sends), so it could only ever reach the single-league classic path.
+  const bare = new URL(src, "http://x");
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: bare.pathname, search: bare.search, cookie: LG }), { kind: "next" });
+  // The classic site keeps its unprefixed URL.
+  assert.equal(leagueRouteHref(src, null), src);
+});
