@@ -130,6 +130,23 @@ def test_an_empty_history_is_a_measured_zero_with_an_honest_empty_state(con):
     assert r["window"]["text"] == "Season 2026; no dated trade."
 
 
+def test_a_trade_recorded_from_one_side_only_makes_the_other_teams_count_a_minimum(con):
+    league(con)
+    trade(con, "t1", 2, 3, [])               # a 2-and-3 trade stored on team 2's row, no legs, no activity entry
+    r = build_trade_counterparty(con, 3)     # team 3 cannot see it: its zero is not a measured zero
+    s = r["summary"]
+    assert r["status"] == "recorded" and (s["trades"], s["league_trades"], s["league_trades_unattributed"]) == (0, 1, 1)
+    s = build_trade_counterparty(con, 2)["summary"]   # the recorded side sees its own trade, partner unknown
+    assert (s["trades"], s["league_trades_unattributed"]) == (1, 0)
+
+
+def test_recurring_partners_is_withheld_with_the_partners_pattern(busy):
+    trade(busy, "t7", 4, 13, [(501, 4, 3), (202, 3, 4)])                    # team 4's second trade with team 3
+    r = build_trade_counterparty(busy, 4)                                    # two trades: below the threshold
+    assert pattern(r, "partners")["suppressed"] and r["summary"]["recurring_partners"] is None
+    assert build_trade_counterparty(busy, 1)["summary"]["recurring_partners"] == 2
+
+
 def test_missing_provider_transactions_are_unknown_not_zero(con):
     league(con)                                                              # no transaction rows at all
     r = build_trade_counterparty(con, 1)

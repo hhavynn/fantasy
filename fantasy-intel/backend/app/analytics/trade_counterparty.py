@@ -14,8 +14,12 @@ Rules, in the order they apply:
     earlier seasons are matched to a current team the same way, or named as that season's team.
   * Patterns. Each one states its numerator, its denominator (what was counted) and the date window. Trade sizes and
     positions count players only (draft picks and FAAB are not stored as legs) over trades with at least one recorded
-    player leg for this team; a trade whose legs the provider omitted is counted as a trade, with unknown size,
-    positions and partner. Timing uses the scoring week the provider stored; a trade with no stored week is unknown.
+    player leg for this team; a trade whose legs the provider omitted is counted as a trade, with unknown size and
+    positions (and an unknown partner when only this team is recorded). Timing uses the scoring week the provider
+    stored; a trade with no stored week is unknown.
+  * One-sided trades. A league trade whose stored records name at most one team, and not this one, may have had this
+    team as its unrecorded side (ESPN stores the other teams' items only through the activity feed). Those trades are
+    counted (`league_trades_unattributed`), and while there are any, this team's count is a minimum, never a zero.
   * Suppression. A pattern whose denominator is below MIN_TRADES shows its denominator but no breakdown.
   * Never. No acceptance likelihood, no willingness or personality label, and no reading of absent trades as
     unwillingness: a pattern says what happened in the trades that were recorded, nothing about trades that were not.
@@ -136,6 +140,7 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
         return a == b
 
     seasons, events = [], []
+    unattributed = 0
     for s in sorted(by_season, reverse=True):
         status, reason = "included", None
         if s != season:
@@ -159,6 +164,7 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
                         "league_trades": len(season_events), "reason": reason})
         if status == "included":
             events += [(s, e) for e in mine]
+            unattributed += sum(1 for e in season_events if len(e["team_ids"]) < 2 and team_id not in e["team_ids"])
 
     included = [x for x in seasons if x["status"] == "included"]
     recorded = bool(included)
@@ -251,7 +257,7 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
         "seasons": [x["season"] for x in included],
         "first_trade_at": _iso(min(dates)) if dates else None,
         "last_trade_at": _iso(max(dates)) if dates else None,
-        "through": lg["synced_at"],
+        "through": _iso(lg["synced_at"]),
         "text": _window_text([x["season"] for x in included], dates),
     }
 
@@ -274,6 +280,9 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
         partner_rows.append({"label": partner_out(k)["name"] or f"Team {k[1]}", **partner_out(k),
                              "numerator": partners[k], "denominator": n - unknown_partner,
                              "share": _share(partners[k], n - unknown_partner), "recurring": partners[k] >= 2})
+    partners_pattern = _pattern("partners", "Trade partners", n - unknown_partner,
+                                "trades with a recorded partner team", partner_rows, window, unknown=unknown_partner,
+                                unknown_label="trades with no recorded partner")
     patterns = [
         _pattern("trade_size", "Trade sizes (players sent-for-received)", with_legs,
                  "trades with a recorded player leg for this team", rows_from(size, shapes, with_legs), window,
@@ -290,8 +299,7 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
         _pattern("timing_week", "Timing by scoring week", n - unknown_week, "trades with a stored scoring week",
                  rows_from(weeks, [w[0] for w in WEEK_WINDOWS], n - unknown_week), window,
                  unknown=unknown_week, unknown_label="trades with no stored scoring week"),
-        _pattern("partners", "Trade partners", n - unknown_partner, "trades with a recorded partner team",
-                 partner_rows, window, unknown=unknown_partner, unknown_label="trades with no recorded partner"),
+        partners_pattern,
     ]
     if len(included) > 1:
         patterns.append(_pattern(
@@ -317,7 +325,9 @@ def build_trade_counterparty(con, team_id: int) -> dict | None:
             "multi_team_trades": multi_team if recorded else None,
             "trades_with_unlisted_assets": unlisted if recorded else None,
             "players_sent": sent_total if recorded else None, "players_received": got_total if recorded else None,
-            "recurring_partners": sum(1 for r in partner_rows if r["recurring"]) if recorded else None,
+            "recurring_partners": (sum(1 for r in partner_rows if r["recurring"])
+                                   if recorded and not partners_pattern["suppressed"] else None),
+            "league_trades_unattributed": unattributed if recorded else None,
         },
         "patterns": patterns if recorded else [],
         "seasons": seasons,

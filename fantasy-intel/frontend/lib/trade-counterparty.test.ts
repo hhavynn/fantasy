@@ -23,6 +23,9 @@ test("discoveryLinks states the basis of every position and skips your own team"
   ]);
   assert.equal(links[1].href, "/trades/discover?mode=targeted&opponent=4&pos=RB");
   assert.deepEqual(discoveryLinks(report(true, ["RB"]), roster), []);
+  // the analysed team decides, not the default team: team 4 analysed hides its own links; another team shows them
+  assert.deepEqual(discoveryLinks(report(false, ["RB"]), roster, 4), []);
+  assert.equal(discoveryLinks(report(true, ["RB"]), roster, 2).length, 3);
   // suppressed history (the backend sends no positions): only the roster basis remains
   assert.deepEqual(discoveryLinks(report(false, []), []).map((l) => l.position), [null]);
 });

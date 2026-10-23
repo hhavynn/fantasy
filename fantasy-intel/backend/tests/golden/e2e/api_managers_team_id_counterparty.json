@@ -134,10 +134,11 @@
   "status": "recorded",
   "summary": {
    "league_trades": 1,
+   "league_trades_unattributed": 0,
    "multi_team_trades": 0,
    "players_received": 0,
    "players_sent": 0,
-   "recurring_partners": 0,
+   "recurring_partners": null,
    "trades": 0,
    "trades_with_player_legs": 0,
    "trades_with_unlisted_assets": 0,

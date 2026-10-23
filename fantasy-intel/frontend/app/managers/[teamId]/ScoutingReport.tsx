@@ -1,5 +1,4 @@
 import { PlayerLink } from "@/components/PlayerLink";
-import { TeamLink } from "@/components/TeamLink";
 import { Badge, EmptyState, Method, Notice, Pos, Score, Section } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
 import { PartialMark, date, int, num, pct, when } from "@/lib/format";
@@ -9,7 +8,8 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { formatMetric } from "@/lib/managers";
 import type { ScoutingReport as Report, ScoutingSignal } from "@/lib/manager-scouting";
 import { plural } from "@/lib/plural";
-import { discoveryLinks, ofText, seasonDisclosures, type CounterpartyPattern, type CounterpartyReport, type CounterpartyRow } from "@/lib/trade-counterparty";
+import { ofText, seasonDisclosures, type CounterpartyPattern, type CounterpartyReport, type CounterpartyRow } from "@/lib/trade-counterparty";
+import { CounterpartyDiscovery } from "./CounterpartyDiscovery";
 import styles from "./scouting.module.css";
 
 function Confidence({ value }: { value: string }) {
@@ -204,8 +204,9 @@ function PatternBlock({ p }: { p: CounterpartyPattern }) {
 export async function CounterpartyPatterns({ report: r, roster }: { report: CounterpartyReport; roster: { position: string; league_comparison: string }[] }) {
   const prov = providerName((await getLeagueProfile()).provider);
   const s = r.summary;
-  const links = discoveryLinks(r, roster);
   const disclosed = seasonDisclosures(r.seasons);
+  // League trades recorded from one side only: this team may be their other side, so its count is a minimum.
+  const oneSided = s.league_trades_unattributed ?? 0;
   return (
     <Section
       title="Trade counterparty patterns"
@@ -213,14 +214,19 @@ export async function CounterpartyPatterns({ report: r, roster }: { report: Coun
       footnote={<>{r.suppression_rule} A pattern describes the trades that were recorded; it is not a likelihood that a trade would be accepted, and few or no trades is not a sign of unwillingness.</>}
     >
       {r.status === "not_recorded" || s.trades === null ? (
-        <Notice tone="caution" title="Trade history not recorded">No transactions are stored for this league yet, so this team&apos;s trades are unknown, not zero. They appear after the next {prov} sync.</Notice>
+        r.seasons.some((x) => x.status === "excluded")
+          ? <Notice tone="caution" title="Trade history not attributable">No season with stored transactions can be attributed to this team&apos;s current manager (see the seasons below), so this team&apos;s trades are unknown, not zero.</Notice>
+          : <Notice tone="caution" title="Trade history not recorded">No transactions are stored for this league yet, so this team&apos;s trades are unknown, not zero. They appear after the next {prov} sync.</Notice>
+      ) : s.trades === 0 && oneSided > 0 ? (
+        <Notice tone="caution" title="No executed trade names this team">{oneSided} league {plural(oneSided, "trade")} in the stored transactions ({r.window.text.replace(/\.$/, "")}) {oneSided === 1 ? "names" : "name"} only one team, and this team may have been the other side, so its count is unknown, not a recorded zero.</Notice>
       ) : s.trades === 0 ? (
         <EmptyState title="No executed trades recorded">This team has no executed trade in the stored transactions ({r.window.text.replace(/\.$/, "")}). That is a recorded count of zero, not a sign the manager will not trade.</EmptyState>
       ) : (
         <>
           <p className={styles.tradeLine}>
-            <b>{s.trades} executed {plural(s.trades, "trade")}</b> of {s.league_trades} in the league · {s.trades_with_player_legs} with recorded player legs
-            {(s.trades_without_player_legs ?? 0) > 0 && <> · {s.trades_without_player_legs} with legs {prov} did not record (size, positions and partner unknown)</>}
+            <b>{oneSided > 0 ? "At least " : ""}{s.trades} executed {plural(s.trades, "trade")}</b> of {s.league_trades} in the league · {s.trades_with_player_legs} with recorded player legs
+            {(s.trades_without_player_legs ?? 0) > 0 && <> · {s.trades_without_player_legs} with no player legs {prov} recorded (size and positions unknown)</>}
+            {oneSided > 0 && <> · {oneSided} more league {plural(oneSided, "trade")} {oneSided === 1 ? "names" : "name"} only one team and may include this one</>}
             {(s.multi_team_trades ?? 0) > 0 && <> · {s.multi_team_trades} with three or more teams</>}
             {(s.trades_with_unlisted_assets ?? 0) > 0 && <> · {s.trades_with_unlisted_assets} also moved draft picks or FAAB, which are not counted</>}
           </p>
@@ -237,22 +243,14 @@ export async function CounterpartyPatterns({ report: r, roster }: { report: Coun
 
       {disclosed.length > 0 && (
         <details className={styles.more}>
-          <summary>{disclosed.length} earlier {plural(disclosed.length, "season")} not counted</summary>
+          <summary>{disclosed.length} {plural(disclosed.length, "season")} not counted</summary>
           <ul className={styles.seasons}>{disclosed.map((x) => (
             <li key={x.season}>{x.season}: {x.status === "not_recorded" ? "not recorded" : `left out (${x.team_trades ?? "unknown"} ${plural(x.team_trades ?? 2, "trade")} under this team id)`}. {x.reason}</li>
           ))}</ul>
         </details>
       )}
 
-      {links.length > 0 && (
-        <div className={styles.discovery}>
-          <h3 className={styles.patternTitle}>Explore trades with this manager</h3>
-          <p className={styles.patternMeta}>Opens trade discovery with this manager as the only partner. A position link targets players you would receive at that position.</p>
-          <ul className={styles.links}>{links.map((l) => (
-            <li key={l.href}><TeamLink className="chip" href={l.href}>{l.position ?? "Any position"}</TeamLink><span>{l.position ? l.basis : "Every position the search covers"}</span></li>
-          ))}</ul>
-        </div>
-      )}
+      <CounterpartyDiscovery report={{ team: r.team, discovery: r.discovery }} roster={roster} />
 
       {r.trades.length > 0 && (
         <details className={styles.more}>

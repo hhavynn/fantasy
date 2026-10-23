@@ -46,6 +46,9 @@ export type CounterpartyReport = {
     trades_without_player_legs: number | null; multi_team_trades: number | null;
     trades_with_unlisted_assets: number | null; players_sent: number | null; players_received: number | null;
     recurring_partners: number | null;
+    /** League trades whose stored records name at most one team, not this one: this team may be their unrecorded
+     *  side, so while this is above 0 the team's count is a minimum. */
+    league_trades_unattributed: number | null;
   };
   patterns: CounterpartyPattern[];
   seasons: CounterpartySeason[];
@@ -72,12 +75,13 @@ export type DiscoveryLink = { href: string; position: string | null; basis: stri
  * Discovery links for one manager: every trade with them, then each position with a stated basis, in position order.
  * A position comes from the counterparty report (sent in recorded trades, only when that pattern is not suppressed:
  * the backend leaves the list empty below the threshold) or from the current roster (more than the league average).
- * None for your own team.
+ * None when this manager is the analysed team (`useTeam`), or, with no team analysed, the league's default team:
+ * trade discovery never offers a trade with your own team.
  */
 export function discoveryLinks(report: Pick<CounterpartyReport, "team" | "discovery">,
-  roster: { position: string; league_comparison: string }[] = []): DiscoveryLink[] {
-  if (report.team.is_mine) return [];
+  roster: { position: string; league_comparison: string }[] = [], analysedTeam: number | null = null): DiscoveryLink[] {
   const opp = report.discovery.opponent_team_id;
+  if (analysedTeam !== null ? analysedTeam === opp : report.team.is_mine) return [];
   const sent = new Set(report.discovery.positions_sent);
   const above = new Set(roster.filter((r) => r.league_comparison === "ABOVE").map((r) => r.position));
   const out: DiscoveryLink[] = [{ href: discoveryHref(opp), position: null, basis: "All positions" }];
