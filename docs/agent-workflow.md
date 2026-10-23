@@ -50,7 +50,8 @@ have already caused a Postgres outage and a full disk.
 - Diagnose an environment failure (connection refused, ENOSPC, `initdb` errors) once, from the compact log, before
   any rerun. Report it as an environment failure, not a code defect.
 - `quick` stays under its 60 s budget: test files listed in `QUICK_EXCLUDED_TESTS` are reported as deferred and run
-  in `affected`, `security` and CI as before.
+  in `affected`, `security` and CI as before. If the selected files still exceed the budget, the step reports
+  UNVERIFIED ("not a test failure; run `affected`"), never FAIL. Add a file measured over ~20 s to the list.
 
 ---
 

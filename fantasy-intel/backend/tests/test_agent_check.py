@@ -534,3 +534,72 @@ def test_authorization_doc_contract_enforces_adr0002():
         assert "indistinguish" in doc.lower(), f"{name} must enforce 404 indistinguishability"
         assert "anonymous private-league requests must return 401" not in doc.lower()
         assert "anonymous caller gets 401" not in doc.lower()
+
+
+def test_quick_reports_a_budget_timeout_as_unverified_not_a_failure(monkeypatch):
+    runner = VerificationRunner(mode="quick")
+    monkeypatch.setattr(runner, "get_changed_files", lambda: (["fantasy-intel/backend/tests/test_trades.py"], []))
+
+    def fake_run(name, cmd, cwd=None, target="", timeout=300.0):
+        timed_out = name.startswith("Quick Backend")
+        res = StepResult(name, target, "FAIL" if timed_out else "PASS", timeout if timed_out else 0.1,
+                         f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed", timed_out=timed_out)
+        runner.results.append(res)
+        return res
+
+    monkeypatch.setattr(runner, "run_command", fake_run)
+    code = runner.execute()
+    quick = next(r for r in runner.results if r.name.startswith("Quick Backend"))
+    assert quick.status == "UNVERIFIED" and "not a test failure" in quick.summary and "affected" in quick.summary
+    assert code == 2                                    # UNVERIFIED, never PASS and never FAIL
+
+
+def test_quick_still_fails_on_a_real_test_failure(monkeypatch):
+    runner = VerificationRunner(mode="quick")
+    monkeypatch.setattr(runner, "get_changed_files", lambda: (["fantasy-intel/backend/tests/test_trades.py"], []))
+
+    def fake_run(name, cmd, cwd=None, target="", timeout=300.0):
+        res = StepResult(name, target, "FAIL" if name.startswith("Quick Backend") else "PASS", 0.1, "1 failed")
+        runner.results.append(res)
+        return res
+
+    monkeypatch.setattr(runner, "run_command", fake_run)
+    assert runner.execute() == 1
+
+
+def test_quick_keeps_fail_when_a_failure_was_printed_before_the_timeout(monkeypatch):
+    runner = VerificationRunner(mode="quick")
+    monkeypatch.setattr(runner, "get_changed_files", lambda: (["fantasy-intel/backend/tests/test_trades.py"], []))
+
+    def fake_run(name, cmd, cwd=None, target="", timeout=300.0):
+        timed_out = name.startswith("Quick Backend")
+        res = StepResult(name, target, "FAIL" if timed_out else "PASS", 0.1,
+                         f"TIMEOUT (exceeded {timeout}s limit)" if timed_out else "Passed",
+                         stdout="....F...                                     [ 40%]\n...." if timed_out else "",
+                         timed_out=timed_out)
+        runner.results.append(res)
+        return res
+
+    monkeypatch.setattr(runner, "run_command", fake_run)
+    assert runner.execute() == 1
+    quick = next(r for r in runner.results if r.name.startswith("Quick Backend"))
+    assert quick.status == "FAIL" and quick.summary.startswith("TIMEOUT")
+
+
+def test_pytest_reported_failure_reads_progress_and_summary_lines():
+    import agent_check
+    assert agent_check._pytest_reported_failure("..F.  [ 10%]")
+    assert agent_check._pytest_reported_failure("....E")
+    assert agent_check._pytest_reported_failure("FAILED tests/test_x.py::test_y - AssertionError")
+    assert not agent_check._pytest_reported_failure("........  [ 50%]\n....s.")
+    assert not agent_check._pytest_reported_failure("")
+
+
+def test_run_command_flags_a_real_timeout():
+    runner = VerificationRunner(mode="quick")
+    res = runner.run_command("Quick Backend (sleep)", [sys.executable, "-c", "import time; time.sleep(5)"],
+                             cwd=Path(tempfile.gettempdir()), target="sleep", timeout=0.5)
+    assert res.timed_out and res.status == "FAIL"
+    done = runner.run_command("Quick Backend (fail)", [sys.executable, "-c", "raise SystemExit(1)"],
+                              cwd=Path(tempfile.gettempdir()), target="fail", timeout=10)
+    assert not done.timed_out and done.status == "FAIL"
