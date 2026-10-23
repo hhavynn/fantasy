@@ -94,7 +94,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
-- PR OPEN #246 (625b7ca): quick budget timeout → UNVERIFIED unless a failure was already printed; typed `timed_out` flag; test_schedule_intelligence (73 s) deferred. Codex P2 + review LOWs fixed.
+- MERGED #246 → 9faee55: quick budget timeout → UNVERIFIED unless a failure was already printed; typed `timed_out` flag; test_schedule_intelligence (73 s) deferred. Codex P2 + review LOWs fixed.
 - MERGED #243 → ef21c42: response-cache key re-encoded so `%3D`/`%26` can't forge another URL's key (LOW from #242 review).
 - MERGED #240 → e234416: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
   test_overlapping_pytest_sessions_isolation, reproduced locally); ported into #238.
@@ -127,6 +127,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #246 | 625b7ca | test_agent_check 40 (real run_command timeout) | green | Codex P2 + D-10 review LOWs fixed |
 | #241 | 248ea21 | action_center 25, a 689, s 627, fe 665 + combined 95 after #242 merge | green | D-10 review + re-check |
 | #243 | 6153556 | a 106 + s 623; test fails on main | green | D-10 review: no collisions (9.4k fuzz) |
 | #242 | d275d1d | q/a/s + 28 + 17 league_scope + what-if e2e 8 + ux-gates start-sit | green | D-10 security review clean |
