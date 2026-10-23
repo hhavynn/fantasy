@@ -3,12 +3,18 @@ exact optimal lineups (parity with assign_lineup and roster_marginal_value), joi
 replacement pool is explicit, and a missing projection is unknown, never 0."""
 from functools import partial
 
+import compat_fixtures as cf
 import pytest
 
-import compat_fixtures as cf
 from app.analytics import marginal_utility as mu
 from app.analytics.lineup import assign_lineup, lineup_slots, lineup_total
-from app.analytics.team_lineups import STREAMER_IDS, RosterPlayer, StreamingProjections, Window, roster_marginal_value
+from app.analytics.team_lineups import (
+    STREAMER_IDS,
+    RosterPlayer,
+    StreamingProjections,
+    Window,
+    roster_marginal_value,
+)
 
 STD = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1})
 SF = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "OP": 1})
@@ -68,6 +74,9 @@ def test_a_removal_is_the_exact_optimizer_difference_and_matches_roster_marginal
 def test_the_projection_source_is_required():
     with pytest.raises(TypeError):
         mu.marginal_utility(roster(), STD, WIN, proj(), [2])
+    for source in (None, ""):
+        with pytest.raises(mu.MarginalUtilityError):
+            mu.marginal_utility(roster(), STD, WIN, proj(), [2], projection_source=source)
 
 
 def test_an_unused_bench_player_changes_no_starting_lineup():
@@ -195,7 +204,7 @@ def test_fx17_lineup_parity():
 
 
 def test_bad_requests_are_refused():
-    for ids, kw in (([], {}), ([999], {}), (["x"], {}), ([2], {"pool": "trade"}), ([2], {"pool": "acquisition"})):
+    for ids, kw in (([], {}), ([999], {}), (["x"], {}), ([2.9], {}), ([2], {"pool": "trade"}), ([2], {"pool": "acquisition"})):
         with pytest.raises(mu.MarginalUtilityError):
             marginal_utility(roster(), STD, WIN, proj(), ids, **kw)
     assert mu.scenario(roster(), STD, WIN, proj())["ros_delta"] == 0.0          # no change, no delta

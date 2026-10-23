@@ -26,8 +26,20 @@ Pure and read-only: the caller supplies the roster, slots, window, projections (
 
 from __future__ import annotations
 
-from .team_lineups import (STREAMER_IDS, Projections, RosterPlayer, Window, arrives_active, best_fa_addition, compare,
-                           project_team, r, replacement_positions, stream_summary, without)
+from .team_lineups import (
+    STREAMER_IDS,
+    Projections,
+    RosterPlayer,
+    Window,
+    arrives_active,
+    best_fa_addition,
+    compare,
+    project_team,
+    r,
+    replacement_positions,
+    stream_summary,
+    without,
+)
 
 POOLS = ("bench", "waiver", "acquisition")
 UNIT = "projected starting-lineup points (exact optimal lineup with the change minus without it)"
@@ -84,10 +96,11 @@ def marginal_utility(players: list[RosterPlayer], slots: list[str], window: Wind
     """What removing `asset_ids` costs this roster in starting-lineup points, with the replacement `pool` allows.
     A negative delta is points lost. `projection_source` is the label of the projections used (team_lineups
     .source_label): a value is never returned without its source."""
-    try:
-        ids = sorted({int(x) for x in asset_ids})
-    except (TypeError, ValueError) as e:
-        raise MarginalUtilityError("Player ids must be integers.") from e
+    if not projection_source:
+        raise MarginalUtilityError("Name the source of the projections.")
+    if not all(isinstance(x, int) and not isinstance(x, bool) for x in asset_ids):
+        raise MarginalUtilityError("Player ids must be integers.")    # never a float truncated to another id
+    ids = sorted(set(asset_ids))
     by_id = {p.espn_player_id: p for p in players}
     if not ids:
         raise MarginalUtilityError("Name at least one rostered player.")
