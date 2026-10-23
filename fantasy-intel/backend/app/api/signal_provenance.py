@@ -5,7 +5,7 @@ complete (issue #168). One small contract, ``signal-provenance.v1``, that a resp
     provenance = {"contract": "signal-provenance.v1", "signals": [Signal, ...]}
 
     Signal (every key always present):
-      signal              stable key: "league" | "projections" | "injuries" | "usage" | "analysis"
+      signal              stable key: "league" | "projections" | "injuries" | "usage" | "analysis" | "schedule"
       label               what the signal is, in plain words
       source              who produced it: "espn" | "sleeper" | "nflverse" | "fantasy_intel"; null when unknown
       captured_at         ISO-8601 UTC ("...Z") when the source data was captured: a successful sync's finish, a model
