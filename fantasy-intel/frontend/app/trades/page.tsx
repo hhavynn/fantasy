@@ -6,6 +6,7 @@ import {
   Glossary, Method, Notice, PageHeader, ProvenanceBadge,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { parseLocks, type CounterofferResponse } from "@/lib/counteroffers";
 import { projectionName, providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { currentLeague } from "@/lib/league-scope.server";
@@ -13,6 +14,7 @@ import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder
 import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
 import { signalsOf } from "@/lib/signal-provenance";
+import { CounterofferAction, Counteroffers, CounteroffersSkeleton } from "./Counteroffers";
 import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
 import { ScenarioProvider } from "./ScenarioStore";
 import { ScenarioWatchlist } from "./ScenarioWatchlist";
@@ -89,6 +91,15 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
     ? api<TradeResultV3>("/api/trades/evaluate", { team_a_id: initial.ta, team_b_id: initial.tb, team_a_sends: initial.a,
       team_b_sends: initial.b, start_week: initial.sw })
     : null;
+  // Counteroffers (#214) run only when asked for (`co=1`), on the evaluated offer over the default horizon, with the
+  // offer players the URL keeps in the deal (`lock`). The data version makes a changed league a 409, not a stale answer.
+  const selection = ready ? { ta: initial.ta!, tb: initial.tb!, a: initial.a, b: initial.b, sw: initial.sw } : null;
+  const counterable = selection !== null && selection.sw === null ? selection : null;
+  const locks = selection ? parseLocks(ids(sp.lock), [...selection.a, ...selection.b]) : [];
+  const counter = counterable && one(sp.co) === 1
+    ? api<CounterofferResponse>("/api/trades/counteroffers", { team_a_id: counterable.ta, team_b_id: counterable.tb,
+      team_a_sends: counterable.a, team_b_sends: counterable.b, locked: locks, data_version: dataVersion })
+    : null;
 
   return (
     <div className="stack">
@@ -109,10 +120,15 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
           projLabel={proj} providerLabel={pv}>
           {evaluated && (
             <Suspense fallback={<EvaluatedTradeSkeleton />}>
-              <EvaluatedTrade result={evaluated}
-                selection={{ ta: initial.ta!, tb: initial.tb!, a: initial.a, b: initial.b, sw: initial.sw }} />
+              <EvaluatedTrade result={evaluated} selection={selection!} />
             </Suspense>
           )}
+          {counter && (
+            <Suspense fallback={<CounteroffersSkeleton />}>
+              <Counteroffers result={counter} selection={counterable!} locks={locks} />
+            </Suspense>
+          )}
+          {counterable && !counter && <CounterofferAction selection={counterable} />}
         </TradeBuilder>
         <ScenarioWatchlist providerLabel={pv} />
       </ScenarioProvider>

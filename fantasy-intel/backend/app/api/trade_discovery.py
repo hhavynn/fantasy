@@ -11,12 +11,14 @@ import threading
 from collections import OrderedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from ..analytics.bye_planner import build_bye_planner
 from ..analytics.manager_scouting import build_manager_scouting
 from ..analytics.schedule_intelligence import NotFound, NotSynced
 from ..analytics.trade_assets import AssetBoard, league_needs
-from ..analytics.trade_data import load_league_state
+from ..analytics.trade_counteroffers import MAX_ADDED, MAX_SHOWN, CounterofferConstraints, counteroffers
+from ..analytics.trade_data import load_league_state, player_names
 from ..analytics import trade_practical as practical
 from ..analytics import trade_ratings
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
@@ -24,11 +26,12 @@ from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
                                          TradeSearch, TradeTarget, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
-from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, stream_summary
+from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, source_label, stream_summary
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
+from ..config import get_settings
 from .deps import data_version, db, one, rows
-from .signal_provenance import trade_provenance
+from .signal_provenance import snapshot_versions, trade_provenance
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 
@@ -324,11 +327,17 @@ def _resolve_target(con, p: DiscoverParams, state, team_id: int, teams: list[dic
             "weeks": list(focus) if focus else None}
     return target, focus, info
 
-def _resolve(con, p: DiscoverParams) -> _Resolved:
+def _league(con) -> dict:
+    """The league this connection serves (under a /v2 scope, the scoped league's own file)."""
     lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
                   "ORDER BY synced_at DESC LIMIT 1")
     if not lg:
         raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
+    return lg
+
+
+def _resolve(con, p: DiscoverParams) -> _Resolved:
+    lg = _league(con)
     teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
                       "ORDER BY team_id", [lg["league_id"], lg["season"]])
     team_id = p.team_id
@@ -597,3 +606,74 @@ def discover_targets(p: DiscoverParams = Depends()):
                 "positions": [x for x in TARGET_POSITIONS if lineup_relevant(x, state.slots)],
                 "need_resolution": {"weakest": _weakest(con, state, r.team_id), "bye": _bye(con, state, r.team_id)},
                 "provenance": trade_provenance(con, r.lg, state)}
+
+COUNTER_SLOTS = 2                    # concurrent counteroffer searches per process
+COUNTER_WAIT_SECONDS = 1.0
+_COUNTER_SLOTS = threading.BoundedSemaphore(COUNTER_SLOTS)
+
+
+class CounterofferRequest(BaseModel):
+    """An offer to repair (#214) and what a counteroffer may change. Every list is short and capped, so a request
+    cannot widen the search."""
+    team_a_id: int
+    team_b_id: int
+    team_a_sends: list[int] = Field(max_length=10)
+    team_b_sends: list[int] = Field(max_length=10)
+    locked: list[int] = Field(default_factory=list, max_length=20)        # stay in the deal
+    excluded: list[int] = Field(default_factory=list, max_length=60)      # never added
+    positions: list[str] | None = Field(None, max_length=len(TARGET_POSITIONS))
+    max_added_per_side: int = Field(1, ge=0, le=MAX_ADDED)
+    limit: int = Field(MAX_SHOWN, ge=1, le=MAX_SHOWN)
+    kdst_streaming: bool = True
+    # The data version the offer was evaluated on (signal-provenance.v1 league snapshot_version); when it is given and
+    # the data has changed since, the answer is a 409 instead of counteroffers to an offer evaluated on other data.
+    data_version: str | None = Field(None, max_length=200)
+
+
+@router.post("/counteroffers")
+def trade_counteroffers(body: CounterofferRequest):
+    """Up to three bounded counteroffers to one offer (analytics/trade_counteroffers.py): small edits of the offer,
+    each exactly evaluated for both teams and re-checked by the manual evaluator, listed when the team the offer treats
+    worse does better. Read-only and hypothetical; no acceptance estimate."""
+    if body.positions is not None and set(body.positions) - set(TARGET_POSITIONS):
+        raise HTTPException(422, f"positions must be among {', '.join(TARGET_POSITIONS)}")
+    with db() as con:
+        lg = _league(con)
+        current = snapshot_versions(con)[0]
+        if body.data_version is not None and body.data_version != current:
+            raise HTTPException(409, "The league data changed after this offer was evaluated. Evaluate it again, "
+                                     "then ask for counteroffers.")
+        state = load_league_state(con, lg["season"])
+        if state is None:
+            raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+        if body.kdst_streaming:
+            state = with_streaming(state)
+        c = CounterofferConstraints(
+            locked=frozenset(body.locked), excluded=frozenset(body.excluded), max_added_per_side=body.max_added_per_side,
+            limit=body.limit, **({"positions": tuple(sorted(set(body.positions)))} if body.positions is not None else {}))
+        # Each request is a fresh CPU-bound search (a POST is never response-cached): a few run at once per process,
+        # and one that cannot get a slot quickly is a 503 instead of a queue.
+        if not _COUNTER_SLOTS.acquire(timeout=COUNTER_WAIT_SECONDS):
+            raise HTTPException(503, "Counteroffer searches are busy right now. Try again in a moment.")
+        try:
+            res = counteroffers(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends, c,
+                                max_per_side=get_settings().trade_max_players_per_side)
+        except NoRemainingWeeksError as err:
+            raise HTTPException(409, str(err))
+        except TradeError as err:
+            raise HTTPException(422, str(err))
+        finally:
+            _COUNTER_SLOTS.release()
+        ids = set(res["original"]["team_a_sends"]) | set(res["original"]["team_b_sends"])
+        for x in [res["original"], *res["results"]]:
+            for side in ("team_a", "team_b"):
+                ids |= set(x.get(side, {}).get("forced_drops", []))
+            ids |= set(x["team_a_sends"]) | set(x["team_b_sends"])
+        names = player_names(con, ids)
+        return {**res, "contract": "trade-counteroffers/v1", "data_version": current,
+                "team_names": {t: state.team_names.get(t) for t in (body.team_a_id, body.team_b_id)},
+                "names": {pid: {"name": n["full_name"], "position": n["position"], "pro_team": n["pro_team"]}
+                          for pid, n in names.items()},
+                "projection_source": source_label(state.projection_source, state.projections),
+                "kdst_streaming": stream_summary(state.projections, state.window()),
+                "provenance": trade_provenance(con, lg, state)}

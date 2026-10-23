@@ -680,6 +680,17 @@ def test_trade_evidence_is_served_only_for_the_league_in_the_path(pg, served, cl
         for headers in (bearer(U1), {}):                                    # A's member, then anonymous
             r = client.get(f"/v2/leagues/{b.league_id}{path}", headers=headers)
             assert (r.status_code, r.json()) == not_found, (path, headers)
+    # Counteroffers (#214) are a POST on the same router: the same per-league authorization, before the body is
+    # validated (a JSON body is decoded first, so malformed JSON is the same 422 for every league id).
+    rosters = {t["team_id"]: [p["espn_player_id"] for p in t["roster"]]
+               for t in client.get(f"/v2/leagues/{b.league_id}/api/trades/options", headers=bearer(U2)).json()["teams"]}
+    ta, tb = sorted(rosters)[:2]
+    offer = {"team_a_id": ta, "team_b_id": tb, "team_a_sends": rosters[ta][:1], "team_b_sends": rosters[tb][:1]}
+    for headers in (bearer(U1), {}):
+        r = client.post(f"/v2/leagues/{b.league_id}/api/trades/counteroffers", json=offer, headers=headers)
+        assert (r.status_code, r.json()) == not_found, headers
+    mine = client.post(f"/v2/leagues/{b.league_id}/api/trades/counteroffers", json=offer, headers=bearer(U2))
+    assert mine.status_code == 200 and mine.json()["contract"] == "trade-counteroffers/v1", mine.text[:200]
 
     # A forged league header and a league id in the query are ignored: A's request answers from A's files only.
     forged = client.get(f"/v2/leagues/{a.league_id}{ev}&league_id={b.league_id}",
