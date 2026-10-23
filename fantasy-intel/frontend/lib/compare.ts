@@ -756,3 +756,405 @@ export function isCompareResponse(x: unknown): x is CompareResponse {
 export function rowNote(note: string | null | undefined): string | null {
   return note?.split("; ").filter((n) => !n.startsWith("Not applicable for ")).join("; ") || null;
 }
+
+// ================================================================================ shortlist (#175) --
+// Two to four players for one lineup slot (GET /api/compare/shortlist). The same player cards as the pair view; the
+// backend adds the lineup engine's slot eligibility, roster status for the selected team and the best stored
+// projection among the players who can fill the slot. The start pick is the viewer's own choice, kept in the URL; this
+// module never names one.
+
+export const MAX_SHORTLIST = 4;
+export const MIN_SHORTLIST = 2;
+/** Every starting slot the lineup engine fills; a league offers the subset it starts (the response's `slots`). */
+export const ENGINE_SLOTS = ["QB", "RB", "WR", "TE", "K", "D/ST", "RB/WR", "WR/TE", "FLEX", "OP"] as const;
+
+export type RosterStatus = "this_team" | "other_team" | "free_agent" | "waivers" | "unknown";
+/**
+ * The best-projected verdict, one explicit state from the backend (analytics/player_shortlist.py). The page renders
+ * from it alone (`verdictView`, `startPickNote`), never from a combination of the other fields.
+ */
+export type VerdictState =
+  | "single_leader" | "tied" | "only" | "incomplete_single" | "incomplete_tied"           // ranked: `leaders` set
+  | "no_common_slot" | "slots_unknown" | "unsupported_slot" | "none_eligible" | "none_projected";  // unranked: no leaders
+export const VERDICT_STATES: readonly VerdictState[] = [
+  "single_leader", "tied", "only", "incomplete_single", "incomplete_tied",
+  "no_common_slot", "slots_unknown", "unsupported_slot", "none_eligible", "none_projected",
+];
+
+/** "LB" / "LB, DL": the league's starting slots the lineup engine does not fill (#253), for the verdict's wording. */
+function unsupportedText(r: Pick<ShortlistResponse, "unsupported_slots">): string {
+  return r.unsupported_slots.length ? r.unsupported_slots.join(", ") : "a slot";
+}
+
+export type ShortlistSlot = { slot: string; count: number; positions: string[] };
+
+export type ShortlistPlayer = {
+  card: CompareCard;
+  roster: RosterStatus;
+  eligible_slots: string[];
+  slot_eligible: boolean | null;
+};
+
+export type BestProjected = {
+  source: "espn" | "ours";
+  /** The source named on the page: "ESPN" or "Fantasy Intel" only when some player has a number from it, else "Unavailable". */
+  source_label: string;
+  week: number;
+  slot: string | null;
+  state: VerdictState;
+  leaders: number[];
+  value: number | null;
+  gap: number | null;
+  considered: number[];
+  excluded: { espn_player_id: number; reason: "not_eligible" | "bye" | "no_projection"; text: string }[];
+  text: string;
+};
+
+export type ShortlistResponse = {
+  as_of_week: number;
+  completed_through_week: number;
+  final_week: number | null;
+  source: CompareSource;
+  provider: string;
+  scoring: Scoring;
+  slots: ShortlistSlot[];
+  unsupported_slots: string[];
+  slot: string | null;
+  team: { team_id: number; name: string; is_owner_default: boolean } | null;
+  players: ShortlistPlayer[];
+  best_projected: BestProjected;
+  limitations: string[];
+  disclaimer: string;
+  freshness: { espn_synced_at: string | null; nfl_synced_at: string | null };
+};
+
+export type ShortlistParams = { ids: number[]; slot: string | null; start: number | null; errors: string[] };
+
+const firstParam = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+
+/** The shortlist view is asked for by an `ids` param and no pair (`a`/`b` always open the pair view, as before). */
+export function isShortlistView(sp: SearchParamsLike | null | undefined): boolean {
+  return !!sp && sp.ids !== undefined && sp.a === undefined && sp.b === undefined;
+}
+
+/**
+ * `ids`, `slot` and `start` of the shortlist URL. Junk ids are named and skipped, a repeat is dropped, and only the
+ * first MAX_SHORTLIST are kept. A slot outside ENGINE_SLOTS is refused; a start pick not on the list is ignored.
+ */
+export function parseShortlistParams(sp: SearchParamsLike | null | undefined): ShortlistParams {
+  const errors: string[] = [];
+  const raw = sp?.ids;
+  const text = Array.isArray(raw) ? raw.join(",") : raw ?? "";
+  const ids: number[] = [];
+  for (const part of text.split(",").map((p) => p.trim()).filter(Boolean)) {
+    const id = cleanId(part);
+    if (id === null) errors.push(`“${shown(part)}” is not a player id. Ids are whole numbers (team defenses are negative).`);
+    else if (!ids.includes(id)) ids.push(id);
+  }
+  if (ids.length > MAX_SHORTLIST) {
+    errors.push(`A shortlist holds up to ${MAX_SHORTLIST} players; the first ${MAX_SHORTLIST} are kept.`);
+    ids.length = MAX_SHORTLIST;
+  }
+  const slotRaw = firstParam(sp?.slot)?.trim().toUpperCase() ?? "";
+  let slot: string | null = null;
+  if (slotRaw !== "") {
+    if ((ENGINE_SLOTS as readonly string[]).includes(slotRaw)) slot = slotRaw;
+    else errors.push(`“${shown(slotRaw)}” is not a lineup slot. Pick one of the slots above.`);
+  }
+  const start = cleanId(firstParam(sp?.start));
+  return { ids, slot, start: start !== null && ids.includes(start) ? start : null, errors };
+}
+
+export type ShortlistState = { ids: readonly number[]; slot?: string | null; start?: number | null; team?: string | number | null };
+
+/** `/compare?ids=1,2,3&slot=FLEX&start=2&team=4`. `ids` is always written (empty too), so the link stays in this view. */
+export function shortlistHref({ ids, slot, start, team }: ShortlistState): string {
+  const list = [...new Set(ids.map((i) => cleanId(i)).filter((i): i is number => i !== null))].slice(0, MAX_SHORTLIST);
+  const parts = [`ids=${list.join(",")}`];
+  if (slot) parts.push(`slot=${encodeURIComponent(slot)}`);
+  if (start !== null && start !== undefined && list.includes(start)) parts.push(`start=${start}`);
+  if (team !== null && team !== undefined && String(team) !== "") parts.push(`team=${encodeURIComponent(String(team))}`);
+  return `/compare?${parts.join("&")}`;
+}
+
+/** The list with `id` added at the end (unchanged when it is already there or the list is full). */
+export function withPlayer(ids: readonly number[], id: number): number[] {
+  return ids.includes(id) || ids.length >= MAX_SHORTLIST ? [...ids] : [...ids, id];
+}
+
+/** The list without `id`. */
+export function withoutPlayer(ids: readonly number[], id: number): number[] {
+  return ids.filter((i) => i !== id);
+}
+
+/** Every pair of the shortlist, in list order: each opens the existing two-player comparison. */
+export function shortlistPairs<T>(items: readonly T[]): [T, T][] {
+  const out: [T, T][] = [];
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) out.push([items[i], items[j]]);
+  return out;
+}
+
+/**
+ * The pair view for two shortlist players, carrying the shortlist (ids, slot, start pick) so the page can link back to
+ * it. Never the team: the pair view is league-wide, and a `team=` in its URL would pin the rail and every propagated
+ * link to that team. The way back takes the team the viewer is analyzing when they click it (`TeamLink`), which is the
+ * shortlist's own team unless they changed it in the rail on the pair view.
+ */
+export function pairFromShortlistHref(a: number, b: number, state: ShortlistState): string {
+  const back = shortlistHref({ ...state, team: null }).replace(/^\/compare\?/, "");
+  return `${compareHref(a, b)}&${back}`;
+}
+
+/** Whether a pair-view URL came from a shortlist (it carries `ids`), and the shortlist link back, without a team (see
+ *  pairFromShortlistHref): render it with `TeamLink`. */
+export function shortlistBackHref(sp: SearchParamsLike | null | undefined): string | null {
+  if (!sp || sp.ids === undefined) return null;
+  const p = parseShortlistParams(sp);
+  if (p.ids.length === 0) return null;
+  return shortlistHref({ ids: p.ids, slot: p.slot, start: p.start });
+}
+
+/** The shortlist that holds the pair being viewed (or nothing yet): the way from the pair view to the shortlist. */
+export function shortlistFromPair(a: IdLike, b: IdLike): string {
+  return shortlistHref({ ids: [cleanId(a), cleanId(b)].filter((i): i is number => i !== null) });
+}
+
+/** Unknown-player 404 of the shortlist: "Unknown ESPN player id 999 (player 3)". */
+export function unknownShortlistId(detail: string | null | undefined): number | null {
+  const m = /player id\s+(-?\d+)\s*\(player \d+\)\s*$/i.exec((detail ?? "").trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** Roster status in words, for the team the view is for. */
+export function rosterText(p: Pick<ShortlistPlayer, "roster" | "card">, teamName: string | null): string {
+  switch (p.roster) {
+    case "this_team":
+      return teamName ? `On ${teamName}` : "On this team";
+    case "other_team":
+      return p.card.player.fantasy_team ? `On ${p.card.player.fantasy_team}` : "On another team";
+    case "free_agent":
+      return "Free agent";
+    case "waivers":
+      return "On waivers";
+    default:
+      return "Roster status unknown";
+  }
+}
+
+/** The short roster tag for the grid ("Yours", "FA", ...). */
+export function rosterShort(roster: RosterStatus): string {
+  return { this_team: "Yours", other_team: "Rostered", free_agent: "FA", waivers: "Waivers", unknown: DASH }[roster];
+}
+
+/** Which next-week number the shortlist ranks on (the source the page shows). */
+export function shortlistField(r: Pick<ShortlistResponse, "best_projected">): "espn" | "ours" {
+  return r.best_projected.source;
+}
+
+export type ShortCell = { text: string; kind: "value" | "na" | "missing" | "bye"; why: string | null };
+
+/** The next-week projection cell: a bye is "Bye", a missing number is "—" with why, never 0. */
+export function nextWeekCell(card: CompareCard, field: "espn" | "ours"): ShortCell {
+  const nw = card.projection?.next_week;
+  if (!nw) return { text: DASH, kind: "missing", why: "The league's projection window is unknown." };
+  if (nw.on_bye) return { text: "Bye", kind: "bye", why: `On bye in week ${nw.week}.` };
+  const v = nw[field];
+  if (!finite(v)) {
+    const src = field === "ours" ? "Fantasy Intel" : "ESPN";
+    return { text: DASH, kind: "missing", why: `No ${src} projection for week ${nw.week}.` };
+  }
+  return { text: v.toFixed(1), kind: "value", why: null };
+}
+
+/** The rest-of-season cell, missing with the reason when not every remaining week is projected. */
+export function rosCell(card: CompareCard, field: "espn" | "ours"): ShortCell {
+  const ros = card.projection?.ros;
+  if (!ros) return { text: DASH, kind: "missing", why: "The league's projection window is unknown." };
+  const v = ros[field];
+  if (finite(v)) return { text: v.toFixed(1), kind: "value", why: null };
+  if (field === "ours") return { text: DASH, kind: "missing", why: ros.ours_reason ?? "No Fantasy Intel rest-of-season total." };
+  return {
+    text: DASH, kind: "missing",
+    why: ros.espn_weeks_expected !== null && ros.espn_weeks_available !== null
+      ? `ESPN projects ${ros.espn_weeks_available} of ${ros.espn_weeks_expected} remaining weeks.`
+      : "No ESPN rest-of-season total.",
+  };
+}
+
+/** A usage metric cell: "N/A" with why when it does not apply to the position, "—" with why when missing. */
+export function metricCell(card: CompareCard, key: string, unit: RowUnit): ShortCell {
+  const m = card.usage.metrics[key];
+  if (!m) return { text: DASH, kind: "missing", why: "Not in the usage data." };
+  if (!m.applicable) return { text: "N/A", kind: "na", why: m.why ?? `Not a measure for ${card.player.position ?? "this position"}.` };
+  if (!finite(m.value)) return { text: DASH, kind: "missing", why: m.why ?? "No data." };
+  return { text: formatRowValue(unit, m.value), kind: "value", why: null };
+}
+
+/** The injury designation, short ("Questionable") with the full label as why; none reported is said so, not "healthy". */
+export function injuryCell(card: CompareCard): ShortCell {
+  const av = card.availability;
+  if (!av.has_designation) return { text: "None reported", kind: "value", why: av.note };
+  const short = av.label.split(" (")[0];
+  return { text: short, kind: "value", why: `${av.label}. ${av.note}` };
+}
+
+/** "UP", "DOWN", "FLAT" trend labels as words; a missing trend is "—". */
+export function trendCell(label: string | null | undefined, what: string): ShortCell {
+  if (!label || label === "INSUFFICIENT") return { text: DASH, kind: "missing", why: `${what} is not measurable (too few games).` };
+  const words: Record<string, string> = { UP: "Up", DOWN: "Down", FLAT: "Flat" };
+  return { text: words[label] ?? label.charAt(0) + label.slice(1).toLowerCase(), kind: "value", why: null };
+}
+
+/**
+ * A shortlist row's source hint: "ESPN" or "Ours" only when some player has a number from it for that row, else
+ * "Unavailable" (D-14: a source with no values is never named). The next-week row follows the backend's
+ * `source_label`; the rest-of-season row is read from the ROS totals themselves, since everyone can be on bye or
+ * unprojected this week while their remaining-season totals exist.
+ */
+export function shortlistSourceHint(r: Pick<ShortlistResponse, "best_projected" | "players">, row: "next" | "ros"): string {
+  const field = r.best_projected.source;
+  const name = field === "ours" ? "Ours" : "ESPN";
+  if (row === "next") return r.best_projected.source_label === "Unavailable" ? "Unavailable" : name;
+  return r.players.some((p) => finite(p.card.projection?.ros?.[field])) ? name : "Unavailable";
+}
+
+/**
+ * Where a shortlist player can start: the engine-supported slots (`eligible_slots`), plus any of the league's
+ * unsupported starting slots (#253: IDP, P, HC) his position fills, which the engine takes as the slot of the same
+ * name. Never "no slot takes him" when the league starts one the engine does not fill.
+ */
+export function slotLine(p: Pick<ShortlistPlayer, "eligible_slots" | "card">, unsupportedSlots: readonly string[]): string {
+  const pos = p.card.player.position;
+  const other = pos && unsupportedSlots.includes(pos) ? pos : null;
+  const unsupported = other ? `${other}, which the lineup engine does not support yet` : null;
+  if (p.eligible_slots.length > 0) {
+    return `Can start at ${p.eligible_slots.join(", ")}${unsupported ? `; also fills ${unsupported}` : ""}`;
+  }
+  if (unsupported) return `Fills ${unsupported}`;
+  return `No supported lineup slot of this league takes a ${pos ?? "player of unknown position"}`;
+}
+
+/** Whether the player is (one of) the best projected. */
+export function isBestProjected(r: Pick<ShortlistResponse, "best_projected">, id: number): boolean {
+  return r.best_projected.leaders.includes(id);
+}
+
+/** One figure of the verdict. */
+export type VerdictFigureView = { label: string; value: string; note: string };
+
+export type VerdictView = {
+  tone: "info" | "caution";
+  headline: string;
+  best: VerdictFigureView;
+  gap: VerdictFigureView;
+  compared: VerdictFigureView;
+};
+
+function leaderNames(r: ShortlistResponse): string[] {
+  return r.best_projected.leaders.map((id) => {
+    const p = r.players.find((x) => x.card.player.espn_player_id === id);
+    return p ? playerName(p.card) : `Player ${id}`;
+  });
+}
+
+/**
+ * The verdict's headline, tone and figures, by state and nothing else. It names who is best projected, never who to
+ * start, and keeps "of the players with a projection" on every incomplete state, tied or not.
+ */
+export function verdictView(r: ShortlistResponse): VerdictView {
+  const b = r.best_projected;
+  const names = leaderNames(r);
+  const where = b.slot ? ` at ${b.slot}` : "";
+  const named = b.source_label !== "Unavailable";
+  const value = b.value === null ? DASH : b.value.toFixed(1);
+  const best: VerdictFigureView = { label: named ? `Best projected (${b.source_label})` : "Best projected", value, note: "None" };
+  const gap: VerdictFigureView = {
+    label: "Gap to the next player", value: b.gap === null ? DASH : b.gap.toFixed(1),
+    note: b.gap === null ? "No other player to compare" : "Projected points",
+  };
+  const compared: VerdictFigureView = {
+    label: "Players compared", value: `${b.considered.length} of ${r.players.length}`,
+    note: b.excluded.length ? `${b.excluded.length} left out, reasons below` : "All of them",
+  };
+  const ranked = (headline: string, tone: VerdictView["tone"], note: string): VerdictView =>
+    ({ tone, headline, best: { ...best, note }, gap, compared });
+  const unranked = (headline: string, comparedNote?: string): VerdictView =>
+    ({ tone: "caution", headline, best, gap, compared: comparedNote ? { ...compared, value: DASH, note: comparedNote } : compared });
+  switch (b.state) {
+    case "single_leader":
+      return ranked(`${names[0]} is best projected${where} for week ${b.week}`, "info", names[0]);
+    case "only":
+      return ranked(`${names[0]} is the only player${where} with a projection for week ${b.week}`, "info", names[0]);
+    case "tied":
+      return ranked(`${names.join(" and ")} are tied for best projected${where}`, "info", "Tied");
+    case "incomplete_single":
+      return ranked(`${names[0]} is best projected${where} of the players with a projection`, "caution", names[0]);
+    case "incomplete_tied":
+      return ranked(`${names.join(" and ")} are tied for best projected${where} of the players with a projection`, "caution", "Tied");
+    case "no_common_slot":
+      return unranked("These players never share a lineup slot: pick a slot to compare them", "Pick a slot: they never share one");
+    case "slots_unknown":
+      return unranked("Not ranked: this league's lineup slots are not synced", "Lineup slots not synced");
+    case "unsupported_slot":
+      return unranked(`Not ranked: this league starts ${unsupportedText(r)}, which the lineup engine does not support yet`, "Unsupported lineup slot");
+    case "none_eligible":
+      return unranked(`No player here can fill ${b.slot ?? "the slot"}`);
+    case "none_projected":
+      return unranked(`No best projected${where} for week ${b.week}`);
+  }
+}
+
+/**
+ * How the viewer's start pick stands against the best projected, by state, from the backend's numbers only: the same
+ * player, a gap in projected points, or why there is nothing to compare. "No projection" only when the pick's own
+ * number is missing. Null without a pick.
+ */
+export function startPickNote(r: ShortlistResponse, start: number | null): string | null {
+  if (start === null) return null;
+  const p = r.players.find((x) => x.card.player.espn_player_id === start);
+  if (!p) return null;
+  const name = playerName(p.card);
+  const b = r.best_projected;
+  const src = b.source_label;
+  const incomplete = b.state === "incomplete_single" || b.state === "incomplete_tied";
+  const among = incomplete ? " of the players with a projection" : "";
+  if (p.slot_eligible === false) return `Your pick, ${name}, cannot start at ${r.slot}.`;
+  if (b.leaders.includes(start)) {
+    return b.leaders.length > 1
+      ? `Your pick, ${name}, is among the players tied for the best ${src} projection${among}.`
+      : `Your pick, ${name}, is also the best projected (${src})${among}.`;
+  }
+  const cell = nextWeekCell(p.card, b.source);
+  if (cell.kind === "bye") return `Your pick, ${name}, is on bye in week ${b.week}.`;
+  if (cell.kind !== "value") return `Your pick, ${name}, has no ${src === "Unavailable" ? "" : `${src} `}projection to compare with.`;
+  const own = `Your pick, ${name}, is projected ${cell.text} (${src})`;
+  switch (b.state) {
+    case "no_common_slot":
+      return `${own}. These players never share a lineup slot, so no one is best projected to compare with; pick a slot.`;
+    case "slots_unknown":
+      return `${own}. This league's lineup slots are not synced, so there is no ranking to compare with.`;
+    case "unsupported_slot":
+      return `${own}. This league starts ${unsupportedText(r)}, which the lineup engine does not support yet, so there is no ranking to compare with.`;
+    case "none_eligible":
+    case "none_projected":
+      return `${own}. No player who can fill the slot is best projected to compare with.`;
+    default: {
+      const mine = b.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
+      if (b.value === null || !finite(mine)) return own + ".";
+      return `Your pick, ${name}, is projected ${(b.value - mine).toFixed(1)} points below the best projected (${src})${among}.`;
+    }
+  }
+}
+
+/** The verdict headline (`verdictView`): who is best projected, never who to start. */
+export function bestHeadline(r: ShortlistResponse): string {
+  return verdictView(r).headline;
+}
+
+/** True when the payload has the player list and best-projected block the shortlist page reads. */
+export function isShortlistResponse(x: unknown): x is ShortlistResponse {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Partial<ShortlistResponse>;
+  return Array.isArray(r.players) && r.players.every((p) => !!p?.card?.player) && !!r.best_projected
+    && Array.isArray(r.best_projected.leaders) && VERDICT_STATES.includes(r.best_projected.state) && Array.isArray(r.slots);
+}

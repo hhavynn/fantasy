@@ -1,0 +1,895 @@
+// /api/research/game-splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023
+{
+ "body": {
+  "abstention": null,
+  "cache_key": "game-splits.v1|player=00-SPLWR01|teammate=00-SPLWR02|from=2023w1|to=2023w18|as_of=-",
+  "cautions": [
+   "A group has fewer than 6 games: one game moves its mean noticeably.",
+   "More than one quarterback started across these games: compare the quarterback counts under Environment before reading the split as being about this teammate.",
+   "2 games are excluded because his status is unknown; they are not counted as games without him."
+  ],
+  "confounding": [
+   "This is a raw split of past games, not a causal estimate: the groups also differ in opponents, game scripts, quarterbacks, other injuries and the player's own health.",
+   "It is not a forecast. A teammate's return or absence next week need not repeat these numbers.",
+   "Groups are small. A single long touchdown or one blowout can move a group's mean by several points."
+  ],
+  "counts": {
+   "excluded": 2,
+   "excluded_by_reason": {
+    "active_no_record": 1,
+    "partial_game": 1
+   },
+   "not_counted": 7,
+   "not_counted_by_reason": {
+    "bye": 1,
+    "no_record": 6
+   },
+   "with": 5,
+   "without": 4
+  },
+  "differences": {
+   "adot": 0.0,
+   "air_yards_pg": 28.0,
+   "air_yards_share": 0.2278,
+   "fpoe_pg": -0.24,
+   "ppr_pg": 4.24,
+   "routes_pg": 2.8,
+   "snap_share": 0.0,
+   "target_share": 0.2278,
+   "targets_pg": 2.8,
+   "xfp_pg": 4.48
+  },
+  "groups": {
+   "with": {
+    "environment": {
+     "coverage": {
+      "implied_total_pg": 0,
+      "neutral_pass_rate": 0,
+      "offense_plays_pg": 0
+     },
+     "games": 5,
+     "home_games": 5,
+     "implied_total_pg": null,
+     "neutral_pass_rate": null,
+     "offense_plays_pg": null,
+     "opponents": [
+      {
+       "games": 2,
+       "team": "FOE"
+      },
+      {
+       "games": 2,
+       "team": "RIV"
+      },
+      {
+       "games": 1,
+       "team": "VSX"
+      }
+     ],
+     "primary_qbs": [
+      {
+       "games": 4,
+       "gsis_id": "00-SPLQB01",
+       "name": "Split Starter"
+      },
+      {
+       "games": 1,
+       "gsis_id": "00-SPLQB02",
+       "name": "Split Backup"
+      }
+     ],
+     "team_points_pg": 24.4
+    },
+    "games": 5,
+    "metrics": {
+     "adot": 10.0,
+     "air_yards_pg": 72.0,
+     "air_yards_share": 0.4865,
+     "coverage": {},
+     "fpoe_pg": 0.64,
+     "games": 5,
+     "opportunities_pg": 7.2,
+     "ppr_pg": 14.16,
+     "ppr_total": 70.8,
+     "receptions_pg": 5.2,
+     "routes_pg": 37.2,
+     "rz_targets_pg": 1.4,
+     "rz_targets_total": 7,
+     "snap_share": 0.9,
+     "target_share": 0.4865,
+     "targets_pg": 7.2,
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      12
+     ],
+     "wopr": 1.0703,
+     "xfp_pg": 13.52,
+     "xfp_total": 67.6
+    },
+    "weeks": [
+     {
+      "season": 2023,
+      "week": 1
+     },
+     {
+      "season": 2023,
+      "week": 2
+     },
+     {
+      "season": 2023,
+      "week": 3
+     },
+     {
+      "season": 2023,
+      "week": 4
+     },
+     {
+      "season": 2023,
+      "week": 12
+     }
+    ]
+   },
+   "without": {
+    "environment": {
+     "coverage": {
+      "implied_total_pg": 0,
+      "neutral_pass_rate": 0,
+      "offense_plays_pg": 0
+     },
+     "games": 4,
+     "home_games": 4,
+     "implied_total_pg": null,
+     "neutral_pass_rate": null,
+     "offense_plays_pg": null,
+     "opponents": [
+      {
+       "games": 2,
+       "team": "FOE"
+      },
+      {
+       "games": 1,
+       "team": "RIV"
+      },
+      {
+       "games": 1,
+       "team": "VSX"
+      }
+     ],
+     "primary_qbs": [
+      {
+       "games": 2,
+       "gsis_id": "00-SPLQB01",
+       "name": "Split Starter"
+      },
+      {
+       "games": 2,
+       "gsis_id": "00-SPLQB02",
+       "name": "Split Backup"
+      }
+     ],
+     "team_points_pg": 27.0
+    },
+    "games": 4,
+    "metrics": {
+     "adot": 10.0,
+     "air_yards_pg": 100.0,
+     "air_yards_share": 0.7143,
+     "coverage": {},
+     "fpoe_pg": 0.4,
+     "games": 4,
+     "opportunities_pg": 10.0,
+     "ppr_pg": 18.4,
+     "ppr_total": 73.6,
+     "receptions_pg": 8.0,
+     "routes_pg": 40.0,
+     "rz_targets_pg": 2.0,
+     "rz_targets_total": 8,
+     "snap_share": 0.9,
+     "target_share": 0.7143,
+     "targets_pg": 10.0,
+     "weeks": [
+      5,
+      6,
+      8,
+      9
+     ],
+     "wopr": 1.5714,
+     "xfp_pg": 18.0,
+     "xfp_total": 72.0
+    },
+    "reasons": {
+     "inactive": 1,
+     "reserve": 3
+    },
+    "weeks": [
+     {
+      "season": 2023,
+      "week": 5
+     },
+     {
+      "season": 2023,
+      "week": 6
+     },
+     {
+      "season": 2023,
+      "week": 8
+     },
+     {
+      "season": 2023,
+      "week": 9
+     }
+    ]
+   }
+  },
+  "inputs": {
+   "as_of": null,
+   "player": "00-SPLWR01",
+   "season_from": 2023,
+   "season_to": 2023,
+   "teammate": "00-SPLWR02",
+   "week_from": 1,
+   "week_to": 18
+  },
+  "message": null,
+  "metrics": [
+   {
+    "format": "pct",
+    "key": "snap_share",
+    "label": "Snap share"
+   },
+   {
+    "format": "num",
+    "key": "routes_pg",
+    "label": "Routes/G"
+   },
+   {
+    "format": "num",
+    "key": "targets_pg",
+    "label": "Targets/G"
+   },
+   {
+    "format": "pct",
+    "key": "target_share",
+    "label": "Target share"
+   },
+   {
+    "format": "num",
+    "key": "air_yards_pg",
+    "label": "Air yards/G"
+   },
+   {
+    "format": "pct",
+    "key": "air_yards_share",
+    "label": "Air-yard share"
+   },
+   {
+    "format": "num",
+    "key": "adot",
+    "label": "aDOT"
+   },
+   {
+    "format": "num",
+    "key": "xfp_pg",
+    "label": "xFP/G"
+   },
+   {
+    "format": "num",
+    "key": "ppr_pg",
+    "label": "PPR/G"
+   },
+   {
+    "format": "signed",
+    "key": "fpoe_pg",
+    "label": "FPOE/G"
+   }
+  ],
+  "player": {
+   "espn_player_id": null,
+   "gsis_id": "00-SPLWR01",
+   "mapping_status": "unmapped",
+   "name": "Split Receiver",
+   "position": "WR"
+  },
+  "rules": {
+   "max_seasons": 3,
+   "min_group_games": 3,
+   "partial_reference_min_games": 3,
+   "partial_share_ratio": 0.5,
+   "reasons": {
+    "active_no_record": "Active, but no box-score or snap record",
+    "after_cutoff": "On or after the cutoff date",
+    "ambiguous_roster": "Listed on two teams that week",
+    "bye": "Bye",
+    "inactive": "Game-day inactive",
+    "no_offensive_snaps": "Snap record shows no offensive snap",
+    "no_record": "No record",
+    "no_roster_record": "No roster record for him that week",
+    "no_schedule": "No game in the stored schedule",
+    "not_final": "Game not final",
+    "not_teammates": "Not teammates on this team in the window",
+    "off_active_roster": "Listed off the active roster",
+    "other_team": "On another team that week",
+    "partial_game": "Partial game (well below his usual snap share)",
+    "practice_squad": "Practice squad",
+    "reserve": "Reserve list (injured, PUP or NFI)",
+    "roster_data_missing": "No roster data for the team that week",
+    "roster_record_incomplete": "Roster record without a team or status",
+    "snap_record_missing": "Appeared, but no snap record (a partial game cannot be ruled out)",
+    "subject_did_not_play": "Did not play",
+    "subject_metrics_missing": "Played; xFP or PPR not published",
+    "subject_position_not_covered": "Listed at a position other than WR, RB or TE that week",
+    "suspended": "Suspended"
+   },
+   "scoring_basis": "nflverse full PPR; xFP is nflverse ffopportunity expected PPR points",
+   "small_group_games": 6,
+   "weeks": [
+    1,
+    18
+   ]
+  },
+  "status": "ok",
+  "teammate": {
+   "espn_player_id": null,
+   "gsis_id": "00-SPLWR02",
+   "mapping_status": "unmapped",
+   "name": "Split Wingman",
+   "position": "WR",
+   "teams_with_player": [
+    "SPL"
+   ]
+  },
+  "version": "game-splits.v1",
+  "weeks": [
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-09-01",
+    "home": true,
+    "opponent": "FOE",
+    "outcome": "with",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "appeared",
+    "reason_label": "Played",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 16.4,
+     "offense_pct": 0.9,
+     "opportunities": 8,
+     "routes": 38,
+     "targets": 8,
+     "xfp": 14.8
+    },
+    "team": "SPL",
+    "team_points": 21,
+    "teammate": {
+     "offense_pct": 0.85,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 1
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-09-08",
+    "home": true,
+    "opponent": "VSX",
+    "outcome": "with",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "appeared",
+    "reason_label": "Played",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 13.2,
+     "offense_pct": 0.9,
+     "opportunities": 7,
+     "routes": 37,
+     "targets": 7,
+     "xfp": 13.2
+    },
+    "team": "SPL",
+    "team_points": 22,
+    "teammate": {
+     "offense_pct": 0.85,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 2
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-09-15",
+    "home": true,
+    "opponent": "FOE",
+    "outcome": "with",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "appeared",
+    "reason_label": "Played",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 10.0,
+     "offense_pct": 0.9,
+     "opportunities": 6,
+     "routes": 36,
+     "targets": 6,
+     "xfp": 11.6
+    },
+    "team": "SPL",
+    "team_points": 23,
+    "teammate": {
+     "offense_pct": 0.85,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 3
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-09-22",
+    "home": true,
+    "opponent": "RIV",
+    "outcome": "with",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "appeared",
+    "reason_label": "Played",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 17.2,
+     "offense_pct": 0.9,
+     "opportunities": 8,
+     "routes": 38,
+     "targets": 8,
+     "xfp": 14.8
+    },
+    "team": "SPL",
+    "team_points": 24,
+    "teammate": {
+     "offense_pct": 0.85,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 4
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-10-01",
+    "home": true,
+    "opponent": "FOE",
+    "outcome": "without",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "inactive",
+    "reason_label": "Game-day inactive",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 18.8,
+     "offense_pct": 0.9,
+     "opportunities": 10,
+     "routes": 40,
+     "targets": 10,
+     "xfp": 18.0
+    },
+    "team": "SPL",
+    "team_points": 25,
+    "teammate": {
+     "offense_pct": null,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "INA",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": null
+    },
+    "week": 5
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-10-08",
+    "home": true,
+    "opponent": "VSX",
+    "outcome": "without",
+    "primary_qb": "00-SPLQB01",
+    "primary_qb_name": "Split Starter",
+    "reason": "reserve",
+    "reason_label": "Reserve list (injured, PUP or NFI)",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 15.6,
+     "offense_pct": 0.9,
+     "opportunities": 9,
+     "routes": 39,
+     "targets": 9,
+     "xfp": 16.4
+    },
+    "team": "SPL",
+    "team_points": 26,
+    "teammate": {
+     "offense_pct": null,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "RES",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": null
+    },
+    "week": 6
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "bye",
+    "reason_label": "Bye",
+    "season": 2023,
+    "subject": null,
+    "team": "SPL",
+    "team_points": null,
+    "teammate": null,
+    "week": 7
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-10-22",
+    "home": true,
+    "opponent": "RIV",
+    "outcome": "without",
+    "primary_qb": "00-SPLQB02",
+    "primary_qb_name": "Split Backup",
+    "reason": "reserve",
+    "reason_label": "Reserve list (injured, PUP or NFI)",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 21.2,
+     "offense_pct": 0.9,
+     "opportunities": 11,
+     "routes": 41,
+     "targets": 11,
+     "xfp": 19.6
+    },
+    "team": "SPL",
+    "team_points": 28,
+    "teammate": {
+     "offense_pct": null,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "RES",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": null
+    },
+    "week": 8
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-11-01",
+    "home": true,
+    "opponent": "FOE",
+    "outcome": "without",
+    "primary_qb": "00-SPLQB02",
+    "primary_qb_name": "Split Backup",
+    "reason": "reserve",
+    "reason_label": "Reserve list (injured, PUP or NFI)",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 18.0,
+     "offense_pct": 0.9,
+     "opportunities": 10,
+     "routes": 40,
+     "targets": 10,
+     "xfp": 18.0
+    },
+    "team": "SPL",
+    "team_points": 29,
+    "teammate": {
+     "offense_pct": null,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "RES",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": null
+    },
+    "week": 9
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-11-08",
+    "home": true,
+    "opponent": "VSX",
+    "outcome": "excluded",
+    "primary_qb": "00-SPLQB02",
+    "primary_qb_name": "Split Backup",
+    "reason": "partial_game",
+    "reason_label": "Partial game (well below his usual snap share)",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 14.8,
+     "offense_pct": 0.9,
+     "opportunities": 9,
+     "routes": 39,
+     "targets": 9,
+     "xfp": 16.4
+    },
+    "team": "SPL",
+    "team_points": 30,
+    "teammate": {
+     "offense_pct": 0.1,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 10
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-11-15",
+    "home": true,
+    "opponent": "FOE",
+    "outcome": "excluded",
+    "primary_qb": "00-SPLQB02",
+    "primary_qb_name": "Split Backup",
+    "reason": "active_no_record",
+    "reason_label": "Active, but no box-score or snap record",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 22.0,
+     "offense_pct": 0.9,
+     "opportunities": 11,
+     "routes": 41,
+     "targets": 11,
+     "xfp": 19.6
+    },
+    "team": "SPL",
+    "team_points": 31,
+    "teammate": {
+     "offense_pct": null,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": null
+    },
+    "week": 11
+   },
+   {
+    "env": {},
+    "final": true,
+    "gameday": "2023-11-22",
+    "home": true,
+    "opponent": "RIV",
+    "outcome": "with",
+    "primary_qb": "00-SPLQB02",
+    "primary_qb_name": "Split Backup",
+    "reason": "appeared",
+    "reason_label": "Played",
+    "season": 2023,
+    "subject": {
+     "carries": 0,
+     "fantasy_points_ppr": 14.0,
+     "offense_pct": 0.9,
+     "opportunities": 7,
+     "routes": 37,
+     "targets": 7,
+     "xfp": 13.2
+    },
+    "team": "SPL",
+    "team_points": 32,
+    "teammate": {
+     "offense_pct": 0.85,
+     "reference_games": 6,
+     "reference_share": 0.85,
+     "roster": [
+      {
+       "status": "ACT",
+       "team": "SPL"
+      }
+     ],
+     "usage_team": "SPL"
+    },
+    "week": 12
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 13
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 14
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 15
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 16
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 17
+   },
+   {
+    "env": {},
+    "final": null,
+    "gameday": null,
+    "home": null,
+    "opponent": null,
+    "outcome": "not_counted",
+    "primary_qb": null,
+    "primary_qb_name": null,
+    "reason": "no_record",
+    "reason_label": "No record",
+    "season": 2023,
+    "subject": null,
+    "team": null,
+    "team_points": null,
+    "teammate": null,
+    "week": 18
+   }
+  ],
+  "window": {
+   "as_of": null,
+   "end": {
+    "season": 2023,
+    "week": 18
+   },
+   "start": {
+    "season": 2023,
+    "week": 1
+   },
+   "usage_through_week": 12,
+   "weeks_listed": 18
+  }
+ },
+ "status": 200
+}

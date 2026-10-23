@@ -18,12 +18,14 @@ type SP = Record<string, string | string[] | undefined>;
  * reloads the page and every number on it is recomputed for that roster; the link can be shared. The line under
  * it says whose roster this is and how fresh it is. Read-only: nothing here writes to ESPN or to the league data.
  */
-export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC_PARAMS, children }: {
+export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC_PARAMS, exclude = [], children }: {
   path: string;
   sp: SP;
   /** The team the page is showing (from its payload), or null when it shows none. */
   current: number | null;
   reset?: readonly string[];
+  /** Teams not offered (e.g. the team a shared comparison is already against). */
+  exclude?: readonly number[];
   /** The page's other header controls (week toggles), shown under the picker. */
   children?: ReactNode;
 }) {
@@ -32,7 +34,7 @@ export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC
   if (!res.ok || res.data.teams.length === 0) return children ? <div className={styles.perspective}>{children}</div> : null;
   const { teams, default_team_id: def } = res.data;
   const team = teams.find((t) => t.team_id === current) ?? null;
-  const options = teams.map((t) => ({
+  const options = teams.filter((t) => !exclude.includes(t.team_id)).map((t) => ({
     value: perspectiveHref(path, sp, t.team_id === def ? null : t.team_id, reset),
     label: teamOptionLabel(t),
     selected: t.team_id === current,

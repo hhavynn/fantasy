@@ -54,6 +54,11 @@ def sample_ids(con) -> dict:
     return {
         "espn_player_id": q("SELECT espn_player_id FROM lineup_snapshots ORDER BY espn_player_id LIMIT 1"),
         "other_player_id": q("SELECT DISTINCT espn_player_id FROM lineup_snapshots ORDER BY espn_player_id LIMIT 1 OFFSET 1"),
+        # a four-player shortlist (issue #175): the first rostered RB, WR and TE by id, then the first QB
+        "shortlist_ids": ",".join(str(x[0]) for x in con.execute(
+            "SELECT min(l.espn_player_id) FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id) "
+            "WHERE fp.position IN ('RB', 'WR', 'TE', 'QB') GROUP BY fp.position "
+            "ORDER BY fp.position = 'QB', fp.position").fetchall()),
         "team_id": q("SELECT team_id FROM fantasy_teams ORDER BY team_id LIMIT 1 OFFSET 1"),
         "gsis_id": q("SELECT gsis_id FROM player_id_map WHERE gsis_id IS NOT NULL ORDER BY gsis_id LIMIT 1"),
     }
@@ -63,8 +68,19 @@ def sample_ids(con) -> dict:
 def _required_query(path: str, ids: dict, client) -> dict | None:
     if path == "/api/compare":
         return {"a": ids["espn_player_id"], "b": ids["other_player_id"]}
+    if path == "/api/compare/shortlist":
+        # Four rostered players for the league's FLEX slot (issue #175), when the league starts one.
+        q = {"ids": ids["shortlist_ids"]}
+        body = client.get(path + "?" + urlencode(q)).json() if client is not None else {}
+        if any(s.get("slot") == "FLEX" for s in body.get("slots") or []):
+            q["slot"] = "FLEX"
+        return q
     if path == "/api/research/opportunity":
         return {"position": "WR"}
+    if path == "/api/research/game-splits":
+        # The synthetic SPL world (tests/synthetic_splits.py, written in 2023 by scripts/build_e2e_db.py): the receiver
+        # and his inactive/reserve teammate.
+        return {"player": "00-SPLWR01", "teammate": "00-SPLWR02", "season_from": 2023}
     if path == "/api/trades/discover/evidence":
         rows = client.get("/api/trades/discover").json() if client is not None else {}
         key = next((x["key"] for items in (rows.get("sections") or {}).values() for x in items), None)
@@ -137,7 +153,11 @@ def extra_cases(con) -> list[Case]:
                "ORDER BY l.team_id, l.espn_player_id LIMIT 1")
     thin = q(f"SELECT team_id FROM lineup_snapshots WHERE scoring_period = {latest} GROUP BY team_id "
              "ORDER BY count(*), team_id LIMIT 1")
+    rival = q("SELECT team_id FROM fantasy_teams WHERE NOT coalesce(is_mine, false) ORDER BY team_id LIMIT 1")
     out = [Case("api_trades_discover_summary__targeted_rb", "/api/trades/discover/summary?mode=targeted&target_position=RB")]
+    if rival is not None:
+        # League analyzer (issue #191): the owner's team compared with the first other team, over this week only.
+        out.append(Case("api_league_analyzer__compare_week", f"/api/league-analyzer?vs={rival}&horizon=week"))
     if player is not None:
         out.append(Case("api_trades_discover_summary__targeted_player",
                         f"/api/trades/discover/summary?mode=targeted&target_player={player}"))

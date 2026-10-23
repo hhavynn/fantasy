@@ -461,10 +461,11 @@ write path (`write_all` for ESPN, `write_sleeper` for Sleeper) into a league fil
 | One responsive, accessible E2E: connect/demo → league rules → lineup/waivers/trades, with an unsupported case | **met (this PR; CI pending)** | `fantasy-intel/frontend/e2e/compat-journey-multileague.spec.ts`, run by `playwright.multileague.config.ts` (the CI "multi-league parity + UX gates" suite picks it up with no workflow change), at 1440 and 375 px: demo → connect page (waited on its own content, since its skeleton renders the same h1) → ESPN fixture league (rules all handled, complete Start/Sit totals, add/drop counts the roster, trade needs no drop) → Sleeper IDP league (`build_e2e_sleeper.py --idp`: DL and LB "Not applied" on the rules page, Start/Sit totals marked `*` partial with the slots named and their known part above 0, no projection cell reading 0, add/drop and trade say roster legality is unverified, both sides' trade totals `pts* (partial)` and above 0, every missing value a bare dash with a reason). Each page, after its content waits: one h1, landmarks, decision first, no sideways scroll, app bar fits, axe in dark and light, no console error; a keyboard pass on three pages. |
 | Exact-head CI green, independent security review (D-10), merged | **not met** | pending on the journey PR |
 
-**Found by the journey and triaged, not fixed:** on the multi-league connect page, the unavailable ESPN host card shows
-the provider's operator reason, which names deployment settings (`CREDENTIALS_PUBKEY_V<n>`,
-`ESPN_PUBLIC_IMPORT_ENABLED`) to visitors. It is a `CONTENT_TRIAGE` entry in `frontend/e2e/ux-triage.ts` with its owner
-(`backend/app/leagues/providers/espn.py` capability copy).
+**Found by the journey, fixed in #284:** on the multi-league connect page, the unavailable ESPN host card showed
+the provider's operator reason, which named deployment settings (`CREDENTIALS_PUBKEY_V<n>`,
+`ESPN_PUBLIC_IMPORT_ENABLED`) to visitors. #284 replaced it with plain visitor copy in
+`backend/app/leagues/providers/espn.py` (the setting names stay in a code comment for operators) and removed its
+`CONTENT_TRIAGE` entry from `frontend/e2e/ux-triage.ts`, so the UX gate fails if it returns.
 
 **Found by the journey and fixed in the same PR:** the demo page's "Connect a league" link in muted running text was
 told apart by colour only (axe `link-in-text-block`, 1.01:1 against the surrounding text); links inside `.plain` text

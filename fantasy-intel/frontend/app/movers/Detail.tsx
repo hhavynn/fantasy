@@ -4,10 +4,11 @@ import { Delta, Notice, Section } from "@/components/ui";
 import { Missing } from "@/lib/format";
 import {
   GROUP_TITLE, PCT_MISSING, SOURCE_NAME, beforeAfterText, groupSignals, informationWindowText, pctText, rankText, rankTitle,
-  signalSample, signalValue, signedPts, snapshotName, weekNote, weekSeries, windowText,
+  requestedMissingText, signalSample, signalValue, signedPts, snapshotName, weekNote, weekSeries, windowText,
   type EvidenceSignal, type Mover, type MoversResponse,
 } from "@/lib/projection-movers";
 import styles from "./movers.module.css";
+import { WhyItChanged } from "./WhyItChanged";
 
 const oneDecimal = (v: number) => String(Math.round(v * 10) / 10);
 
@@ -134,7 +135,7 @@ export function Detail({ d, m, requestedMissing }: { d: MoversResponse; m: Mover
     <Section id="detail" title="Player detail" subtitle={`${SOURCE_NAME[d.source]} · ${span ?? "no weeks"}`}>
       {requestedMissing && (
         <Notice tone="info" title="That player is not in this comparison">
-          The player may be filtered out by position, or may not be comparable for these weeks. Another mover from this comparison is shown instead.
+          {requestedMissingText(d) ?? "The player may be filtered out by position, or may not be comparable for these weeks."} Another mover from this comparison is shown instead.
         </Notice>
       )}
       <div className={styles.detailHead}>
@@ -166,6 +167,7 @@ export function Detail({ d, m, requestedMissing }: { d: MoversResponse; m: Mover
         </div>
         <EvidencePanel m={m} />
       </div>
+      <WhyItChanged m={m} />
     </Section>
   );
 }

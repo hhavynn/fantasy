@@ -127,3 +127,52 @@ p.popover { padding: 12px; color: var(--ink-muted); font-size: 13px; }
 /* ---------- Misc ---------- */
 .switchHint { display: block; color: var(--ink-faint); }
 .errorList { margin: 0 0 8px; padding-left: 18px; }
+
+/* ---------- Shortlist (issue #175) ---------- */
+/* The shortlist's add box carries no side colour: no player in it belongs to a side. */
+.slotPlain { --side-color: var(--accent); }
+.pickerNote { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.excluded { margin: 6px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.slotChips { margin-bottom: 0; }
+.caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.shortTable { width: 100%; }
+.shortTable th, .shortTable td { white-space: normal; vertical-align: top; }
+.shortTable .measure {
+  min-width: 132px; background-color: var(--cell-bg); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 500;
+  letter-spacing: 0; text-transform: none; text-align: left;
+}
+.shortHead { min-width: 120px; color: var(--ink); font-size: 13px; line-height: 18px; letter-spacing: 0; text-transform: none; text-align: left; }
+.shortName { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.shortMeta { display: block; color: var(--ink-faint); font-size: 12px; line-height: 16px; font-weight: 400; }
+.shortIndex {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; height: 18px; margin-bottom: 2px;
+  border-radius: 50%; background: var(--surface-hover); color: var(--ink-muted); font-size: 11px; font-weight: 700;
+}
+.shortTable td.shortCell { min-width: 120px; font-variant-numeric: tabular-nums; }
+.na { color: var(--ink-faint); font-weight: 600; }
+.bye, .no { color: var(--ink-muted); font-weight: 600; }
+.pickTag { color: var(--accent); font-weight: 600; }
+.shortPlayers { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.shortPlayer {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 6px 12px; padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.shortPlayer:last-child { border-bottom: 0; }
+.shortPlayerMain { min-width: 0; }
+.shortFacts { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.shortActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 6px 24px; margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 22px; }
+.pairs a { display: inline-flex; align-items: center; min-height: 32px; }
+.limitList { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.disclaimerText { margin: 10px 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+/* Phones: four narrow player columns beside the measure, no sideways page scroll (the table scrolls inside itself
+   only if a long value needs it). Player rows put the actions under the name. */
+@media (max-width: 720px) {
+  .shortTable th, .shortTable td { padding-left: 5px; padding-right: 5px; font-size: 12px; }
+  :global(.table-wrap) .shortTable th.measure:first-child { min-width: 84px; max-width: 30vw; padding-left: 10px; }
+  .shortHead, .shortTable td.shortCell { min-width: 0; }
+  .shortPlayer { grid-template-columns: auto minmax(0, 1fr); }
+  .shortActions { grid-column: 2; justify-content: flex-start; }
+  .shortActions :global(.chip) { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .pairs a { min-height: var(--tap); }
+}

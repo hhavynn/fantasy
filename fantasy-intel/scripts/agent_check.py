@@ -157,6 +157,11 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/playoff_race", ["tests/test_playoff_race.py"]),
     ("api/projection_ranges", ["tests/test_projection_ranges.py"]),
     ("api/power_rankings", ["tests/test_power_rankings.py"]),
+    # League analyzer (issue #191) over team value, power rankings, the bye planner and manager scouting.
+    ("api/league_analyzer", ["tests/test_league_analyzer.py", "tests/test_league_analyzer_v2.py", "tests/test_golden_legacy.py",
+                             "tests/test_provider_copy.py", "tests/test_v2_authorization_matrix.py"]),
+    ("analytics/league_analyzer", ["tests/test_league_analyzer.py", "tests/test_golden_legacy.py",
+                                   "tests/test_league_scope_audit.py"]),
     ("api/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
                           "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("api/luck_lab", ["tests/test_luck_lab.py"]),
@@ -170,6 +175,16 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
                             "tests/test_provider_copy.py"]),
     ("analytics/trades", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_dual_value.py",
                           "tests/test_trade_scenarios.py"]),
+    # Trade discovery, trade-vs-free-agency and the lineup solvers they share with the evaluator (#277).
+    ("analytics/trade_discovery", ["tests/test_trade_discovery.py", "tests/test_trade_discovery_budget.py",
+                                   "tests/test_trade_v3.py", "tests/test_trade_lenses.py", "tests/test_golden_legacy.py"]),
+    ("analytics/trade_practical", ["tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_lenses.py",
+                                   "tests/test_trade_discovery_budget.py", "tests/test_golden_legacy.py"]),
+    ("analytics/trade_alternatives", ["tests/test_trade_alternatives.py", "tests/test_trade_discovery.py",
+                                      "tests/test_trade_discovery_budget.py", "tests/test_trades.py"]),
+    (re.compile(r"analytics/lineup(_totals)?\.py$"), ["tests/test_lineup.py", "tests/test_lineup_flex_solver.py",
+                                                      "tests/test_trade_discovery_budget.py", "tests/test_trade_discovery.py",
+                                                      "tests/test_trades.py", "tests/test_start_sit.py"]),
     ("analytics/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_league_compatibility.py"]),
     ("analytics/lineup_what_if", ["tests/test_lineup_what_if.py", "tests/test_start_sit.py", "tests/test_sleeper_taxi.py",
                                   "tests/test_golden_legacy.py"]),
@@ -237,6 +252,8 @@ QUICK_EXCLUDED_TESTS: dict[str, str] = {
     "tests/test_v2_authorization_matrix.py": "~28 s",
     "tests/test_schedule_intelligence.py": "~73 s",
     "tests/test_sos_heatmap.py": "~45 s",
+    "tests/test_league_compatibility.py": "~45-60 s",   # the #253 matrix imports six league files and serves every tool
+    "tests/test_trade_discovery_budget.py": "~45 s",
 }
 QUICK_MAX_FILES = 3
 QUICK_BUDGET_S = 60.0

@@ -1,4 +1,5 @@
 import Link from "@/components/LeagueLink";
+import { SavedViews } from "@/components/SavedViews";
 import { Tabs } from "@/components/ui";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
@@ -51,7 +52,7 @@ function Chips<T extends string>({ label, name, options, current, sp, param }: {
  *
  * `sourceChoice` false (a league whose provider publishes no projections, Sleeper) drops the ESPN / Ours chips: the
  * page is always on Ours there. On a league page the links and the search form stay in that league
- * (`/l/<lg>/rankings`), with or without JavaScript.
+ * (`/l/<lg>/rankings`), with or without JavaScript. Saved views (issue #200) save and reopen these URL filters per league.
  */
 export async function RankingsControls({ sp, filters, leagueAvailable, sourceChoice = true }: {
   sp: SearchParams; filters: RankingsFilters; leagueAvailable: boolean; sourceChoice?: boolean;
@@ -104,6 +105,7 @@ export async function RankingsControls({ sp, filters, leagueAvailable, sourceCho
         </nav>
         {hasFilters && <Link className="chip reset" href={rankingsHref(sp, { pos: null, status: null, q: null })} scroll={false}>Clear filters</Link>}
       </div>
+      <SavedViews tool="rankings" />
     </div>
   );
 }

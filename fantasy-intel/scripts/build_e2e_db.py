@@ -20,7 +20,9 @@ import _bootstrap  # noqa: F401
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
+import synthetic_pace  # noqa: E402
 import synthetic_research  # noqa: E402
+import synthetic_splits  # noqa: E402
 from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
 from app.analytics.pipeline import run_analytics  # noqa: E402
@@ -91,6 +93,14 @@ def build(db_path: Path) -> dict:
         # Research Lab pool (WR/RB/TE usage) on top of the league fixture; written after analytics so the
         # ESPN-only pipeline leaves it alone.
         stats["research"] = synthetic_research.write(con, SEASON)
+        # Pace lab (issue #211): two finished synthetic seasons of team-week aggregates, drives and schedules, so the
+        # current season's pages read exactly what they read before.
+        stats["pace"] = synthetic_pace.write(con, (SEASON - 2, SEASON - 1))
+        # Game splits (issue #210): an invented team with weekly roster statuses, in SEASON - 3 (2023). Not 2024-2025: the
+        # pace lab reads every final schedule row of its seasons, so the invented teams' games would show there as
+        # final games with no play-by-play. Written after the pace lab, which creates nfl_schedules with its overtime
+        # column.
+        stats["game_splits"] = synthetic_splits.write(con, SEASON - 3)
         return stats
     finally:
         con.close()

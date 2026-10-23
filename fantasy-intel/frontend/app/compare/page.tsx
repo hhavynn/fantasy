@@ -1,13 +1,15 @@
 import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { EmptyState, Glossary, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   type CompareResponse, type ParamError, type Side,
-  compareHref, isCompareResponse, parseCompareParams, playerName, projectionSourceLine, unknownPlayerSide,
+  compareHref, isCompareResponse, isShortlistView, parseCompareParams, playerName, projectionSourceLine,
+  shortlistBackHref, unknownPlayerSide,
 } from "@/lib/compare";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
@@ -16,6 +18,7 @@ import { getRanges } from "@/lib/projection-ranges.server";
 import { ChartsSection } from "./CompareCharts";
 import { ComparePicker, type PickerSelection } from "./ComparePicker";
 import { CompareHero, ContextSection, SummarySection } from "./CompareSections";
+import { CompareModes, ShortlistView } from "./Shortlist";
 import { AdvantagesTable, ProjectionTable, UsageTable } from "./CompareTables";
 import styles from "./compare.module.css";
 
@@ -32,10 +35,14 @@ function fromCard(r: CompareResponse, side: Side): PickerSelection {
   return { id: p.espn_player_id, name: p.full_name, position: p.position, team: p.pro_team };
 }
 
-function Shell({ a, b, meta, children }: { a: PickerSelection | null; b: PickerSelection | null; meta?: ReactNode; children?: ReactNode }) {
+function Shell({ a, b, meta, back, children }: {
+  a: PickerSelection | null; b: PickerSelection | null; meta?: ReactNode; back?: string | null; children?: ReactNode;
+}) {
   return (
     <div className="stack">
-      <PageHeader eyebrow="Players" title={TITLE} meta={meta ?? META}>
+      <PageHeader eyebrow="Players" title={TITLE} meta={meta ?? META}
+                  actions={back ? <TeamLink className="chip" href={back}><span aria-hidden="true">← </span>Back to the shortlist</TeamLink> : undefined}>
+        <CompareModes mode="pair" a={a?.id} b={b?.id} />
         <ComparePicker a={a} b={b} />
       </PageHeader>
       {children}
@@ -45,7 +52,10 @@ function Shell({ a, b, meta, children }: { a: PickerSelection | null; b: PickerS
 
 export default async function ComparePage({ searchParams }: PageProps<"/compare">) {
   const sp = await searchParams;
+  // `ids` without a pair is the shortlist (issue #175); every `a`/`b` URL opens the two-player view as before.
+  if (isShortlistView(sp)) return <ShortlistView sp={sp} />;
   const { a, b, errors } = parseCompareParams(sp);
+  const back = shortlistBackHref(sp);
   const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
   // A Sleeper league has no ESPN projections: no ESPN rows or chart, and no switch to point at.
   const espnProjections = profile.providerProjections;
@@ -150,7 +160,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
 
   if (r.identical) {
     return (
-      <Shell a={pa} b={pb} meta={meta}>
+      <Shell a={pa} b={pb} meta={meta} back={back}>
         <Notice tone="info" title="Same player on both sides">
           {playerName(r.players[0])} is picked twice, so there is nothing to compare. Change Player B above to choose a different player.
         </Notice>
@@ -161,7 +171,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
   }
 
   return (
-    <Shell a={pa} b={pb} meta={meta}>
+    <Shell a={pa} b={pb} meta={meta} back={back}>
       <CompareHero r={r} profile={profile} />
       {!r.same_position && (
         <Notice tone="caution" title="Different positions">

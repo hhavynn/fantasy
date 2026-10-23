@@ -91,7 +91,7 @@ test("the kicker and D/ST outlooks sit with Waivers, as streaming tools", () => 
 const groupOf = (label: string) => NAV_GROUPS.find((g) => g.label === label)!;
 
 test("My team holds this week's lineup decisions for the analyzed roster", () => {
-  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/start-sit", "/matchup", "/injury-impact", "/my-team/value"]);
+  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/start-sit", "/matchup", "/injury-impact", "/injury-impact/timeline", "/my-team/value"]);
 });
 
 test("Waivers is its own destination, so the other weekly decision is one tap away on phones", () => {
@@ -196,6 +196,13 @@ test("injury impact sits in My team, after the matchup", () => {
   assert.equal(group("/injury-impact"), "My team");
   const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
   assert.equal(hrefs[hrefs.indexOf("/matchup") + 1], "/injury-impact");
+});
+
+test("the availability timeline follows injury impact and marks itself, not Injuries", () => {
+  assert.equal(getActiveRoute("/injury-impact/timeline").activeHref, "/injury-impact/timeline");
+  assert.equal(group("/injury-impact/timeline"), "My team");
+  const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/injury-impact") + 1], "/injury-impact/timeline");
 });
 
 

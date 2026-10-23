@@ -1,11 +1,26 @@
 // Server-side fetch helper for the local FastAPI backend (GET, or POST when a body is given).
-import type { ApiErrorKind } from "./api-errors.ts";
+import { isHostedDeployment, type ApiErrorKind } from "./api-errors.ts";
 import { DEGRADED_HEADER, recordTiming } from "./api-timing.ts";
 import { LEAGUE_HEADER, scopeApiPath } from "./league-scope.ts";
 
 export { isFirstRun, type ApiErrorKind } from "./api-errors.ts";
 
 const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
+
+const hosted = () => isHostedDeployment({ API_KEY: process.env.API_KEY, VERCEL: process.env.VERCEL });
+/**
+ * The offline and invalid-JSON errors. A local run names the backend address and how to start it (BackendProblem shows
+ * it to the developer); a hosted deployment says the same in words that name no address, host or server command.
+ * Both start "Cannot reach the backend" (app/error.tsx classifies on it).
+ */
+function offlineError(): string {
+  return hosted() ? "Cannot reach the backend right now."
+    : `Cannot reach the backend at ${API_URL}. Start it with: cd backend && uv run uvicorn app.main:app --reload`;
+}
+function invalidJsonError(): string {
+  return hosted() ? "The backend returned a response that could not be read."
+    : `The backend at ${API_URL} returned a response that is not valid JSON.`;
+}
 
 /**
  * The league this server request is scoped to (proxy.ts sets the header for /l/<lg>/... pages), or null. Outside a
@@ -45,7 +60,8 @@ async function userAuth(path: string): Promise<Record<string, string>> {
 export type ApiResult<T> =
   /** `stale`: the backend served this league's previous files (it could not load the newest in time): data may be older. */
   | { ok: true; data: T; error: null; stale?: true }
-  | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number };
+  /** `code`: the route's machine-readable case (the X-FI-Error-Code header) when it names one. */
+  | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number; code?: string };
 
 /** One timed backend call (API_TIMING; lib/api-timing.ts), or the thrown network error. */
 async function timedFetch(path: string, init: RequestInit): Promise<Response> {
@@ -59,6 +75,9 @@ async function timedFetch(path: string, init: RequestInit): Promise<Response> {
     throw err;
   }
 }
+
+/** A route's machine-readable error case (e.g. the league analyzer's unknown_vs), beside its readable `detail`. */
+export const ERROR_CODE_HEADER = "x-fi-error-code";
 
 const staleMark = (res: Response): { stale?: true } => (res.headers.get(DEGRADED_HEADER) ? { stale: true } : {});
 
@@ -81,7 +100,7 @@ export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>
       ok: false,
       data: null,
       kind: "offline",
-      error: `Cannot reach the backend at ${API_URL}. Start it with: cd backend && uv run uvicorn app.main:app --reload`,
+      error: offlineError(),
     };
   }
   if (!res.ok) {
@@ -90,12 +109,13 @@ export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>
       const payload = await res.json();
       if (payload?.detail) detail = String(payload.detail);
     } catch {}
-    return { ok: false, data: null, error: detail, kind: classifyHttpError(detail), status: res.status };
+    const code = res.headers.get(ERROR_CODE_HEADER);
+    return { ok: false, data: null, error: detail, kind: classifyHttpError(detail), status: res.status, ...(code ? { code } : {}) };
   }
   try {
     return { ok: true, data: (await res.json()) as T, error: null, ...staleMark(res) };
   } catch {
-    return { ok: false, data: null, kind: "unknown", status: res.status, error: `The backend at ${API_URL} returned a response that is not valid JSON.` };
+    return { ok: false, data: null, kind: "unknown", status: res.status, error: invalidJsonError() };
   }
 }
 
@@ -148,7 +168,7 @@ export async function apiRequest<T = null>(path: string, options: ApiRequestOpti
       ok: false,
       data: null,
       kind: "offline",
-      error: `Cannot reach the backend at ${API_URL}. Start it with: cd backend && uv run uvicorn app.main:app --reload`,
+      error: offlineError(),
     };
   }
   if (!res.ok) {
@@ -163,6 +183,6 @@ export async function apiRequest<T = null>(path: string, options: ApiRequestOpti
   try {
     return { ok: true, data: (await res.json()) as T, error: null };
   } catch {
-    return { ok: false, data: null, kind: "unknown", status: res.status, error: `The backend at ${API_URL} returned a response that is not valid JSON.` };
+    return { ok: false, data: null, kind: "unknown", status: res.status, error: invalidJsonError() };
   }
 }

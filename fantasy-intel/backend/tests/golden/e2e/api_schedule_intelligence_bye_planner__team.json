@@ -1797,7 +1797,7 @@
      "captured_at": "<masked>",
      "coverage": null,
      "label": "NFL reserve lists (nflverse weekly rosters)",
-     "reason_unavailable": "No NFL weekly rosters are stored, so no reserve-list absence can be verified.",
+     "reason_unavailable": null,
      "signal": "injuries",
      "snapshot_version": "<masked>",
      "source": "nflverse",

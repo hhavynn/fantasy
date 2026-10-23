@@ -13,7 +13,7 @@ export const DEGRADED_HEADER = "x-fi-degraded";
  */
 const ROUTE_WORDS = new Set([
   "admin", "api", "compare", "connect", "context", "credential", "data-quality", "defenses", "discover", "evaluate",
-  "evidence", "forward", "health", "import", "independent", "injury-impact", "invites", "kickers", "league-profile",
+  "evidence", "forward", "health", "import", "independent", "injury-impact", "invites", "kickers", "league-analyzer", "league-profile",
   "league-rules", "leagues", "lineup-projection", "lineup-projections", "luck-lab", "managers", "matchup", "me",
   "movers", "my-team", "opportunity", "options", "overview", "performance", "perspective", "pin", "players",
   "playoff-race", "power-rankings", "projections", "promotion", "providers", "ranges", "rankings", "redeem", "replay",
