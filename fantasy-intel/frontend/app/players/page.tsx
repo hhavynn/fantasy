@@ -12,7 +12,9 @@ import { getProjectionSource } from "@/lib/projection-source.server";
 import type { ForwardProjection } from "@/lib/types";
 import { rangeFor } from "@/lib/projection-ranges";
 import { getRanges } from "@/lib/projection-ranges.server";
+import { attributionEligible } from "@/lib/profile-attribution";
 import { PlayerProfile } from "./PlayerProfile";
+import { ProjectionChange } from "./ProjectionChange";
 import { GameLogTab, MatchupsTab, OutlookSkeleton, OutlookTab, OverviewTab, UsageTab, type OutlookData } from "./ProfileTabs";
 import { ResultsTable, SearchForm } from "./PlayerSearch";
 import styles from "./players.module.css";
@@ -61,6 +63,9 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
           <Suspense fallback={<OutlookSkeleton />}>
             <OutlookTab d={d} profile={profile} load={loadOutlook(id, d)} />
           </Suspense>
+        )}
+        {tab === "outlook" && attributionEligible(d.player.position) && Number(id) > 0 && (
+          <Suspense fallback={null}><ProjectionChange id={Number(id)} /></Suspense>
         )}
       </PlayerProfile>
     );
