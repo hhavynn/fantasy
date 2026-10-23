@@ -1,0 +1,166 @@
+// /api/managers/2/counterparty
+{
+ "body": {
+  "discovery": {
+   "opponent_team_id": 2,
+   "positions_sent": []
+  },
+  "league": {
+   "current_week": 3,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026,
+   "synced_at": "<masked>"
+  },
+  "min_trades": 3,
+  "notes": [
+   "Recorded, executed trades only, from this league's stored transactions and its activity feed's trade entries. Trade offers, declined or vetoed trades and league messages are not read.",
+   "A pattern describes the trades that were recorded. It is not a likelihood that a trade would be accepted, and it says nothing about trades that did not happen: few or no trades is not a sign of unwillingness.",
+   "Trades are attributed to the team, not a person. If this team changed managers during a season, that season's earlier trades were made by the previous manager; the stored data does not record when ownership changed.",
+   "Trade sizes and positions count players only. Draft picks and FAAB moved in a trade are not stored as legs.",
+   "Positions are each player's current listed position."
+  ],
+  "patterns": [
+   {
+    "denominator": 0,
+    "denominator_label": "trades with a recorded player leg for this team",
+    "key": "trade_size",
+    "rows": [],
+    "suppressed": true,
+    "suppressed_reason": "0 of the required 3 trades: too few to describe a pattern.",
+    "title": "Trade sizes (players sent-for-received)",
+    "unknown": 0,
+    "unknown_label": "trades whose player legs were not recorded",
+    "window": {
+     "first_trade_at": null,
+     "last_trade_at": null,
+     "seasons": [
+      2026
+     ],
+     "text": "Season 2026; no dated trade.",
+     "through": "<masked>"
+    }
+   },
+   {
+    "denominator": 0,
+    "denominator_label": "trades with a recorded player leg for this team",
+    "key": "positions_sent",
+    "rows": [],
+    "suppressed": true,
+    "suppressed_reason": "0 of the required 3 trades: too few to describe a pattern.",
+    "title": "Positions sent",
+    "unknown": 0,
+    "unknown_label": "players sent with no listed position",
+    "window": {
+     "first_trade_at": null,
+     "last_trade_at": null,
+     "seasons": [
+      2026
+     ],
+     "text": "Season 2026; no dated trade.",
+     "through": "<masked>"
+    }
+   },
+   {
+    "denominator": 0,
+    "denominator_label": "trades with a recorded player leg for this team",
+    "key": "positions_received",
+    "rows": [],
+    "suppressed": true,
+    "suppressed_reason": "0 of the required 3 trades: too few to describe a pattern.",
+    "title": "Positions received",
+    "unknown": 0,
+    "unknown_label": "players received with no listed position",
+    "window": {
+     "first_trade_at": null,
+     "last_trade_at": null,
+     "seasons": [
+      2026
+     ],
+     "text": "Season 2026; no dated trade.",
+     "through": "<masked>"
+    }
+   },
+   {
+    "denominator": 0,
+    "denominator_label": "trades with a stored scoring week",
+    "key": "timing_week",
+    "rows": [],
+    "suppressed": true,
+    "suppressed_reason": "0 of the required 3 trades: too few to describe a pattern.",
+    "title": "Timing by scoring week",
+    "unknown": 0,
+    "unknown_label": "trades with no stored scoring week",
+    "window": {
+     "first_trade_at": null,
+     "last_trade_at": null,
+     "seasons": [
+      2026
+     ],
+     "text": "Season 2026; no dated trade.",
+     "through": "<masked>"
+    }
+   },
+   {
+    "denominator": 0,
+    "denominator_label": "trades with a recorded partner team",
+    "key": "partners",
+    "rows": [],
+    "suppressed": true,
+    "suppressed_reason": "0 of the required 3 trades: too few to describe a pattern.",
+    "title": "Trade partners",
+    "unknown": 0,
+    "unknown_label": "trades with no recorded partner",
+    "window": {
+     "first_trade_at": null,
+     "last_trade_at": null,
+     "seasons": [
+      2026
+     ],
+     "text": "Season 2026; no dated trade.",
+     "through": "<masked>"
+    }
+   }
+  ],
+  "seasons": [
+   {
+    "league_trades": 1,
+    "reason": null,
+    "season": 2026,
+    "status": "included",
+    "team_trades": 0
+   }
+  ],
+  "status": "recorded",
+  "summary": {
+   "league_trades": 1,
+   "multi_team_trades": 0,
+   "players_received": 0,
+   "players_sent": 0,
+   "recurring_partners": 0,
+   "trades": 0,
+   "trades_with_player_legs": 0,
+   "trades_with_unlisted_assets": 0,
+   "trades_without_player_legs": 0
+  },
+  "suppression_rule": "A breakdown needs at least 3 trades in its denominator. Below that only the denominator is shown: too few trades to describe a pattern.",
+  "team": {
+   "is_mine": true,
+   "name": "Team 2",
+   "owner_names": "me",
+   "team_id": 2
+  },
+  "trades": [],
+  "trades_listed": 0,
+  "window": {
+   "first_trade_at": null,
+   "last_trade_at": null,
+   "seasons": [
+    2026
+   ],
+   "text": "Season 2026; no dated trade.",
+   "through": "<masked>"
+  }
+ },
+ "status": 200
+}
