@@ -28,7 +28,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
-| #166 action center | 2 | PR OPEN | PR #241 (248ea21) | all review findings fixed (f0f1307); main (#242) merged in, action-center + what-if + start-sit tests 95 pass; CI running |
+| #166 action center | 2 | MERGED | PR #241 → 07484b1 | `GET /v2/action-center`; security review MEDIUM + 6 LOW fixed over 2 rounds |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
 | #177 bye/kickoff planner | 2 | IN PROGRESS | `feature/fi-177-bye-planner` from 5b4fe14 | one agent; section on schedule-intelligence; unknown ≠ safe |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
@@ -126,6 +126,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #241 | 248ea21 | action_center 25, a 689, s 627, fe 665 + combined 95 after #242 merge | green | D-10 review + re-check |
 | #243 | 6153556 | a 106 + s 623; test fails on main | green | D-10 review: no collisions (9.4k fuzz) |
 | #242 | d275d1d | q/a/s + 28 + 17 league_scope + what-if e2e 8 + ux-gates start-sit | green | D-10 security review clean |
 | #239 | b2cfe8e | lint/tc/unit 652/build + nav/ux-gates specs | green | tablet networkidle timeout local-only; passed in CI |
