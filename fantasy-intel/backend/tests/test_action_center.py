@@ -45,6 +45,9 @@ def _ids(body):
 def _fresh_cache(monkeypatch):
     from app.api import action_center
     monkeypatch.setattr(action_center, "_CACHES", {})
+    monkeypatch.setattr(action_center, "_POOLS", {})          # a slow league from another test never holds a worker
+    monkeypatch.setattr(action_center, "_FLIGHTS", {})
+    monkeypatch.setattr(action_center, "_ADMISSION", {})
 
 
 # ---- identity -------------------------------------------------------------------------------------------------------
@@ -306,6 +309,158 @@ def test_a_request_never_has_more_than_its_concurrency_in_flight(monkeypatch):
 
     monkeypatch.setattr(action_center, "evaluate_league", fake)
     leagues = [SimpleNamespace(league_id=f"lg_{i:024d}", to_json=lambda: {}) for i in range(6)]
-    body, degraded = action_center.build(SimpleNamespace(user_id=U1), leagues)
+    import asyncio
+    body, degraded = asyncio.run(action_center.build(SimpleNamespace(user_id=U1), leagues))
     assert [s["league"]["league_id"] for s in body["leagues"]] == [a.league_id for a in leagues]
     assert peak[0] == 2 and degraded is False
+
+
+# ---- review fixes: admission, single flight, cold loads, partial results, one failing league ---------------------------
+
+def _fire(client, uids, n_each=1):
+    """Concurrent requests (one thread each); returns [(uid, status, seconds, response)] in completion order."""
+    import threading
+    import time
+    out, lock = [], threading.Lock()
+
+    def one(uid):
+        t0 = time.monotonic()
+        r = client.get(URL, headers=bearer(uid))
+        with lock:
+            out.append((uid, r.status_code, time.monotonic() - t0, r))
+
+    threads = [threading.Thread(target=one, args=(u,)) for u in uids for _ in range(n_each)]
+    for t in threads:
+        t.start()
+    return threads, out
+
+
+def _slow_for(monkeypatch, slow_ids, seconds):
+    """evaluate_league that sleeps for `slow_ids` and counts every evaluation per league."""
+    import threading
+    import time
+    from app.api import action_center
+    calls, lock = {}, threading.Lock()
+    real = action_center.evaluate_league
+
+    def fake(p, a, now):
+        with lock:
+            calls[a.league_id] = calls.get(a.league_id, 0) + 1
+        if a.league_id in slow_ids:
+            time.sleep(seconds)
+        return real(p, a, now)
+
+    monkeypatch.setattr(action_center, "evaluate_league", fake)
+    return calls
+
+
+def test_one_users_burst_shares_one_build_and_never_starves_another_user(pg, client, served, monkeypatch):
+    import time
+    from app.api import action_center
+    with pg.connect() as con:
+        mine = [seed_league(con, visibility="private", checked_at=None, name=f"Mine {i}") for i in range(2)]
+        theirs = seed_league(con, visibility="private", checked_at=None, name="Theirs")
+        con.commit()
+    for lg in mine:
+        _member(pg, U1, lg)
+    _member(pg, U2, theirs)
+    calls = _slow_for(monkeypatch, set(mine), 3.0)
+    threads, out = _fire(client, [U1], n_each=2 * action_center.POOL_WORKERS)
+    time.sleep(0.5)                                         # U1's build is running
+    t0 = time.monotonic()
+    other = client.get(URL, headers=bearer(U2))
+    elapsed = time.monotonic() - t0
+    for t in threads:
+        t.join()
+    assert other.status_code == 200 and elapsed < 2.0, (other.status_code, elapsed)    # not queued behind U1
+    assert [s["league"]["league_id"] for s in other.json()["leagues"]] == [theirs]
+    assert all(status == 200 for _, status, _, _ in out), [s for _, s, _, _ in out]
+    assert all(calls[lg] == 1 for lg in mine), calls        # every U1 request joined the one build
+    bodies = {tuple(s["league"]["league_id"] for s in r.json()["leagues"]) for _, _, _, r in out}
+    assert len(bodies) == 1 and set(next(iter(bodies))) == set(mine)
+
+
+def test_past_the_admission_slots_the_answer_is_503_at_once(pg, client, served, monkeypatch):
+    import time
+    monkeypatch.setenv("ACTION_CENTER_CONCURRENCY", "6")    # 6 workers // 6 = one build at a time in this process
+    with pg.connect() as con:
+        mine = seed_league(con, visibility="private", checked_at=None, name="Mine")
+        theirs = seed_league(con, visibility="private", checked_at=None, name="Theirs")
+        con.commit()
+    _member(pg, U1, mine)
+    _member(pg, U2, theirs)
+    _slow_for(monkeypatch, {mine}, 2.0)
+    threads, out = _fire(client, [U1])
+    time.sleep(0.5)
+    t0 = time.monotonic()
+    busy = client.get(URL, headers=bearer(U2))
+    elapsed = time.monotonic() - t0
+    for t in threads:
+        t.join()
+    assert busy.status_code == 503 and busy.headers["retry-after"] and elapsed < 1.0, (busy.status_code, elapsed)
+    assert "Theirs" not in busy.text and "Mine" not in busy.text
+    assert out[0][1] == 200
+    assert client.get(URL, headers=bearer(U2)).status_code == 200                  # the slot is free again
+
+
+def test_a_cold_league_never_downloads_in_a_pool_thread_past_the_budget(pg, served, client, e2e, tmp_path, monkeypatch):
+    import time
+    from app.api import action_center
+    from app.api.league_scope import league_file_cache
+    from app.db.league_files import DirStore
+    monkeypatch.setenv("LEAGUE_COLD_LOAD_BUDGET_S", "0.3")
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private", name="Cold")
+    _member(pg, U1, pub.league_id)
+    _select_team(pg, U1, pub.league_id, my_team(e2e))
+    real_fetch = DirStore.fetch
+    monkeypatch.setattr(DirStore, "fetch", lambda self, *a, **k: (time.sleep(3), real_fetch(self, *a, **k))[1])
+    t0 = time.monotonic()
+    r = client.get(URL, headers=bearer(U1))
+    elapsed = time.monotonic() - t0
+    s = r.json()["leagues"][0]
+    assert r.status_code == 200 and elapsed < 2.0, elapsed
+    assert s["state"] == "not_ready" and s["reason"] == action_center.TOO_SLOW and s["overview"] is None
+    assert league_file_cache()._pins == {}                  # nothing is left pinned by an abandoned evaluation
+
+
+def test_a_partial_read_is_not_cached(pg, served, client, e2e, tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from app.api import start_sit
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private", name="Partial")
+    _member(pg, U1, pub.league_id)
+    _select_team(pg, U1, pub.league_id, my_team(e2e))
+    real, failed = start_sit.get_start_sit, []
+
+    def flaky(**kw):
+        if not failed:
+            failed.append(1)
+            raise HTTPException(503, "Projections are being rebuilt.")
+        return real(**kw)
+
+    monkeypatch.setattr(start_sit, "get_start_sit", flaky)
+    first = client.get(URL, headers=bearer(U1)).json()["leagues"][0]
+    assert first["state"] == "ready" and first["start_sit"] is None and first["errors"]["start_sit"]
+    second = client.get(URL, headers=bearer(U1)).json()["leagues"][0]
+    assert second["start_sit"] is not None and second["errors"] == {}
+
+
+def test_one_league_failing_unexpectedly_never_fails_the_others(pg, served, client, e2e, tmp_path, monkeypatch):
+    from app.api import provider_copy
+    monkeypatch.setenv("SLEEPER_SOURCE", "live")
+    espn = publish_local(pg, e2e, served, tmp_path / "e", visibility="private", name="Fine League")
+    sleeper = publish_local(pg, e2e, served, tmp_path / "s", visibility="private", name="Broken League",
+                            provider="sleeper", external_id="5555")
+    for lg in (espn, sleeper):
+        _member(pg, U1, lg.league_id)
+        _select_team(pg, U1, lg.league_id, my_team(e2e))
+
+    def boom(*a, **k):
+        raise RuntimeError("secret detail that must not leak")
+
+    monkeypatch.setattr(provider_copy, "rewrite", boom)
+    r = client.get(URL, headers=bearer(U1))
+    assert r.status_code == 200
+    by = {s["league"]["name"]: s for s in r.json()["leagues"]}
+    assert by["Broken League"]["state"] == "unavailable" and by["Broken League"]["overview"] is None
+    assert by["Fine League"]["state"] == "ready" and by["Fine League"]["overview"]["roster"]
+    assert "secret detail" not in r.text

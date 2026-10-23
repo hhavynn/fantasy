@@ -18,19 +18,21 @@ opened or timed here. This module then evaluates each granted league on its own:
 The page turns these payloads into decisions with the Overview's own contract (lib/weekly-decisions.ts), so nothing here
 ranks, scores or recommends. Fan-out is capped (MAX_LEAGUES evaluated, the rest listed in `more`), bounded (CONCURRENCY
 of a request's leagues at once on one process-wide pool of POOL_WORKERS threads, BUDGET_S overall: a league still
-running then is reported as not ready, never dropped) and cached per (user,
+running then is reported as not ready, never dropped; files not already here are fetched in the background, never in a
+pool thread), admitted (one build per user at a time, at most POOL_WORKERS // CONCURRENCY in the process, else 503) and cached per (user,
 league, data and global versions, visibility epoch, perspective, provider) for at most CACHE_TTL_S and never past the
 next kickoff it saw. Nothing here contacts a provider or queues a sync.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
 import time
 from collections import OrderedDict
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -232,12 +234,29 @@ def _read(scope: LeagueScope, team: int) -> dict:
     rule = None
     try:
         rule = league_rules().get("lineup_lock")
-    except HTTPException:
-        rule = None
+    except HTTPException as err:
+        out["errors"]["league_rules"] = _detail(err)     # the lock rule is then unknown, and the section is not cached
     if ss is not None:
         out["start_sit"] = ss
         out["lock"] = lock_summary(ss, rule)
     return out
+
+
+def _pin_without_download(files, league_id: str, data_version: str, global_version: str, budget_s: float):
+    """The league's pinned pair, or None. Never a download in this (pool) thread: files already here are pinned; with
+    an older pair to fall back on, `pin_pair` waits at most `budget_s`; otherwise the pair is fetched on the cache's own
+    bounded background threads and this thread waits for that fetch at most `budget_s`, then looks once more."""
+    pair = files.pin_pair(league_id, data_version, global_version, budget_s=budget_s, blocking=False)
+    if pair is not None:
+        return pair
+    fetch = files.prefetch(league_id, data_version, global_version)     # the fetch pin_pair started (or None: busy)
+    if fetch is None:
+        return None
+    try:
+        fetch.result(timeout=budget_s)
+    except Exception:  # noqa: BLE001 - slow (TimeoutError) or failed: the league is "still loading" this time
+        return None
+    return files.pin_pair(league_id, data_version, global_version, budget_s=budget_s, blocking=False)
 
 
 def _cache_key(principal, access, team: int) -> tuple:
@@ -247,7 +266,16 @@ def _cache_key(principal, access, team: int) -> tuple:
 
 
 def evaluate_league(principal, access, now: datetime) -> dict:
-    """One league's section. Runs in a worker thread; never raises (a failure is that league's own state)."""
+    """One league's section. Runs in a worker thread and never raises: anything unexpected is that league's own
+    "unavailable" state (only the exception type is logged), so one league can never fail the whole response."""
+    try:
+        return _evaluate(principal, access, now)
+    except Exception as err:  # noqa: BLE001
+        log.warning("action center: league %s failed: %s", getattr(access, "league_id", "?"), type(err).__name__)
+        return _section(access, "unavailable", UNREADABLE)
+
+
+def _evaluate(principal, access, now: datetime) -> dict:
     from ..db.league_conn import perspective_team
     from ..db.league_split import VERSION_RE
     from .league_scope import cold_load_budget_s, league_file_cache
@@ -268,10 +296,13 @@ def evaluate_league(principal, access, now: datetime) -> dict:
         return {**hit, "league": league_json(access)}
     files = league_file_cache()
     try:
-        pair = files.pin_pair(access.league_id, snap.data_version, snap.global_version, budget_s=cold_load_budget_s())
+        pair = _pin_without_download(files, access.league_id, snap.data_version, snap.global_version,
+                                     cold_load_budget_s())
     except Exception as err:  # noqa: BLE001 - R2 errors, a missing object, a full cache: that league's state only
         log.warning("action center: files unavailable for %s: %s", access.league_id, type(err).__name__)
         return _section(access, "unavailable", FILES_UNAVAILABLE)
+    if pair is None:
+        return _section(access, "not_ready", TOO_SLOW)
     try:
         scope = LeagueScope(access.league_id, pair.league_path, pair.global_path, pair.data_version, pair.global_version,
                             access.visibility_epoch, team, access.provider)
@@ -304,7 +335,7 @@ def evaluate_league(principal, access, now: datetime) -> dict:
     if access.provider != "espn":                         # Sleeper's wording, as the league's own pages get it
         for part in ("overview", "start_sit", "lock", "errors"):
             section[part] = provider_copy.rewrite(section[part])
-    if not pair.degraded:                                # a degraded read is retried for fresh files next time
+    if not pair.degraded and not read["errors"]:         # a degraded or partial read is retried next time
         lock = section.get("lock") or {}
         cache.put(key, section, _parse_utc(lock.get("next_kickoff_utc")))
     return section
@@ -315,6 +346,8 @@ def evaluate_league(principal, access, now: datetime) -> dict:
 _POOL_LOCK = threading.Lock()
 _POOLS: dict[str, ThreadPoolExecutor] = {}
 POOL_WORKERS = 6             # process-wide: every request's league evaluations share these threads
+RETRY_AFTER_S = 5
+BUSY = "Your leagues are being checked for other requests right now. Try again in a few seconds."
 
 
 def worker_pool() -> ThreadPoolExecutor:
@@ -327,40 +360,39 @@ def worker_pool() -> ThreadPoolExecutor:
         return pool
 
 
-def _fan_out(principal, leagues: list, now: datetime, concurrency: int, budget: float) -> list[dict | None]:
-    """Evaluate `leagues` on the shared pool with at most `concurrency` of this request's leagues in flight, until all
-    are done or `budget` seconds have passed. A league not finished by then is None (the caller reports it); one not
-    started is never started."""
-    results: list[dict | None] = [None] * len(leagues)
-    pending = list(enumerate(leagues))
-    running: dict = {}
-    deadline = time.monotonic() + budget
+async def build(principal, granted: list, now: datetime | None = None) -> tuple[dict, bool]:
+    """(response body, whether any league was read from older files). `granted` is the authorized list, in the order
+    GET /v2/leagues gives it; the first `max_leagues` are evaluated on the shared pool, at most `concurrency` at once,
+    for at most `budget` seconds; the others are only listed. Awaiting holds no thread: the event loop waits."""
+    now = now or datetime.now(timezone.utc)
+    max_leagues, concurrency, budget = limits()
+    evaluated, extra = granted[:max_leagues], granted[max_leagues:]
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + budget
+    results: list[dict | None] = [None] * len(evaluated)
+    pending = list(enumerate(evaluated))
+    running: dict[asyncio.Future, int] = {}
     pool = worker_pool()
     while pending or running:
         while pending and len(running) < concurrency:
             i, access = pending.pop(0)
-            running[pool.submit(evaluate_league, principal, access, now)] = i
-        left = deadline - time.monotonic()
+            running[asyncio.wrap_future(pool.submit(evaluate_league, principal, access, now))] = i
+        left = deadline - loop.time()
         if left <= 0:
             break
-        done, _ = wait(running, timeout=left, return_when=FIRST_COMPLETED)
+        done, _ = await asyncio.wait(running, timeout=left, return_when=asyncio.FIRST_COMPLETED)
         if not done:
             break
         for fut in done:
-            results[running.pop(fut)] = fut.result()
+            i = running.pop(fut)
+            try:
+                results[i] = fut.result()
+            except Exception as err:  # noqa: BLE001 - evaluate_league does not raise; a replacement still must not
+                log.warning("action center: league %s failed: %s", evaluated[i].league_id, type(err).__name__)
+                results[i] = _section(evaluated[i], "unavailable", UNREADABLE)
     for fut in running:
-        fut.cancel()                 # queued ones never run; a running one releases its files when it finishes
-    return results
-
-
-def build(principal, granted: list, now: datetime | None = None) -> tuple[dict, bool]:
-    """(response body, whether any league was read from older files). `granted` is the authorized list, in the order
-    GET /v2/leagues gives it; the first `max_leagues` are evaluated, the others only listed."""
-    now = now or datetime.now(timezone.utc)
-    max_leagues, concurrency, budget = limits()
-    evaluated, extra = granted[:max_leagues], granted[max_leagues:]
-    sections = _fan_out(principal, evaluated, now, concurrency, budget)
-    out = [s if s is not None else _section(evaluated[i], "not_ready", TOO_SLOW) for i, s in enumerate(sections)]
+        fut.cancel()                 # a queued one never runs; a running one finishes and releases its own files
+    out = [s if s is not None else _section(evaluated[i], "not_ready", TOO_SLOW) for i, s in enumerate(results)]
     body = {
         "contract": CONTRACT,
         "generated_at": now.isoformat(),
@@ -369,3 +401,70 @@ def build(principal, granted: list, now: datetime | None = None) -> tuple[dict, 
         "more": {"count": len(extra), "leagues": [league_json(a) for a in extra]},
     }
     return body, any(s.get("stale") for s in out)
+
+
+# ---- admission and single flight ------------------------------------------------------------------------------------
+
+class Busy(Exception):
+    """Every build slot of this process is taken: the route answers 503 with Retry-After."""
+
+
+def admission_slots() -> int:
+    return max(1, POOL_WORKERS // limits()[1])
+
+
+_ADMISSION_LOCK = threading.Lock()
+_ADMISSION: dict[str, Any] = {}
+_FLIGHTS: dict[str, tuple[tuple, Future]] = {}      # user id -> (the league ids it was authorized for, its build)
+
+
+def _admission() -> threading.BoundedSemaphore:
+    with _ADMISSION_LOCK:
+        slots = admission_slots()
+        sem = _ADMISSION.get("sem")
+        if sem is None or _ADMISSION.get("slots") != slots:
+            sem = _ADMISSION["sem"] = threading.BoundedSemaphore(slots)
+            _ADMISSION["slots"] = slots
+        return sem
+
+
+async def serve(principal, granted: list) -> tuple[dict, bool]:
+    """`build`, with two process-wide guards (the pool is shared by every user):
+
+      * single flight per user: a request from a user whose build is already running, for exactly the same authorized
+        leagues, waits for that build instead of starting another (its own authorization has already run);
+      * admission: at most POOL_WORKERS // CONCURRENCY builds at once; past that the answer is Busy (503) at once,
+        never a queue behind another user's leagues."""
+    ids = tuple(a.league_id for a in granted)
+    with _ADMISSION_LOCK:
+        flight = _FLIGHTS.get(principal.user_id)
+        if flight is not None and flight[0] == ids:
+            joined = flight[1]
+        else:
+            joined = None
+    if joined is not None:
+        try:
+            # Shielded: this request going away never cancels the build other requests share.
+            return await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(joined)), limits()[2] + 10)
+        except (Exception, TimeoutError):  # noqa: BLE001 - the shared build failed or ran long: build our own below
+            pass
+    sem = _admission()
+    if not sem.acquire(blocking=False):
+        raise Busy()
+    mine: Future = Future()
+    mine.set_running_or_notify_cancel()        # a running future cannot be cancelled by anyone who joins it
+    with _ADMISSION_LOCK:
+        _FLIGHTS.setdefault(principal.user_id, (ids, mine))
+    try:
+        result = await build(principal, granted)
+        mine.set_result(result)
+        return result
+    except BaseException as err:
+        # Joiners see a plain error (and build their own), never this request's cancellation.
+        mine.set_exception(err if isinstance(err, Exception) else RuntimeError("the shared build was cancelled"))
+        raise
+    finally:
+        with _ADMISSION_LOCK:
+            if _FLIGHTS.get(principal.user_id, (None, None))[1] is mine:
+                del _FLIGHTS[principal.user_id]
+        sem.release()
