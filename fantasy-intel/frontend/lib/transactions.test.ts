@@ -6,16 +6,28 @@ import {
 } from "./transactions.ts";
 import { sortHref } from "./sort.ts";
 
-const BASE: TxQuery = { manager: null, type: null, pos: null, week: null, sort: "date", dir: "desc", cursor: null };
+const BASE: TxQuery = { season: null, manager: null, type: null, pos: null, week: null, sort: "date", dir: "desc", cursor: null };
 
 test("the URL query parses every filter and ignores what it does not know", () => {
   assert.deepEqual(parseTxQuery({}), BASE);
   assert.deepEqual(parseTxQuery({ manager: "3", type: "trade", pos: "D/ST", week: "5", sort: "week", cursor: "tx:9" }),
-    { manager: 3, type: "trade", pos: "D/ST", week: 5, sort: "week", dir: "asc", cursor: "tx:9" });
+    { season: null, manager: 3, type: "trade", pos: "D/ST", week: 5, sort: "week", dir: "asc", cursor: "tx:9" });
   assert.deepEqual(parseTxQuery({ manager: "x", type: "pick", pos: "DL", week: "0", sort: "team", dir: "up" }), BASE);
   assert.equal(parseTxQuery({ week: "31" }).week, null);
   assert.equal(parseTxQuery({ sort: "date", dir: "asc" }).dir, "asc");
   assert.equal(parseTxQuery({ cursor: "x".repeat(201) }).cursor, null);
+});
+
+test("an earlier season is part of the bookmark; the latest season is the default and stays out of links (#193)", () => {
+  assert.equal(parseTxQuery({ season: "2025" }).season, 2025);
+  for (const bad of ["1998", "2101", "abc", "-1"]) assert.equal(parseTxQuery({ season: bad }).season, null, bad);
+  const q: TxQuery = { ...BASE, season: 2025, week: 3, cursor: "tx:2" };
+  assert.equal(backendPath(q), "/api/transactions?season=2025&week=3&cursor=tx%3A2&limit=50");
+  assert.equal(txHref(q, { season: null, week: null }), "/transactions");             // back to the latest: first page
+  assert.equal(txHref(BASE, { season: 2025 }), "/transactions?season=2025");
+  assert.equal(sortHref(sortParams(q), "type", "asc"), "?season=2025&week=3&sort=type&dir=asc");
+  assert.ok(hasFilters({ ...BASE, season: 2025 }));
+  assert.equal(filterSummary({ ...BASE, season: 2025, type: "trade" }, []), "2025 season · Trade");
 });
 
 test("the team filter is `manager`, never the team-perspective `team` param", () => {

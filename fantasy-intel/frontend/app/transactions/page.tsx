@@ -138,6 +138,16 @@ function Filters({ d, q }: { d: TransactionsFeed; q: TxQuery }) {
             <Chip key={p} href={txHref(q, { pos: p })} active={q.pos === p}>{p}</Chip>
           ))}
         </nav>
+        {(o.seasons?.length ?? 0) > 1 && (
+          <nav className="filters" aria-label="Season">
+            <span className={styles.chipLabel}>Season</span>
+            {o.seasons!.map((y, i) => (
+              // the newest season is the default: its link carries no season, so bookmarks stay short
+              <Chip key={y} href={txHref(q, { season: i === 0 ? null : y, week: null })}
+                    active={(q.season ?? o.seasons![0]) === y}>{y}</Chip>
+            ))}
+          </nav>
+        )}
         {o.weeks.length > 0 && (
           <nav className="filters" aria-label="Week">
             <span className={styles.chipLabel}>Week</span>
