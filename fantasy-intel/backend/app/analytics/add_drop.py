@@ -410,7 +410,7 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
     # ---- roster capacity, the same rules as the trade engine ----
     legality = roster_legality(state, team_id)
     roster_block: dict[str, Any] = {"active_capacity": state.active_capacity, "position_limits": state.position_limits,
-                                    "active_before": _active(roster) if roster is not None else None,
+                                    "active_before": _active(roster) if roster is not None and not legality else None,
                                     "active_after": None, "open_spots_before": None, "open_spots_after": None,
                                     "legal": None, "drop_required": None, "issues": None, "suggested_drop": None,
                                     "ir_slot_blockers": [n["player_id"] for n in notes if n["code"] == IR_SLOT_INELIGIBLE]}
@@ -435,12 +435,17 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
             roster_block.update(legal=None, drop_required=None, open_spots_after=None)
             notes.append(_item(ROSTER_UNVERIFIED, legality["reason"].replace("the provider's app", ctx.provider),
                                None, "caution"))
-        elif legality:
-            roster_block["open_spots_after"] = None
+        if legality:
+            roster_block.update(open_spots_after=None, active_after=None)
+            if roster_block["issues"]:
+                roster_block["issues"] = {**roster_block["issues"], "active_before_drops": None, "over_capacity_by": None}
         if legal is False:
-            problems.append(_item(DROP_REQUIRED, _drop_required_text(state, before, pre, add_p, drop_p), drop or add,
+            problems.append(_item(DROP_REQUIRED, _drop_required_text(state, before, pre, add_p, drop_p, bool(legality)),
+                                  drop or add,
                                   "caution"))
-            roster_block["suggested_drop"] = _suggest_drop(state, window, before, pre, add)
+            roster_block["suggested_drop"] = sug = _suggest_drop(state, window, before, pre, add)
+            if sug and sug.get("unsupported_slot_player"):
+                notes.append(_item(UNSUPPORTED_SLOT_PLAYER, sug["note"], sug["espn_player_id"], "caution"))
             move_ok = False
         else:
             out["depth"] = depth(before, pre, state.slots)
@@ -459,11 +464,12 @@ def _processing(ctx: AddDropContext) -> str:
     return " (when claims process is not in the synced settings)"
 
 
-def _drop_required_text(state: LeagueState, before, pre, add_p, drop_p) -> str:
+def _drop_required_text(state: LeagueState, before, pre, add_p, drop_p, counted_only: bool = False) -> str:
     issues = roster_issues(state, before, pre)
     parts = []
     if issues["over_capacity_by"]:
-        parts.append(f"{_active(before)} of {state.active_capacity} active spots are used")
+        parts.append(f"{'at least ' if counted_only else ''}{_active(before)} of {state.active_capacity} active spots "
+                     "are used")
     for lim in issues["position_limits"]:
         parts.append(f"the league allows at most {lim['limit']} {lim['position']}")
     why = " and ".join(parts) or "the roster would break the league's limits"
@@ -493,8 +499,12 @@ def _suggest_drop(state: LeagueState, window: Window, before, pre, add: int | No
     d = keep[0]
     return {"available": True, "espn_player_id": d["espn_player_id"], "name": d["name"], "position": d["position"],
             "lineup_cost": res["lineup_cost"], "known_lineup_cost": res["known_lineup_cost"], "basis": res["basis"],
+            # a player no engine values, suggested only because no other single drop is legal: no cost, flagged
+            **({"unsupported_slot_player": True, "unverified": True,
+                "note": res["unvalued_drop"]["note"]} if d.get("unsupported_slot_player") else {}),
             "rule": "The legal drop that keeps the most projected starting points over the window (the trade "
-                    "analyzer's forced-drop rule)."}
+                    "analyzer's forced-drop rule). A player who can start only in a slot no engine fills is suggested "
+                    "only when no other drop is legal."}
 
 
 def _impact(state: LeagueState, window: Window, team_id: int, add_p, drop_p, ctx: AddDropContext) -> dict:

@@ -143,7 +143,9 @@ def test_start_sit_holds_starters_in_unsupported_slots_and_the_gain_is_exact(lea
     assert s["projected_gain"] == round(s["known_recommended_total"] - s["known_actual_total"], 2) == 0.9
     old_rule = s["projected_gain"] - sum(proj[i] for i in held_ids)       # what counting the held starters gave
     assert old_rule < 0
-    assert s["projection_complete"] is True and s["status"] == "upgrade_available"
+    # F6: the totals are partial, so they are not complete; the gain needs only the projections it compares
+    assert s["projection_complete"] is False and s["projections_complete"] is True
+    assert s["status"] == "upgrade_available"
 
 
 def test_start_sit_in_a_sleeper_idp_league_names_the_starters_it_cannot_see(league):
@@ -240,12 +242,16 @@ def test_espn_stores_every_rostered_player_so_its_count_stays_exact(league):
 def test_no_player_count_falls_back_to_unverified():
     """A league that starts slots no engine fills, with no count of the team's rostered players, is never `legal`."""
     state = LeagueState(season=2026, slots=lineup_slots({"QB": 1, "LB": 1, "BE": 2}), final_week=17, last_regular=14,
-                        start_week=5, rosters={1: []}, free_agents=[], projections={}, active_capacity=4)
+                        start_week=5, rosters={1: []}, free_agents=[], projections={}, active_capacity=4,
+                        players_missing={})                 # loaded, but no lineup rows for team 1
     leg = roster_legality(state, 1)
     assert leg["status"] == "unverified" and leg["players_missing"] == 0 and leg["unsupported_slots"] == ["LB"]
-    assert "do not show whether every rostered player is in the player data" in leg["reason"]
+    assert "hold no lineup rows for this team" in leg["reason"]
     assert roster_legality(replace(state, players_missing={1: 0}), 1) is None
-    assert roster_legality(replace(state, slots=lineup_slots({"QB": 1, "BE": 2})), 1) is None
+    # F4: in every league, not only one with unsupported slots
+    assert roster_legality(replace(state, slots=lineup_slots({"QB": 1, "BE": 2})), 1)["status"] == "unverified"
+    # a pure state built without `players_missing` holds complete rosters by construction
+    assert roster_legality(replace(state, players_missing=None), 1) is None
 
 
 @pytest.mark.parametrize("row, unverified", [("M8s", True), ("M8", False)])
@@ -297,3 +303,140 @@ def test_trade_discovery_never_calls_a_delta_exact_that_compare_cannot(league):
     assert not any(_Totals(replace(st, slots=er), *args).complete(ids))
     lb = lineup_slots({**cf.STANDARD, "LB": 1})                   # separable: discovery trades no LB, totals exact
     assert all(_Totals(replace(st, slots=lb), *args).complete(ids))
+
+
+# ---- review fixes: forced drops (F2), discovery parity (F1), unverified counts (F3), no count (F4), flags (F6) ---------
+
+ENGINE = ("QB", "RB", "WR", "TE", "K", "D/ST")
+
+
+@pytest.mark.parametrize("row", ["M8", "M8p"])
+def test_a_forced_drop_never_picks_an_unvalued_starter(league, row):
+    """2 WR for 1 RB: the team receiving two players must drop one. A player who starts only in an IDP/P/HC slot would
+    cost "0.0" known points, so he is never the automatic choice; the chosen drop has a real cost."""
+    st = load_league_state(league(row), now=NOW)
+    mine = [p.espn_player_id for p in st.rosters[1] if p.position == "WR" and not p.reserved][:2]
+    rb = next(p.espn_player_id for p in st.rosters[2] if p.position == "RB" and not p.reserved)
+    t = evaluate_trade(st, 1, 2, mine, [rb], scenarios=False)
+    ro = t["team_b"]["roster"]
+    assert len(ro["forced_drops"]) == 1 and ro["forced_drops"][0]["position"] in ENGINE
+    assert "unsupported_slot_player" not in ro["forced_drops"][0] and "forced_drop_unverified" not in ro
+    assert isinstance(ro["forced_drop_known_lineup_cost"], float)
+    fa = next(p for p in st.free_agents if p.position == "WR")
+    sug = evaluate_add_drop(st, 1, fa.espn_player_id, None, AddDropContext())["roster"]["suggested_drop"]
+    assert sug["available"] and sug["position"] in ENGINE and "unsupported_slot_player" not in sug
+
+
+def test_an_unvalued_drop_is_used_only_when_nothing_else_is_legal_and_has_no_cost(league):
+    from app.analytics.trades import resolve_roster
+    st = load_league_state(league("M8"), now=NOW)
+    before = list(st.rosters[1])
+    new_lb = RosterPlayer(79_999, "LB", "KC", "FX LB 79999")
+    # the league allows one LB: only an LB drop makes the roster legal
+    tight = replace(st, position_limits={"LB": 1}, active_capacity=st.active_capacity + 5)
+    res = resolve_roster(tight, st.window(), before, before + [new_lb], {new_lb.espn_player_id})
+    drop = res["forced_drops"][0]
+    assert drop["position"] == "LB" and drop["unsupported_slot_player"] is True
+    assert res["lineup_cost"] is None and res["known_lineup_cost"] is None              # never a 0.0
+    assert res["unvalued_drop"]["status"] == "unverified" and res["unvalued_drop"]["code"] == UNSUPPORTED_SLOT_PLAYER
+    assert "No other legal drop exists" in res["unvalued_drop"]["note"]
+
+
+@pytest.mark.parametrize("row", ["M8", "M8p"])
+def test_discovery_never_drops_an_unvalued_player_and_matches_the_evaluator(league, row):
+    from app.analytics.trade_discovery import TradeSearch, detail
+    st = load_league_state(league(row), now=NOW)
+    pos = {p.espn_player_id: p.position for ps in st.rosters.values() for p in ps}
+    ts = TradeSearch(st, 1, ("2-for-1",))
+    rows = [r for c in ts.cands if (r := ts.evaluate(c))]
+    assert rows
+    dropped = [x for r in rows for x in r["forced_drops"]["theirs"] + r["forced_drops"]["mine"]]
+    assert dropped and all(pos[x] in ENGINE for x in dropped)
+    for r in [r for r in rows if r["forced_drops"]["theirs"]][:3]:
+        assert detail(st, r)["consistent_with_manual_evaluator"]
+
+
+def test_discovery_reports_no_exact_delta_when_an_unvalued_player_leaves(league, monkeypatch):
+    """F1: with the unvalued-player guard disabled (the pre-fix forced drop), the opponent's drop of his starting LB
+    changes a slot no engine fills: stage B must not call that delta exact, exactly as the evaluator does not."""
+    from app.analytics import trades
+    from app.analytics.trade_discovery import TradeSearch, detail
+    monkeypatch.setattr(trades, "unvalued_ids", lambda players, state: frozenset())
+    st = load_league_state(league("M8"), now=NOW)
+    pos = {p.espn_player_id: p.position for ps in st.rosters.values() for p in ps}
+    ts = TradeSearch(st, 1, ("2-for-1",))
+    rows = [r for c in ts.cands if (r := ts.evaluate(c))
+            and any(pos[x] not in ENGINE for x in r["forced_drops"]["theirs"])]
+    assert len(rows) == 21
+    assert all(r["theirs"]["ros_delta"] is None for r in rows)
+    for r in rows[:3]:
+        d = detail(st, r)
+        assert d["consistent_with_manual_evaluator"] and d["theirs_detail"]["deltas"]["ros_delta"] is None
+
+
+def test_an_unverified_roster_shows_no_count(league):
+    st = load_league_state(league("M8s"), now=NOW)
+    t = evaluate_trade(st, 1, 2, [st.rosters[1][0].espn_player_id],
+                       [p.espn_player_id for p in st.rosters[2] if not p.reserved][:2], scenarios=False)
+    ro = t["team_a"]["roster"]
+    assert (ro["active_before"], ro["active_after"]) == (None, None)
+    iss = ro["issues_before_drops"]
+    assert (iss["active_before_drops"], iss["over_capacity_by"]) == (None, None)
+    fa = next(p for p in st.free_agents if p.position == "WR")
+    r = evaluate_add_drop(st, 1, fa.espn_player_id, None, AddDropContext(provider="Sleeper"))["roster"]
+    assert (r["active_before"], r["active_after"], r["open_spots_before"], r["open_spots_after"]) == (None,) * 4
+    assert r["issues"]["active_before_drops"] is None and r["issues"]["over_capacity_by"] is None
+
+
+def test_a_standard_team_with_no_roster_count_is_never_legal(league):
+    con = league("M1")
+    con.execute("DELETE FROM lineup_snapshots WHERE team_id = 1 AND scoring_period = ?", [cf.CURRENT])
+    st = load_league_state(con, now=NOW)
+    assert 1 not in st.players_missing and st.players_missing[2] == 0
+    fa = next(p for p in st.free_agents if p.position == "WR")
+    r = evaluate_add_drop(st, 1, fa.espn_player_id, None, AddDropContext())["roster"]
+    assert r["legal"] is None and r["open_spots_after"] is None and r["legality"]["status"] == "unverified"
+    assert evaluate_add_drop(st, 2, fa.espn_player_id, None, AddDropContext())["roster"].get("legality") is None
+
+
+@pytest.mark.parametrize("row, separable_slots", [("M8", True)])
+def test_what_if_totals_are_not_complete_when_partial(league, row, separable_slots):
+    from app.analytics.lineup_what_if import evaluate_what_if
+    out = evaluate_what_if(league(row), team_id=1, now=NOW)
+    t = out["totals"]
+    assert t["complete"] is False and t["recommended"]["complete"] is False
+    assert t["recommended"]["total"] is None and t["recommended"]["projections_complete"] is True
+    assert t["delta"] == 0.0 and t["lineup_coverage"]["unsupported_slots"] == ["DL", "LB"]
+
+
+def test_an_unrecognised_slot_is_not_called_exact_on_start_sit(tmp_path):
+    con = duckdb.connect(str(tmp_path / "er.duckdb"))
+    init_db(con)
+    cf.import_row(con, cf.MATRIX["M8"])
+    con.execute("""UPDATE leagues SET roster_slots = '{"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "ER": 1,
+                   "K": 1, "D/ST": 1, "BE": 5, "IR": 1}'""")
+    reason = load_start_sit_evaluation(con, team_id=1, now=NOW)["summary"]["lineup_coverage"]["reason"]
+    assert "not measured against the best full lineup" in reason
+    con.close()
+
+
+# ---- F5: the reason names the slots, not a missing projection ---------------------------------------------------------
+
+def test_power_rankings_team_value_and_playoff_race_name_the_left_out_slots(league):
+    from app.analytics.playoff_race import _side as race_side
+    from app.analytics.power_rankings import edition
+    from app.analytics.team_value import league_ranks
+    st = load_league_state(league("M8"), now=NOW)
+    teams = sorted(st.rosters)
+    ed = edition(st, [], teams, st.team_names, None, detail=False)
+    assert ed["unsupported_slots"] == ["DL", "LB"] and ed["comparable_weeks"] == []
+    for t in teams:
+        assert ed["teams"][t]["unranked_reason"] == "no comparable week: lineup totals leave out DL, LB, slots no " \
+                                                    "engine fills"
+    window = st.window()
+    projected = {t: project_team(st.rosters[t], st.slots, window, st.projections) for t in teams}
+    ranks = league_ranks(projected, window, st.team_names)
+    assert ranks["excluded_weeks"] and all(w["reason"] == "lineup totals leave out DL, LB, slots no engine fills"
+                                           for w in ranks["excluded_weeks"])
+    side = race_side(projected[1], [window.weeks[0]], {})
+    assert side["projected_points"] is None and side["gap"] == "lineup totals leave out DL, LB, slots no engine fills"

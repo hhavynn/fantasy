@@ -357,6 +357,13 @@ class TradeSearch:
             pre = [p for p in pre if p not in combo]
         act = _active(pre)
         after, done_a = T.vec(act), T.complete(act)
+        if unsupported_of(st.slots):
+            # team_lineups.delta_exact: the slots no engine fills add the same to both lineups only when the trade and
+            # its forced drops leave the players who can start only there unchanged (#253 G3)
+            def offslot(ids) -> frozenset:
+                return frozenset(i for i in ids if not lineup_relevant(T.pos.get(i), st.slots))
+            if offslot(_active(roster)) != offslot(act):
+                done_a = tuple(False for _ in done_a)
         return self._compare(self.base[team], self.base_complete[team], after, done_a, drops)
 
     def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int]) -> tuple:

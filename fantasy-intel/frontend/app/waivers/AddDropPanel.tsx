@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
-import { slotList, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
+import { dropCostText, slotList, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
 import {
   addDropHref, carriedParams, headline, optionLabel, shownChange, windowLabel, withAddDrop,
   type AddDropResponse, type AddDropSelection, type AddDropWeek,
@@ -124,7 +124,8 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
                 <Link href={addDropHref("", sp, { add: d.request.add, drop: suggested.espn_player_id })} scroll={false}>
                   Try dropping {suggested.name ?? `player ${suggested.espn_player_id}`}
                 </Link>
-                {" "}(costs {suggested.lineup_cost !== null ? `${suggested.lineup_cost.toFixed(1)}` : `${suggested.known_lineup_cost.toFixed(1)} known-only`} projected starting points; the trade analyzer&apos;s forced-drop rule).
+                {" "}({suggested.unsupported_slot_player ? "not valued: no other single drop is legal, so this choice is unverified"
+                  : `costs ${dropCostText(suggested.lineup_cost, suggested.known_lineup_cost)} projected starting points`}; the trade analyzer&apos;s forced-drop rule).
               </>
             )}
           </Notice>
@@ -136,7 +137,7 @@ export async function AddDropPanel({ apiPath, sel, sp, provider }: {
               note={first.week === ev.earliest_actionable_week ? "first week a move can change" : undefined} />
             <Stat label={span ? `Rest of season, ${span.toLowerCase()}` : "Rest of season"} value={<Change full={ros.ros_delta} known={ros.known_ros_delta} what="change" />}
               note={`${ros.weeks_improved} better · ${ros.weeks_worsened} worse${ros.weeks_incomplete.length ? ` · ${ros.weeks_incomplete.length} incomplete` : ""}`} />
-            <Stat label="Active roster" value={d.roster.active_after !== null ? `${d.roster.active_after} of ${d.roster.active_capacity}` : <Missing />}
+            <Stat label="Active roster" value={d.roster.legality ? "Unverified" : d.roster.active_after !== null ? `${d.roster.active_after} of ${d.roster.active_capacity}` : <Missing />}
               note={d.roster.legality ? <span title={d.roster.legality.reason}>Legality unverified</span>
                 : d.roster.open_spots_after !== null ? `${d.roster.open_spots_after} open ${plural(d.roster.open_spots_after, "spot")}` : undefined} />
           </StatStrip>

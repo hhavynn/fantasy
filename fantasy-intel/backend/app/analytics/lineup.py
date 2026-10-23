@@ -73,6 +73,11 @@ def unsupported_of(slots) -> tuple[str, ...]:
     return tuple(getattr(slots, "unsupported", ()) or ())
 
 
+def slots_left_out(unsupported) -> str:
+    """Why a total is partial when the league starts slots no engine fills (issue #253 G3)."""
+    return f"lineup totals leave out {', '.join(unsupported)}, slots no engine fills"
+
+
 def separable(unsupported) -> bool:
     """Every unsupported slot takes only positions the engines never start (see SEPARATE_SLOTS)."""
     return all(s in SEPARATE_SLOTS for s in unsupported)

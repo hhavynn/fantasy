@@ -15,7 +15,10 @@ const WHATIF_CHARS = /^[A-Za-z0-9_/.,~-]+$/;
 export type WhatIfTotals = {
   total: number | null;
   known_total: number;
+  /** False whenever the total is partial, including slots no engine fills (then see `projections_complete`). */
   complete: boolean;
+  projections_complete?: boolean;
+  unsupported_slots?: string[];
   missing_projection_ids: number[];
   starters: number;
   starters_with_projection: number;
@@ -28,7 +31,10 @@ export type WhatIfOption = {
   displaced_to_slot_id: string | null;
   total: number | null;
   known_total: number;
+  /** False whenever the total is partial, including slots no engine fills (then see `projections_complete`). */
   complete: boolean;
+  projections_complete?: boolean;
+  unsupported_slots?: string[];
   delta: number | null;
   known_delta: number;
   /** The scenario with this move added, or null at the move limit. */

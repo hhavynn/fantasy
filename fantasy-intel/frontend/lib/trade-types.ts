@@ -42,7 +42,8 @@ export type InjuryScenarios = {
 };
 
 export type RosterIssues = {
-  active_before_drops: number; active_capacity: number; over_capacity_by: number;
+  /** null when roster legality is unverified: the count leaves players out. */
+  active_before_drops: number | null; active_capacity: number; over_capacity_by: number | null;
   position_limits: { position: string; limit: number; count_before_drops: number; over_by: number }[];
 };
 

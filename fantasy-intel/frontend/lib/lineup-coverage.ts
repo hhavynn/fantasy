@@ -42,3 +42,33 @@ export function unsupportedSlotsTitle(slots: readonly string[]): string {
 export function legalityLabel(legality: RosterLegality | null | undefined): { label: string; reason: string } | null {
   return legality ? { label: "Unverified", reason: legality.reason } : null;
 }
+
+/** The active-roster line ("14 → 15 of 17"), or "unverified" when the count leaves players out (legality present). */
+export function activeRosterText(
+  ro: { active_before: number | null; active_after: number | null; active_capacity: number },
+  legality: RosterLegality | null | undefined,
+): string {
+  if (legality || ro.active_before === null || ro.active_after === null) return "unverified";
+  return `${ro.active_before} → ${ro.active_after} of ${ro.active_capacity}`;
+}
+
+/** The pre-drop capacity facts, or null when the count is unverified: never "within capacity" on an unknown count. */
+export function capacityFacts(
+  iss: { active_before_drops: number | null; active_capacity: number; over_capacity_by: number | null },
+  legality: RosterLegality | null | undefined,
+): { used: number; capacity: number; over: number } | null {
+  if (legality || iss.active_before_drops === null || iss.over_capacity_by === null) return null;
+  return { used: iss.active_before_drops, capacity: iss.active_capacity, over: iss.over_capacity_by };
+}
+
+/** "No mandatory drop" only when the count is verified; otherwise none was found on an unverified count. */
+export function noDropText(legality: RosterLegality | null | undefined): string {
+  return legality ? "none found on an unverified roster count" : "none";
+}
+
+/** A forced or suggested drop's lineup cost: exact, known-only, or not valued at all (never a 0.0 for an unvalued player). */
+export function dropCostText(full: number | null, known: number | null): string {
+  if (full !== null) return full.toFixed(1);
+  if (known !== null) return `${known.toFixed(1)} known only`;
+  return "not valued (a player no engine values)";
+}

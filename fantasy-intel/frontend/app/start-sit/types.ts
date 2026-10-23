@@ -80,6 +80,8 @@ export interface StartSitSummary {
   ir_count: number;
   locked_players_count: number;
   status: "optimal" | "upgrade_available" | "incomplete_data" | "all_locked" | "future_preview";
+  /** With `lineup_coverage`: whether every projection the gain compares exists (projection_complete is then false). */
+  projections_complete?: boolean;
   /** Present when the league starts slots no engine fills: every total is partial (issue #253 G2, G3). */
   lineup_coverage?: LineupCoverage;
 }

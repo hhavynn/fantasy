@@ -120,7 +120,10 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const noProj = noProjections(d.projection_source, recommended_lineup);
   const actual = projectedTotal(hasLineup, noProj, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
   const recommended = projectedTotal(true, noProj, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
-  const gainKnown = summary.projection_complete && summary.projected_gain !== null;
+  // With slots no engine fills the totals are partial (projection_complete false), yet the gain needs only every
+  // projection it compares (`projections_complete`).
+  const projectionsComplete = summary.projections_complete ?? summary.projection_complete;
+  const gainKnown = projectionsComplete && summary.projected_gain !== null;
   // Slots no engine fills: both totals leave them out (partial); the gain compares the other slots, exactly (#253).
   const coverage = summary.lineup_coverage;
   const slotsNote = partialSlotsNote(coverage?.unsupported_slots);
@@ -170,7 +173,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
               value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
               note={
                 !hasLineup ? "Needs a submitted lineup"
-                  : !summary.projection_complete ? "Needs every starter projected"
+                  : !projectionsComplete ? "Needs every starter projected"
                   : coverage ? "Over the submitted lineup, in the slots the engines fill"
                   : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
                   : "Submitted lineup is already the best"

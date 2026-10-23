@@ -140,7 +140,9 @@ export type AddDropResponse = {
      * never true and no open-spot count is given (issue #253 G4). */
     legality?: RosterLegality;
     suggested_drop: ({ available: true; espn_player_id: number; name: string | null; position: string | null;
-      lineup_cost: number | null; known_lineup_cost: number; basis: string; rule: string }
+      lineup_cost: number | null; known_lineup_cost: number | null; basis: string; rule: string;
+      /** A player who can start only in a slot no engine fills, suggested only when no other drop is legal. */
+      unsupported_slot_player?: boolean; unverified?: boolean; note?: string }
       | { available: false; reason: string }) | null;
   };
   depth: AddDropDepth[];

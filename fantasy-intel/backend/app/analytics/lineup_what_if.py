@@ -292,6 +292,8 @@ def evaluate_what_if(con: Any, *, team_id: int | None = None, week: int | None =
         # kept as they are in both lineups, so the delta stays exact.
         for t in (rec, scen):
             t["total"] = None
+            t["projections_complete"] = t["complete"]       # the delta's condition; the totals are not complete
+            t["complete"] = False
             t["unsupported_slots"] = coverage["unsupported_slots"]
     order = _sort_key(board)
 

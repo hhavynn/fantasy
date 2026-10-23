@@ -33,6 +33,7 @@ from fractions import Fraction
 
 from ..db.connection import fetch_dicts, table_exists
 from .projections import last_regular_season_week
+from .lineup import slots_left_out
 from .team_lineups import project_team, r
 from .trade_data import load_league_state
 from .trades import LeagueState
@@ -150,13 +151,16 @@ def _side(team: dict | None, weeks: list[int], names: dict[int, str]) -> dict:
                 "gap": "scoring period outside the projection window", "_total": None}
     known = sum(w["_total"] for w in ws)
     complete = all(w["projection_complete"] for w in ws)
+    unsupported = next((w["unsupported_slots"] for w in ws if w.get("unsupported_slots")), None)
     missing = sorted({pid for w in ws for pid in w["missing_projection_ids"]})
     return {"projected_points": r(known) if complete else None, "known_points": r(known), "complete": complete,
             "weekly": [{"week": w["week"], "projected_lineup_points": w["projected_lineup_points"],
                         "known_lineup_points": w["known_lineup_points"], "projection_complete": w["projection_complete"]}
                        for w in ws],
             "missing_projection_ids": missing, "missing_players": [names.get(p) or str(p) for p in missing],
-            "gap": None if complete else f"{len(missing)} lineup-relevant player(s) without an ESPN projection",
+            "gap": None if complete else
+            f"{len(missing)} lineup-relevant player(s) without an ESPN projection" if missing or not unsupported else
+            slots_left_out(unsupported),
             "_total": known if complete else None}
 
 

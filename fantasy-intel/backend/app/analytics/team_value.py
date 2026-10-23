@@ -27,7 +27,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_exists
-from .lineup import FLEX_ELIGIBILITY, eligible
+from .lineup import FLEX_ELIGIBILITY, eligible, slots_left_out
 from .playoff_race import RaceData, build_playoff_race, load_race_data
 from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_addition, compare, project_team,
                            projection, r, replacement_market, roster_marginal_value, slot_filled, slot_flags, source_label,
@@ -183,9 +183,13 @@ def league_ranks(teams: dict[int, dict | None], window, team_names: dict[int, st
                             if not next(x for x in p["weeks"] if x["week"] == w)["projection_complete"])
                   for w in window.weeks}
     comparable = [w for w in window.weeks if not incomplete[w]]
+    unsupported = next((x["unsupported_slots"] for p in ranked.values() for x in p["weeks"]
+                        if x.get("unsupported_slots")), None)
     out = {"rule": RANK_RULE, "teams_ranked": sorted(ranked), "teams_unranked": sorted(t for t, p in teams.items()
                                                                                      if p is None),
-           "excluded_weeks": [{"week": w, "incomplete_teams": [team_names.get(t, str(t)) for t in ts]}
+           "excluded_weeks": [{"week": w, "incomplete_teams": [team_names.get(t, str(t)) for t in ts],
+                               # slots no engine fills: no total is complete, not a missing projection (#253 G3)
+                               **({"reason": slots_left_out(unsupported)} if unsupported else {})}
                               for w, ts in incomplete.items() if ts],
            "phases": {}}
     for phase in PHASES:

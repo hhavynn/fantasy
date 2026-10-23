@@ -24,7 +24,8 @@ from typing import Any
 import json
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, unsupported_slots
+from .lineup import (FIXED_SLOTS, FLEX_ELIGIBILITY, NON_STARTING_SLOTS, assign_lineup, eligible, separable,
+                     unsupported_slots)
 from .player_availability import load_availability
 from .reserve_slots import is_taxi
 from .team_lineups import RosterPlayer
@@ -388,9 +389,12 @@ def split_held_starters(starters: list[dict], unsupported) -> tuple[list[dict], 
     unrecognised slot) is kept where he is: the recommendation never moves him and no total counts him, so the
     submitted and recommended lineups differ only in the slots the engines fill and the gain between them is exact
     (issue #253 G2)."""
-    unsupported = set(unsupported)
-    held = [p for p in starters if slot_label(p) in unsupported]
-    return [p for p in starters if slot_label(p) not in unsupported], held
+    fillable = {*FIXED_SLOTS, *FLEX_ELIGIBILITY}
+
+    def is_held(p: dict) -> bool:          # also a starter whose label no engine fills but the counts do not list
+        label = slot_label(p)
+        return label in set(unsupported) or bool(label) and label not in fillable and label not in NON_STARTING_SLOTS
+    return [p for p in starters if not is_held(p)], [p for p in starters if is_held(p)]
 
 
 def lineup_coverage(unsupported, held: list[dict], projections: dict, not_in_player_data: int) -> dict:
@@ -409,7 +413,10 @@ def lineup_coverage(unsupported, held: list[dict], projections: dict, not_in_pla
         "starters_not_in_player_data": not_in_player_data,
         "reason": f"{slots}: no engine fills these slots, so lineup totals cover the other starting slots only and "
                   f"are partial, never complete.{held_text}{missing_text} A projected gain compares only the slots "
-                  "the engines fill, where the two lineups differ, so it is exact.",
+                  "the engines fill, where the two lineups differ, so it is exact for that comparison."
+                  + ("" if separable(unsupported) else
+                     f" Players the engines value may also start in {slots}, which the recommendation does not "
+                     "consider, so it is not measured against the best full lineup."),
     }
 
 
@@ -852,6 +859,8 @@ def load_start_sit_evaluation(
         roster_slots_raw = json.loads(roster_slots_raw)
     unsupported = unsupported_slots(roster_slots_raw or {})
     starters, held = split_held_starters(starters, unsupported)
+    if held and not unsupported:            # starters in labels the slot counts do not list: still left out
+        unsupported = tuple(sorted({slot_label(p) for p in held}))
     held_ids = {p["espn_player_id"] for p in held if "espn_player_id" in p}
     all_roster = starters + bench + ir + held
     # Sleeper taxi-squad players load as bench rows (slot label TAXI): rostered, but never a lineup candidate.
@@ -1206,7 +1215,10 @@ def load_start_sit_evaluation(
             "unconstrained_total": None if coverage else opt["unconstrained_total"],
             "known_unconstrained_total": opt["known_unconstrained_total"],
             "projected_gain": opt["projected_gain"],
-            "projection_complete": opt["is_complete"],
+            # complete only when the totals are: with slots no engine fills they are partial; whether every projection
+            # the comparison needs exists is then `projections_complete` (the gain needs it, not the slots)
+            "projection_complete": opt["is_complete"] and not coverage,
+            **({"projections_complete": opt["is_complete"]} if coverage else {}),
             "missing_projections": [
                 {"player_id": pid, "name": (player_map.get(pid) or {}).get("full_name"), "position": (player_map.get(pid) or {}).get("position")}
                 for pid in opt["missing_projection_ids"]

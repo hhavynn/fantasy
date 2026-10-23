@@ -167,7 +167,7 @@ export type PlanClaim = {
   claim_kind: "waiver_claim" | "free_agent" | null;
   simulation_status: "evaluated" | "blocked" | "options" | null;
   roster: { active_after: number | null; open_spots_after: number | null; legal: boolean | null; drop_required: boolean | null };
-  suggested_drop: ({ available: true; espn_player_id: number; name: string | null; lineup_cost: number | null; known_lineup_cost: number }
+  suggested_drop: ({ available: true; espn_player_id: number; name: string | null; lineup_cost: number | null; known_lineup_cost: number | null }
     | { available: false; reason: string }) | null;
   impact: {
     first_week: { week: number; delta: number | null; known_delta: number; projection_complete: boolean } | null;

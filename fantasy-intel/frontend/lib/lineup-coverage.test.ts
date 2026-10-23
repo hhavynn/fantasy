@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { legalityLabel, partialSlotsNote, slotList, unsupportedSlotsTitle, type RosterLegality } from "./lineup-coverage.ts";
+import {
+  activeRosterText, capacityFacts, dropCostText, legalityLabel, noDropText, partialSlotsNote, slotList, unsupportedSlotsTitle,
+  type RosterLegality,
+} from "./lineup-coverage.ts";
 import { headline, type AddDropResponse } from "./add-drop.ts";
 
 test("a total that leaves out unsupported slots is labelled partial and names them", () => {
@@ -34,4 +37,24 @@ test("the add/drop headline says when roster legality is unverified", () => {
   assert.equal(headline(unknown), "Add FX WR 1: roster legality unverified");
   const plain = { ...base, roster: {} } as unknown as AddDropResponse;
   assert.equal(headline(plain), "Add FX WR 1: a projected lineup gain");
+});
+
+test("an unverified roster never renders a bare count, 'within capacity' or 'no drop needed'", () => {
+  // Sleeper IDP: 14 counted of 17, the 3 invisible players make the count wrong
+  const ro = { active_before: 14, active_after: 15, active_capacity: 17 };
+  assert.equal(activeRosterText(ro, legality), "unverified");
+  assert.equal(activeRosterText({ active_before: null, active_after: null, active_capacity: 17 }, undefined), "unverified");
+  assert.equal(activeRosterText(ro, undefined), "14 → 15 of 17");
+  const iss = { active_before_drops: 15, active_capacity: 17, over_capacity_by: 0 };
+  assert.equal(capacityFacts(iss, legality), null);
+  assert.equal(capacityFacts({ ...iss, active_before_drops: null, over_capacity_by: null }, undefined), null);
+  assert.deepEqual(capacityFacts(iss, undefined), { used: 15, capacity: 17, over: 0 });
+  assert.equal(noDropText(legality), "none found on an unverified roster count");
+  assert.equal(noDropText(undefined), "none");
+});
+
+test("an unvalued drop never shows a 0.0 cost", () => {
+  assert.equal(dropCostText(3.25, 3.25), "3.3");
+  assert.equal(dropCostText(null, 1.5), "1.5 known only");
+  assert.equal(dropCostText(null, null), "not valued (a player no engine values)");
 });

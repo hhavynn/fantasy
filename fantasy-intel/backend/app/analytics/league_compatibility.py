@@ -215,7 +215,9 @@ class _League:
                                                "value may also start there")
         text = {
             "lineup": f"{slots}: no engine fills these slots, so your starters there are kept as they are, and the "
-                      "submitted and recommended totals cover the other slots only and are marked partial.",
+                      "submitted and recommended totals cover the other slots only and are marked partial."
+                      + ("" if separable(self.unfilled) else " Players the engines value may also start there, so the "
+                         "recommendation is not measured against the best full lineup."),
             "totals": f"{slots}: no engine fills these slots, so lineup totals cover the other starting slots only and "
                       f"are marked partial; {exact}.",
             "waivers": f"{slots}: no engine fills these slots, so roster capacity is unknown and add/drop moves are "
@@ -230,15 +232,17 @@ class _League:
         """trades.roster_legality (G4): legality is unverified only where the roster count is unknown. Rostered players
         missing from the player data are reported by missing_players_finding; a team without any synced roster has no
         count at all. When every rostered player is stored, the count is exact; only their lineup value is unmodelled."""
-        if not self.unfilled or self.facts.get("players_missing"):
+        if self.facts.get("players_missing"):
             return []
         slots = ", ".join(self.unfilled)
         teams, have = self.facts.get("teams") or 0, self.facts.get("teams_with_roster") or 0
         if teams and have < teams:
             return [finding("roster_legality", UNVERIFIED, f"{_plural(teams - have, 'team')} of {teams} have no synced "
-                            f"roster, so whether their players in {slots} are counted is unknown and roster legality "
-                            "is unverified for them.", missing_input=f"rosters for {self.wk()}",
-                            action="Sync the league again.", value=teams - have)]
+                            "roster, so their players cannot be counted and roster legality is unverified for them.",
+                            missing_input=f"rosters for {self.wk()}", action="Sync the league again.",
+                            value=teams - have)]
+        if not self.unfilled:
+            return []
         return [finding("roster_legality", HANDLED, f"Every rostered player is in the player data, so roster counts "
                         f"are exact; who may fill {slots} is not modelled, so players there are not valued.",
                         value=self.unfilled)]
