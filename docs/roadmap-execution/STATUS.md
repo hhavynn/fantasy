@@ -291,6 +291,9 @@ prerequisites (see table).
 **Wave 2 (next):** #201 perf (backend cache/single-flight + timing), #167 onboarding (`app/leagues/*`), then #165
 weekly hub using the #168 contract. #170 runs after these, alone, because it owns Nav/layout/globals.
 
+
+**Coordination (2026-10-23 18:20 UTC):** multi-session merge control moved to GitHub issue #289 (authoritative queue, shared-file map and reservations). Merged in merge-first mode: #278 → 2c5e648, #280 → 6d6769b (#200), #287 → 495557d (#211), #281 → 8fe8bb2 (1k), #286 → d004238 (part of #225).
+
 ## Throughput (D-13 measurements)
 Baseline from GitHub timestamps, PRs #230–#252 (22 merged): open→merge mean 33 min, median 29 min; 22 merges in a
 5.4 h span (first to last merge). Per-PR split of waiting on CI vs review vs merge was not recorded before D-13.
