@@ -21,11 +21,16 @@ for (const width of [1440, 375]) {
     const { espn_public: lg } = manifest().leagues;
     const errors: string[] = [];
     page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-    await page.goto(`/l/${lg}/trades/values?team=4&pos=WR`);
-    await expect(page.locator("main h1:visible")).toHaveText("Trade values", { timeout: 30_000 });
-    const table = page.locator("main table").first();
-    const trade = table.locator("a", { hasText: /^Trade (for|away)/ });
-    expect(await trade.count()).toBeGreaterThan(0);
+    const url = `/l/${lg}/trades/values?team=4&pos=WR`;
+    // Server-rendered, not added on hydration: the HTML response itself carries the scoped analyzer link with the team.
+    const html = await (await page.request.get(url)).text();
+    expect(html).toMatch(new RegExp(`href="/l/${lg}/trades\\?ta=4&amp;[^"]*team=4"`));
+    await page.goto(url);
+    // loading.tsx streams the same h1 and a skeleton table first: wait for the board's own rows, not the heading.
+    const table = page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: /Caveats/ }) });
+    const trade = table.getByRole("link", { name: /^Trade (for|away)/ });
+    await expect(trade.first()).toBeVisible({ timeout: 30_000 });
+    await expect(trade.first()).toHaveAttribute("href", new RegExp(`^/l/${lg}/trades\\?ta=4&.*team=4`));
     for (const href of await trade.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
       expect(href).toMatch(new RegExp(`^/l/${lg}/trades\\?`));
       const q = new URL(href!, "http://x").searchParams;

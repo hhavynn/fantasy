@@ -11,11 +11,16 @@ test.beforeEach(async ({ page }) => {
   await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
 });
 
+// loading.tsx streams the same h1 and a skeleton table first, so "loaded" is the board's own table (its Caveats
+// column), not the heading.
+const board = (page: Page) => page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: /Caveats/ }) });
+
 async function loaded(page: Page) {
   await expect(page.locator("main h1:visible"), "page heading still loading").toHaveText("Trade values", { timeout: 20_000 });
+  await expect(board(page).or(page.getByText("No players match these filters")), "board still streaming").toBeVisible({ timeout: 30_000 });
 }
 
-const rows = (page: Page) => page.locator("main table").first().locator("tbody tr");
+const rows = (page: Page) => board(page).locator("tbody tr");
 
 async function noSideScroll(page: Page) {
   const [scroll, width] = await page.evaluate(() => [document.scrollingElement!.scrollWidth, window.innerWidth]);
@@ -31,8 +36,8 @@ test("values are labelled model estimates, change is unavailable (never 0), and 
   await expect(main.getByText("Model estimates, not trade prices")).toBeVisible();
   await expect(main.getByText("Week-over-week change unavailable")).toBeVisible();
   await expect(main.getByText(/Fantasy Intel model estimate · ESPN weekly projections · weeks 3–17 · calculation tv-2/)).toBeVisible();
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(10);
   const n = await rows(page).count();
-  expect(n).toBeGreaterThan(10);
   // The Change column (6th) says Unavailable on every row: no number, no 0.0.
   const changes = await rows(page).locator("td:nth-child(6)").allInnerTexts();
   expect(changes.length).toBe(n);
@@ -83,8 +88,10 @@ test("a player's calculation shows the week-by-week sum, version, caveats and li
 test("analyzer links keep the analyzed team from the URL, and missing values stay missing", async ({ page }) => {
   await page.goto("/trades/values?team=4&pos=WR");
   await loaded(page);
-  const links = page.locator("main table").first().locator("a", { hasText: /^Trade (for|away)/ });
-  expect(await links.count()).toBeGreaterThan(0);
+  const html = await (await page.request.get("/trades/values?team=4&pos=WR")).text();
+  expect(html, "server-rendered analyzer link with the team").toMatch(/href="\/trades\?ta=4&amp;[^"]*team=4"/);
+  const links = board(page).getByRole("link", { name: /^Trade (for|away)/ });
+  await expect(links.first()).toHaveAttribute("href", /^\/trades\?ta=4&.*team=4/);
   for (const href of await links.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
     const q = new URL(href!, "http://x").searchParams;
     expect(href).toMatch(/^\/trades\?/);
