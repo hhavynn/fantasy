@@ -7,6 +7,8 @@ multileague.spec.ts). One process runs everything the API needs and then serves 
   * three leagues published to a local object directory as production publishes them: an ESPN public league and an
     ESPN private one (the E2E fixture league, scripts/build_e2e_db.py) and a Sleeper league
     (scripts/build_e2e_sleeper.py); the viewer is a member of the private league with team 1 saved;
+  * a fourth, public Sleeper league with DL and LB starting slots (build_e2e_sleeper.py --idp), the unsupported case of
+    issue #253's journey (frontend/e2e/compat-journey-multileague.spec.ts); no other spec reads it;
   * the manifest (OUT/manifest.json): the league ids and the viewer's session cookie for the browser.
 
     cd backend && uv run python ../scripts/e2e_multileague.py OUT_DIR API_PORT AUTH_PORT
@@ -102,6 +104,8 @@ def main() -> int:
     espn_db = build_e2e_db(out / "e2e.duckdb")
     sleeper_db = out / "e2e-sleeper.duckdb"
     build_sleeper(sleeper_db)
+    sleeper_idp_db = out / "e2e-sleeper-idp.duckdb"
+    build_sleeper(sleeper_idp_db, idp=True)
     objects = out / "objects"
     leagues = {}
     with db.connect() as su:
@@ -111,6 +115,8 @@ def main() -> int:
                                               external_id="1999")
         leagues["sleeper"] = seed_league(su, provider="sleeper", visibility="public", name="Sleeper Fixture League",
                                          external_id="1190000000000000001")
+        leagues["sleeper_idp"] = seed_league(su, provider="sleeper", visibility="public",
+                                             name="Sleeper IDP Fixture League", external_id="1190000000000002531")
         seed_membership(su, VIEWER, leagues["espn_private"], "viewer")
         su.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '1')",
                    [VIEWER, leagues["espn_private"]])
@@ -127,6 +133,7 @@ def main() -> int:
         for kind, src, stamp in (("espn_public", espn_db, "2026-10-21T12:00:00"),
                                  ("espn_private", espn_db, "2026-10-21T12:00:00"),
                                  ("sleeper", sleeper_db, "2026-10-21T12:00:00"),
+                                 ("sleeper_idp", sleeper_idp_db, "2026-10-21T12:00:00"),
                                  ("espn_stale", espn_db, "2026-10-14T12:00:00")):
             res = publish_league(src, DirWriter(objects), sync, leagues[kind], stamp=stamp)
             assert res.applied, kind
