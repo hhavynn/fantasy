@@ -417,13 +417,13 @@ test.describe("layout, keyboard and themes", () => {
   });
 });
 
-// Sign-out clears this app's account and league data from the browser (lib/local-data.ts): one account signs out,
+// Sign-out clears this app's account and league data from the browser (lib/local-data.ts): one account signs out and
 // another signs in on the same browser, and a session that ends without "Sign out" is cleared on the next page too.
-// The stores are seeded directly; each one's own behavior is covered by its suite.
+// The stores are seeded directly; each one's own behavior is covered by its suite. (Switching account without a
+// sign-out cannot be driven here, since /login sends a signed-in visitor on; lib/local-data.test.ts covers it.)
 test.describe("signing out on a shared browser", () => {
   const LG = "lg_0123456789abcdef";
-  const ours = (k: string) => k.startsWith("fi:") || k.startsWith("fantasy-intel:");
-  const storage = (page: Page) => page.evaluate(() => ({ local: Object.keys(localStorage).sort(), session: Object.keys(sessionStorage).sort() }));
+  const MARKER = "fantasy-intel:account";
   const seed = (page: Page) => page.evaluate((lg) => {
     localStorage.setItem(`fi:saved-views:v1:${lg}:rankings`, "{}");
     localStorage.setItem(`fi:trade-scenarios:v1:${lg}:3`, "{}");
@@ -431,10 +431,21 @@ test.describe("signing out on a shared browser", () => {
     localStorage.setItem("fantasy-intel:leagues", JSON.stringify([{ id: lg, name: "A private league" }]));
     sessionStorage.setItem(`fantasy-intel:team:${lg}`, "3");
     sessionStorage.setItem(`fi:trade-scenario-editing:v1:${lg}:3`, "s1");
-    sessionStorage.setItem("fantasy-intel:tab-memory", "{}");
+    sessionStorage.setItem("fantasy-intel:tab-memory", JSON.stringify({ Team: { href: `/l/${lg}/matchup`, team: "3" } }));
     localStorage.setItem("fantasy-intel:theme", "dark");
     localStorage.setItem("another-app-on-this-origin", "kept");
   }, LG);
+  /** This app's keys (the tab bar may record the page now open, so its memory is checked for the league instead). */
+  const left = (page: Page) => page.evaluate((lg) => {
+    const keys = (s: Storage) => Object.keys(s).filter((k) => k.startsWith("fi:") || k.startsWith("fantasy-intel:")).sort();
+    return {
+      local: keys(localStorage),
+      session: keys(sessionStorage).filter((k) => k !== "fantasy-intel:tab-memory"),
+      tabMemoryNamesLeague: (sessionStorage.getItem("fantasy-intel:tab-memory") ?? "").includes(lg),
+      other: localStorage.getItem("another-app-on-this-origin"),
+    };
+  }, LG);
+  const marker = (page: Page) => page.evaluate((k) => localStorage.getItem(k), MARKER);
   async function signIn(page: Page, email: string) {
     await page.context().clearCookies({ name: "fi_link_recent" });
     await page.goto(`${CLOSED}/login`);
@@ -442,48 +453,48 @@ test.describe("signing out on a shared browser", () => {
     await page.goto(await emailLink(email));
     await expectSignedIn(page);
   }
-  /** Only the theme of this app's keys, plus the other app's key, are left. */
-  async function expectCleared(page: Page, also: string[] = []) {
-    await expect.poll(async () => {
-      const { local, session } = await storage(page);
-      return { local: local.filter(ours), session: session.filter(ours), other: local.includes("another-app-on-this-origin") };
-    }).toEqual({ local: ["fantasy-intel:theme", ...also].sort(), session: [], other: true });
+  /** Only the theme of this app's keys (and the marker of an account now signed in), plus the other app's key. */
+  async function expectCleared(page: Page, signedIn: boolean) {
+    await expect.poll(() => left(page)).toEqual({
+      local: (signedIn ? ["fantasy-intel:theme", MARKER] : ["fantasy-intel:theme"]).sort(), session: [], tabMemoryNamesLeague: false,
+      other: "kept",
+    });
   }
 
   test("one account signs out and another signs in: nothing of the first account remains", async ({ page }) => {
     await reset(false);
     await signIn(page, "member@example.test");
+    await expect.poll(() => marker(page), "an opaque account marker, never the account id or address").toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const first = await marker(page);
     await seed(page);
-    const first = await page.evaluate(() => localStorage.getItem("fantasy-intel:account"));
-    expect(first, "an opaque account marker, not the account id or address").toMatch(/^[A-Za-z0-9_-]{22}$/);
     await page.reload();
-    expect((await storage(page)).local, "the same account keeps its data from page to page").toContain(`fi:saved-views:v1:${LG}:rankings`);
+    expect((await left(page)).local, "the same account keeps its data from page to page").toContain(`fi:saved-views:v1:${LG}:rankings`);
 
     await banner(page).getByText("Account", { exact: true }).click();
     await banner(page).getByRole("menuitem", { name: "Sign out" }).click();
     await expectSignedOut(page);
-    await expectCleared(page);
+    await expectCleared(page, false);
+    expect(new URL(page.url()).pathname.startsWith("/l/"), "sign-out lands outside any league").toBe(false);
+    expect((await page.context().cookies()).map((c) => c.name), "no last-viewed league cookie").not.toContain("fi_league");
     expect(await page.evaluate(() => document.documentElement.dataset.theme), "the theme is a device preference").toBe("dark");
 
     await signIn(page, "member2@example.test");
-    await expectCleared(page, ["fantasy-intel:account"]);
-    const second = await page.evaluate(() => localStorage.getItem("fantasy-intel:account"));
-    expect(second).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(second).not.toBe(first);
+    await expect.poll(() => marker(page)).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(await marker(page)).not.toBe(first);
+    await expectCleared(page, true);
   });
 
-  test("a session that ends without Sign out, or switches account, is cleared on the next page", async ({ page }) => {
+  test("a session that ends without Sign out is cleared on the next page, and the next account starts clean", async ({ page }) => {
     await reset(false);
     await signIn(page, "member@example.test");
+    await expect.poll(() => marker(page)).not.toBeNull();
     await seed(page);
-    // Signed in as another account without signing out first.
-    await signIn(page, "member2@example.test");
-    await expectCleared(page, ["fantasy-intel:account"]);
-    // The session ends (expired or revoked cookies): the next signed-out page clears what this account left.
-    await seed(page);
+    // The session ends without the Sign out button (expired or revoked: the cookies are gone).
     await page.context().clearCookies();
     await page.goto(`${CLOSED}/terms`);
     await expectSignedOut(page);
-    await expectCleared(page);
+    await expectCleared(page, false);
+    await signIn(page, "member2@example.test");
+    await expectCleared(page, true);
   });
 });

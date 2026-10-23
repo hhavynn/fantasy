@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { cookies } from "next/headers";
 import Link from "@/components/LeagueLink";
 import { signOut } from "@/app/login/actions";
 import { authConfig } from "@/lib/auth-config";
+import { signedOutAccount } from "@/lib/local-data";
 import { currentUser } from "@/lib/supabase/server";
 import { AccountStorageGuard } from "./AccountStorageGuard";
 import { SignOutButton } from "./SignOutButton";
@@ -17,9 +19,11 @@ export async function AccountMenu() {
   if (!config) return null;
   const user = await currentUser();
   if (!user) {
+    // Signed out, or a session cookie whose user could not be verified just now (unknown: nothing is cleared).
+    const account = signedOutAccount((await cookies()).getAll().map((c) => c.name));
     return (
       <div className="account-entry">
-        <AccountStorageGuard account={null} />
+        <AccountStorageGuard account={account} />
         <Link href="/login" prefetch={false} className="account-link">Sign in</Link>
         {config.signupsOpen ? <Link href="/signup" prefetch={false} className="account-signup">Sign up</Link> : null}
       </div>

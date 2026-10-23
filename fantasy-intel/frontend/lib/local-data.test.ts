@@ -6,6 +6,7 @@ import { claimPlanKey } from "./claim-plan.ts";
 import { RECENT_KEY as LEAGUES_KEY } from "./league-switcher.ts";
 import {
   ACCOUNT_MARKER_KEY, KEPT_PREFERENCES, OWNED_KEYS, OWNED_PREFIXES, isOwnedKey, purgeOwnedKeys, reconcileAccount,
+  signedOutAccount,
 } from "./local-data.ts";
 import { RAIL_KEY } from "./navigation.ts";
 import { LEGACY_RECENT_KEY, pushRecent, playerItem, readLeagueRecents, recentsKey, writeLeagueRecents } from "./palette.ts";
@@ -133,6 +134,26 @@ test("data from a visitor who never signed in is left alone, becomes the first a
   assert.equal(readSavedViews(local.io, A, "rankings").views.length, 1);
   assert.equal(reconcileAccount(() => local.io, () => session.io, null), true);
   assert.deepEqual(kept(local), ["sb-auth-token", THEME_KEY].sort());
+});
+
+test("an account that could not be verified (a session cookie but no user) clears nothing", () => {
+  // The page is rendered signed out only because Supabase could not be reached: the session cookie is still there.
+  assert.equal(signedOutAccount(["sb-127-auth-token", "fi_league"]), undefined);
+  assert.equal(signedOutAccount(["sb-abcdefgh-auth-token.0", "sb-abcdefgh-auth-token.1"]), undefined, "a chunked session cookie");
+  // Really signed out (Sign out, expiry or revocation remove the cookies).
+  assert.equal(signedOutAccount([]), null);
+  assert.equal(signedOutAccount(["fi_league", "fi_link_recent", "sb-127-auth-token-code-verifier"]), null);
+
+  const local = store();
+  const session = store();
+  reconcileAccount(() => local.io, () => session.io, "acct-A");
+  visit(local, session);
+  assert.equal(reconcileAccount(() => local.io, () => session.io, undefined), false);
+  assert.equal(readSavedViews(local.io, A, "rankings").views.length, 1, "A's data survives a moment Supabase is unreachable");
+  assert.equal(local.map.get(ACCOUNT_MARKER_KEY), "acct-A");
+  assert.equal(session.map.size, 2);
+  assert.equal(reconcileAccount(() => local.io, () => session.io, "acct-A"), false, "...and is still A's when the session verifies again");
+  assert.equal(readSavedViews(local.io, A, "rankings").views.length, 1);
 });
 
 test("reconcileAccount never throws on blocked storage", () => {

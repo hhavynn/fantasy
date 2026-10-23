@@ -44,10 +44,17 @@ test("after account A signs out, account B on the same browser sees none of A's 
   await page.locator("summary", { hasText: "Account" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.waitForURL((u) => !u.search.includes("id=207"), { timeout: 30_000 });
-  const left = await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));
-  expect(left.local.filter((k) => k.startsWith("fi:"))).toEqual([]);
-  expect(left.local).toContain("fantasy-intel:theme");
-  expect(left.session.filter((k) => k.startsWith("fi:") || k.startsWith("fantasy-intel:team"))).toEqual([]);
+  // Sign-out deletes the last-viewed league cookie too, so it does not land in (or re-record) A's league.
+  expect(new URL(page.url()).pathname.startsWith("/l/"), "sign-out lands outside any league").toBe(false);
+  expect((await context.cookies()).map((c) => c.name)).not.toContain("fi_league");
+  // Every app key but the theme is gone; the tab bar may record the page now open, never A's league.
+  await expect.poll(() => page.evaluate((lg) => {
+    const ours = (s: Storage) => Object.keys(s).filter((k) => k.startsWith("fi:") || k.startsWith("fantasy-intel:")).sort();
+    return {
+      local: ours(localStorage), session: ours(sessionStorage).filter((k) => k !== "fantasy-intel:tab-memory"),
+      tabMemoryNamesLeague: (sessionStorage.getItem("fantasy-intel:tab-memory") ?? "").includes(lg),
+    };
+  }, a)).toEqual({ local: ["fantasy-intel:theme"], session: [], tabMemoryNamesLeague: false });
 
   // Account B signs in on the same browser and opens the same league: no saved view, no Recent.
   await context.clearCookies();

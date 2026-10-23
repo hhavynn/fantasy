@@ -7,7 +7,8 @@
 // scenarios and the scenario being edited, the recently viewed leagues (ids and names), and the per-tab team choice and
 // tab memory (team ids and league pages). Kept: device preferences that name no account or league, the theme
 // (`fantasy-intel:theme`) and the collapsed rail (`fantasy-intel:rail`). No React and no `@/` imports, so node --test
-// covers it.
+// covers it. (The last-viewed league cookie, fi_league, is deleted by the sign-out and delete-account actions.)
+import { hasSessionCookie } from "./auth-config.ts";
 
 /** Every per-league store's key prefix (each module's key builder: lib/saved-views.ts, lib/palette.ts, lib/waiver-shortlist.ts,
  *  lib/claim-plan.ts, lib/trade-scenarios.ts). lib/local-data.test.ts checks each builder's keys start with one of them. */
@@ -79,15 +80,28 @@ export function purgeOwnedKeys(storages: readonly (() => StorageLike | null | un
 
 type MarkerStorage = StorageLike & Pick<Storage, "getItem" | "setItem">;
 
+/** The account a page was rendered for: its fingerprint, null when signed out, undefined when it is not known. */
+export type PageAccount = string | null | undefined;
+
 /**
- * Called on every page with the account it was rendered for (its fingerprint, or null when signed out). When this
- * browser's data belongs to another account, or to one that is no longer signed in, it is purged first; then it is
- * marked as this account's. Data written while never signed in has no marker and is left alone. Never throws. Returns
- * whether anything was purged.
+ * What the account guard is told on a page with no verified user. With a Supabase session cookie still present the
+ * session could not be verified (Supabase unreachable, its keys not fetched yet): unknown, so nothing is purged. A
+ * real sign-out, expiry or revocation removes the cookies, so the next page is signed out (null) and purges.
+ */
+export function signedOutAccount(cookieNames: readonly string[]): null | undefined {
+  return hasSessionCookie(cookieNames) ? undefined : null;
+}
+
+/**
+ * Called on every page with the account it was rendered for (PageAccount). When this browser's data belongs to another
+ * account, or to one that is no longer signed in, it is purged first; then it is marked as this account's. Data
+ * written while never signed in has no marker and is left alone; an unknown account changes nothing. Never throws.
+ * Returns whether anything was purged.
  */
 export function reconcileAccount(
-  local: () => MarkerStorage | null | undefined, session: () => StorageLike | null | undefined, account: string | null,
+  local: () => MarkerStorage | null | undefined, session: () => StorageLike | null | undefined, account: PageAccount,
 ): boolean {
+  if (account === undefined) return false;
   let store: MarkerStorage | null | undefined;
   let owner: string | null;
   try {
