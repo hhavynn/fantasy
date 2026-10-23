@@ -292,7 +292,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
-| #273 | 10:19 | 11:20 (831e821; shards 4/8 app-wide guards + skeleton race) | 10:40 approve 6 LOW + Codex P2 | 11:21 (62 min) | 2 | 0 |
+| #273 | 10:19 | 11:07 (831e821; shards 4/8 app-wide guards + skeleton race) | approve 6 LOW + Codex P2 | 11:08 (49 min) | 2 | 0 |
 | #271 | 09:01 | 09:47 (97a26a1) | 09:20 MEDIUM+3 LOW → self-check 09:45 | 09:50 (49 min) | 2 | 0 |
 | #268 | 08:02 | 09:36 (aedc728) | 08:30 REQUEST CHANGES (F1 HIGH) → 08:55 N1 MEDIUM → self-check 09:15 | 09:37 (95 min) | 4 | 0 |
 | #266 | 07:09 | 08:18 (62440cd; e2e skeleton race + shard-4 guard list) | 07:20 MEDIUM+4 LOW + Codex P1/2×P2 → re-checks 07:55 (N1/N2) | 08:18 (69 min) | 4 | 1 (main.py vs #264) |
