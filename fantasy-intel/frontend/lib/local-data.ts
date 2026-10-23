@@ -2,7 +2,8 @@
 // same browser never sees the previous one's data. Only keys this app owns and that hold account or league data are
 // touched, by exact prefix or exact key; never `clear()`, never another key on the origin.
 //
-// Cleared: saved views, palette recents (and the legacy browser-wide list), the waiver shortlist, the claim plan, trade
+// Cleared at sign-out, and on the first page after the signed-in account ends without one (expiry, deletion) or
+// changes (another account signs in on this browser): see reconcileAccount. Cleared: saved views, palette recents (and the legacy browser-wide list), the waiver shortlist, the claim plan, trade
 // scenarios and the scenario being edited, the recently viewed leagues (ids and names), and the per-tab team choice and
 // tab memory (team ids and league pages). Kept: device preferences that name no account or league, the theme
 // (`fantasy-intel:theme`) and the collapsed rail (`fantasy-intel:rail`). No React and no `@/` imports, so node --test
@@ -21,8 +22,15 @@ export const OWNED_PREFIXES = [
   "fantasy-intel:team:",
 ] as const;
 
+/**
+ * Which account this browser's data belongs to: an opaque fingerprint of the signed-in account (never its id or email),
+ * written while signed in, so a later page that is signed out or signed in as someone else knows to clear.
+ */
+export const ACCOUNT_MARKER_KEY = "fantasy-intel:account";
+
 /** Exact owned keys that hold account or league data. */
 export const OWNED_KEYS = [
+  ACCOUNT_MARKER_KEY,
   "fantasy-intel:palette-recent",   // the browser-wide palette recents before #200 (player holders, statuses)
   "fantasy-intel:leagues",          // recently viewed leagues: ids and names (lib/league-switcher.ts)
   "fantasy-intel:team",             // the analyzed team on the classic site, per tab (components/useTeam.ts)
@@ -67,4 +75,32 @@ export function purgeOwnedKeys(storages: readonly (() => StorageLike | null | un
     }
   }
   return removed;
+}
+
+type MarkerStorage = StorageLike & Pick<Storage, "getItem" | "setItem">;
+
+/**
+ * Called on every page with the account it was rendered for (its fingerprint, or null when signed out). When this
+ * browser's data belongs to another account, or to one that is no longer signed in, it is purged first; then it is
+ * marked as this account's. Data written while never signed in has no marker and is left alone. Never throws. Returns
+ * whether anything was purged.
+ */
+export function reconcileAccount(
+  local: () => MarkerStorage | null | undefined, session: () => StorageLike | null | undefined, account: string | null,
+): boolean {
+  let store: MarkerStorage | null | undefined;
+  let owner: string | null;
+  try {
+    store = local();
+    if (!store) return false;
+    owner = store.getItem(ACCOUNT_MARKER_KEY);
+  } catch {
+    return false;
+  }
+  const purge = owner !== null && owner !== account;
+  if (purge) purgeOwnedKeys([() => store, session]);
+  if (account !== null && owner !== account) {
+    try { store.setItem(ACCOUNT_MARKER_KEY, account); } catch { /* unmarked: the sign-out button still purges */ }
+  }
+  return purge;
 }
