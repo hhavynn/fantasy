@@ -456,7 +456,8 @@ def movement(con, season: int, *, source: str | None = None, view: str = "ros", 
              baseline: str | None = None, limit: int = 15) -> dict:
     """The `projection-movers/v1` payload (module docstring). ValueError for an invalid source, view, position or
     baseline (a baseline that is unknown or not older than the latest snapshot). Every mover's `evidence` is None:
-    app.analytics.mover_evidence.attach fills it for the listed risers and fallers."""
+    app.analytics.mover_evidence.attach fills it for the listed risers and fallers. `attribution` is None too:
+    app.analytics.projection_attribution.attach fills it for those movers and a requested player."""
     source = ps.normalize(source, con, season)
     if view not in VIEWS:
         raise ValueError(f"view must be one of {', '.join(VIEWS)}")
@@ -567,7 +568,8 @@ def movement(con, season: int, *, source: str | None = None, view: str = "ros", 
                        "bye_before": x["bye"], "bye_after": y["bye"],
                        "status_before": x["status"], "status_after": y["status"],
                        "horizon_before": x["horizon"], "horizon_after": y["horizon"]} for x, y in zip(before, after)],
-            "components": _split(_components(before, after), delta) if ours else None, "evidence": None})
+            "components": _split(_components(before, after), delta) if ours else None, "evidence": None,
+            "attribution": None})
 
     key = lambda m: (m["name"] or "", m["espn_player_id"])
     movers_by_delta = sorted(movers, key=lambda m: (-abs(m["delta"]), *key(m)))

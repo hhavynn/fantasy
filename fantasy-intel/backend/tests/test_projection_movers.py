@@ -617,11 +617,12 @@ def test_unsupported_league_scoring_makes_ours_unavailable(con, monkeypatch):
 
 
 def plain(result):
-    """The payload without the evidence block, which another module fills (app.analytics.mover_evidence)."""
+    """The payload without the evidence and attribution blocks, which other modules fill (app.analytics.mover_evidence,
+    app.analytics.projection_attribution)."""
     out = json.loads(json.dumps(result, default=str))
     for key in ("risers", "fallers", "players"):
         for m in out[key]:
-            m["evidence"] = None
+            m["evidence"] = m["attribution"] = None
     return out
 
 
