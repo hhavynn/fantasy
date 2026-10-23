@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import Link from "@/components/LeagueLink";
 import { RulesLink } from "@/components/RulesLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
