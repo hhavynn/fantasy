@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { applyTheme, expectAccessible, expectNoBrokenValues, expectStructure, useTheme } from "./ux";
 
 // Strength-of-schedule heatmap (issue #188) against the synthetic league (scripts/build_e2e_db.py): every defense has
 // only two presumed-complete games, so no matchup may be graded (no rank, no difference), each cell shows its sample
@@ -128,4 +129,20 @@ test("rows: NFL team filter, free agents to waivers, the roster to the trade ana
   await expect(rows(page)).toHaveCount(1);
   await rows(page).first().getByRole("link", { name: /^Profile/ }).click();
   await expect(page).toHaveURL(/\/players\?id=\d+/);
+});
+
+test("meets the quality bar (structure, axe) in both themes, for team rows and player rows", async ({ page }) => {
+  test.setTimeout(120_000);                                        // four axe passes over a 32-row grid
+  await useTheme(page, "dark");
+  for (const url of ["/schedule-intelligence/sos", "/schedule-intelligence/sos?pos=RB&view=roster"]) {
+    await page.goto(url);
+    await loaded(page);
+    await expectStructure(page);
+    await expectNoBrokenValues(page);
+    for (const theme of ["dark", "light"] as const) {
+      await applyTheme(page, theme);
+      await noSideScroll(page);
+      await expectAccessible(page, `${url} ${theme}`);
+    }
+  }
 });
