@@ -531,18 +531,21 @@ def validate(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b
                 raise TradeError(f"player {pid} is not on team {team}'s current roster")
 
 
-def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_sends: list[int],
-                   start_week: int | None = None, max_per_side: int = MAX_PLAYERS_PER_SIDE,
-                   scenarios: bool = True) -> dict:
-    """Hypothetical before/after evaluation for both teams. Never mutates `state`."""
-    a_sends, b_sends = [int(x) for x in a_sends], [int(x) for x in b_sends]
-    reason = state.start_week_reason or {}
+def require_remaining_weeks(state: LeagueState) -> None:
+    """NoRemainingWeeksError when every fantasy scoring period has kicked off (nothing a trade could change)."""
     if state.start_week is None:
+        reason = state.start_week_reason or {}
         raise NoRemainingWeeksError(
             "No remaining fantasy scoring periods: every week through the final scoring period "
             f"({state.final_week}) has kicked off, so a trade made now cannot change any lineup "
             f"({reason.get('reason') or 'no actionable week'}).")
-    validate(state, team_a, team_b, a_sends, b_sends, max_per_side)
+
+
+def evaluation_window(state: LeagueState, start_week: int | None = None) -> Window:
+    """The weeks a trade proposed now is evaluated over: from the earliest actionable week, or from an explicit
+    `start_week` that is not before it (TradeError otherwise). The analyzer and the scenario comparison share it, so
+    every comparison of trades uses one horizon."""
+    require_remaining_weeks(state)
     if start_week is not None and not (1 <= start_week <= state.final_week):
         raise TradeError(f"start_week must be between 1 and {state.final_week}")
     if start_week is not None and start_week < state.start_week:
@@ -552,7 +555,18 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
             "by a trade made now (partial-week simulation is not supported)")
     if start_week is not None and state.first_projection_week and start_week < state.first_projection_week:
         raise TradeError(f"start_week must be >= {state.first_projection_week} (earliest loaded projection week)")
-    window = state.window(start_week)
+    return state.window(start_week)
+
+
+def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_sends: list[int],
+                   start_week: int | None = None, max_per_side: int = MAX_PLAYERS_PER_SIDE,
+                   scenarios: bool = True) -> dict:
+    """Hypothetical before/after evaluation for both teams. Never mutates `state`."""
+    a_sends, b_sends = [int(x) for x in a_sends], [int(x) for x in b_sends]
+    reason = state.start_week_reason or {}
+    require_remaining_weeks(state)
+    validate(state, team_a, team_b, a_sends, b_sends, max_per_side)
+    window = evaluation_window(state, start_week)
     uncertain = bool(reason.get("uncertain")) and window.start == state.start_week
     if start_week is None:
         why = reason
