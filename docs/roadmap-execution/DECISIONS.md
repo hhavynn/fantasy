@@ -170,6 +170,19 @@ also sat in conflict with main without CI ever running.
 - Unchanged: D-07 exact-head CI, D-09, D-10 independent review, tenant isolation, credential scan, missing ≠ zero,
   provenance, provider read-only terms.
 
+## D-15 · 2026-10-23 · Codex is the default independent reviewer again; Claude is the fallback
+Owner decision; supersedes the reviewer choice in D-10 (Codex quota has returned). Everything else in D-10/D-14 stands.
+- **Default:** when an implementation PR is ready, the independent code review is Codex's diff-scoped review (it runs
+  on PR open; `@codex review` requests it for an updated head, `@codex security review` for security-sensitive diffs).
+- **No duplicates:** no Claude review agent runs in parallel with a Codex review or re-checks work Codex and CI already
+  verified. A pending Codex review is not a reason to start a Claude one.
+- **Fallback:** only when Codex reports a usage/quota limit or is genuinely unavailable, a separate Claude agent that
+  did not author the change does the review (the `multileague-security-reviewer` for security-sensitive diffs).
+- **After fixes:** request a fresh Codex review of the updated diff when the fix changes reviewed logic.
+- **Unchanged gates:** mandatory independent security review for security-sensitive diffs, exact-head CI, no open
+  material findings, no conflicts. Claude's role: implementation, integration, coordination, fixing findings.
+- Transition: Claude reviews already running when this was decided (#283, #284) finish; none are restarted.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: resolved by D-11 (no headline feed; Availability events from nflverse data allowed).
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
