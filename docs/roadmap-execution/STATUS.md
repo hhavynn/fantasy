@@ -34,7 +34,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #186 player news | 2 | RESEARCH MERGED | PR #247 → 2d2c1c4 | NO-GO headlines; GO "Availability events" from nflverse (D-11); implementation not started |
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
-| #178 add/drop simulator | 3 | IN PROGRESS | `feature/fi-178-add-drop-sim` from 82ecade | one agent; reuses trade lineup evaluator; no provider writes |
+| #178 add/drop simulator | 3 | PR OPEN | PR #249 (28e0bb1) | `GET .../waivers/add-drop`; q/a/s pass; security review running (incl. shared `_best_flex` tie cost) |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | IN PROGRESS | `feature/fi-181-kdst-streaming` from 8f57407 | one agent; polynomial DP planner; disjoint from #178 (waivers) |
