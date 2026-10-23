@@ -322,3 +322,28 @@ def test_fx17_team_value_trade_preview_is_fast(fx17, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["upgrades"]["trade_preview"] is not None
     assert time.perf_counter() - t0 < 60               # ~19 s before, ~2-3 s now
+
+
+@pytest.mark.parametrize("mode", ["all", "mutual_upgrades"])
+def test_a_row_the_evaluator_abstains_on_is_left_out_and_counted_not_a_failed_response(monkeypatch, mode):
+    """If the manual evaluator abstains on one listed trade (EvaluationUnavailable: its forced-drop resolution is over
+    a budget), the discovery view leaves that row out and says so (`excluded.evaluation_unavailable`); every other row is
+    exactly what it was, and a view with no abstention has no new key."""
+    from app.analytics import trade_practical as practical
+    st = _small_state()
+    before = practical.discover(td.TradeSearch(st, 1, ALL), mode, limit=8)
+    assert "evaluation_unavailable" not in before["excluded"]
+    shown = [x["key"] for items in before["sections"].values() for x in items]
+    assert len(shown) >= 3
+    victim, real = shown[1], practical.detail
+
+    def detail(state, row):
+        if row["key"] == victim:
+            raise trades.EvaluationUnavailable("exact forced-drop resolution needs more than 5,000 lineup solves")
+        return real(state, row)
+    monkeypatch.setattr(practical, "detail", detail)
+    after = practical.discover(td.TradeSearch(st, 1, ALL), mode, limit=8)
+    assert after["excluded"]["evaluation_unavailable"] == 1
+    kept = [x["key"] for items in after["sections"].values() for x in items]
+    assert victim not in kept and set(shown) - {victim} <= set(kept)
+    assert all(o["best"] is None or o["best"]["key"] != victim for o in after["opponents"])

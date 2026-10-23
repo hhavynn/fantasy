@@ -209,6 +209,11 @@ in `coverage.heuristic.work_budget` and its note ("evaluated 657 of the 803 pack
 concurrent requests, and charging their work to a package would stop a beam at a point that depends on timing
 (`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`).
 
+The forced-drop search's `MAX_DROP_SOLVES` cap charges the single-removal costs as one solve per player on both paths
+(exact singles in the evaluator, `single_bound` in discovery), so both abstain on the same rosters. If the manual
+evaluator still abstains on a listed trade (`EvaluationUnavailable`), the view leaves that row out and counts it in
+`excluded.evaluation_unavailable` (present only when it happens) instead of failing the whole response.
+
 Measured on the 4-core container (one request, fresh process, before = f805d5e; two runs where given):
 
 | request | before | after | after, budget off |
