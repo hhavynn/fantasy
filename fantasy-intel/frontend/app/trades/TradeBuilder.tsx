@@ -19,6 +19,7 @@ import { withTeam } from "@/lib/team-perspective";
 import { splitLeaguePath, withLeague } from "@/lib/league-scope";
 import styles from "./builder.module.css";
 import { RosterPicker } from "./RosterPicker";
+import { PreviousResult } from "./ScenarioStore";
 
 export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacity, limits, firstWeek, finalWeek, children,
   projLabel = "ESPN", providerLabel = "ESPN" }: {
@@ -193,7 +194,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
             </button>
           </Notice>
         )}
-        {!pending && !current && showStale && <div className={styles.previous} aria-label="Previous result for a different selection">{children}</div>}
+        {!pending && !current && showStale && <div className={styles.previous} aria-label="Previous result for a different selection"><PreviousResult>{children}</PreviousResult></div>}
       </div>
     </div>
   );
