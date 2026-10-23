@@ -117,10 +117,11 @@ test("a link across the league boundary re-renders the header, both ways", async
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
 
-// League-scoped links (#262 and its part 2): with JavaScript off, a league page's server-rendered links and form actions
-// already carry /l/<lg>/, so a click never goes through the last-viewed-league cookie (set here to another league).
-// Only hrefs that belong to no league (account pages, the connections page, assets) and ?league=clear stay bare.
-// The waiver pages are converted separately (#264) and are not listed.
+// League-scoped links (#262 and its part 2): with JavaScript off, a league page's server-rendered links, form actions
+// and form-submit buttons already carry /l/<lg>/. Only hrefs that belong to no league (account pages, the connections
+// page, assets) and the switcher's ?league=clear stay bare. The last-viewed-league cookie names another league only to
+// show that the rendered hrefs do not depend on it; nothing is clicked here. Waiver files edited by #264 keep next/link
+// until it merges, but /waivers' own links are query-relative (?pos=...), so the page is listed.
 const UNSCOPED_HREF = /^\/(leagues|login|auth|invite|account|admin|terms|privacy|api|_next)(\/|\?|#|$)/;
 test("with JavaScript off, a league page renders its links and forms in that league", async ({ browser }) => {
   const { espn_public: lg, sleeper: other } = manifest().leagues;
@@ -128,22 +129,44 @@ test("with JavaScript off, a league page renders its links and forms in that lea
   await context.addCookies([{ name: "fi_league", value: other, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
   const page = await context.newPage();
   await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
-  const bare = async () => (await page.locator("a[href^='/'], form[action^='/']").evaluateAll((els) =>
-    els.map((e) => e.getAttribute("href") ?? e.getAttribute("action") ?? "")))
+  const bare = async () => (await page.locator("a[href^='/'], form[action^='/'], [formaction^='/']").evaluateAll((els) =>
+    els.map((e) => e.getAttribute("href") ?? e.getAttribute("action") ?? e.getAttribute("formaction") ?? "")))
     .filter((u) => !u.startsWith("//") && !u.startsWith(`/l/${lg}`) && !UNSCOPED_HREF.test(u) && !/[?&]league=clear\b/.test(u));
-  for (const p of ["/rankings", "/managers", "/", "/players?id=201", "/start-sit", "/transactions", "/trades/discover"]) {
+  const pages = ["/rankings", "/managers", "/", "/players?id=201", "/start-sit", "/transactions", "/trades/discover",
+    "/luck-lab", "/movers", "/waivers"];
+  for (const p of pages) {
     const res = await page.goto(`/l/${lg}${p === "/" ? "" : p}`, { waitUntil: "load" });
     expect(res?.status(), `${p} HTTP status`).toBe(200);
     expect(await bare(), `${p}: in-app links and form actions outside /l/<lg>/`).toEqual([]);
   }
   await page.goto(`/l/${lg}/rankings`, { waitUntil: "load" });
   expect(await page.locator(`a[href^='/l/${lg}/players?id=']`).count(), "player links scoped to the page's league").toBeGreaterThan(0);
-  // ?league=clear on a league URL is dropped before the page renders, so no link built from the page's params carries it
-  // (the league switcher's own "Classic site" link, `/?league=clear`, is the deliberate way out and is not counted).
+  // The no-JS search form (#262) is scoped, not merely absent.
+  expect(await page.locator(`form[action^='/l/${lg}/rankings']`).count(), "the search form posts to this league").toBeGreaterThan(0);
+  // ?league=clear on a league URL redirects to the same page without it, so no link built from the page's params carries
+  // it (the league switcher's own "Classic site" link, `/?league=clear`, is the deliberate way out and is not counted).
   await page.goto(`/l/${lg}/start-sit?league=clear`, { waitUntil: "load" });
+  expect(new URL(page.url()).pathname).toBe(`/l/${lg}/start-sit`);
   expect(await page.locator("a[href*='league=clear']:not([href='/?league=clear']), option[value*='league=clear']").count(),
     "no link built from the page's params leaves the league").toBe(0);
   await context.close();
+});
+
+// With JavaScript on, /l/<lg>/<page>?league=clear lands on the same league page without the param (a redirect, so the
+// browser URL that the Nav team picker and tab memory read through useSearchParams() no longer carries it), keeps the
+// other params, and keeps the league cookie on this league.
+test("?league=clear on a league URL stays in that league, browser URL included", async ({ page, context }) => {
+  const { espn_public: lg, sleeper: other } = manifest().leagues;
+  await context.addCookies([{ name: "fi_league", value: other, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const res = await page.goto(`/l/${lg}/start-sit?week=1&league=clear`, { waitUntil: "load" });
+  expect(res?.status(), "HTTP status").toBe(200);
+  const url = new URL(page.url());
+  expect(url.pathname).toBe(`/l/${lg}/start-sit`);
+  expect(url.searchParams.getAll("league"), "no league param left").toEqual([]);
+  expect(url.searchParams.get("week")).toBe("1");
+  const cookie = (await context.cookies()).find((c) => c.name === "fi_league");
+  expect(cookie?.value, "the league cookie names this league").toBe(lg);
 });
 
 // Player profile tabs (#187): a deep-linked tab, a tab switch and a week window all stay under /l/<lg>/, and the
