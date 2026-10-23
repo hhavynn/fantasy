@@ -26,6 +26,9 @@ import {
   actionabilityBadge,
   emptyStartingSlots,
   lineupTotal,
+  NO_PROJECTIONS_TEXT,
+  noProjections,
+  projectionsMeta,
   lockStatusBadge,
   slotChange,
   startSitVerdict,
@@ -113,7 +116,10 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     emptySlots,
   });
   const actual = lineupTotal(hasLineup, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
-  const recommended = lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
+  // A week without any projection has no recommended total at all, never a measured or partial 0.0.
+  const noProj = noProjections(d.projection_source, recommended_lineup);
+  const recommended = noProj ? { value: null, partial: false }
+    : lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
   const gainKnown = summary.projection_complete && summary.projected_gain !== null;
 
   return (
@@ -121,7 +127,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       <PageHeader
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
-        meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        meta={`${team.name} (${team.abbrev}) · ${projectionsMeta(d.projection_source)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
         provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
@@ -151,8 +157,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
             />
             <VerdictFigure
               label="Recommended (proj)"
-              value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
-              note={recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
+              value={recommended.value === null ? <Missing why={NO_PROJECTIONS_TEXT} /> : <>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
+              note={noProj ? NO_PROJECTIONS_TEXT : recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
             />
             <VerdictFigure
               label="Projected gain"
@@ -264,6 +270,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       <Benchmark
         summary={summary}
+        noProj={noProj}
         recommended={recommended_lineup}
         unconstrained={unconstrained_lineup}
       />
@@ -481,8 +488,9 @@ function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { ben
 
 // --------------------------------------------------------------- benchmark --
 
-function Benchmark({ summary, recommended, unconstrained }: {
+function Benchmark({ summary, noProj, recommended, unconstrained }: {
   summary: StartSitResponse["summary"];
+  noProj: boolean;
   recommended: LineupPlayer[];
   unconstrained: LineupPlayer[];
 }) {
@@ -496,14 +504,14 @@ function Benchmark({ summary, recommended, unconstrained }: {
       <dl className={styles.figures}>
         <div>
           <dt>Unconstrained optimum</dt>
-          <dd>{total !== null ? num(total, 1) : <>{num(summary.known_unconstrained_total, 1)}*</>}</dd>
+          <dd>{noProj ? <Missing why={NO_PROJECTIONS_TEXT} /> : total !== null ? num(total, 1) : <>{num(summary.known_unconstrained_total, 1)}*</>}</dd>
         </div>
         <div>
           <dt title="Unconstrained optimum minus the lock-constrained recommendation">Lock drag</dt>
           <dd>{drag !== null ? num(drag, 1) : <Missing why="Needs complete projections" />}</dd>
         </div>
       </dl>
-      {total === null && <p className={styles.prose}>*Partial total: some players lack a projection.</p>}
+      {total === null && !noProj && <p className={styles.prose}>*Partial total: some players lack a projection.</p>}
       {drag !== null && drag > 0 ? (
         <p className={styles.prose}>
           Kickoff locks cost {num(drag, 1)} projected points. Without locks the lineup would also start{" "}

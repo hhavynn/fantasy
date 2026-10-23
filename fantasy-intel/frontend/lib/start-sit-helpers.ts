@@ -76,6 +76,27 @@ export function lineupTotal(
   return { value: known ?? null, partial: true };
 }
 
+/** Start/Sit's projection source label when the week has no projection at all (backend start_sit.NO_PROJECTIONS). */
+export const NO_PROJECTIONS = "Unavailable";
+/** What a total shows (as a `Missing` reason) when the week has no projection. */
+export const NO_PROJECTIONS_TEXT = "No projections for this week";
+
+/**
+ * True when the week has nothing to recommend from: the backend says no projection exists, or no recommended starter has
+ * one. A total is then missing, never a measured 0.0.
+ */
+export function noProjections(
+  source: string | null | undefined,
+  rows: readonly { player_id: number | null; projected_points: number | null }[],
+): boolean {
+  return source === NO_PROJECTIONS || !rows.some((r) => r.player_id !== null && r.projected_points !== null);
+}
+
+/** The page's "· … projections" meta text: whose projections, or that the week has none. */
+export function projectionsMeta(source: string): string {
+  return source === NO_PROJECTIONS ? "no projections" : `${source} projections`;
+}
+
 export type VerdictTone = "info" | "caution" | "positive";
 
 export interface Verdict {

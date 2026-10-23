@@ -235,8 +235,8 @@ waivers `scoring.partial` (xFP is full PPR).
 **Endpoints (league-scoped only).**
 
 - `GET /v2/leagues/{league_id}/api/league-compatibility`, a new route in `app/api/league_rules.py` that
-  `mount_legacy_routers` mounts automatically and that is authorized by `league_scope`. It needs adding to
-  `test_v2_authorization_matrix.py`, `test_league_scope_audit.py` (through `latest_league` only) and the golden set.
+  `mount_legacy_routers` mounts automatically and that is authorized by `league_scope`. Mounted legacy routes are
+  covered by `test_league_scope.py` (the per-league golden check), not by `test_v2_authorization_matrix.py`.
 - Optionally the same block as `compatibility` inside the league-rules payload, so one fetch serves the rules page.
 - The legacy unscoped `/api/league-compatibility` exists only in owner single-league mode, as `/api/league-rules` does
   today.
@@ -312,7 +312,7 @@ waivers `scoring.partial` (xFP is full PPR).
    presence of a current lineup snapshot, and the count of rostered ids missing from `fantasy_players`.
 3. Additive `code` on each `engine_support` row, with what-if switched to it.
 4. The route `GET /api/league-compatibility` in `app/api/league_rules.py` (league-scoped through
-   `mount_legacy_routers`), with authorization-matrix, scope-audit and golden updates.
+   `mount_legacy_routers`), with an authorization test and golden updates.
 5. `tests/test_league_compatibility.py`: FX-17 from import to rules to engines, checking the invariants (counts unchanged,
    17 unique starters, no BE, IR or taxi starter, 3 FLEX) and the per-tool statuses for M2-M4 and M8.
 6. Fix **G1** in `start_sit.py` (about 5 lines), because without it the diagnostic would have to mark start_sit and the
@@ -342,8 +342,10 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
   - `build_compatibility` runs on top of `build_league_rules`.
 - **Endpoint.** `GET /api/league-compatibility` lives in `app/api/league_rules.py` and is mounted league-scoped at
   `/v2/leagues/{league_id}/api/league-compatibility`. It is covered by the per-league golden check
-  (`test_league_scope.py`) and by an authorization test (404 for unknown or inaccessible leagues,
-  `private, no-store`).
+  (`test_league_scope.py`) and by its own authorization test (404 for unknown or inaccessible leagues,
+  `private, no-store`). Like every legacy route, it is also served on the classic `/api/league-compatibility` while
+  `CLASSIC_SITE_ENABLED=1` (the owner's single-league site, reading that deployment's one league file), and answers 404
+  there once `CLASSIC_SITE_ENABLED=0` (`app/main.py` `retire_classic_site`).
 - **Stable codes.** Every `engine_support` row now carries a stable `code` (`league_rules.ENGINE_CODES`), and lineup
   what-if keys on `lineup_lock` instead of the English rule text (G14 fixed).
 - **G1 fixed** in `start_sit.optimize_lock_constrained_lineup`. An empty recommended or unconstrained slot that a
@@ -352,6 +354,14 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
   for the week, the source label is `"Unavailable"` (`start_sit.NO_PROJECTIONS`) instead of a provider name. Tests are
   in `test_start_sit.py` and `test_league_compatibility.py`.
 
+- **Review fixes.** A verified independent run whose rows all abstain is reported as no projections: Start/Sit's
+  label is "Unavailable" and the diagnostic's source is `none`, never Ours. A missing run is `unsupported` when nothing
+  is shown (as for an ESPN week without numbers) and is reported for the families the models could project. G2 is worded
+  as it behaves: a submitted lineup's total counts its IDP, P or HC starters while the recommendation cannot start them,
+  so Start/Sit and what-if get a feature-level `unsupported` `gain_unfilled_slots` finding whenever such a slot holds
+  a starter (the gain fix itself is phase 3). The Start/Sit page shows the missing marker ("No projections for this
+  week") instead of a 0.0 recommended or unconstrained total, and the action center's decision context carries no
+  projection source for such a week.
 - **S1 label (no algorithm change).** `league_rules.skill_runs_rescored(con, lg)` checks whether the league's own skill
   runs carry `evaluation.rescored_from`, which `rescore.py` writes for a ratio re-score of reference-scoring runs. When
   they do, the `skill_projections` row is `partial` and says the projections are approximated by re-scoring. The
@@ -377,7 +387,7 @@ at `ea9e664` and are left as they were; line numbers in them may have moved.
 
 | Gap | Finding code(s) and status | Follow-up owner |
 |---|---|---|
-| G2: Start/Sit gain ignores starters in slots no engine fills | `unfilled_slots`, roster `partial` (start_sit, what-if) | #253 follow-up |
+| G2: Start/Sit gain is understated (the submitted total counts starters in slots no engine fills) | `unfilled_slots`, roster `partial`; `gain_unfilled_slots`, feature `unsupported` (start_sit, what-if) | #253 phase 3 |
 | G3: full-lineup totals omit unfilled slots | `unfilled_slots`, roster `partial` (totals tools, waivers, bye planner) | #253 follow-up |
 | G4: Sleeper IDP players missing from the player data | `players_missing`: import `partial`, roster `unsupported` for capacity tools, `partial` for others | #253 follow-up |
 | G5: waiver lineup math treats a missing value as 0 and compares percentiles | `missing_value`, feature `partial` (waivers) | the #180 agent owns waiver code; diagnostic only here |

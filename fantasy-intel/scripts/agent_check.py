@@ -142,7 +142,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/projection_ranges", ["tests/test_projection_ranges.py"]),
     ("api/power_rankings", ["tests/test_power_rankings.py"]),
     ("api/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
-                          "tests/test_provider_copy.py"]),
+                          "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("api/luck_lab", ["tests/test_luck_lab.py"]),
     ("api/dst_projections", ["tests/test_dst_production.py", "tests/test_dst_shadow.py"]),
 
@@ -164,7 +164,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py",
                                 "tests/test_lineup_what_if.py", "tests/test_golden_legacy.py"]),
     ("analytics/league_compatibility", ["tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
-                                        "tests/test_provider_copy.py"]),
+                                        "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("analytics/pipeline", ["tests/test_refresh_all.py", "tests/test_golden_legacy.py"]),
 
     # Provider packages

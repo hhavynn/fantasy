@@ -104,8 +104,8 @@ def load_facts(con, lg: dict) -> dict:
     week = min(int(week), int(final)) if week and final else (int(week) if week else None)
     teams = fetch_dicts(con, "SELECT team_id FROM fantasy_teams WHERE league_id = ? AND season = ?", [league_id, season])
     rows = fetch_dicts(con, """
-        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, fp.espn_player_id AS known_id,
-               fp.position, fp.pro_team
+        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter,
+               fp.espn_player_id AS known_id, fp.position, fp.pro_team
         FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?""", [league_id, season, week]) if week else []
     settings = lg.get("settings_raw")
@@ -121,10 +121,11 @@ def load_facts(con, lg: dict) -> dict:
         projected = {pid for pid, by_week in shown_values.items() if week in by_week}
         if source == "independent":
             independent = {"available": ps.select_run(con, season, week)["run"] is not None}
-    if source == "independent" and independent and independent["available"]:
-        shown = "ours"
+    # A verified run whose rows all abstain shows no number: "none", exactly as a week without any projection.
+    if not projected:
+        shown = "none"
     else:
-        shown = "provider" if projected else "none"
+        shown = "ours" if source == "independent" and independent and independent["available"] else "provider"
     coverage: dict[str, dict] = {}
     for r in rows:
         if r["known_id"] is None or is_reserved(r) or r["pro_team"] in TEAMLESS or r["position"] not in ALL:
@@ -138,8 +139,12 @@ def load_facts(con, lg: dict) -> dict:
                                  WHERE availability_status IN ('FREEAGENT', 'WAIVERS')"""):
         if r["espn_player_id"] not in rostered and r["espn_player_id"] in projected:
             fa_projected[r["position"]] = fa_projected.get(r["position"], 0) + 1
+    fillable = {*FIXED_SLOTS, *FLEX_ELIGIBILITY}
     return {
         "provider": provider, "week": week, "teams": len(teams),
+        # starters the engines load (in the player data) who sit in a slot no engine fills (IDP, P, HC, ...)
+        "starters_in_unfilled_slots": sum(1 for r in rows if r["known_id"] is not None and r["is_starter"]
+                                          and r["lineup_slot"] and r["lineup_slot"] not in fillable),
         "teams_with_roster": len({r["team_id"] for r in rows}),
         "players_missing": sum(1 for r in rows if r["known_id"] is None),
         "projection_source": shown, "independent": independent, "ours_rescored": skill_runs_rescored(con, lg),
@@ -206,8 +211,8 @@ class _League:
             return []
         slots = ", ".join(self.unfilled)
         text = {
-            "lineup": f"{slots}: no engine fills these slots, so the recommendation leaves them out and its projected "
-                      "gain over your lineup does not count your starters there.",
+            "lineup": f"{slots}: no engine fills these slots, so the recommendation leaves them out while your "
+                      "submitted lineup's total counts your starters there.",
             "totals": f"{slots}: no engine fills these slots, so lineup totals leave them out.",
             "waivers": f"{slots}: no engine fills these slots, so roster capacity is unknown and add/drop moves are "
                        "not planned.",
@@ -248,7 +253,8 @@ class _League:
         else:
             boundary = (f"{self.name} publishes no projections, so Fantasy Intel's own (Ours) are the only ones."
                         if self.provider != "espn" else None)
-            for code in dict.fromkeys(FAMILY[p] for p in used):
+            families = list(dict.fromkeys(FAMILY[p] for p in used))
+            for code in families:
                 row = self.support.get(code)
                 if row is None:
                     continue
@@ -263,12 +269,20 @@ class _League:
                                        missing_input=f"{FAMILY_TEXT[code]} projections in this league's scoring",
                                        provider_boundary=boundary,
                                        action="See League rules for the scoring rules the models do not implement."))
-            if shown != "ours" and not any(x["status"] == UNSUPPORTED for x in out):
-                out.append(finding("independent_run", UNVERIFIED, "No verified run of Fantasy Intel's own projections "
-                                   f"(Ours) in this league's scoring is stored for {self.wk()}, so there are no "
-                                   "projections to use.",
+            # The missing run is reported for the families the models could project (an unsupported family already
+            # says why it has none). With nothing shown at all it is as unsupported as an ESPN week without numbers.
+            ready = [c for c in families if (self.support.get(c) or {}).get("status") in (HANDLED, PARTIAL)]
+            if shown != "ours" and ready:
+                none = shown == "none"
+                names = ", ".join(FAMILY_TEXT[c] for c in ready)
+                abstained = bool((f.get("independent") or {}).get("available"))
+                reason = (f"A verified run of Fantasy Intel's own {names} projections (Ours) is stored for {self.wk()}, "
+                          "but every one of its rows abstains, so there are no projections to use." if abstained else
+                          f"No verified run of Fantasy Intel's own {names} projections (Ours) in this league's scoring is "
+                          f"stored for {self.wk()}" + (", so there are no projections to use." if none else "."))
+                out.append(finding("independent_run", UNSUPPORTED if none else UNVERIFIED, reason,
                                    missing_input=f"projections for {self.wk()}", provider_boundary=boundary,
-                                   action="Check again after the next sync."))
+                                   action="Check again after the next sync.", value=ready))
         cov = f.get("coverage") or {}
         gaps = {p: cov[p]["unprojected"] for p in used if cov.get(p, {}).get("unprojected")}
         if gaps:
@@ -319,6 +333,15 @@ class _League:
                                    "league's scoring.", missing_input="usage values in this league's scoring",
                                    action="Compare the projected points shown beside each claim.", value=refs or None))
         # feature
+        if kind == "lineup" and self.unfilled and self.facts.get("starters_in_unfilled_slots"):
+            n = self.facts["starters_in_unfilled_slots"]
+            feature.append(finding("gain_unfilled_slots", UNSUPPORTED,
+                                   "The projected gain is understated and can be negative: a submitted lineup's "
+                                   f"total counts its starters in {', '.join(self.unfilled)} ({n} across the league), "
+                                   "which the recommendation cannot start.",
+                                   missing_input="an engine for those slots",
+                                   action="Compare the lineups slot by slot rather than by the projected gain.",
+                                   value=n))
         if kind == "lineup":
             lock = self.support.get("lineup_lock")
             if lock is not None:

@@ -172,6 +172,31 @@ def test_an_unavailable_source_label_survives_the_sleeper_wording(league):
     assert out["projection_source_detail"]["available"] is False
 
 
+def test_a_verified_run_whose_rows_all_abstain_is_no_projections_not_ours(league, monkeypatch):
+    """A verified independent run exists but every row abstains and the provider has no fallback number: the source is
+    "Unavailable" (Start/Sit) and "none" with an unsupported missing-projections finding (diagnostic), never "Ours"."""
+    from app.analytics import projection_source as ps
+    from app.analytics.start_sit import projection_source_label
+
+    assert projection_source_label("independent", True, {1: None, 2: None}) == NO_PROJECTIONS
+    assert projection_source_label("independent", True, {1: None, 2: 3.5}) == "Independent model"
+    con = league("M3")
+    real_weekly = ps.weekly
+    # the run is verified and shown, but none of its rows is a projection (and Sleeper has no fallback number)
+    monkeypatch.setattr(ps, "weekly", lambda con, season, week, source: {
+        **real_weekly(con, season, week, "espn"), "source": source, "available": True})
+    monkeypatch.setattr(ps, "select_run", lambda *a, **k: {"run": {"run_id": "abstaining"}, "rows": [], "skipped": [],
+                                                           "fallback": False, "unavailable_reason": None})
+    out = load_start_sit_evaluation(con, team_id=1, now=NOW)
+    assert out["projection_source"] == NO_PROJECTIONS and out["summary"]["recommended_projected_total"] is None
+
+    lg = latest_league(con)
+    facts = load_facts(con, lg)
+    assert facts["independent"] == {"available": True} and facts["projection_source"] == "none"
+    sc = build_compatibility(lg, facts)["dimensions"]["scoring"]
+    assert sc["status"] == "unsupported" and "every one of its rows abstains" in sc["reason"]
+
+
 # ---- S1: Ours re-scored from the reference scoring is partial ------------------------------------------------------------
 
 def _run(con, run_id: str, fingerprint: str, evaluation: dict) -> None:
@@ -258,7 +283,9 @@ def test_fx17_sleeper_names_the_projection_boundary_and_the_roster_rules_it_cann
     out = diagnostic(league("M3"))
     assert out["dimensions"]["roster"]["status"] == "handled"
     sc = out["dimensions"]["scoring"]
-    assert sc["status"] == "unverified" and "independent_run" in codes(sc)
+    assert sc["status"] == "unsupported" and "independent_run" in codes(sc)      # no number at all, as on ESPN
+    run = next(e for e in sc["evidence"] if e["code"] == "independent_run")
+    assert run["value"] == ["skill_projections", "kicker_projections", "dst_projections"]
     assert "publishes no projections" in sc["provider_boundary"]
     assert tool(out, "start_sit")["projection_source"] == "none"
     assert tool(out, "start_sit")["feature"]["status"] == "unverified"           # totals known-only (G10)
@@ -289,8 +316,14 @@ def test_idp_slots_are_partial_for_lineups_and_unsupported_for_capacity_when_pla
     espn = diagnostic(league("M8"))
     assert espn["dimensions"]["roster"]["status"] == "partial"
     ss = tool(espn, "start_sit")["roster"]
-    assert ss["status"] == "partial" and "projected gain" in ss["reason"]           # G2
-    assert ss["evidence"][0]["value"] == ["DL", "LB"]
+    assert ss["status"] == "partial" and ss["evidence"][0]["value"] == ["DL", "LB"]
+    assert ss["reason"] == ("DL, LB: no engine fills these slots, so the recommendation leaves them out while your "
+                            "submitted lineup's total counts your starters there.")
+    for code in ("start_sit", "what_if"):                                          # G2: the gain is understated
+        ft = tool(espn, code)["feature"]
+        assert ft["status"] == "unsupported" and "gain_unfilled_slots" in codes(ft)
+        assert "understated and can be negative" in ft["reason"]
+    assert "gain_unfilled_slots" not in codes(tool(espn, "trades")["feature"])
     assert codes(tool(espn, "playoff_race")["roster"]) == {"unfilled_slots"}       # G3
     assert tool(espn, "bye_planner")["roster"]["status"] == "partial"
     assert tool(espn, "kdst_streaming")["roster"]["status"] == "handled"

@@ -713,5 +713,6 @@ def test_an_empty_slot_with_an_unprojected_eligible_player_is_not_a_measured_tot
                                                **{**kw, "ir_ids": ir})
         assert res["recommended_total"] == 20.0 and res["unconstrained_total"] == 20.0 and res["is_complete"]
 
-    assert projection_source_label("independent", True, {}) == "Independent model"
+    assert projection_source_label("independent", True, {1: 5.0}) == "Independent model"
+    assert projection_source_label("independent", True, {1: None}) == NO_PROJECTIONS   # a run whose rows all abstain
     assert projection_source_label("espn", False, {1: 3.0}) == "ESPN"

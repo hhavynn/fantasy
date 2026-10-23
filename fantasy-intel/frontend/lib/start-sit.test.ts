@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, emptyStartingSlots, actionabilityBadge, slotChange,
+  NO_PROJECTIONS, noProjections, projectionsMeta,
 } from "./start-sit-helpers.ts";
 
 test("formatGain formats positive, zero, and missing gains", () => {
@@ -91,4 +92,14 @@ test("an empty starting slot is flagged instead of called optimal", () => {
   assert.equal(swaps.tone, "caution");
   assert.match(swaps.headline, /\+3\.9 pts/);
   assert.match(swaps.detail, /D\/ST stays empty/);
+});
+
+test("a week without any projection has no recommended total, never 0.0", () => {
+  const row = (player_id: number | null, projected_points: number | null) => ({ player_id, projected_points });
+  assert.equal(noProjections(NO_PROJECTIONS, [row(1, 12.5)]), true);                  // the backend says so
+  assert.equal(noProjections("Ours", [row(null, null), row(2, null)]), true);         // nobody projected
+  assert.equal(noProjections("ESPN", []), true);
+  assert.equal(noProjections("ESPN", [row(null, null), row(2, 0)]), false);           // a projected 0 is a number
+  assert.equal(projectionsMeta(NO_PROJECTIONS), "no projections");
+  assert.equal(projectionsMeta("ESPN"), "ESPN projections");
 });

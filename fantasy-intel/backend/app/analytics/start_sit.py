@@ -60,11 +60,12 @@ NO_PROJECTIONS = "Unavailable"
 
 
 def projection_source_label(source: str, independent_available: bool, projections: dict) -> str:
-    """What the response names as its projection source: the independent model when it is shown, ESPN when ESPN
-    numbers are shown, NO_PROJECTIONS when the week has no number at all."""
-    if source == "independent" and independent_available:
-        return "Independent model"
-    return "ESPN" if any(v is not None for v in projections.values()) else NO_PROJECTIONS
+    """What the response names as its projection source: NO_PROJECTIONS whenever the week has no number at all (also
+    when a verified independent run exists but every one of its rows abstains), else the independent model when it is
+    shown, else ESPN."""
+    if not any(v is not None for v in projections.values()):
+        return NO_PROJECTIONS
+    return "Independent model" if source == "independent" and independent_available else "ESPN"
 
 
 @dataclass(frozen=True)
