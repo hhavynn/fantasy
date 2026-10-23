@@ -230,8 +230,9 @@ async def serve_cached(request: Request, exc: CachedResponse) -> Response:
 def _response_key(scope: LeagueScope, request: Request) -> str | None:
     if request.method != "GET":
         return None
-    # Re-encode the decoded pairs: joining them raw would let `?a%3D1%26b=2` collide with `?a=1&b=2`.
-    query = urlencode(sorted(request.query_params.multi_items()))
+    # Re-encode the decoded pairs: joining them raw would let `?a%3D1%26b=2` collide with `?a=1&b=2`. Sort by name only
+    # (a stable sort), so different names in any order share a key while a repeated name keeps its values' order.
+    query = urlencode(sorted(request.query_params.multi_items(), key=lambda kv: kv[0]))
     return f"{scope.cache_key}|{request.url.path}|{query}"
 
 

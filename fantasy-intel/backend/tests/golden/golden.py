@@ -79,6 +79,18 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
                                           o["espn_player_id"]), default=None)
         q = {k: v for k, v in (("add", add), ("drop", drop and drop["espn_player_id"])) if v is not None}
         return q or None
+    if path == "/api/waivers/claim-plan":
+        # A three-claim plan from the add/drop pickers: the two best-projected available players both dropping the
+        # owner's lowest-projected active player (a shared-drop conflict, with bids), then an add-only claim.
+        opts = (client.get("/api/waivers/add-drop").json().get("options") or {}) if client is not None else {}
+        adds = [o["espn_player_id"] for o in opts.get("add") or []][:3]
+        active = [o for o in opts.get("drop") or [] if not (o["on_ir"] or o["on_taxi"])]
+        drop = min(active, key=lambda o: (o["known_projected_points"] is None, o["known_projected_points"] or 0,
+                                          o["espn_player_id"]), default=None)
+        if len(adds) < 3 or drop is None:
+            return None
+        d = drop["espn_player_id"]
+        return {"claims": f"{adds[0]}:{d}:5,{adds[1]}:{d}:3,{adds[2]}"}
     return {}
 
 

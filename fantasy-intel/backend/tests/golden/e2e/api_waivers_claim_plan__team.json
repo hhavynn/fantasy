@@ -1,0 +1,571 @@
+// /api/waivers/claim-plan?claims=209%3A-16002%3A5%2C405%3A-16002%3A3%2C309&team_id=2
+{
+ "body": {
+  "assumptions": [
+   "Not submitted: nothing is claimed, added, dropped or bid, and nothing is sent to ESPN. Enter the claims in ESPN yourself.",
+   "Each claim is checked as its own move against the current roster with the add/drop simulator; claims that depend on the same drop or on the same open roster spot are flagged on the later claim.",
+   "A claim is shown as passing its checks only when every rule it depends on is in the synced data; anything unknown leaves it unconfirmed.",
+   "Bids are checked against the synced FAAB budget and spend. No bid is suggested."
+  ],
+  "claims": [
+   {
+    "add": {
+     "availability_status": "FREEAGENT",
+     "espn_player_id": 209,
+     "injury_status": "ACTIVE",
+     "name": "Waiver RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "KC",
+     "roster_status": "free_agent",
+     "team_id": null,
+     "team_name": null
+    },
+    "claim_kind": "free_agent",
+    "drop": {
+     "availability_status": null,
+     "espn_player_id": -16002,
+     "injury_status": "ACTIVE",
+     "name": "Bills D/ST",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "roster_status": "own_roster",
+     "team_id": 2,
+     "team_name": "Team 2"
+    },
+    "impact": {
+     "first_week": {
+      "delta": -1.3,
+      "known_delta": -1.3,
+      "projection_complete": true,
+      "week": 3
+     },
+     "rest_of_season": {
+      "known_ros_delta": -30.0,
+      "projection_complete": true,
+      "ros_delta": -30.0,
+      "weeks_improved": 0,
+      "weeks_incomplete": [],
+      "weeks_worsened": 15
+     }
+    },
+    "rank": 1,
+    "reasons": [
+     {
+      "code": "IR_SLOT_INELIGIBLE",
+      "effect": "invalid",
+      "message": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR.",
+      "player_id": 207
+     },
+     {
+      "code": "FREE_AGENT",
+      "effect": "info",
+      "message": "Waiver RB is a free agent: he can be added in ESPN without a claim, so this place in the order is your preference only.",
+      "player_id": 209
+     },
+     {
+      "code": "BID_FREE_AGENT",
+      "effect": "info",
+      "message": "A free agent is added without a claim, so the bid is not used.",
+      "player_id": 209
+     }
+    ],
+    "request": {
+     "add": 209,
+     "bid": 5,
+     "drop": -16002
+    },
+    "roster": {
+     "active_after": 11,
+     "drop_required": false,
+     "legal": true,
+     "open_spots_after": 1
+    },
+    "simulation_status": "evaluated",
+    "suggested_drop": null,
+    "validation": "invalid"
+   },
+   {
+    "add": {
+     "availability_status": "FREEAGENT",
+     "espn_player_id": 405,
+     "injury_status": "ACTIVE",
+     "name": "Waiver TE",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "TE",
+     "pro_team": "DET",
+     "roster_status": "free_agent",
+     "team_id": null,
+     "team_name": null
+    },
+    "claim_kind": "free_agent",
+    "drop": {
+     "availability_status": null,
+     "espn_player_id": -16002,
+     "injury_status": "ACTIVE",
+     "name": "Bills D/ST",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "roster_status": "own_roster",
+     "team_id": 2,
+     "team_name": "Team 2"
+    },
+    "impact": {
+     "first_week": {
+      "delta": -2.3,
+      "known_delta": -2.3,
+      "projection_complete": true,
+      "week": 3
+     },
+     "rest_of_season": {
+      "known_ros_delta": -45.0,
+      "projection_complete": true,
+      "ros_delta": -45.0,
+      "weeks_improved": 0,
+      "weeks_incomplete": [],
+      "weeks_worsened": 15
+     }
+    },
+    "rank": 2,
+    "reasons": [
+     {
+      "code": "IR_SLOT_INELIGIBLE",
+      "effect": "invalid",
+      "message": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR.",
+      "player_id": 207
+     },
+     {
+      "code": "FREE_AGENT",
+      "effect": "info",
+      "message": "Waiver TE is a free agent: he can be added in ESPN without a claim, so this place in the order is your preference only.",
+      "player_id": 405
+     },
+     {
+      "code": "BID_FREE_AGENT",
+      "effect": "info",
+      "message": "A free agent is added without a claim, so the bid is not used.",
+      "player_id": 405
+     },
+     {
+      "code": "SHARED_DROP",
+      "effect": "unverified",
+      "message": "Claim 1 also drops Bills D/ST: if it succeeds, this claim needs another drop.",
+      "player_id": -16002
+     }
+    ],
+    "request": {
+     "add": 405,
+     "bid": 3,
+     "drop": -16002
+    },
+    "roster": {
+     "active_after": 11,
+     "drop_required": false,
+     "legal": true,
+     "open_spots_after": 1
+    },
+    "simulation_status": "evaluated",
+    "suggested_drop": null,
+    "validation": "invalid"
+   },
+   {
+    "add": {
+     "availability_status": "WAIVERS",
+     "espn_player_id": 309,
+     "injury_status": "ACTIVE",
+     "name": "Waiver WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "BUF",
+     "roster_status": "waivers",
+     "team_id": null,
+     "team_name": null
+    },
+    "claim_kind": "waiver_claim",
+    "drop": null,
+    "impact": {
+     "first_week": {
+      "delta": 0.0,
+      "known_delta": 0.0,
+      "projection_complete": true,
+      "week": 3
+     },
+     "rest_of_season": {
+      "known_ros_delta": 0.0,
+      "projection_complete": true,
+      "ros_delta": 0.0,
+      "weeks_improved": 0,
+      "weeks_incomplete": [],
+      "weeks_worsened": 0
+     }
+    },
+    "rank": 3,
+    "reasons": [
+     {
+      "code": "WAIVER_CLAIM",
+      "effect": "info",
+      "message": "Waiver WR is on waivers: he can only be acquired by a claim (when claims process is not in the synced settings). The claim can fail, and he is not on your roster until it is processed.",
+      "player_id": 309
+     },
+     {
+      "code": "IR_SLOT_INELIGIBLE",
+      "effect": "invalid",
+      "message": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR.",
+      "player_id": 207
+     },
+     {
+      "code": "BID_MISSING",
+      "effect": "unverified",
+      "message": "No bid entered: a FAAB claim needs one.",
+      "player_id": 309
+     }
+    ],
+    "request": {
+     "add": 309,
+     "bid": null,
+     "drop": null
+    },
+    "roster": {
+     "active_after": 12,
+     "drop_required": false,
+     "legal": true,
+     "open_spots_after": 0
+    },
+    "simulation_status": "evaluated",
+    "suggested_drop": null,
+    "validation": "invalid"
+   }
+  ],
+  "contract": "waiver-claim-plan/v1",
+  "evaluation": {
+   "earliest_actionable_week": 3,
+   "evaluated_at": "<masked>",
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "limitations": [
+   "Whether a claim succeeds depends on other teams' claims, priority and processing order, which are not predicted.",
+   "Undroppable-list restrictions and commissioner rules are not modeled.",
+   "Kickoff locks and availability are as of the last sync and the time of the check."
+  ],
+  "max_claims": 12,
+  "perspective": {
+   "abbrev": "T2",
+   "is_owner_default": true,
+   "league_id": 999,
+   "league_synced_at": "<masked>",
+   "name": "Team 2",
+   "roster_players": 12,
+   "roster_synced_at": "<masked>",
+   "season": 2026,
+   "source": "query",
+   "team_id": 2
+  },
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 11,
+      "label": "active players with a projection",
+      "total": 11
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "roster": {
+   "active_before": 11,
+   "active_capacity": 12,
+   "drop_options": [
+    {
+     "espn_player_id": 102,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Bravo QB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "QB",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 206,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Juliet RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "SEA",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 205,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 120.0,
+     "name": "India RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "SF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 204,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 105.0,
+     "name": "Hotel RB",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "PHI",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 207,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Kilo RB",
+     "on_ir": true,
+     "on_taxi": false,
+     "position": "RB",
+     "pro_team": "TB",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 307,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 180.0,
+     "name": "Sierra WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "TB",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 306,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 165.0,
+     "name": "Romeo WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "SEA",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 305,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 150.0,
+     "name": "Quebec WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "SF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 304,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Papa WR",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "WR",
+     "pro_team": "PHI",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 402,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 135.0,
+     "name": "Victor TE",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "TE",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": 502,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 165.0,
+     "name": "Zulu K",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "K",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    },
+    {
+     "espn_player_id": -16002,
+     "injury_status": "ACTIVE",
+     "known_projected_points": 90.0,
+     "name": "Bills D/ST",
+     "on_ir": false,
+     "on_taxi": false,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "projected_weeks": 15
+    }
+   ],
+   "open_spots_before": 1,
+   "position_limits": {}
+  },
+  "rules": {
+   "acquisition": "FAAB",
+   "faab_budget": 100,
+   "faab_remaining": 80.0,
+   "faab_spent": 20.0,
+   "is_faab": true,
+   "process_days": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver processing days.",
+    "value": null
+   },
+   "unknown": [
+    {
+     "reason": "The synced settings do not include the waiver period.",
+     "rule": "period"
+    },
+    {
+     "reason": "The synced settings do not include the waiver processing days.",
+     "rule": "process_days"
+    }
+   ],
+   "waiver_period": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver period.",
+    "value": null
+   },
+   "waiver_priority": null,
+   "waiver_type": {
+    "display": "FAAB bidding",
+    "reason": null,
+    "value": "faab"
+   }
+  },
+  "status": "evaluated",
+  "submitted": false,
+  "summary": {
+   "claims": 3,
+   "conflicts": [
+    {
+     "kind": "shared_drop",
+     "player_id": -16002,
+     "ranks": [
+      1,
+      2
+     ]
+    }
+   ],
+   "invalid": 3,
+   "legal": 0,
+   "remaining_after_bids": null,
+   "total_bid": null,
+   "unverified": 0
+  },
+  "team": {
+   "id": 2,
+   "name": "Team 2"
+  }
+ },
+ "status": 200
+}

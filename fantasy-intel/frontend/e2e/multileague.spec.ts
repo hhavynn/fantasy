@@ -215,10 +215,11 @@ test("shortlist missing loaded data is unknown, removable, and independent of fi
   await page.evaluate(({ key, id }) => localStorage.setItem(key, JSON.stringify([id, 999999999])), { key: `fi:waiver-shortlist:v1:${a}`, id });
   await page.goto(`/l/${a}/waivers?view=ALL&pos=K`);
   const section = page.getByRole("region", { name: "Waiver shortlist" });
-  await expect(section).toContainText(`Player #${id}`);
+  // The claim plan's check names a known player once it answers (#180); until then he is the saved ID.
+  await expect(section).toContainText(new RegExp(`Player #${id}|${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   await expect(section).toContainText("Player #999999999");
   await expect(section).toContainText("Current data not loaded");
-  await expect(section).not.toContainText(/unavailable|waiver score/i);
+  await expect(section.getByRole("list", { name: "Claim order" })).not.toContainText(/unavailable|waiver score/i);
   await expect(page.locator("details.filter-box > summary").first()).toContainText("K");
   await section.getByRole("button", { name: "Remove Player #999999999 from shortlist" }).click();
   await expect(section).not.toContainText("Player #999999999");

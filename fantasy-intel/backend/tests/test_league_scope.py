@@ -447,6 +447,10 @@ def test_response_key_cannot_be_forged_with_encoded_separators():
     assert key("week=7&whatif=w7t3~FLEX_0.8") != key("week%3D7%26whatif=w7t3~FLEX_0.8")
     assert key("a=1&b=2") != key("a=1%26b%3D2")
     assert key("b=2&a=1") == key("a=1&b=2")                     # order-insensitive, as before
+    # a repeated name keeps its values' order: the routes read the last value or the sequence
+    assert key("a=2&a=1") != key("a=1&a=2")
+    assert key("override=12:home&override=12:away") != key("override=12:away&override=12:home")
+    assert key("b=1&a=2&a=1") == key("a=2&b=1&a=1")             # other names may still move around
 
 
 def test_targeted_trade_discovery_resolves_players_in_the_scoped_league_only(pg, served, client, e2e, tmp_path):
