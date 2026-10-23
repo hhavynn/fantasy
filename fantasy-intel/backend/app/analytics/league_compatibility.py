@@ -368,9 +368,10 @@ class _League:
             feature.append(finding("undroppable", PARTIAL, self.support["undroppable"]["detail"],
                                    missing_input="the undroppable list"))
         if code == "waivers":
-            feature.append(finding("missing_value", PARTIAL, "A player without usage data counts as 0 in the waiver "
-                                   "lineup math, and flex and superflex choices compare position percentiles, not "
-                                   "points.", missing_input="usage data for every player"))
+            feature.append(finding("missing_value", PARTIAL, "A player without usage data has no value in the waiver "
+                                   "lineup math: lineup gains, drop costs and needs that depend on him are marked "
+                                   "partial, never counted as 0. Flex and superflex choices compare position "
+                                   "percentiles, not points.", missing_input="usage data for every player"))
         if kind == "kdst" and not any(self.slots.get(p) for p in ("K", "D/ST")):
             feature.append(finding("not_started", UNSUPPORTED, "The league starts no kicker or D/ST.",
                                    action="Nothing to plan."))

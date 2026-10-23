@@ -35,6 +35,11 @@ from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_
 from .trade_discovery import TradeSearch, detail
 from .trades import TradeError, with_streaming
 
+# A waiver score missing its lineup-gain term (components.roster.fit_status "partial": a player without a value) is not
+# a measured score: shown as unknown and ranked after the known ones (#253 G5).
+KNOWN_WAIVER_SCORE = ("CASE WHEN components->'roster'->>'fit_status' = 'partial' THEN NULL "
+                      "ELSE waiver_score END")
+
 PHASES = ("all", "regular", "playoff")
 DROP_CANDIDATES = 3          # add/drop search: the active players whose removal costs the least
 TRADE_PREVIEW = 3            # rows per trade preview list (1-for-1 only, for speed)
@@ -76,17 +81,19 @@ def load_extras(con, race: RaceData) -> dict:
     # never shown for another team.
     waivers_by_team: dict[int, list[dict]] = {}
     if table_exists(con, "team_waiver_recommendations"):
-        for w in fetch_dicts(con, """SELECT team_id, espn_player_id, position, recommendation, waiver_score, suggested_drop_id
-                                     FROM (SELECT *, row_number() OVER (PARTITION BY team_id
-                                                   ORDER BY waiver_score DESC NULLS LAST, espn_player_id) AS rn
+        for w in fetch_dicts(con, f"""SELECT team_id, espn_player_id, position, recommendation, waiver_score, suggested_drop_id
+                                     FROM (SELECT * REPLACE ({KNOWN_WAIVER_SCORE} AS waiver_score),
+                                                  row_number() OVER (PARTITION BY team_id
+                                                   ORDER BY {KNOWN_WAIVER_SCORE} DESC NULLS LAST, espn_player_id) AS rn
                                            FROM team_waiver_recommendations WHERE league_id = ? AND season = ?
                                              AND recommendation IN ('CLAIM', 'WAIT'))
                                      WHERE rn <= ? ORDER BY team_id, rn""", [st.league_id, season, WAIVER_ROWS]):
             waivers_by_team.setdefault(w.pop("team_id"), []).append(w)
-    waivers = fetch_dicts(con, """SELECT espn_player_id, position, recommendation, waiver_score, suggested_drop_id
+    waivers = fetch_dicts(con, f"""SELECT espn_player_id, position, recommendation,
+                                         {KNOWN_WAIVER_SCORE} AS waiver_score, suggested_drop_id
                                   FROM waiver_recommendations WHERE league_id = ? AND season = ?
                                     AND recommendation IN ('CLAIM', 'WAIT')
-                                  ORDER BY waiver_score DESC NULLS LAST, espn_player_id LIMIT ?""",
+                                  ORDER BY {KNOWN_WAIVER_SCORE} DESC NULLS LAST, espn_player_id LIMIT ?""",
                           [st.league_id, season, WAIVER_ROWS]) if table_exists(con, "waiver_recommendations") else []
     if not waivers_by_team:
         owner = next((t["team_id"] for t in race.teams if t["is_mine"]), None)

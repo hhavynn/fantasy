@@ -16,7 +16,7 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
 import { signalsOf } from "@/lib/signal-provenance";
 import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
-import { WAIVER_SORT_KEYS, competitionRank, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
+import { WAIVER_SORT_KEYS, competitionRank, knownWaiverScore, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
 import { POSITIONS, PAGE_SIZE, RECS, REC_LABEL, VIEWS } from "./helpers";
 import { addDropHref, readAddDrop } from "@/lib/add-drop";
 import { AddDropPanel, AddDropSkeleton } from "./AddDropPanel";
@@ -37,7 +37,7 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 
 function sortValue(row: WaiverRow, key: string): number | null {
   switch (key) {
-    case "score": return row.waiver_score;
+    case "score": return knownWaiverScore(row);   // a partial score has no rank (sorts with the unknowns)
     case "trend": return trendRank(row.role_trend);
     case "owned": return row.percent_change;
     case "competition": {

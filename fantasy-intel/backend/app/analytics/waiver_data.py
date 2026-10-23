@@ -1,6 +1,7 @@
 """Batched waiver-only adapter over stored ESPN/NFL data. Never fetches remotely."""
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -19,6 +20,24 @@ from .team_lineups import STREAM_POSITIONS, STREAM_RANK
 LANE_SIZE = 15
 FRESHNESS_HOURS = 72  # cautious snapshot threshold, not an injury forecast
 
+# The basis of the historical player values and xFP (player_scores) is nflverse `fantasy_points_ppr`. Per ESPN-shaped
+# scoring statId (the shape every provider's translated scoring_items use): (label, basis points per unit). Read here
+# directly: canonical waiver code stays isolated from the research scoring modules (the isolation audit in tests/).
+PPR_BASIS = {3: ("passing yards", 0.04), 4: ("passing TD", 4.0), 19: ("passing 2-pt conversion", 2.0),
+             20: ("interception thrown", -2.0), 24: ("rushing yards", 0.1), 25: ("rushing TD", 6.0),
+             26: ("rushing 2-pt conversion", 2.0), 42: ("receiving yards", 0.1), 43: ("receiving TD", 6.0),
+             44: ("receiving 2-pt conversion", 2.0), 53: ("reception", 1.0), 72: ("fumble lost", -2.0),
+             101: ("kick return TD", 6.0), 102: ("punt return TD", 6.0),
+             # counts the basis does not score (synthetic ids of translated provider items)
+             2001: ("passing first down", 0.0), 2002: ("rushing first down", 0.0), 2003: ("receiving first down", 0.0),
+             2004: ("pass attempt", 0.0), 2005: ("pass completion", 0.0), 2006: ("rush attempt", 0.0)}
+DST_SLOT = "16"   # ESPN's D/ST lineup slot: an override there never scores an offensive player
+# Other offensive rules outside the basis: ESPN's offensive statIds (0-72; kicking starts at 73, defense beyond) and
+# the id Sleeper's translation gives an unimplemented skill rule (bonus_pass_yd_300, ...: app/sleeper/scoring.py).
+# 63 (fumble-recovery TD) is left out: whether the basis scores it is not verified.
+SKILL_UNSUPPORTED_ID = 2999
+_UNCOMPARED = {63}
+
 
 def stale_snapshot(stamp, now: datetime) -> bool:
     if stamp is None:
@@ -26,6 +45,39 @@ def stale_snapshot(stamp, now: datetime) -> bool:
     if isinstance(stamp, str):
         stamp = datetime.fromisoformat(stamp)
     return (now - stamp.replace(tzinfo=stamp.tzinfo or timezone.utc)).total_seconds() > FRESHNESS_HOURS * 3600
+
+
+def ppr_basis_differences(scoring_items) -> list[str]:
+    """Known ways a league's offensive scoring differs from PPR_BASIS (#253 S2), as short phrases. Only rules the league
+    states are compared: an absent rule is unknown, not 0. Rules outside PPR_BASIS (yardage bonuses, kicker and D/ST
+    rules) are counted, not named; kicker and D/ST rules do not apply. The League rules page names every rule."""
+    items = json.loads(scoring_items) if isinstance(scoring_items, str) else scoring_items
+    if not items:
+        return []
+    points: dict[int, float] = {}
+    out_slot, out_pos, other = [], [], []      # other: one entry per rule (2999 carries several)
+    for item in items:
+        sid = item.get("statId")
+        if sid not in PPR_BASIS:
+            offensive = isinstance(sid, int) and (0 <= sid <= 72 or sid == SKILL_UNSUPPORTED_ID) and sid not in _UNCOMPARED
+            if offensive and (float(item.get("points") or 0.0) or item.get("positionPoints")
+                              or any(str(k) != DST_SLOT and v for k, v in (item.get("pointsOverrides") or {}).items())):
+                other.append(sid)
+            continue
+        if item.get("isReverseItem"):
+            other.append(sid)
+            continue
+        name = PPR_BASIS[sid][0]
+        points[sid] = points.get(sid, 0.0) + float(item.get("points") or 0.0)
+        out_pos += [f"+{float(v):g} per {name} for {pos}" for pos, v in sorted((item.get("positionPoints") or {}).items()) if v]
+        base = float(item.get("points") or 0.0)
+        if any(str(k) != DST_SLOT and v is not None and float(v) != base for k, v in (item.get("pointsOverrides") or {}).items()):
+            out_slot.append(f"{name} scored differently by lineup slot (such as a TE premium)")
+    out = [f"{pts:g} per {PPR_BASIS[sid][0]} (basis {PPR_BASIS[sid][1]:g})"
+           for sid, pts in points.items() if abs(pts - PPR_BASIS[sid][1]) > 1e-9] + out_pos + out_slot
+    if other:
+        out.append(f"plus {len(other)} other offensive {'rule' if len(other) == 1 else 'rules'} (see League rules)")
+    return out
 
 
 def comparable_free_agents(candidate: dict, values: dict, pool: list[dict], ctx: dict, reports: dict | None = None) -> list[dict]:
@@ -167,8 +219,11 @@ def load_waiver_context(con, league: dict, now: datetime | None = None, source: 
     offenses = {r["team"]: r for r in fetch_dicts(con, "SELECT * FROM team_context WHERE season=? AND through_week < ?", [league["season"], start])}
     defenses = {r["defteam"]: r for r in fetch_dicts(con, "SELECT * FROM defense_context WHERE season=? AND through_week < ?", [league["season"], start])}
     rules = waiver_rules(league)
-    if league.get("reception_points") != 1:
-        warnings.append("Historical player value and xFP use PPR-based usage; they are not recalibrated to this league. ESPN projections use league scoring.")
+    differences = ppr_basis_differences(league.get("scoring_items"))
+    if league.get("reception_points") != 1 or differences:
+        warnings.append("Historical player value and xFP use PPR-based usage; they are not recalibrated to this league"
+                        + (f" (this league scores {'; '.join(differences)})" if differences else "")
+                        + ". ESPN projections use league scoring.")
     constraints = roster_constraints(league)
     return {"weeks": weeks, "actionable": actionable, "projections": dict(projections), "projection_synced": synced,
             "projection_stamps": dict(projection_stamps), "stale_projection_count": stale_count,

@@ -1,10 +1,10 @@
 import { SavePlayer } from "./Shortlist";
 import Link from "next/link";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
-import { Badge, EmptyState, Score, SortableTh } from "@/components/ui";
+import { Badge, EmptyState, SortableTh } from "@/components/ui";
 import type { SearchParams, SortState } from "@/lib/sort";
 import { Evidence } from "./Evidence";
-import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
+import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, WaiverScore, actionLabel } from "./WaiverParts";
 import { hasInjuryDesignation } from "../players/helpers";
 import { label } from "@/lib/format";
 import styles from "./waivers.module.css";
@@ -70,7 +70,7 @@ export function WaiverTable({ rows, sort, sp, empty, ownership = true, proj = "E
                   </div>
                   {summary && <span className={styles.sub}>{summary}</span>}
                 </td>
-                <td className="num"><Score value={w.waiver_score} label="Waiver score" /></td>
+                <td className="num"><WaiverScore row={w} label="Waiver score" /></td>
                 <td><RoleTrend trend={w.role_trend} /></td>
                 {ownership && <td className="num"><OwnedDelta row={w} /></td>}
                 <td><Competition row={w} /></td>

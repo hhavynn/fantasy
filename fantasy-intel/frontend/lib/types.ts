@@ -53,6 +53,9 @@ export type Need = {
   effective_available: number | null; starter_value: number | null; need_score: number;
   details: {
     depth_target: number; shortage: number; quality_gap: number; league_avg_starter_value: number | null;
+    /** "partial": a competing player has no historical value, so quality_gap is not measured (quality_gap_known false)
+     * and need_score uses roster shortage only. */
+    quality_gap_known?: boolean; value_status?: "complete" | "partial"; value_note?: string | null;
     fixed_slots?: number; flex_slots_filled?: number;
     availability?: { espn_player_id: number; name: string | null; status: string; weight: number }[];
   };
