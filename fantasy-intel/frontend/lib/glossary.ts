@@ -33,6 +33,8 @@ export const GLOSSARY = {
   "Streaming baseline": "For a kicker or D/ST in a week: the projection of the third-best free agent at the position. It stands for what a weekly add/drop can usually still get, since other managers stream too.",
   "Strength of schedule": "What the defenses a team or player faces in the shown weeks have allowed so far: pass defense for QB, WR and TE (the same ranking for all three) and run defense for RB. Observed results, never a projection of points.",
   "Neutral baseline": "For one week, the pooled value of every defense that can be ranked before that week. A cell's difference is its opponent's value minus this baseline.",
+  "Rank gap": "The provider's rank minus Fantasy Intel's (Ours) rank for the same player, within his position or across all positions. Positive means Ours ranks him higher. When one side has no rank, the cell names the missing side in words instead; a gap is never shown as zero for a missing rank.",
+  "Floor and ceiling": "The 10th and 90th percentile of a player's points if he plays, from Fantasy Intel's point-distribution model around next week's Ours projection: 80% of outcomes are expected between them. Shown for RB, WR and TE only, and never for the rest of the season.",
   "—": "A dash means the number is missing or not computed, never zero. A measured zero is shown as 0.",
 } as const;
 

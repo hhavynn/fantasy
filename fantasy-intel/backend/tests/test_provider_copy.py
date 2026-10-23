@@ -59,7 +59,7 @@ def test_every_route_answers_in_sleepers_words(client, sleeper_db):
         if not provider_copy.applies(c.path.split("?")[0]):
             continue
         espn += [(c.path, m) for m in re.findall(r'"([^"]*ESPN[^"]*)"', r.text)]
-        sleeper_projection += [(c.path, m) for m in re.findall(r"Sleeper(?:'s)? (?:weekly )?projections?", r.text)]
+        sleeper_projection += [(c.path, m) for m in re.findall(r"Sleeper(?:'s)? (?:weekly )?(?:projections?|ranks)|ranked on Sleeper", r.text)]
     assert errors == []
     assert espn == []
     assert sleeper_projection == []
@@ -85,3 +85,14 @@ def test_projection_wording_becomes_ours_and_provider_facts_become_sleeper():
     # names are data: a team called "ESPN Refugees" keeps its name
     assert provider_copy.rewrite({"name": "ESPN Refugees", "team_name": "ESPN Refugees", "note": "ESPN winner"}) == \
         {"name": "ESPN Refugees", "team_name": "ESPN Refugees", "note": "Sleeper result"}
+
+
+def test_rankings_past_the_regular_season_never_say_the_provider_ranks():
+    t = provider_copy.text
+    for note in ("The end of the regular season can't be derived from the league settings, so ESPN ranks the full window "
+                 "(week 15 to 17) and Ours is unavailable.",
+                 "The regular season is over, so ESPN ranks the remaining weeks (15 to 17) and Ours is unavailable."):
+        out = t(note)
+        assert "ESPN" not in out and "Sleeper ranks" not in out and "nothing is ranked for weeks 15 to 17" in out
+    out = t("Ours unavailable: no run; ranked on ESPN.")
+    assert out == "Ours unavailable: no run; nothing is ranked (this league's provider publishes no projections)."
