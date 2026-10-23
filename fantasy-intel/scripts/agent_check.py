@@ -166,6 +166,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     # Tooling scripts self-tests
     ("scripts/agent_check.py", ["tests/test_agent_check.py"]),
     ("scripts/static_checks.py", ["tests/test_static_checks.py"]),
+    ("scripts/ci_changes.py", ["tests/test_ci_changes.py"]),
 ]
 
 

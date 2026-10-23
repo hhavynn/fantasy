@@ -15,10 +15,40 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Docs-only pull requests (every changed path on the short Markdown allow-list in fantasy-intel/scripts/ci_changes.py)
+  # skip the backend, social, frontend and E2E jobs; they show as skipped, and the two aggregate checks below say so in
+  # their summary. Everything else, and every push to main or manual run, gets the full suite.
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Checkout repository (history for the merge base)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Classify the diff against its merge base
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail   # a classifier crash fails this job, and with it both aggregate checks
+          python3 fantasy-intel/scripts/ci_changes.py --event "$EVENT" --base "$BASE_SHA" --head "$HEAD_SHA" \
+            | tee -a "$GITHUB_OUTPUT" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
   backend-shard:
     # The suite runs as parallel shards (balanced by tests/shard_weights.json; whole files except the heaviest), each with its
     # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart.
     name: Backend shard ${{ matrix.shard }}/${{ strategy.job-total }}
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -63,17 +93,30 @@ jobs:
         run: uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   backend:
-    # One status for the whole suite: green only when every shard passed.
+    # One status for the whole suite: green only when every shard passed, or for a docs-only change (shards not run).
+    # Skipped, not red, when the run itself was cancelled (a newer push supersedes it).
     name: Backend (Python 3.12)
     runs-on: ubuntu-latest
-    needs: backend-shard
-    if: always()
+    needs: [changes, backend-shard]
+    if: ${{ !cancelled() }}
     steps:
       - name: Every shard passed
-        run: test "${{ needs.backend-shard.result }}" = success
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          SHARDS: ${{ needs.backend-shard.result }}
+        run: |
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ] && [ "$SHARDS" = skipped ]; then
+            echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "changes: $CHANGES, backend shards: $SHARDS"
+          test "$CHANGES" = success && test "$SHARDS" = success
 
   social:
     name: Social trend engine (Python 3.12)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -107,6 +150,8 @@ jobs:
 
   frontend:
     name: Frontend (Node.js 22)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -138,20 +183,34 @@ jobs:
       - name: Run production build
         run: npm run build
 
-  e2e:
-    name: E2E smoke (Playwright)
+  e2e-suite:
+    # The browser suites run as parallel jobs, each on its own runner with its own servers, ports, fixtures and (for the
+    # multi-league matrix only) Postgres service. The route smoke is split in two with Playwright's --shard (whole
+    # tests, every project); Playwright's worker count is unchanged. Visual regression rides with the short Sleeper
+    # smoke while it has no committed baselines (it skips).
+    name: E2E ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: route-1, name: "route smoke + UX gates (1/2)", suite: route, shard: "1/2" }
+          - { id: route-2, name: "route smoke + UX gates (2/2)", suite: route, shard: "2/2" }
+          - { id: multileague, name: "multi-league parity + UX gates", suite: multileague, postgres: true }
+          - { id: sleeper-visual, name: "Sleeper smoke + visual", suite: sleeper-visual }
     defaults:
       run:
         working-directory: fantasy-intel/frontend
     env:
       TZ: UTC
-      # The multi-league parity matrix's control plane (scripts/e2e_multileague.py via tests/pg_harness.py)
-      FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
-        image: postgres:17
+        # Only the multi-league matrix's control plane needs it (scripts/e2e_multileague.py via tests/pg_harness.py);
+        # an empty image starts no service.
+        image: ${{ matrix.postgres && 'postgres:17' || '' }}
         env:
           POSTGRES_PASSWORD: postgres
         options: >-
@@ -192,33 +251,41 @@ jobs:
         run: npx playwright install --with-deps --only-shell chromium
 
       - name: Build frontend
+        id: build
         run: npm run build
 
       # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`. Includes the UX
       # acceptance gates (e2e/ux-gates.spec.ts: landmarks, keyboard, focus, axe-core, overflow at 320/390/768/1440).
-      - name: Run route smoke test and UX gates
-        run: npm run e2e
-
-      # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
-      # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
-      - name: Run visual regression
-        run: npm run e2e:visual
-
-      # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
-      - name: Run Sleeper league smoke test
-        run: npm run e2e:sleeper
+      - name: Run route smoke test and UX gates (shard ${{ matrix.shard }})
+        if: matrix.suite == 'route'
+        run: npm run e2e -- --shard=${{ matrix.shard }}
 
       # Every page on the multi-league site for an ESPN public, an ESPN private (signed in) and a Sleeper league:
       # throwaway Postgres, a fake Supabase JWKS and published league files (scripts/e2e_multileague.py). Includes the
       # UX gates for the provider, stale-sync and blank-sync fixtures (e2e/ux-multileague.spec.ts).
       - name: Run multi-league parity matrix and UX gates
+        if: matrix.suite == 'multileague'
+        env:
+          FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
         run: npm run e2e:multileague
+
+      # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
+      - name: Run Sleeper league smoke test
+        if: matrix.suite == 'sleeper-visual'
+        run: npm run e2e:sleeper
+
+      # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
+      # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
+      # Runs even when the Sleeper smoke failed, so one red job reports both.
+      - name: Run visual regression
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
+        run: npm run e2e:visual
 
       - name: Upload Playwright traces and report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces
+          name: playwright-traces-${{ matrix.id }}
           path: |
             fantasy-intel/frontend/test-results/
             fantasy-intel/frontend/playwright-report/
@@ -229,3 +296,24 @@ jobs:
             fantasy-intel/frontend/test-results-multileague/
             fantasy-intel/frontend/playwright-report-multileague/
           retention-days: 14
+
+  e2e:
+    # The check name the single E2E job used to have: green only when every suite job passed, or for a docs-only change
+    # (suites not run). Skipped, not red, when the run itself was cancelled.
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    needs: [changes, e2e-suite]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Every E2E suite passed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          SUITES: ${{ needs.e2e-suite.result }}
+        run: |
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ] && [ "$SUITES" = skipped ]; then
+            echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "changes: $CHANGES, E2E suites: $SUITES"
+          test "$CHANGES" = success && test "$SUITES" = success
