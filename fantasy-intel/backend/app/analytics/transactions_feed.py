@@ -442,9 +442,9 @@ def _load(con, season: int | None = None) -> dict:
     if season is not None and season != lg["season"]:
         if season not in seasons:
             raise UnknownSeason(f"No {season} season of this league is synced.")
+        # (league_id, season) is the leagues table's key (espn/sync upserts on it): one row, no "latest" pick
         lg = fetch_dicts(con, "SELECT league_id, season, name, current_week, is_faab FROM leagues "
-                              "WHERE league_id = ? AND season = ? ORDER BY synced_at DESC LIMIT 1",
-                         [lg["league_id"], season])[0]
+                              "WHERE league_id = ? AND season = ?", [lg["league_id"], season])[0]
     return {"league": lg, "seasons": seasons, **load_season_rows(con, lg["league_id"], lg["season"])}
 
 

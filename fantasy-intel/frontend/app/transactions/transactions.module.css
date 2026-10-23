@@ -16,7 +16,9 @@
 .sub { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
 .teams { min-width: 120px; }
 .teamLine { display: block; }
-.team { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* A team link is a tap target: at least 24px tall and wide (WCAG 2.5.8; the ux-gates axe check). */
+.team { display: inline-block; min-width: 24px; min-height: 24px; line-height: 24px; max-width: 22ch; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .players { min-width: 260px; }
 .side + .side { margin-top: 8px; }
 .sideHead { margin: 0 0 4px; color: var(--ink-muted); font-size: 12px; }
