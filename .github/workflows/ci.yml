@@ -45,7 +45,8 @@ jobs:
 
   backend-shard:
     # The suite runs as parallel shards (balanced by tests/shard_weights.json; whole files except the heaviest), each with its
-    # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart.
+    # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart; the current
+    # weights are per-file durations measured on these runners (all eight shards of one CI run), not on a laptop.
     name: Backend shard ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
@@ -90,24 +91,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run backend pytest shard
-        run: |
-          set -o pipefail
-          uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }} --durations=0 --durations-min=0 \
-            | tee "$RUNNER_TEMP/durations.txt"
-
-      - name: Report per-file durations (TEMPORARY, to rebuild shard weights)
-        if: ${{ !cancelled() }}
-        run: |
-          python3 - "$RUNNER_TEMP/durations.txt" <<'EOF'
-          import json, re, sys
-          from collections import defaultdict
-          tot = defaultdict(float)
-          for line in open(sys.argv[1]):
-              m = re.match(r"^\s*([0-9.]+)s (?:setup|call|teardown)\s+(tests/[^:]+\.py)::", line)
-              if m:
-                  tot[m[2]] += float(m[1])
-          print("::notice title=durations ${{ matrix.shard }}::" + json.dumps({k: round(v, 2) for k, v in sorted(tot.items())}, separators=(",", ":")))
-          EOF
+        run: uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   backend:
     # One status for the whole suite: green only when every shard passed, or for a docs-only change (shards not run).
@@ -273,7 +257,7 @@ jobs:
 
       # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`. Includes the UX
       # acceptance gates (e2e/ux-gates.spec.ts: landmarks, keyboard, focus, axe-core, overflow at 320/390/768/1440).
-      - name: Run route smoke test and UX gates (shard ${{ matrix.shard }})
+      - name: Run route smoke test and UX gates (Playwright shard)
         if: matrix.suite == 'route'
         run: npm run e2e -- --shard=${{ matrix.shard }}
 
