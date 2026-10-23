@@ -432,7 +432,8 @@ def after_move(event_week: int | None, team_id: int | None, player_id: int | Non
 # ------------------------------------------------------------------ loading --
 
 def _load(con, season: int | None = None) -> dict:
-    """The latest synced league season, or `season` when given (a league file keeps every season it synced)."""
+    """The latest synced league season, or `season` when given: the owner's single-league file keeps every season it
+    synced (upserts by season); a multi-league file holds one season, so only that one is listed."""
     lg = latest_league(con, ["league_id", "season", "name", "current_week", "is_faab"])
     if not lg:
         raise NotSynced("League not synced yet. Run the league sync first.")
@@ -441,7 +442,9 @@ def _load(con, season: int | None = None) -> dict:
     if season is not None and season != lg["season"]:
         if season not in seasons:
             raise UnknownSeason(f"No {season} season of this league is synced.")
-        lg = latest_league(con, ["league_id", "season", "name", "current_week", "is_faab"], season=season)
+        lg = fetch_dicts(con, "SELECT league_id, season, name, current_week, is_faab FROM leagues "
+                              "WHERE league_id = ? AND season = ? ORDER BY synced_at DESC LIMIT 1",
+                         [lg["league_id"], season])[0]
     return {"league": lg, "seasons": seasons, **load_season_rows(con, lg["league_id"], lg["season"])}
 
 
