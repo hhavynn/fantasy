@@ -21,7 +21,7 @@ export type TimelineEvent = {
   retrieved_at: string | null;
   /** A date-only report (third-party summaries). */
   date: string | null;
-  source: { type: SourceType; name: string; url: string | null; urls: string[] };
+  source: { type: SourceType; label: string; url: string | null; urls: string[] };
   title: string;
   detail: string;
   status: string | null;
@@ -56,7 +56,7 @@ export type TimelinePlayer = {
 };
 
 export type TimelineSource = {
-  key: string; type: SourceType; name: string; url: string | null; available: boolean | null;
+  key: string; type: SourceType; label: string; url: string | null; available: boolean | null;
   retrieved_at: string | null; publication_time: string; text: string;
 };
 

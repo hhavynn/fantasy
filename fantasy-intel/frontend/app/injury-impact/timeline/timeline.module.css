@@ -61,3 +61,6 @@
   .playerHead { grid-template-columns: minmax(0, 1fr); }
   .signals li .sub { padding-left: 0; }
 }
+
+/* Links inside running text are underlined, so they never depend on colour alone (WCAG link-in-text-block). */
+.sourceLine a, .eventMeta a, .sources a, .links a { text-decoration: underline; text-underline-offset: 2px; }

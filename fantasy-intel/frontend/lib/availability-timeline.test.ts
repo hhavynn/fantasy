@@ -8,7 +8,7 @@ import {
 const ev = (over: Partial<TimelineEvent> = {}): TimelineEvent => ({
   id: "nfl-7-g1-0", kind: "official_report", week: 7, at: "2026-10-23T20:00:00Z", at_basis: "provider_published",
   published_at: "2026-10-23T20:00:00Z", retrieved_at: null, date: null,
-  source: { type: "official", name: "NFL injury report (via nflverse)", url: "https://example.test/injuries", urls: [] },
+  source: { type: "official", label: "NFL injury report (via nflverse)", url: "https://example.test/injuries", urls: [] },
   title: "Week 7 NFL injury report", detail: "Game status: Out.", status: "Out", practice: { code: "DNP", raw: "Did Not Participate" },
   injury: "Ankle", team: "KC", relation: "current", replaced_by: null, after_kickoff: false, ...over,
 });

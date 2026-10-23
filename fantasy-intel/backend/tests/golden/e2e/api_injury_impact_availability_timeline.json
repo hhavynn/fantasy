@@ -61,7 +61,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -86,7 +86,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -161,7 +161,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -186,7 +186,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -261,7 +261,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -286,7 +286,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -361,7 +361,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -386,7 +386,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -461,7 +461,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -486,7 +486,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -561,7 +561,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -586,7 +586,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -661,7 +661,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -686,7 +686,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -761,7 +761,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -786,7 +786,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -861,7 +861,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -886,7 +886,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -961,7 +961,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -986,7 +986,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -1061,7 +1061,7 @@
       "replaced_by": null,
       "retrieved_at": "<masked>",
       "source": {
-       "name": "ESPN player status",
+       "label": "ESPN player status",
        "type": "provider",
        "url": null,
        "urls": []
@@ -1086,7 +1086,7 @@
       "replaced_by": null,
       "retrieved_at": null,
       "source": {
-       "name": "NFL schedule (via nflverse)",
+       "label": "NFL schedule (via nflverse)",
        "type": "schedule",
        "url": "https://github.com/nflverse/nflverse-data/releases/tag/schedules",
        "urls": []
@@ -1153,7 +1153,7 @@
    {
     "available": false,
     "key": "nfl_report",
-    "name": "NFL injury report (via nflverse)",
+    "label": "NFL injury report (via nflverse)",
     "publication_time": "missing",
     "retrieved_at": null,
     "text": "Game status, final practice participation and injury per player-week, with the provider's date_modified when published. Practice is one value per report row, not each practice day.",
@@ -1163,7 +1163,7 @@
    {
     "available": null,
     "key": "nfl_roster",
-    "name": "NFL weekly roster (via nflverse)",
+    "label": "NFL weekly roster (via nflverse)",
     "publication_time": "missing",
     "retrieved_at": null,
     "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time.",
@@ -1173,7 +1173,7 @@
    {
     "available": true,
     "key": "provider",
-    "name": "ESPN player status",
+    "label": "ESPN player status",
     "publication_time": "missing",
     "retrieved_at": "<masked>",
     "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced.",
@@ -1183,7 +1183,7 @@
    {
     "available": true,
     "key": "news",
-    "name": "Owner-curated news summaries",
+    "label": "Owner-curated news summaries",
     "publication_time": "date_only",
     "retrieved_at": null,
     "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation.",
@@ -1193,7 +1193,7 @@
    {
     "available": true,
     "key": "schedule",
-    "name": "NFL schedule (via nflverse)",
+    "label": "NFL schedule (via nflverse)",
     "publication_time": "scheduled",
     "retrieved_at": null,
     "text": "This week's kickoffs, to mark reports modified after kickoff.",

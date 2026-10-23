@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { applyTheme, collectErrors, expectAccessible, expectNoBrokenValues, expectNoSidewaysScroll, expectStructure, stubPhotos, useTheme } from "./ux";
 
 // Availability timeline on /injury-impact/timeline (issue #176) against the synthetic league (scripts/build_e2e_db.py).
 // The fixture has no NFL injury report at all, so the page must say so in words: every player without a provider
@@ -21,7 +22,7 @@ test("without an NFL report every player is unknown, never healthy, and every it
   await page.goto("/injury-impact/timeline");
   await loaded(page);
   const main = page.locator("main");
-  await expect(main.getByText("The NFL injury report has never been synced", { exact: false })).toBeVisible();
+  await expect(main.getByText(/never been synced: official designations and practice participation are unknown/)).toBeVisible();
   await expect(main.getByText(/Daily DNP \/ LP \/ FP progression is not in any integrated feed/).first()).toBeVisible();
 
   const cards = digest(page).locator("article[data-player]");
@@ -32,8 +33,9 @@ test("without an NFL report every player is unknown, never healthy, and every it
   // Practice is unknown for every player: nothing is read as full practice.
   const practice = await digest(page).locator("article[data-player] dd").allInnerTexts();
   expect(practice.join(" ")).not.toMatch(/\(FP\)|\(LP\)|\(DNP\)/);
-  const text = (await digest(page).innerText()).toLowerCase();
-  for (const word of ["healthy.", "cleared to play", "probability", "fantasypros"]) expect(text, word).not.toContain(word);
+  // "Healthy" only ever appears negated ("never healthy", "not confirmed healthy").
+  const text = (await digest(page).innerText()).toLowerCase().replace(/(never|not confirmed) healthy/g, "");
+  for (const word of ["healthy", "cleared to play", "probability", "fantasypros"]) expect(text, word).not.toContain(word);
 
   // Each card links to the profile, injury impact and the lineup advice instead of advising.
   const first = cards.first();
@@ -73,4 +75,22 @@ test("an unknown team is refused, never another team's roster", async ({ page })
   await page.goto("/injury-impact/timeline?team=999");
   await expect(page.locator("main h1:visible")).toHaveText("Availability", { timeout: 20_000 });
   await expect(digest(page)).toHaveCount(0);
+});
+
+test("meets the quality bar in both themes", async ({ page }) => {
+  await stubPhotos(page);
+  const errors = collectErrors(page);
+  await useTheme(page, "dark");
+  await page.goto("/injury-impact/timeline");
+  await loaded(page);
+  // Open every timeline so its events are checked too.
+  for (const s of await digest(page).locator("details summary").all()) await s.click();
+  await expectStructure(page);
+  await expectNoBrokenValues(page);
+  for (const theme of ["dark", "light"] as const) {
+    await applyTheme(page, theme);
+    await expectNoSidewaysScroll(page);
+    await expectAccessible(page, theme);
+  }
+  expect(errors, "console errors").toEqual([]);
 });

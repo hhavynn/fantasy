@@ -37,10 +37,10 @@ function SourceTag({ type }: { type: TimelineEvent["source"]["type"] }) {
 
 function SourceLinks({ e }: { e: TimelineEvent }) {
   const links = [e.source.url, ...e.source.urls].filter((u): u is string => !!u && /^https?:\/\//.test(u));
-  if (links.length === 0) return <span className={styles.cite}>{e.source.name}</span>;
+  if (links.length === 0) return <span className={styles.cite}>{e.source.label}</span>;
   return (
     <span className={styles.cite}>
-      {e.source.name}
+      {e.source.label}
       {links.map((u, i) => (
         <span key={u}>{" · "}<a href={u} target="_blank" rel="noopener noreferrer nofollow">{links.length > 1 ? `report ${i + 1}` : "source"}</a></span>
       ))}
@@ -224,7 +224,7 @@ export default async function AvailabilityPage({ searchParams }: PageProps<"/inj
         <ul className={styles.sources}>
           {data.sources.map((s) => (
             <li key={s.key}>
-              <SourceTag type={s.type} /> <strong>{s.name}</strong>
+              <SourceTag type={s.type} /> <strong>{s.label}</strong>
               {s.url && <>{" · "}<a href={s.url} target="_blank" rel="noopener noreferrer nofollow">dataset</a></>}
               {s.retrieved_at && <> · retrieved <time dateTime={s.retrieved_at}>{formatEt(s.retrieved_at)}</time></>}
               <span className={styles.sub}>{s.text}</span>

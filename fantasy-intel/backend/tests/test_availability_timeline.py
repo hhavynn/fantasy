@@ -273,7 +273,7 @@ def test_return_to_play_comes_from_the_official_weekly_roster(league, news_file)
 def test_third_party_news_supplements_never_replaces_and_cites_its_reports(league, news_file):
     news = player(get(league, news_file), 107)
     ev = next(e for e in news["events"] if e["kind"] == "third_party")
-    assert ev["source"] == {"type": "third_party", "name": "Owner-curated news summary", "url": None,
+    assert ev["source"] == {"type": "third_party", "label": "Owner-curated news summary", "url": None,
                             "urls": ["https://example.test/news-wr"]}            # the javascript: link is dropped
     assert ev["relation"] == "supplements" and ev["date"] == "2026-10-19" and ev["at"] is None
     assert news["headline"]["level"] == "out" and news["headline"]["sources"] == ["ESPN OUT"]
@@ -292,7 +292,7 @@ def test_every_event_cites_a_source(league, news_file):
     for p in body["players"]:
         for e in p["events"]:
             assert e["source"]["type"] in ("official", "provider", "third_party", "schedule")
-            assert e["source"]["name"]
+            assert e["source"]["label"]
             assert e["source"]["type"] == "provider" or e["source"]["url"] or e["source"]["urls"]
     assert [s["key"] for s in body["sources"]] == ["nfl_report", "nfl_roster", "provider", "news", "schedule"]
     assert body["sources"][0]["publication_time"] == "partial"     # two rows carry no date_modified

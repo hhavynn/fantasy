@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from types import MappingProxyType
 
 from ..db.connection import fetch_dicts, table_columns, table_exists, utcnow
 from . import availability_news as news
@@ -46,36 +47,38 @@ NFLVERSE_INJURIES_URL = "https://github.com/nflverse/nflverse-data/releases/tag/
 NFLVERSE_ROSTERS_URL = "https://github.com/nflverse/nflverse-data/releases/tag/weekly_rosters"
 NFLVERSE_SCHEDULES_URL = "https://github.com/nflverse/nflverse-data/releases/tag/schedules"
 
-DESIGNATED = {QUESTIONABLE: "questionable", DOUBTFUL: "doubtful", OUT: "out", IR: "ir", SUSPENDED: "suspended",
-              TAXI: "taxi"}
-LEVEL_RANK = {"suspended": 0, "ir": 1, "out": 2, "doubtful": 3, "questionable": 4, "taxi": 5, "listed": 6,
-              "unknown": 7}
-LEVEL_LABEL = {"suspended": "Suspended", "ir": "Injured reserve", "out": "Out", "doubtful": "Doubtful",
-               "questionable": "Questionable", "taxi": "Taxi squad", "listed": "Listed, no game status",
-               "unknown": "Unknown"}
-PROVIDER_LABEL = {"ACTIVE": "No designation", "NORMAL": "No designation", "QUESTIONABLE": "Questionable",
-                  "DAY_TO_DAY": "Day to day", "DOUBTFUL": "Doubtful", "OUT": "Out",
-                  "INJURY_RESERVE": "Injured reserve", "SUSPENSION": "Suspended"}
-PRACTICE_LABEL = {"DNP": "Did not participate", "LP": "Limited", "FP": "Full"}
-ROSTER_LABEL = {"ACT": "Active", "RES": "Reserve list", "INA": "Inactive", "PUP": "Physically unable to perform",
-                "NFI": "Non-football injury list", "SUS": "Suspended", "EXE": "Commissioner exempt",
-                "CUT": "Released", "RET": "Retired", "TRD": "Traded", "TRT": "Traded", "DEV": "Practice squad",
-                "UFA": "Free agent"}
+# Constant tables are read-only (MappingProxyType): no module-level mutable state.
+DESIGNATED = MappingProxyType({QUESTIONABLE: "questionable", DOUBTFUL: "doubtful", OUT: "out", IR: "ir",
+                               SUSPENDED: "suspended", TAXI: "taxi"})
+LEVEL_RANK = MappingProxyType({"suspended": 0, "ir": 1, "out": 2, "doubtful": 3, "questionable": 4, "taxi": 5,
+                               "listed": 6, "unknown": 7})
+LEVEL_LABEL = MappingProxyType({"suspended": "Suspended", "ir": "Injured reserve", "out": "Out", "doubtful": "Doubtful",
+                                "questionable": "Questionable", "taxi": "Taxi squad",
+                                "listed": "Listed, no game status", "unknown": "Unknown"})
+PROVIDER_LABEL = MappingProxyType({"ACTIVE": "No designation", "NORMAL": "No designation",
+                                   "QUESTIONABLE": "Questionable", "DAY_TO_DAY": "Day to day", "DOUBTFUL": "Doubtful",
+                                   "OUT": "Out", "INJURY_RESERVE": "Injured reserve", "SUSPENSION": "Suspended"})
+PRACTICE_LABEL = MappingProxyType({"DNP": "Did not participate", "LP": "Limited", "FP": "Full"})
+ROSTER_LABEL = MappingProxyType({"ACT": "Active", "RES": "Reserve list", "INA": "Inactive",
+                                 "PUP": "Physically unable to perform", "NFI": "Non-football injury list",
+                                 "SUS": "Suspended", "EXE": "Commissioner exempt", "CUT": "Released", "RET": "Retired",
+                                 "TRD": "Traded", "TRT": "Traded", "DEV": "Practice squad", "UFA": "Free agent"})
 RESERVE = ("RES", "PUP", "NFI", "SUS", "EXE")
-KIND_RANK = {"roster_status": 0, "third_party": 1, "official_report": 2, "provider_status": 3, "kickoff": 4}
+KIND_RANK = MappingProxyType({"roster_status": 0, "third_party": 1, "official_report": 2, "provider_status": 3,
+                              "kickoff": 4})
 
-UNKNOWN_TEXT = {
+UNKNOWN_TEXT = MappingProxyType({
     "not_listed": "Not on his team's week {w} NFL injury report. Not being listed is not a clean bill of health: "
                   "availability unknown.",
     "no_team_report": "His team has no week {w} NFL injury report synced yet: availability unknown.",
     "not_published": "No week {w} NFL injury report is synced yet: availability unknown.",
     "no_feed": "The NFL injury report has never been synced: availability unknown.",
     "unmapped": "He is not matched to an NFL player id, so no NFL report can be read for him: availability unknown.",
-}
+})
 PRACTICE_GAP = ("Practice participation comes from the NFL injury report via nflverse: one value per report row (the "
                 "final practice listed that week), not each practice day. Daily DNP / LP / FP progression is not in "
                 "any integrated feed, so it is never shown or inferred; without a listing it is unknown.")
-METHOD = {
+METHOD = MappingProxyType({
     "window": f"The current week and the {HISTORY_WEEKS} before it.",
     "order": ("Events are ordered by week, then by their own time: the provider's publication time (NFL report "
               "date_modified) when it has one, else the time we retrieved it; weekly roster statuses carry a week "
@@ -89,7 +92,7 @@ METHOD = {
                     "provider status."),
     "practice": PRACTICE_GAP,
     "watchlist": "No player watchlist exists yet, so the digest covers the selected team's roster only.",
-}
+})
 
 
 class AvailabilityTimelineUnavailable(Exception):
@@ -283,7 +286,7 @@ def _official_events(rows: list[dict], gsis: str, *, kickoffs: dict, retrieved: 
                 "at_basis": "provider_published" if mod else ("retrieved" if retrieved.get((r["team"], week))
                                                                else "week_only"),
                 "published_at": _iso(mod), "retrieved_at": _iso(retrieved.get((r["team"], week))), "date": None,
-                "source": {"type": "official", "name": "NFL injury report (via nflverse)",
+                "source": {"type": "official", "label": "NFL injury report (via nflverse)",
                            "url": NFLVERSE_INJURIES_URL, "urls": []},
                 "title": f"Week {week} NFL injury report", "detail": "; ".join(parts) + ".",
                 "status": status, "practice": {"code": code, "raw": r["practice_status"]}, "injury": injury,
@@ -316,7 +319,7 @@ def _roster_events(statuses: dict[int, str], gsis: str, window: tuple[int, int])
         out.append({
             "id": f"roster-{week}-{gsis}", "kind": "roster_status", "week": week, "at": None, "at_basis": "week_only",
             "published_at": None, "retrieved_at": None, "date": None,
-            "source": {"type": "official", "name": "NFL weekly roster (via nflverse)", "url": NFLVERSE_ROSTERS_URL,
+            "source": {"type": "official", "label": "NFL weekly roster (via nflverse)", "url": NFLVERSE_ROSTERS_URL,
                        "urls": []},
             "title": "Back on the active roster" if back else f"Week {week} roster status: {label}",
             "detail": detail + ". The weekly roster carries a week, not a time.",
@@ -343,7 +346,7 @@ def _news_event(e: news.Entry, gsis: str) -> dict:
         "id": f"news-{e.season}-{gsis}", "kind": "third_party", "week": e.from_week,
         "at": None, "at_basis": "reported_date" if day else "week_only", "published_at": None, "retrieved_at": None,
         "date": day,
-        "source": {"type": "third_party", "name": "Owner-curated news summary", "url": None, "urls": list(e.sources)},
+        "source": {"type": "third_party", "label": "Owner-curated news summary", "url": None, "urls": list(e.sources)},
         "title": what, "detail": e.note, "status": e.kind, "practice": None, "injury": None, "team": e.team,
         "relation": "supplements", "replaced_by": None, "after_kickoff": None,
     }
@@ -408,7 +411,7 @@ def build_availability_timeline(con, *, team_id: int | None = None, now: datetim
                 "id": f"provider-{p['espn_player_id']}", "kind": "provider_status", "week": week, "at": _iso(prov_at),
                 "at_basis": "retrieved" if prov_at else "week_only", "published_at": None,
                 "retrieved_at": _iso(prov_at), "date": None,
-                "source": {"type": "provider", "name": "ESPN player status", "url": None, "urls": []},
+                "source": {"type": "provider", "label": "ESPN player status", "url": None, "urls": []},
                 "title": f"ESPN status: {PROVIDER_LABEL.get(prov_raw.upper(), prov_raw)}",
                 "detail": "ESPN publishes no time for a status; the time shown is when it was synced.",
                 "status": prov_raw, "practice": None, "injury": None, "team": team, "relation": "current",
@@ -420,7 +423,7 @@ def build_availability_timeline(con, *, team_id: int | None = None, now: datetim
             events.append({
                 "id": f"kickoff-{week}-{team}", "kind": "kickoff", "week": week, "at": _iso(ko), "at_basis": "scheduled",
                 "published_at": None, "retrieved_at": None, "date": None,
-                "source": {"type": "schedule", "name": "NFL schedule (via nflverse)", "url": NFLVERSE_SCHEDULES_URL,
+                "source": {"type": "schedule", "label": "NFL schedule (via nflverse)", "url": NFLVERSE_SCHEDULES_URL,
                            "urls": []},
                 "title": f"Kickoff vs {gm['opponent']}", "detail": "Reports modified at or after kickoff are marked late.",
                 "status": None, "practice": None, "injury": None, "team": team, "relation": "context",
@@ -452,7 +455,7 @@ def build_availability_timeline(con, *, team_id: int | None = None, now: datetim
         elif level == "listed":
             text = f"On the week {week} NFL injury report without a game status."
         else:
-            text = f"{LEVEL_LABEL[level]}: " + ", ".join(av["sources"]) + "."
+            text = f"{LEVEL_LABEL[level]}: " + ", ".join(_source_words(x) for x in av["sources"]) + "."
         disagreement = None
         if off_lvl and prov_raw and (prov_lvl or AVAILABLE) != off_lvl:
             disagreement = (f"Sources disagree: the NFL report says {cur['status']}, ESPN says "
@@ -521,11 +524,19 @@ def build_availability_timeline(con, *, team_id: int | None = None, now: datetim
                            "perspective": "query" if team_id is not None else "owner_default"},
         "sources": _sources(facts, feed_ret, max(prov_times, default=None), entries, covered),
         "practice": {"daily_available": False, "granularity": "final_report", "text": PRACTICE_GAP},
-        "method": METHOD,
+        "method": dict(METHOD),
         "counts": counts,
         "notices": _notices(facts, week, out, mine, roster, covered),
         "players": out,
     }
+
+
+def _source_words(src: str) -> str:
+    """'ESPN INJURY_RESERVE' -> 'ESPN status Injured reserve'; other availability sources read as words already."""
+    head, _, code = src.partition(" ")
+    if head == "ESPN" and code.upper() in PROVIDER_LABEL:
+        return f"ESPN status {PROVIDER_LABEL[code.upper()]}"
+    return src
 
 
 def _report_label(e: dict) -> str:
@@ -536,21 +547,21 @@ def _report_label(e: dict) -> str:
 def _sources(facts: dict, feed_ret, provider_at, entries: list, covered: bool) -> list[dict]:
     rows, timed = facts["season_rows"], facts["with_time"]
     return [
-        {"key": "nfl_report", "type": "official", "name": "NFL injury report (via nflverse)", "url": NFLVERSE_INJURIES_URL,
+        {"key": "nfl_report", "type": "official", "label": "NFL injury report (via nflverse)", "url": NFLVERSE_INJURIES_URL,
          "available": facts["available"], "retrieved_at": _iso(feed_ret),
          "publication_time": "missing" if not rows else "available" if timed == rows else "partial" if timed else "missing",
          "text": "Game status, final practice participation and injury per player-week, with the provider's "
                  "date_modified when published. Practice is one value per report row, not each practice day."},
-        {"key": "nfl_roster", "type": "official", "name": "NFL weekly roster (via nflverse)", "url": NFLVERSE_ROSTERS_URL,
+        {"key": "nfl_roster", "type": "official", "label": "NFL weekly roster (via nflverse)", "url": NFLVERSE_ROSTERS_URL,
          "available": None, "retrieved_at": None, "publication_time": "missing",
          "text": "Active, reserve, suspended and similar roster statuses per week; a week, never a time."},
-        {"key": "provider", "type": "provider", "name": "ESPN player status", "url": None,
+        {"key": "provider", "type": "provider", "label": "ESPN player status", "url": None,
          "available": provider_at is not None, "retrieved_at": _iso(provider_at), "publication_time": "missing",
          "text": "The league provider's current status. ESPN publishes no time; the time is when it was synced."},
-        {"key": "news", "type": "third_party", "name": "Owner-curated news summaries", "url": None,
+        {"key": "news", "type": "third_party", "label": "Owner-curated news summaries", "url": None,
          "available": bool(entries), "retrieved_at": None, "publication_time": "date_only",
          "text": "Reviewed summaries of public reports, each citing them. Interpretation, never a designation."},
-        {"key": "schedule", "type": "schedule", "name": "NFL schedule (via nflverse)", "url": NFLVERSE_SCHEDULES_URL,
+        {"key": "schedule", "type": "schedule", "label": "NFL schedule (via nflverse)", "url": NFLVERSE_SCHEDULES_URL,
          "available": covered, "retrieved_at": None, "publication_time": "scheduled",
          "text": "This week's kickoffs, to mark reports modified after kickoff."},
     ]
