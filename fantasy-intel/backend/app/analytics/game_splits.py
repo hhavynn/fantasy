@@ -36,6 +36,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
 from statistics import median
+from types import MappingProxyType
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from .player_scores import played
@@ -56,12 +57,12 @@ REQUIRED_TABLES = ("player_week_usage", "nfl_rosters_weekly", "nfl_schedules")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Non-active roster statuses on the subject's team: confirmed not on the field.
-ABSENT_STATUS = {"INA": ("inactive", "Game-day inactive"),
+ABSENT_STATUS = MappingProxyType({"INA": ("inactive", "Game-day inactive"),
                  "RES": ("reserve", "Reserve list (injured, PUP or NFI)"),
                  "DEV": ("practice_squad", "Practice squad"),
-                 "SUS": ("suspended", "Suspended")}
+                 "SUS": ("suspended", "Suspended")})
 
-REASONS = {
+REASONS = MappingProxyType({
     # without
     "inactive": "Game-day inactive",
     "reserve": "Reserve list (injured, PUP or NFI)",
@@ -86,30 +87,30 @@ REASONS = {
     "subject_metrics_missing": "Played; xFP or PPR not published",
     "not_teammates": "Not teammates on this team in the window",
     "no_record": "No record",
-}
+})
 
-METRICS = {
-    "WR": [("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"), ("targets_pg", "Targets/G", "num"),
+METRICS = MappingProxyType({
+    "WR": (("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"), ("targets_pg", "Targets/G", "num"),
            ("target_share", "Target share", "pct"), ("air_yards_pg", "Air yards/G", "num"),
            ("air_yards_share", "Air-yard share", "pct"), ("adot", "aDOT", "num"), ("xfp_pg", "xFP/G", "num"),
-           ("ppr_pg", "PPR/G", "num"), ("fpoe_pg", "FPOE/G", "signed")],
-    "TE": [("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"), ("targets_pg", "Targets/G", "num"),
+           ("ppr_pg", "PPR/G", "num"), ("fpoe_pg", "FPOE/G", "signed")),
+    "TE": (("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"), ("targets_pg", "Targets/G", "num"),
            ("target_share", "Target share", "pct"), ("air_yards_pg", "Air yards/G", "num"),
            ("rz_targets_pg", "Red-zone targets/G", "num"), ("xfp_pg", "xFP/G", "num"), ("ppr_pg", "PPR/G", "num"),
-           ("fpoe_pg", "FPOE/G", "signed")],
-    "RB": [("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"),
+           ("fpoe_pg", "FPOE/G", "signed")),
+    "RB": (("snap_share", "Snap share", "pct"), ("routes_pg", "Routes/G", "num"),
            ("designed_rushes_pg", "Designed runs/G", "num"), ("backfield_rush_share", "Backfield share", "pct"),
            ("targets_pg", "Targets/G", "num"), ("target_share", "Target share", "pct"),
            ("opportunities_pg", "Carries + targets/G", "num"), ("rz_carries_pg", "Red-zone carries/G", "num"),
-           ("xfp_pg", "xFP/G", "num"), ("ppr_pg", "PPR/G", "num"), ("fpoe_pg", "FPOE/G", "signed")],
-}
+           ("xfp_pg", "xFP/G", "num"), ("ppr_pg", "PPR/G", "num"), ("fpoe_pg", "FPOE/G", "signed")),
+})
 
-CONFOUNDING = [
+CONFOUNDING = (
     "This is a raw split of past games, not a causal estimate: the groups also differ in opponents, game scripts, "
     "quarterbacks, other injuries and the player's own health.",
     "It is not a forecast. A teammate's return or absence next week need not repeat these numbers.",
     "Groups are small. A single long touchdown or one blowout can move a group's mean by several points.",
-]
+)
 
 
 class SplitsError(ValueError):
@@ -399,7 +400,7 @@ def _no_data(q: SplitsQuery, missing: list[str]) -> dict:
 def _rules() -> dict:
     return {"min_group_games": MIN_GROUP_GAMES, "small_group_games": SMALL_GROUP_GAMES,
             "partial_share_ratio": PARTIAL_SHARE_RATIO, "partial_reference_min_games": PARTIAL_REFERENCE_MIN_GAMES,
-            "max_seasons": MAX_SEASONS, "weeks": [FIRST_WEEK, LAST_WEEK], "reasons": REASONS,
+            "max_seasons": MAX_SEASONS, "weeks": [FIRST_WEEK, LAST_WEEK], "reasons": dict(REASONS),
             "scoring_basis": "nflverse full PPR; xFP is nflverse ffopportunity expected PPR points"}
 
 
@@ -449,7 +450,7 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
     info = _players(con, ids)
     mapping = espn_mapping(con, ids)
     base = {"version": VERSION, "inputs": q.as_dict(), "cache_key": q.cache_key(), "rules": _rules(),
-            "confounding": CONFOUNDING, "metrics": [{"key": k, "label": lbl, "format": f} for k, lbl, f in METRICS[position]],
+            "confounding": list(CONFOUNDING), "metrics": [{"key": k, "label": lbl, "format": f} for k, lbl, f in METRICS[position]],
             "player": {**_player_info(q.player, info.get(q.player), known or subject_all, mapping), "position": position}}
     if q.teammate is None:
         return {**base, "status": "needs_teammate", "teammate": None,
