@@ -25,6 +25,7 @@ import { TargetFitNotes, TargetGoal, TargetSummary, targetSentence } from "./Tar
 import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
 import { TeamLink } from "@/components/TeamLink";
+import { SavedViews } from "@/components/SavedViews";
 
 export const metadata = { title: "Discover trades" };
 
@@ -134,6 +135,7 @@ function Body({ c: d, summary, targets, q, sp, defaultSource, action }: {
       )}
 
       <Filters d={d} action={action} />
+      <SavedViews tool="discover" />
 
       <Suspense key={q} fallback={<ResultsSkeleton />}>
         <Discovered summary={summary} q={q} sp={sp} />
