@@ -65,7 +65,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | MERGED | PR #258 → 386e546 (2026-10-23) | Codex P1×2 + P2, review MEDIUM + 2 LOW fixed; evidence fetch league-scoped (no exposure) |
 | #183 trade scenarios | 4 | MERGED | #263 → 042e229 | |
-| #184 trade-market values | 4 | NOT STARTED | — | |
+| #184 trade-market values | 4 | MERGED | #266 → eaa3fa7 | value board; unmeasured replacement → no value |
 | #185 draft-pick valuation | 4 | RESEARCH-ONLY | — | |
 | #188 SOS heatmaps | 5 | NOT STARTED | — | |
 | #189 projection comparison | 5 | NOT STARTED | — | |
@@ -260,6 +260,7 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 1g. Follow-up (security-adjacent, unreachable on self-hosted Next 16.4): `splitLeaguePath` lets `/l/<lg>//evil.example/x` rewrite to a protocol-relative path; reject rest paths starting `//` or containing `\`. Also e2e for forged `x-fi-league` on `/api/search` and `Cache-Control: private` on `trade-evidence/route.ts`.
 1h. DONE: part 1 #262 (f35dacc), part 2 #265 (91b361e: LeagueLink everywhere, lint guard, `?league=clear` 307 redirect on scoped URLs, `//host` rejection + proxy same-origin check — also closes 1g's rewrite item). Remaining in `fix/waiver-links-route-errors`: waiver ClaimPlanner/page/FaabGuidance + drop lint exemption + widen guard (review R1). Original note: Link → LeagueLink swap by section + a static guard (ESLint `no-restricted-imports` / no bare `action="/`), which also closes review LOW-2. Deferred items wait on #263 (trades/discover, TradeResult) and #179 (waivers/Evidence).
 1l. Follow-up (LOW-MEDIUM, hosted mode): server actions `app/account/actions.ts` (deleteAccount) and `app/leagues/actions.ts` (invite/link, `failed()` via `connectProblem`) return `apiRequest`'s `res.error`, which names API_URL + uvicorn hint when the backend is offline; `BackendProblem` renders the same text by design for local dev — gate it on non-hosted mode. Lint guard can't see URLs pushed via variables or `NextResponse.redirect(new URL(...))`.
+1n. #253 phase 3 → PR #268: review REQUEST CHANGES (F1 HIGH discovery exact-vs-evaluator, F2 forced/suggested drop picks unvalued IDP/P/HC at 0.0, F3–F6); fixes in progress.
 1m. Investigate: #267 backend shard 3/8 took 43 min (07:33→08:16) vs ~6 min elsewhere on a frontend-only PR; logs not downloadable here. PR #269 adds 20-min job timeouts, so a repeat now fails fast instead of holding CI — then read that job's log in the Actions UI to find the slow test.
 1k. Follow-up (LOW, systemic): league_scope `ResponseCache` has no TTL; time-dependent GETs (`/api/trades/options`, `/api/trades/values`) can keep a kicked-off week in their window until the next data version. Fix: `valid_until` = next scheduled kickoff (pattern in `action_center.py:94-117`) or mark such responses uncacheable; test advancing the clock past kickoff.
 1j. DONE #267 (593fd4b: `lib/route-error.ts`, waiver links, lint exemption removed, guard widened). Was (LOW-MEDIUM): `app/api/waiver-claim-plan/route.ts` and `trade-evidence/route.ts` forward offline `api()` errors containing the internal API_URL; #263/#264 fixed their own routes (`compareRouteError` pattern). Unify into one helper.
@@ -269,7 +270,7 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. DONE #183 trade scenarios → #263 (042e229).
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
-6. #184 trade-market values → PR #266 (review + Codex P1/2×P2 pending fixes), then Phase 5 (#188, #189, #190, #200).
+6. DONE #184 trade-market values → #266 (eaa3fa7). Next: Phase 5 (#188, #189, #190, #200).
 Blocked or gated: #185, #199, #174, #203 (research-only), #198 (data rights), #222 (after #254), #227 group
 prerequisites (see table).
 
@@ -290,6 +291,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #266 | 07:09 | 08:18 (62440cd; e2e skeleton race + shard-4 guard list) | 07:20 MEDIUM+4 LOW + Codex P1/2×P2 → re-checks 07:55 (N1/N2) | 08:18 (69 min) | 4 | 1 (main.py vs #264) |
 | #267 | 07:25 | 08:16 (1e3674e; shard 3 ran 43 min) | 07:29 approve 4 LOW → 3 fixed | 08:16 (51 min) | 2 | 0 |
 | #265 | 06:48 | 07:12 (463fa05) | 06:55 approve 4 LOW + Codex P2 → re-check approve 07:09 | 07:13 (25 min) | 2 | 0 |
 | #264 | 06:26 | 07:14 (cc431ae) | 06:38 MEDIUM+2 LOW + Codex P2 → re-checks 06:55, 07:00 | 07:15 (49 min) | 4 | 1 (main.py/golden.py vs #263) |
