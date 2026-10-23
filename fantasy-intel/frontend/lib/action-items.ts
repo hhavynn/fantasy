@@ -124,6 +124,9 @@ export type ActionList = {
   more: { swaps: number; waivers: number };
   /** Sources that failed to load, by name, so the list never claims "all clear" on partial knowledge. */
   unavailable: string[];
+  /** Sources that loaded but say their own data is incomplete (Start/Sit's `incomplete_data`), with why: an empty
+   *  list is then not an all-clear either. */
+  partial: { source: string; reason: string }[];
 };
 
 const SEVERE: Record<string, string> = {
@@ -132,6 +135,8 @@ const SEVERE: Record<string, string> = {
   INJURY_RESERVE: "on injured reserve", SUSPENSION: "suspended",
 };
 const SLOT_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
+/** Why a lineup alert cannot be acted on when Start/Sit says every rostered player's game has kicked off. */
+export const ALL_LOCKED_REASON = "Every game on the roster has kicked off, so no lineup change can be made this week.";
 const DAY_MS = 864e5;
 /** A deadline closer than this is worth a line on the Overview. */
 export const DEADLINE_NOTICE_DAYS = 7;
@@ -348,10 +353,23 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
     }));
   }
 
+  const items = [...severe, ...lineup, ...swaps, ...empty, ...risky, ...pickups, ...trade, ...league];
+  // Start/Sit's summary status is the engine's own word on the week: with every game locked no lineup alert can be
+  // acted on, a questionable starter included (they move to `blocked`, with the reason), and incomplete projections
+  // make an empty list partial rather than an all-clear.
+  const summary = src.startSit?.summary.status;
+  const lockedLineup = summary === "all_locked"
+    ? items.filter((i) => i.category === "lineup" || i.category === "injury") : [];
+  const partial = summary === "incomplete_data"
+    ? [{ source: "Start/Sit", reason: "Some players have no projection, so Start/Sit claims no gain for this lineup." }] : [];
   return {
-    items: [...severe, ...lineup, ...swaps, ...empty, ...risky, ...pickups, ...trade, ...league],
-    blocked,
+    items: items.filter((i) => !lockedLineup.includes(i)),
+    blocked: [
+      ...lockedLineup.map((i) => ({ ...i, status: "locked" as const, statusReason: ALL_LOCKED_REASON, tone: "caution" as const, urgency: "low" as const })),
+      ...blocked,
+    ],
     more: { swaps: swapsMore, waivers: waiversMore },
     unavailable,
+    partial,
   };
 }

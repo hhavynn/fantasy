@@ -5,7 +5,8 @@ import {
 } from "./action-items.ts";
 import type { SignalProvenance } from "./signal-provenance.ts";
 import {
-  WEEKLY_DECISION_LIMIT, buildWeeklyHub, decisionHref, prioritize, suppressDuplicates, type DecisionContext, type HubSignals,
+  WEEKLY_DECISION_LIMIT, buildWeeklyHub, decisionHref, hubVerdict, prioritize, staleNote, suppressDuplicates,
+  type DecisionContext, type HubSignals,
 } from "./weekly-decisions.ts";
 
 const LG = "lg_abcdefghijklmnop";
@@ -22,7 +23,7 @@ const swap = (id: string, gain: number | null, over: Partial<Decision> = {}): De
   id, action: "SWAP", actionability: "ACTIONABLE", target_slot: "WR", projected_net_gain: gain,
   start_players: [{ id: 50, name: "Bench Guy", position: "WR" }], bench_players: [{ id: 2, name: "P2", position: "WR" }], ...over,
 });
-const startSit = (decisions: Decision[]): StartSitInput => ({ scoring_period: 6, summary: { starters_count: 9 }, decisions });
+const startSit = (decisions: Decision[], status?: string): StartSitInput => ({ scoring_period: 6, summary: { starters_count: 9, status }, decisions });
 const waiver = (id: number, position = "RB", over: Partial<WaiverInput> = {}): WaiverInput => ({
   espn_player_id: id, full_name: `W${id}`, position,
   components: { decision: { action: "ADD_NOW", actionable: true, roster_move: { summary: "Open spot.", drop: null }, utility: { forward: { total_gain: null, weeks: [] } } } },
@@ -142,7 +143,7 @@ test("each decision carries its own source's provenance and snapshot; none is in
   assert.equal(by["sell-signal"].source, "Overview");
   // an older backend without provenance: the evidence is empty (shown as unknown age), not made up
   const bare = hubOf(sources({ startSit: startSit([swap("a", 2)]) }), CLASSIC, {});
-  assert.deepEqual(bare.primary?.evidence, { source: "Start/Sit", signals: [], snapshotVersion: null });
+  assert.deepEqual(bare.primary?.evidence, { source: "Start/Sit", signals: [], snapshotVersion: null, status: null });
 });
 
 test("sell signals are one informational trade item while trades are open, and none after the deadline", () => {
@@ -269,4 +270,87 @@ test("a week-based (Sleeper) deadline closes trades only once the league is past
   const both = buildActionItems(sources({ roster, now: Date.parse("2026-10-22T12:00:00Z"),
     league: { trade_deadline: "2026-12-01T00:00:00Z", trade_deadline_week: 3, current_week: 8 } }));
   assert.deepEqual(kinds(both), ["sell-signal"]);
+});
+
+// ---------- #165 closure audit: the four proven failing cases ----------
+
+// Every signal of the fixtures was captured at 2026-10-20T12:00Z with a 36h window: at this time all are current.
+const FRESH = Date.parse("2026-10-21T00:00:00Z");
+const hubAt = (src: ActionSources, signals = SIGNALS, now = FRESH) => buildWeeklyHub(buildActionItems(src), CLASSIC, signals, undefined, now);
+
+test("an out starter whose only swap is locked is one locked decision, never the actionable next step", () => {
+  const hub = hubAt(sources({
+    roster: [starter(2, { availability: { status: "OUT", sources: ["ESPN"] } })],
+    startSit: startSit([swap("a", 6, { actionability: "LOCKED", warnings: ["Bench Guy (KC) has already kicked off and cannot be moved."] })]),
+  }));
+  assert.equal(hub.primary, null);
+  const all = hub.groups.flatMap((g) => g.decisions);
+  assert.deepEqual(all.map((d) => [d.id, d.status]), [["swap-a", "locked"]]);
+  assert.match(all[0].reason, /^P2 is out\. /);
+  assert.equal(all[0].statusReason, "Bench Guy (KC) has already kicked off and cannot be moved.");
+  // an actionable swap for him still wins over a locked one, and an unverifiable one folds the same way
+  const both = hubAt(sources({
+    roster: [starter(2, { availability: { status: "OUT", sources: [] } })],
+    startSit: startSit([swap("locked", 6, { actionability: "LOCKED" }), swap("open", 3)]),
+  }));
+  assert.equal(both.primary?.id, "swap-open");
+  assert.match(both.primary!.reason, /^P2 is out\. /);
+  const unverified = hubAt(sources({
+    roster: [starter(2, { on_bye: true })], startSit: startSit([swap("u", 4, { actionability: "UNCERTAIN" })]),
+  }));
+  assert.equal(unverified.primary, null);
+  assert.deepEqual(unverified.groups.flatMap((g) => g.decisions).map((d) => [d.id, d.status]), [["swap-u", "unavailable"]]);
+});
+
+test("Start/Sit all_locked: no lineup alert is the actionable next step; non-lineup decisions are untouched", () => {
+  const hub = hubAt(sources({
+    roster: [starter(2, { availability: { status: "OUT", sources: [] } }), starter(3, { availability: { status: "QUESTIONABLE", sources: [] } }), starter(4, { market_signal: "SELL" })],
+    matchup: matchup([{ slot: "RB", player_id: null }]),
+    startSit: startSit([], "all_locked"),
+    waivers: { players: [waiver(9, "RB")], total: 1 },
+  }));
+  const all = [hub.primary!, ...hub.groups.flatMap((g) => g.decisions)];
+  const status = Object.fromEntries(all.map((d) => [d.id, d.status]));
+  assert.deepEqual(status, { "out-2": "locked", questionable: "locked", "empty-RB": "locked", "waiver-9": "actionable", "sell-signal": "informational" });
+  // the pickup stays a roster move, but no longer claims to fill a slot that cannot be changed
+  assert.equal(hub.primary?.id, "waiver-9");
+  assert.doesNotMatch(hub.primary!.reason, /slot is empty/);
+  for (const d of all.filter((x) => x.status === "locked")) assert.match(d.statusReason ?? "", /Every game on the roster has kicked off/);
+  // nothing else on the roster: no actionable next step at all
+  const only = hubAt(sources({ roster: [starter(2, { availability: { status: "OUT", sources: [] } })], startSit: startSit([], "all_locked") }));
+  assert.equal(only.primary, null);
+});
+
+test("Start/Sit incomplete_data is never \"Lineup is set\": the hub is partial and says why", () => {
+  const hub = hubAt(sources({ startSit: startSit([], "incomplete_data") }));
+  assert.equal(hub.primary, null);
+  assert.deepEqual(hub.partial.map((p) => p.source), ["Start/Sit"]);
+  const v = hubVerdict(hub)!;
+  assert.notEqual(v.headline, "Lineup is set");
+  assert.equal(v.tone, "caution");
+  assert.match(v.body, /no projection.*not an all-clear/);
+  // the same week with complete data is the all-clear, and a failed source still outranks a partial one
+  assert.equal(hubVerdict(hubAt(sources({ startSit: startSit([], "optimal") })))?.headline, "Lineup is set");
+  assert.equal(hubVerdict(hubAt(sources({ startSit: startSit([], "incomplete_data"), waivers: null })))?.headline, "Nothing to act on in what loaded");
+});
+
+test("stale evidence never holds the next step over current evidence, and says so when nothing current is left", () => {
+  const superseded: HubSignals = { ...SIGNALS, startSit: SIGNALS.startSit!.map((x) => (x.signal === "league" ? { ...x, stale_reason: "A newer sync failed." } : x)) };
+  const src = sources({ startSit: startSit([swap("a", 6)]), waivers: { players: [waiver(9)], total: 1 } });
+  const hub = hubAt(src, superseded);
+  assert.equal(hub.primary?.id, "waiver-9");
+  const swapD = hub.groups.flatMap((g) => g.decisions).find((d) => d.id === "swap-a")!;
+  assert.equal(swapD.evidence.status, "stale");
+  assert.equal(staleNote(hub.primary!), null);
+  // with current evidence the swap keeps its place
+  assert.equal(hubAt(src).primary?.id, "swap-a");
+  // only stale evidence: the first actionable decision stays, and its note says the evidence is stale
+  const alone = hubAt(sources({ startSit: startSit([swap("a", 6)]) }), superseded);
+  assert.equal(alone.primary?.id, "swap-a");
+  assert.match(staleNote(alone.primary!) ?? "", /Start\/Sit data behind this is stale/);
+  // past the refresh window counts as stale too; unknown age (no capture time) is not demoted
+  const later = Date.parse("2026-10-23T12:00:00Z");
+  assert.equal(hubAt(src, SIGNALS, later).primary?.evidence.status, "stale");
+  const unknown: HubSignals = { ...SIGNALS, startSit: SIGNALS.startSit!.map((x) => ({ ...x, captured_at: null })) };
+  assert.equal(hubAt(src, unknown).primary?.id, "swap-a");
 });

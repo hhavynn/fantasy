@@ -6,13 +6,13 @@
 // No number is computed here and nothing is added that the sources did not say. Pure functions so node --test covers them.
 
 import {
-  questionableItem, type ActionCategory, type ActionItem, type ActionList, type ActionSource, type ActionStatus,
+  joinNames, questionableItem, type ActionCategory, type ActionItem, type ActionList, type ActionSource, type ActionStatus,
   type ActionTone, type ActionUrgency,
 } from "./action-items.ts";
 import { withLeague } from "./league-scope.ts";
 import { plural } from "./plural.ts";
 import type { ProjectionSource } from "./projection-source.ts";
-import type { SignalProvenance } from "./signal-provenance.ts";
+import { STATUS_ORDER, provenanceStatus, type ProvenanceStatus, type SignalProvenance } from "./signal-provenance.ts";
 import { withTeam } from "./team-perspective.ts";
 
 /** Decisions shown on the Overview, the primary one included. */
@@ -40,6 +40,8 @@ export type DecisionEvidence = {
   signals: SignalProvenance[];
   /** The snapshot the payload was read from (the league signal's), or null when unknown. */
   snapshotVersion: string | null;
+  /** The worst derived status of those signals when the hub was built (`provenanceStatus`); null without signals. */
+  status: ProvenanceStatus | null;
 };
 
 export type WeeklyDecision = {
@@ -63,7 +65,8 @@ export type DecisionGroupKey = "lineup" | "waivers" | "trade" | "league";
 export type DecisionGroup = { key: DecisionGroupKey; label: string; decisions: WeeklyDecision[] };
 
 export type WeeklyHub = {
-  /** The first actionable decision: the one next step. Null when nothing can be acted on. */
+  /** The first actionable decision whose evidence is not stale (else the first actionable one, which then says its
+   *  evidence is stale): the one next step. Null when nothing can be acted on. */
   primary: WeeklyDecision | null;
   /** The other decisions, grouped by area, groups in the order of their first decision. */
   groups: DecisionGroup[];
@@ -71,6 +74,8 @@ export type WeeklyHub = {
   more: { key: DecisionGroupKey; count: number; label: string; href: string }[];
   /** Sources that did not load, by name: an empty hub is then not an all-clear. */
   unavailable: string[];
+  /** Sources that loaded but say their data is incomplete, with why: an empty hub is then not an all-clear either. */
+  partial: { source: string; reason: string }[];
   context: DecisionContext;
   /** Every signal behind the hub, each once (what an all-clear rests on). */
   signals: SignalProvenance[];
@@ -107,13 +112,17 @@ export function decisionHref(href: string, ctx: DecisionContext): string {
 /**
  * Folds items that describe the same decision into the one that resolves it:
  * - a starter who is out, doubtful, on IR or on bye and whom an actionable swap benches: the swap carries the reason;
+ *   with no actionable swap for him, a locked or unverifiable one does, keeping its status (the engine's own move
+ *   for him cannot be made now, so the alert never stands apart as something to act on);
  * - questionable starters an actionable swap benches leave the questionable roll-up (dropped when none is left);
- * - an empty lineup slot with an actionable pickup at that position: the pickup says the slot is empty;
+ * - an actionable empty lineup slot with an actionable pickup at that position: the pickup says the slot is empty;
  * - the same id twice (the first is kept).
  */
 export function suppressDuplicates(items: readonly ActionItem[]): ActionItem[] {
-  const swaps = items.filter((i) => i.source === "startSit" && i.status === "actionable" && i.id.startsWith("swap-"));
-  const swapFor = (id: number) => swaps.find((s) => s.players.some((p) => p.id === id));
+  const allSwaps = items.filter((i) => i.source === "startSit" && i.id.startsWith("swap-"));
+  const swaps = allSwaps.filter((i) => i.status === "actionable");
+  const covers = (id: number) => (s: ActionItem) => s.players.some((p) => p.id === id);
+  const swapFor = (id: number) => swaps.find(covers(id)) ?? allSwaps.find(covers(id));
   const benched = new Set(swaps.flatMap((s) => s.players.map((p) => p.id)));
   const folded = new Map<string, ActionItem[]>();       // swap id -> the alerts it resolves
   const emptyFilled = new Map<string, string>();        // pickup id -> the empty slot it is at
@@ -128,7 +137,7 @@ export function suppressDuplicates(items: readonly ActionItem[]): ActionItem[] {
       if (left.length === 0) continue;
       if (left.length < it.players.length) { out.push(questionableItem(left)); continue; }
     }
-    if (it.id.startsWith("empty-") && it.position) {
+    if (it.id.startsWith("empty-") && it.position && it.status === "actionable") {
       const pickup = items.find((p) => p.category === "waivers" && p.status === "actionable" && p.position === it.position && !emptyFilled.has(p.id));
       if (pickup) { emptyFilled.set(pickup.id, it.position); continue; }
     }
@@ -155,17 +164,19 @@ export function prioritize<T extends Pick<ActionItem, "status" | "urgency">>(ite
     .map(({ it }) => it);
 }
 
-function evidenceFor(it: ActionItem, signals: HubSignals): DecisionEvidence {
+function evidenceFor(it: ActionItem, signals: HubSignals, now: number): DecisionEvidence {
   const all = signals[it.source] ?? [];
   const picked = it.signals === null ? [...all] : all.filter((s) => it.signals!.includes(s.signal));
   const version = picked.find((s) => s.signal === "league")?.snapshot_version ?? picked.find((s) => s.snapshot_version)?.snapshot_version ?? null;
-  return { source: SOURCE_LABEL[it.source], signals: picked, snapshotVersion: version };
+  const statuses = picked.map((s) => provenanceStatus(s, now));
+  const status = STATUS_ORDER.find((st) => statuses.includes(st)) ?? null;
+  return { source: SOURCE_LABEL[it.source], signals: picked, snapshotVersion: version, status };
 }
 
-function toDecision(it: ActionItem, ctx: DecisionContext, signals: HubSignals): WeeklyDecision {
+function toDecision(it: ActionItem, ctx: DecisionContext, signals: HubSignals, now: number): WeeklyDecision {
   return {
     id: it.id, category: it.category, urgency: it.urgency, status: it.status, statusReason: it.statusReason, tone: it.tone,
-    title: it.title, reason: it.reason, evidence: evidenceFor(it, signals), context: ctx,
+    title: it.title, reason: it.reason, evidence: evidenceFor(it, signals, now), context: ctx,
     href: decisionHref(it.href, ctx), cta: it.cta,
   };
 }
@@ -188,10 +199,15 @@ function allSignals(signals: HubSignals): SignalProvenance[] {
   return out;
 }
 
-export function buildWeeklyHub(list: ActionList, ctx: DecisionContext, signals: HubSignals = {}, limit = WEEKLY_DECISION_LIMIT): WeeklyHub {
+export function buildWeeklyHub(
+  list: ActionList, ctx: DecisionContext, signals: HubSignals = {}, limit = WEEKLY_DECISION_LIMIT, now: number = Date.now(),
+): WeeklyHub {
   const ordered = prioritize(suppressDuplicates([...list.items, ...list.blocked]));
-  const decisions = ordered.map((it) => toDecision(it, ctx, signals));
-  const primary = decisions.find((d) => d.status === "actionable") ?? null;
+  const decisions = ordered.map((it) => toDecision(it, ctx, signals, now));
+  // Superseded or out-of-date evidence never outranks current evidence for the one next step; when every actionable
+  // decision rests on stale data the first one stays, and the page says its evidence is stale (`staleNote`).
+  const actionable = decisions.filter((d) => d.status === "actionable");
+  const primary = actionable.find((d) => d.evidence.status !== "stale") ?? actionable[0] ?? null;
   const rest = decisions.filter((d) => d !== primary);
   const room = Math.max(0, limit - (primary ? 1 : 0));
   const shown = rest.slice(0, room);
@@ -217,5 +233,42 @@ export function buildWeeklyHub(list: ActionList, ctx: DecisionContext, signals: 
     return [{ key, count, label: `${count} more ${plural(count, m.noun[0], m.noun[1])}`, href: decisionHref(m.href, ctx) }];
   });
 
-  return { primary, groups, more, unavailable: list.unavailable, context: ctx, signals: allSignals(signals) };
+  return { primary, groups, more, unavailable: list.unavailable, partial: list.partial ?? [], context: ctx, signals: allSignals(signals) };
+}
+
+/** The line the next step adds when its evidence is stale; null otherwise. */
+export function staleNote(d: WeeklyDecision): string | null {
+  return d.evidence.status === "stale"
+    ? `The ${d.evidence.source} data behind this is stale (superseded or past its refresh window); check it there before acting.`
+    : null;
+}
+
+export type HubVerdict = { tone: ActionTone; headline: string; body: string; showSignals: boolean };
+
+/**
+ * What the page says when there is no next step, in order: nothing loaded; some sources did not load; a source said
+ * its own data is incomplete; only things worth knowing; nothing flagged. Only the last is an all-clear ("Lineup is
+ * set"), and only when every source loaded and none called itself incomplete. Null when there is a next step.
+ */
+export function hubVerdict(hub: WeeklyHub): HubVerdict | null {
+  if (hub.primary) return null;
+  const { unavailable, partial, groups, context } = hub;
+  if (unavailable.length === 4) {
+    return { tone: "negative", headline: "Before-kickoff checks unavailable", showSignals: false,
+      body: `None of the sources behind the decisions loaded (${joinNames(unavailable)}), so nothing is recommended.` };
+  }
+  if (unavailable.length > 0) {
+    return { tone: "caution", headline: "Nothing to act on in what loaded", showSignals: true,
+      body: `Couldn't check ${joinNames(unavailable)}, so this is not an all-clear.` };
+  }
+  if (partial.length > 0) {
+    return { tone: "caution", headline: "Nothing to act on in what is known", showSignals: true,
+      body: `${partial.map((p) => p.reason).join(" ")} This is not an all-clear.` };
+  }
+  if (groups.length > 0) {
+    return { tone: "info", headline: "No moves flagged before kickoff", showSignals: true,
+      body: "Nothing below asks for a change; it is worth knowing before kickoff." };
+  }
+  return { tone: "positive", headline: "Lineup is set", showSignals: true,
+    body: `No swaps, unavailable starters, waiver pickups or trade signals are flagged${context.week ? ` for week ${context.week}` : ""}.` };
 }
