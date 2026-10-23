@@ -327,11 +327,17 @@ def _resolve_target(con, p: DiscoverParams, state, team_id: int, teams: list[dic
             "weeks": list(focus) if focus else None}
     return target, focus, info
 
-def _resolve(con, p: DiscoverParams) -> _Resolved:
+def _league(con) -> dict:
+    """The league this connection serves (under a /v2 scope, the scoped league's own file)."""
     lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
                   "ORDER BY synced_at DESC LIMIT 1")
     if not lg:
         raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
+    return lg
+
+
+def _resolve(con, p: DiscoverParams) -> _Resolved:
+    lg = _league(con)
     teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
                       "ORDER BY team_id", [lg["league_id"], lg["season"]])
     team_id = p.team_id
@@ -632,10 +638,7 @@ def trade_counteroffers(body: CounterofferRequest):
     if body.positions is not None and set(body.positions) - set(TARGET_POSITIONS):
         raise HTTPException(422, f"positions must be among {', '.join(TARGET_POSITIONS)}")
     with db() as con:
-        lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
-                      "ORDER BY synced_at DESC LIMIT 1")
-        if not lg:
-            raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
+        lg = _league(con)
         current = snapshot_versions(con)[0]
         if body.data_version is not None and body.data_version != current:
             raise HTTPException(409, "The league data changed after this offer was evaluated. Evaluate it again, "
