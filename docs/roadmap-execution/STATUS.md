@@ -30,7 +30,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | PR OPEN | PR #241 (32e6168, CI green) | original 4 findings resolved; re-check found 3 new LOW (cancel cleanup, per-user admission + short wait, cache deterministic errors) → being fixed |
 | #171 what-if lineup | 2 | MERGED | PR #242 → 5b4fe14 | phone tap fixed; security review clean (pre-existing LOW → #243) |
-| #177 bye/kickoff planner | 2 | NOT STARTED | — | |
+| #177 bye/kickoff planner | 2 | IN PROGRESS | `feature/fi-177-bye-planner` from 5b4fe14 | one agent; section on schedule-intelligence; unknown ≠ safe |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
