@@ -44,9 +44,17 @@ test("without the flag, a busy database and a 404, 409 or 422 still say somethin
   assert.doesNotMatch(JSON.stringify(forbidden), /kid abc/);
 });
 
-test("the first-run guide and the first-sync notice are unchanged either way", () => {
+test("the first-run setup guide needs the server's local flag; without it a missing database is a plain 503", () => {
+  const noDatabase = { kind: "http" as const, status: 503, error: "No database yet. Run scripts/sync_espn.py and scripts/sync_nfl.py first." };
+  for (const local of [false, undefined]) {
+    const copy = backendProblemCopy({ ...noDatabase, local });
+    assert.equal(copy.variant, "notice", String(local));
+    assert.doesNotMatch(JSON.stringify(copy), /\.env|ESPN_LEAGUE_ID|ESPN_S2|SWID|uvicorn|sync/i, String(local));
+    assert.ok(copy.variant === "notice" && copy.blocks.every((b) => b.type === "text"));
+  }
+  assert.equal(backendProblemCopy({ ...noDatabase, local: true }).variant, "first-run");
+  // The first-sync notice is fixed visitor copy (no setup), so it shows either way.
   for (const local of [true, false, undefined]) {
-    assert.equal(backendProblemCopy({ kind: "http", status: 503, error: "No database yet. Run scripts/sync_espn.py first.", local }).variant, "first-run");
     assert.equal(backendProblemCopy({ kind: "http", status: 409, error: "First sync in progress.", local }).variant, "first-sync");
   }
 });

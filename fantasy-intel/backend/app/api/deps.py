@@ -42,7 +42,9 @@ def _motherduck_cursor(database: str) -> duckdb.DuckDBPyConnection:
         try:
             con = connect_motherduck(database)
         except duckdb.Error as err:     # the detail reaches visitors: no database name or driver text in it
-            log.warning("motherduck connect failed: %s", type(err).__name__)
+            missing = not (os.getenv("MOTHERDUCK_TOKEN") or os.getenv("motherduck_token"))
+            log.warning("motherduck connect failed: %s%s", type(err).__name__,
+                        " (MOTHERDUCK_TOKEN is not set)" if missing else "")     # for operators; never the token
             raise HTTPException(503, "Cannot reach the hosted database.") from None
         _MD_CONS[database] = con
         return con.cursor()
