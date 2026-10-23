@@ -55,7 +55,7 @@ def state(mine=None, capacity=10, waivers=(301, 302, 303), limits=None):
                        rosters={1: mine or roster(), 2: [P(201, "QB"), P(202, "RB")]}, free_agents=fas,
                        projections=copy.deepcopy(PROJ), active_capacity=capacity, position_limits=limits or {},
                        team_names={1: "Mine", 2: "Rival"},
-                       free_agent_status=status)
+                       free_agent_status=status, players_missing={1: 0, 2: 0})
 
 
 def ctx(st, *, is_faab=True, budget=100, spent=20, rank=3, facts=None, locks=None, provider="ESPN", status_known=True):

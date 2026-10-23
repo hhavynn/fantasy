@@ -61,7 +61,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from itertools import combinations
 
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
+from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total, separable, unsupported_of
 from .team_lineups import NDIGITS, STREAMER_IDS, RosterPlayer, lineup_relevant, r, slot_filled, stream_levels
 from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
                      evaluate_trade, legal_roster)
@@ -164,6 +164,10 @@ class _Totals:
         relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
+        unsupported = unsupported_of(state.slots)
+        if unsupported and not separable(unsupported):
+            # an unrecognised slot may take any position, so no delta is exact (team_lineups.delta_exact, #253 G3)
+            self.missing = [frozenset(relevant) for _ in weeks]
         self.solves = 0
 
     def week(self, ids, i: int) -> float:
@@ -353,6 +357,13 @@ class TradeSearch:
             pre = [p for p in pre if p not in combo]
         act = _active(pre)
         after, done_a = T.vec(act), T.complete(act)
+        if unsupported_of(st.slots):
+            # team_lineups.delta_exact: the slots no engine fills add the same to both lineups only when the trade and
+            # its forced drops leave the players who can start only there unchanged (#253 G3)
+            def offslot(ids) -> frozenset:
+                return frozenset(i for i in ids if not lineup_relevant(T.pos.get(i), st.slots))
+            if offslot(_active(roster)) != offslot(act):
+                done_a = tuple(False for _ in done_a)
         return self._compare(self.base[team], self.base_complete[team], after, done_a, drops)
 
     def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int]) -> tuple:
@@ -819,6 +830,7 @@ def _side_detail(side: dict) -> dict:
         "redundant_incoming_asset": ro["redundant_incoming_asset"],
         "open_active_roster_spots_before": ro["open_active_roster_spots_before"],
         "open_active_roster_spots": ro["open_active_roster_spots"],
+        **({"legality": ro["legality"]} if ro.get("legality") else {}),
         "hypothetical_fa_fill": side["hypothetical_fa_fill"],
         "incomplete": side["incomplete"],
         "empty_slots_after": _empty_slots(side),

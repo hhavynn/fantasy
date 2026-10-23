@@ -11,6 +11,7 @@ Matrix rows (`MATRIX`; docs: fantasy-intel/docs/compatibility/253-gap-inventory.
   M3  FX-17 on Sleeper (reserve_slots 3), half PPR
   M4  superflex with RB/WR, WR/TE and two FLEX, tied projections and a sparse pool (no free agent projected)
   M8  individual defensive player (IDP) slots on ESPN (LB, DL) and Sleeper (DL, LB, IDP_FLEX)
+  M8p punter and head coach slots on ESPN (P, HC): players ESPN stores and projects, but no engine values
 
 Builders return raw provider payloads, shaped exactly like the responses the real sync code parses (the ESPN fixture
 league `espn_fixture.league_payload()` is the template, as in tests/test_league_rules.py), so tests run the real import:
@@ -36,21 +37,22 @@ STANDARD = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "K": 1, "D/ST": 1, "B
 SUPERFLEX_MULTI = {"QB": 1, "RB": 1, "WR": 1, "TE": 1, "OP": 1, "RB/WR": 1, "WR/TE": 1, "FLEX": 2, "K": 1, "D/ST": 1,
                    "BE": 4, "IR": 1}
 IDP_ESPN = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "LB": 1, "DL": 1, "K": 1, "D/ST": 1, "BE": 5, "IR": 1}
+PHC_ESPN = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "K": 1, "D/ST": 1, "P": 1, "HC": 1, "BE": 5, "IR": 1}
 IDP_SLEEPER = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "DL": 1, "LB": 1, "DP": 1, "K": 1, "D/ST": 1, "BE": 5,
                "IR": 1}
 
 # internal slot label -> ESPN lineupSlotId (app/espn/constants.SLOT_MAP) / Sleeper roster_positions entry
 ESPN_SLOT_IDS = {"QB": 0, "RB": 2, "RB/WR": 3, "WR": 4, "WR/TE": 5, "TE": 6, "OP": 7, "LB": 10, "DL": 11, "D/ST": 16,
-                 "K": 17, "BE": 20, "IR": 21, "FLEX": 23}
+                 "K": 17, "P": 18, "HC": 19, "BE": 20, "IR": 21, "FLEX": 23}
 SLEEPER_SLOTS = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "K", "D/ST": "DEF", "FLEX": "FLEX",
                  "OP": "SUPER_FLEX", "RB/WR": "WRRB_FLEX", "WR/TE": "REC_FLEX", "DL": "DL", "LB": "LB", "DB": "DB",
                  "DP": "IDP_FLEX", "BE": "BN"}
 # who fills a slot in the synthetic rosters (a flex slot gets the position named here)
 FILL = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "K", "D/ST": "D/ST", "OP": "QB", "RB/WR": "RB",
-        "WR/TE": "WR", "LB": "LB", "DL": "DT", "DP": "LB"}
+        "WR/TE": "WR", "LB": "LB", "DL": "DT", "DP": "LB", "P": "P", "HC": "HC"}
 FLEX_FILL = ("RB", "WR", "TE")
 BENCH_FILL = ("QB", "RB", "WR", "TE", "RB", "WR", "QB", "RB", "WR", "TE")
-ESPN_POSITION_IDS = {"QB": 1, "RB": 2, "WR": 3, "TE": 4, "K": 5, "DT": 9, "LB": 11, "D/ST": 16}
+ESPN_POSITION_IDS = {"QB": 1, "RB": 2, "WR": 3, "TE": 4, "K": 5, "P": 7, "DT": 9, "LB": 11, "HC": 14, "D/ST": 16}
 SLEEPER_POSITIONS = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "K", "D/ST": "DEF", "LB": "LB", "DT": "DL"}
 PRO_TEAMS = sorted(i for i in PRO_TEAM_MAP if i)          # ESPN proTeamIds, FA excluded
 
@@ -102,6 +104,7 @@ MATRIX = {
     "M4": Row("M4", "espn", SUPERFLEX_MULTI, tied=True, free_agents=False),
     "M8": Row("M8", "espn", IDP_ESPN),
     "M8s": Row("M8s", "sleeper", IDP_SLEEPER, sleeper_scoring=dict(SLEEPER_IDP)),
+    "M8p": Row("M8p", "espn", PHC_ESPN),
 }
 
 

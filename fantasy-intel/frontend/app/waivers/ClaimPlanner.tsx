@@ -9,6 +9,7 @@ import {
   type Claim, type ClaimPlanResponse, type PlanClaim, type Validation,
 } from "@/lib/claim-plan";
 import { Missing } from "@/lib/format";
+import { dropCostText } from "@/lib/lineup-coverage";
 import { withLeague } from "@/lib/league-scope";
 import { plural } from "@/lib/plural";
 import { signalsOf, type ProvenanceStatus } from "@/lib/signal-provenance";
@@ -360,7 +361,7 @@ function Details({ claim, freshness, faab, onUseDrop }: {
           <button type="button" className={styles.link} onClick={() => onUseDrop(s.espn_player_id)}>
             Use the suggested drop: {s.name ?? `Player #${s.espn_player_id}`}
           </button>{" "}
-          (the legal drop that keeps the most projected starting points; costs {s.lineup_cost !== null ? s.lineup_cost.toFixed(1) : `${s.known_lineup_cost.toFixed(1)} known-only`}).
+          (the legal drop that keeps the most projected starting points; costs {dropCostText(s.lineup_cost, s.known_lineup_cost)}).
         </p>
       )}
       {claim.impact && (

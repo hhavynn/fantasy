@@ -36,13 +36,62 @@ class LineupTooLargeError(ValueError):
     The API answers 422 UNSUPPORTED_LINEUP (app/main.py); the message itself is safe to show as well."""
 
 
-def lineup_slots(roster_slots: dict[str, int]) -> list[str]:
-    """Expand ESPN slot counts into an ordered list of starting slots (bench/IR excluded)."""
-    slots = []
+# Unsupported starting slots (issue #253 G2-G4). Every slot label other than these and FIXED + FLEX starts a player no
+# engine values: individual defensive players (IDP), punter, head coach, or a label the parsers do not recognise. A
+# blank label (ESPN slot 22) is a non-starter for the parser and the provider adapter, so it is not one.
+NON_STARTING_SLOTS = frozenset({"BE", "IR", "TAXI", ""})
+# Unsupported slots whose eligible positions are known and never an engine position (league_rules._IDP, _ESPN_OTHER):
+# whoever starts there can start nowhere the engines fill, and the reverse. Only then does a lineup change that leaves
+# those players alone change the full lineup total by exactly what it changes the engines' slots.
+SEPARATE_SLOTS = ("DT", "DE", "DL", "LB", "CB", "S", "DB", "DP", "P", "HC")
+
+
+class LineupSlots(list):
+    """lineup_slots' result: the starting slots the engines fill, in order (a plain list to every consumer), carrying
+    `unsupported`, the league's other starting slot labels (IDP, P, HC, unrecognised), each once. A lineup total over
+    these slots leaves those out, so it is partial, never complete (team_lineups.project_week, start_sit)."""
+    unsupported: tuple[str, ...] = ()
+
+
+def unsupported_slots(roster_slots: dict | None) -> tuple[str, ...]:
+    """Starting slot labels with a count that no engine fills, in a fixed order (SEPARATE_SLOTS, then by label)."""
+    out = []
+    for label, count in (roster_slots or {}).items():
+        try:
+            n = int(count)
+        except (TypeError, ValueError):
+            continue
+        label = str(label)
+        if n > 0 and label not in NON_STARTING_SLOTS and label not in FIXED_SLOTS and label not in FLEX_ELIGIBILITY:
+            out.append(label)
+    order = {s: i for i, s in enumerate(SEPARATE_SLOTS)}
+    return tuple(sorted(set(out), key=lambda s: (order.get(s, len(order)), s)))
+
+
+def unsupported_of(slots) -> tuple[str, ...]:
+    """The unsupported starting slots a slot list carries (LineupSlots); () for a plain list."""
+    return tuple(getattr(slots, "unsupported", ()) or ())
+
+
+def slots_left_out(unsupported) -> str:
+    """Why a total is partial when the league starts slots no engine fills (issue #253 G3)."""
+    return f"lineup totals leave out {', '.join(unsupported)}, slots no engine fills"
+
+
+def separable(unsupported) -> bool:
+    """Every unsupported slot takes only positions the engines never start (see SEPARATE_SLOTS)."""
+    return all(s in SEPARATE_SLOTS for s in unsupported)
+
+
+def lineup_slots(roster_slots: dict[str, int]) -> LineupSlots:
+    """Expand ESPN slot counts into an ordered list of starting slots (bench/IR excluded). Slots no engine fills are not
+    in the list; they are named in its `unsupported` attribute."""
+    slots = LineupSlots()
     for s in FIXED_SLOTS:
         slots += [s] * int((roster_slots or {}).get(s, 0))
     for s in sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])):
         slots += [s] * int((roster_slots or {}).get(s, 0))
+    slots.unsupported = unsupported_slots(roster_slots)
     return slots
 
 

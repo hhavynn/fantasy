@@ -20,10 +20,12 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from itertools import combinations
 
+from .lineup import separable, unsupported_of
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
 from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
                            StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
-                           known_total, project_team, public_weeks, r, replacement_context, roster_marginal_value,
+                           known_total, lineup_relevant, project_team, public_weeks, r, replacement_context,
+                           roster_marginal_value,
                            arrives_active, slot_flags, starters, stream_summary, with_stream)
 
 # Manual trades take any player counts from 1 up to this many per side (a performance guard, not a
@@ -94,6 +96,11 @@ class LeagueState:
     availability: dict = field(default_factory=dict)  # espn_player_id -> player_availability record (explanation)
     free_agent_status: dict = field(default_factory=dict)  # free agent id -> ESPN FREEAGENT | WAIVERS; absent = unknown
     projection_source: str = "espn"                # "independent": Ours (a league without provider projections)
+    # REQUIRED (keyword-only, no default, #253 G4): team -> rostered players (current lineup rows) missing from the
+    # player data, so absent from `rosters` (Sleeper stores no individual defensive players); their roster spots are
+    # invisible to every count here. 0 = every rostered player is counted; a team with no entry has no count, so its
+    # roster legality is unverified (roster_legality). A state built in memory passes {team: 0} for complete rosters.
+    players_missing: dict = field(kw_only=True)
 
     def window(self, start_week: int | None = None) -> Window:
         start = self.start_week if start_week is None else start_week
@@ -124,8 +131,51 @@ def assumptions(state: LeagueState) -> list[str]:
 
 # --------------------------------------------------------------------- roster rules --
 
+UNVERIFIED = "unverified"
+ROSTER_UNVERIFIED = "ROSTER_UNVERIFIED"
+
+
+def roster_legality(state: LeagueState, team_id: int | None) -> dict | None:
+    """None when the active roster count is exact. `unverified` only when it is not (issue #253 G4): the team has
+    rostered players missing from the player data (Sleeper stores no individual defensive players, so their spots are
+    invisible and an open spot may not exist), or there is no player count for the team at all (`players_missing` has
+    no entry). A provider that stores every rostered player (ESPN, IDP, P and HC included) keeps an exact count. A roster the count already shows over capacity stays illegal: players left
+    out can only add to it."""
+    unsupported = unsupported_of(state.slots)
+    counts = state.players_missing
+    if team_id is None:
+        return None
+    missing = int(counts.get(team_id) or 0)
+    if missing:
+        why = (f"{missing} rostered player{'s are' if missing != 1 else ' is'} not in the synced player data "
+               "(positions Fantasy Intel does not store, such as individual defensive players), so the active roster "
+               "count leaves them out and an open spot may not exist.")
+    elif team_id not in counts:
+        why = ("The synced rosters hold no lineup rows for this team this week, so whether every rostered player is "
+               "counted is unknown and the active roster count may be short.")
+    else:
+        return None
+    return {"status": UNVERIFIED, "code": ROSTER_UNVERIFIED, "unsupported_slots": list(unsupported),
+            "players_missing": missing,
+            "reason": why + " Roster legality is unverified: check your open roster spots in the provider's app "
+                            "before acting."}
+
+
 def _active(players: list[RosterPlayer]) -> int:
     return sum(1 for p in players if not p.reserved)    # IR and taxi players use no active roster spot
+
+
+def unvalued_ids(players: list[RosterPlayer], state: LeagueState) -> frozenset[int]:
+    """Players who can start only in slots no engine fills (IDP, P, HC): their lineup value is unknown, so a drop of
+    one is never chosen for its "0" known cost (issue #253). Empty in a league without such slots."""
+    if not unsupported_of(state.slots):
+        return frozenset()
+    return frozenset(p.espn_player_id for p in players if not lineup_relevant(p.position, state.slots))
+
+
+def unvalued_note(names: list[str], state: LeagueState) -> str:
+    return (f"{', '.join(names)} can start only in {', '.join(unsupported_of(state.slots))}, which no engine fills: "
+            "what he adds to the lineup is not modelled, so the cost of losing him is unknown.")
 
 
 def _position_counts(players: list[RosterPlayer]) -> Counter:
@@ -175,27 +225,42 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
     single = {} if negative else {p.espn_player_id: max(0.0, full - total([q for q in after if q is not p]))
                                   for p in pool}
     solves = 0 if negative else len(pool)
-    k, sets = minimum_drops(after, before, state), 0
-    while k <= len(pool):
-        legal = []
-        for combo in combinations(pool, k):
-            sets += 1
-            if sets > MAX_DROP_SETS:
-                raise EvaluationUnavailable(
-                    f"exact forced-drop resolution needs more than {MAX_DROP_SETS:,} candidate drop sets of {k} "
-                    "players; evaluation unavailable (no approximate result is substituted)")
-            if act - sum(1 for p in combo if not p.reserved) > cap:
-                continue
-            if limits:
-                gone = _position_counts(combo)
-                if any(counts[pos] - gone[pos] > lim for pos, lim in limits.items()):
+    sets = 0
+    # Players no engine values (they start only in IDP/P/HC slots) would always look free to drop: they are candidates
+    # only when no other legal drop exists, and the choice is then flagged (`unvalued_drop`).
+    unvalued = unvalued_ids(after, state)
+
+    def search(cands: list[RosterPlayer]) -> tuple[list, int] | None:
+        nonlocal sets
+        k = minimum_drops(after, before, state)
+        while k <= len(cands):
+            legal = []
+            for combo in combinations(cands, k):
+                sets += 1
+                if sets > MAX_DROP_SETS:
+                    raise EvaluationUnavailable(
+                        f"exact forced-drop resolution needs more than {MAX_DROP_SETS:,} candidate drop sets of {k} "
+                        "players; evaluation unavailable (no approximate result is substituted)")
+                if act - sum(1 for p in combo if not p.reserved) > cap:
                     continue
-            legal.append((sum(single.get(p.espn_player_id, 0.0) for p in combo), combo))
-        if legal:
-            break
-        k += 1
-    else:
+                if limits:
+                    gone = _position_counts(combo)
+                    if any(counts[pos] - gone[pos] > lim for pos, lim in limits.items()):
+                        continue
+                legal.append((sum(single.get(p.espn_player_id, 0.0) for p in combo), combo))
+            if legal:
+                return legal, k
+            k += 1
+        return None
+
+    found = search([p for p in pool if p.espn_player_id not in unvalued]) if unvalued else None
+    unvalued_drop = False
+    if found is None:
+        found = search(pool)
+        unvalued_drop = bool(unvalued) and found is not None
+    if found is None:
         raise TradeError("no legal roster exists after this trade")
+    legal, k = found
     best: dict[bool, tuple] = {}
     for group in (False, True):
         items = sorted((x for x in legal if any(p.espn_player_id in incoming for p in x[1]) == group),
@@ -213,7 +278,8 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
             if group not in best or key > best[group][0]:
                 best[group] = (key, combo, t)
             best_total = t if best_total is None else max(best_total, t)
-    return {"best": best, "full": full, "drops": k, "candidate_sets": sets, "solves": solves}
+    return {"best": best, "full": full, "drops": k, "candidate_sets": sets, "solves": solves,
+            "unvalued_drop": unvalued_drop}
 
 
 def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer], after: list[RosterPlayer],
@@ -240,8 +306,15 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
     chosen = best.get(False) or best[True]
     _, combo, _ = chosen
     team = teams[tuple(sorted(p.espn_player_id for p in after if p not in combo))]
-    complete = full["summary"]["projection_complete"] and team["summary"]["projection_complete"]
+    unsupported = unsupported_of(state.slots)
+    # The cost is exact when the projections are complete and, with unsupported slots, no dropped player could fill
+    # one (team_lineups.delta_exact's rule); otherwise it is known-only.
+    complete = all(w["_projections_complete"] for t in (full, team) for w in t["weeks"]) and (
+        not unsupported or (separable(unsupported) and all(w["_offslot"] == v["_offslot"]
+                                                            for w, v in zip(full["weeks"], team["weeks"]))))
     cost = known_total(full) - known_total(team)
+    # A dropped player no engine values (only when no other legal drop exists): no cost at all, not a "0.0" (#253).
+    unvalued = [p for p in combo if p.espn_player_id in unvalued_ids(after, state)]
     redundant = None
     if False in best and True in best and best[True][0][0] > best[False][0][0]:
         rc = best[True][1]
@@ -251,11 +324,20 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
                      "note": "redundant incoming asset: cutting a newly acquired player would be the cheapest legal drop"}
     return {
         "forced_drops": [{"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position,
-                          "is_incoming": p.espn_player_id in incoming} for p in combo],
-        "lineup_cost": r(cost) if complete else None, "known_lineup_cost": r(cost),
+                          "is_incoming": p.espn_player_id in incoming,
+                          **({"unsupported_slot_player": True} if p in unvalued else {})} for p in combo],
+        "lineup_cost": r(cost) if complete and not unvalued else None,
+        "known_lineup_cost": None if unvalued else r(cost),
+        **({"unvalued_drop": {"status": UNVERIFIED, "code": "UNSUPPORTED_SLOT_PLAYER",
+                              "note": unvalued_note([p.name or f"Player {p.espn_player_id}" for p in unvalued], state)
+                              + " No other legal drop exists, so this choice is unverified."}} if unvalued else {}),
         "redundant_incoming_asset": redundant,
         "incoming_dropped_because_no_alternative": False not in best,
-        "basis": "complete ESPN projections" if complete else "known ESPN projections only (some missing)",
+        "basis": ("not valued: the only legal drops include a player who can start only in "
+                  f"{', '.join(unsupported)}" if unvalued else "complete ESPN projections" if complete else
+                  f"known ESPN projections only: players who can start only in {', '.join(unsupported)} are not "
+                  "valued" if unsupported and all(w["_projections_complete"] for t in (full, team) for w in t["weeks"])
+                  else "known ESPN projections only (some missing)"),
         "search": {"drops": res["drops"], "candidate_sets": res["candidate_sets"], "lineup_solves": res["solves"],
                    "method": "exact (submodular lower bound)" if not negative else "exact (every legal set solved)"},
     }
@@ -366,8 +448,11 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
                 ([f"gains {len(d['starts_gained'])}"] if d["starts_gained"] else [])
         notes.append(f"{d['name']} ({d['position']}) {' / '.join(parts)} start(s)")
     for d in res["forced_drops"]:
-        notes.append(f"Must drop {d['name']} ({d['position']}) to stay within roster limits")
+        notes.append(f"Must drop {d['name']} ({d['position']}) to stay within roster limits"
+                     + (" (not valued: he starts only in a slot no engine fills)" if d.get("unsupported_slot_player")
+                        else ""))
 
+    legality = roster_legality(state, team_id)
     open_before = max(0, state.active_capacity - _active(before))
     open_after = max(0, state.active_capacity - _active(after))
     fill = None
@@ -385,9 +470,10 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
             "espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
             "injury_status": p.injury_status, "traded_away": p.espn_player_id in set(sends),
             "before_trade": ir_activation_sensitivity(before, p.espn_player_id, state.slots, window,
-                                                      state.projections, open_before, bt),
+                                                      state.projections, None if legality else open_before, bt),
             "after_trade": ir_activation_sensitivity(after, p.espn_player_id, state.slots, window,
-                                                     state.projections, open_after, at) if stays else None,
+                                                     state.projections, None if legality else open_after, at)
+            if stays else None,
         })
 
     first = res["forced_drops"][0] if res["forced_drops"] else None
@@ -399,16 +485,23 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
         "weekly": weekly,
         "lineups": {"before": public_weeks(bt), "after": public_weeks(at)},
         "roster": {
-            "active_capacity": state.active_capacity, "active_before": _active(before), "active_after": _active(after),
-            "open_active_roster_spots": open_after, "open_active_roster_spots_before": open_before,
+            # an unverified count (roster_legality: players missing from the data) is never shown as the roster's
+            "active_capacity": state.active_capacity, "active_before": None if legality else _active(before),
+            "active_after": None if legality else _active(after),
+            # an unverified roster count (roster_legality) has no known open spot
+            "open_active_roster_spots": None if legality else open_after,
+            "open_active_roster_spots_before": None if legality else open_before,
+            **({"legality": legality} if legality else {}),
             "forced_drops": res["forced_drops"],
-            "issues_before_drops": issues,
+            "issues_before_drops": {**issues, "active_before_drops": None, "over_capacity_by": None} if legality
+            else issues,
             "forced_drop_search": res.get("search"),
             "forced_drop_id": first["espn_player_id"] if first else None,
             "forced_drop_name": first["name"] if first else None,
             "forced_drop_lineup_cost": res["lineup_cost"],
             "forced_drop_known_lineup_cost": res.get("known_lineup_cost", 0.0),
             "forced_drop_basis": res["basis"],
+            **({"forced_drop_unverified": res["unvalued_drop"]} if res.get("unvalued_drop") else {}),
             "redundant_incoming_asset": res["redundant_incoming_asset"],
             "incoming_dropped_because_no_alternative": res.get("incoming_dropped_because_no_alternative", False),
         },

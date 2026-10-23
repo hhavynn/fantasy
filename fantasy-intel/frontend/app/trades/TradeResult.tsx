@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "@/components/LeagueLink";
 import { BarChart, type BarDatum } from "@/components/charts";
 import { CompareLink } from "@/components/CompareLink";
@@ -13,6 +14,7 @@ import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-ty
 import type { IrActivation, LineupWeek } from "@/lib/types";
 import styles from "./result.module.css";
 import { plural } from "@/lib/plural";
+import { activeRosterText, capacityFacts, dropCostText, noDropText, partialSlotsNote, slotList } from "@/lib/lineup-coverage";
 
 // Server-rendered evaluation of the URL selection. Order: verdict (lineup-point deltas for both teams),
 // mandatory-drop and roster notices, weekly delta charts, starter changes, hypothetical FA replacement,
@@ -23,7 +25,11 @@ type TradeSide = TradeSideV3;
 
 /** The projections the evaluation ran on, as the response names them ("ESPN", or "Ours" for a Sleeper league). */
 const projOf = (r: TradeResult) => projectionName(r.projection_source);
-const whyOf = (r: TradeResult) => `Incomplete: a rostered player with an NFL team has no ${projOf(r)} projection that week`;
+const whyOf = (r: TradeResult) => {
+  const slots = r.team_a.deltas.unsupported_slots;
+  return `Incomplete: a rostered player with an NFL team has no ${projOf(r)} projection that week`
+    + (slots?.length ? `, or the trade moves a player who can start only in ${slotList(slots)} (no engine fills it)` : "");
+};
 const TAXI_NOTE = "Taxi-squad players are inactive on their current roster (they never start and use no active roster "
   + "spot) and arrive active after a trade, so their lineup value can rise on the receiving team.";
 const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
@@ -44,6 +50,18 @@ function Players({ r, ids, links = false }: { r: TradeResult; ids: number[]; lin
       })}
     </ul>
   );
+}
+
+/** Why a delta is unknown: a missing projection, or (slots no engine fills) a player no engine values changes. */
+const incompleteNote = (d: { unsupported_slots?: string[] }) =>
+  d.unsupported_slots?.length ? "Incomplete: a projection is missing, or a player no engine values moves" : "Incomplete projections";
+
+/** A week's lineup total: the full total, or the known points marked partial when slots no engine fills are left out. */
+function weekTotal(w: LineupWeek, why: string) {
+  const partial = partialSlotsNote(w.unsupported_slots);
+  return partial && w.projected_lineup_points === null
+    ? <span title={partial}>{num(w.known_lineup_points, 1)}*</span>
+    : num(w.projected_lineup_points, 1, why);
 }
 
 const nameOf = (r: TradeResult, id: number) => r.names[id]?.name ?? `#${id}`;
@@ -82,6 +100,8 @@ function TeamStrip({ r, s, side }: { r: TradeResult; s: TradeSide; side: "a" | "
   const final = r.evaluation.weeks[r.evaluation.weeks.length - 1];
   const first = r.evaluation.weeks[0];
   const incomplete = <span title={why}>incomplete · {signedText(d.known_ros_delta)} known</span>;
+  // Slots no engine fills: the totals are partial (known points only), while the delta can still be exact (#253 G3).
+  const partial = partialSlotsNote(s.before.unsupported_slots);
   return (
     <div className={`${styles.strip} ${side === "a" ? styles.sideA : styles.sideB}`}>
       <h3 className={styles.stripHead}>
@@ -90,7 +110,9 @@ function TeamStrip({ r, s, side }: { r: TradeResult; s: TradeSide; side: "a" | "
       </h3>
       <StatStrip>
         <Stat label="Rest of season" value={<Delta value={d.ros_delta} />}
-          note={d.ros_delta === null ? incomplete : <>{num(s.before.ros_projected_starting_points, 1, why)} → {num(s.after.ros_projected_starting_points, 1, why)} pts</>} />
+          note={d.ros_delta === null ? incomplete
+            : partial ? <span title={partial}>{num(s.before.ros_known_starting_points, 1)} → {num(s.after.ros_known_starting_points, 1)} pts* (partial)</span>
+            : <>{num(s.before.ros_projected_starting_points, 1, why)} → {num(s.after.ros_projected_starting_points, 1, why)} pts</>} />
         <Stat label="Regular season" value={<Delta value={d.regular_season_delta} />}
           note={lastReg !== null ? `weeks ${first}–${lastReg}` : undefined} />
         <Stat label="Playoffs" value={<Delta value={d.playoff_delta} />}
@@ -118,14 +140,18 @@ function Verdict({ r }: { r: TradeResult }) {
       figures={
         <>
           <VerdictFigure label={`${an} · rest of season`} emphasis value={<Delta value={A.deltas.ros_delta} />}
-            note={A.deltas.ros_delta === null ? "Incomplete projections" : "Projected starting points vs no trade"} />
+            note={A.deltas.ros_delta === null ? incompleteNote(A.deltas) : "Projected starting points vs no trade"} />
           <VerdictFigure label={`${bn} · rest of season`} emphasis value={<Delta value={B.deltas.ros_delta} />}
-            note={B.deltas.ros_delta === null ? "Incomplete projections" : "Projected starting points vs no trade"} />
+            note={B.deltas.ros_delta === null ? incompleteNote(B.deltas) : "Projected starting points vs no trade"} />
         </>
       }
     >
       Regular season: {resultText(r.result.regular_season_label, an, bn, projOf(r))}. Playoffs: {resultText(r.result.playoff_label, an, bn, projOf(r))}.
       {" "}A change in projected lineup points, not a grade or an acceptance estimate.
+      {[A, B].filter((s) => s.roster.legality).map((s) => (
+        <span key={`hedge-${s.team_id}`}> Roster legality is unverified for {s.team_name ?? "a team"}: a drop the count
+          does not show may be needed, which would change this result.</span>
+      ))}
       {signalsOf(r.provenance).length > 0 && <div className={styles.provenance}><ProvenanceBadge signals={signalsOf(r.provenance)} /></div>}
     </VerdictBand>
     <Section
@@ -171,26 +197,35 @@ function RosterNotices({ r, pv }: { r: TradeResult; pv: string }) {
     <>
       {sides.map((s) => {
         const ro = s.roster;
-        const cost = ro.forced_drop_lineup_cost === null
-          ? `${ro.forced_drop_known_lineup_cost.toFixed(1)} known only` : ro.forced_drop_lineup_cost.toFixed(1);
+        const cost = dropCostText(ro.forced_drop_lineup_cost, ro.forced_drop_known_lineup_cost);
+        const legality = ro.legality ? (
+          <Notice key={`legal-${s.team_id}`} tone="caution" title={`${s.team_name}: roster legality unverified`}>
+            {ro.legality.reason}
+          </Notice>
+        ) : null;
         if (ro.forced_drops.length > 0) {
           return (
-            <Notice key={`drop-${s.team_id}`} tone="caution" title={`${s.team_name}: mandatory drop`}>
-              <p>
-                {ro.forced_drops.map((d, i) => (
-                  <span key={d.espn_player_id}>{i > 0 && ", "}<PlayerLink id={d.espn_player_id} name={d.name} /> <Pos value={d.position} />{d.is_incoming ? " (incoming)" : ""}</span>
-                ))}
-                {" "}must be dropped to fit the roster. Lineup cost {cost}.
-              </p>
-              <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
-            </Notice>
+            <Fragment key={`drop-${s.team_id}`}>
+              {legality}
+              <Notice tone="caution" title={`${s.team_name}: mandatory drop`}>
+                <p>
+                  {ro.forced_drops.map((d, i) => (
+                    <span key={d.espn_player_id}>{i > 0 && ", "}<PlayerLink id={d.espn_player_id} name={d.name} /> <Pos value={d.position} />{d.is_incoming ? " (incoming)" : ""}</span>
+                  ))}
+                  {" "}must be dropped to fit the roster. Lineup cost {cost}.
+                </p>
+                {ro.forced_drop_unverified && <p>{ro.forced_drop_unverified.note}</p>}
+                <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points; players who start only in slots no engine fills (IDP, P, HC) are never the automatic choice. {pv} undroppable-list restrictions are not modeled.</p>
+              </Notice>
+            </Fragment>
           );
         }
-        if (ro.open_active_roster_spots > 0) {
+        if (legality) return legality;
+        if (ro.open_active_roster_spots !== null && ro.open_active_roster_spots > 0) {
           const before = ro.open_active_roster_spots_before;
           return (
             <Notice key={`spot-${s.team_id}`} tone="info" title={`${s.team_name}: ${ro.open_active_roster_spots} open roster spot${ro.open_active_roster_spots === 1 ? "" : "s"}`}>
-              No drop is needed. Active roster {ro.active_before} → {ro.active_after} of {ro.active_capacity}
+              No drop is needed. Active roster {activeRosterText(ro, ro.legality)}
               {before !== ro.open_active_roster_spots ? ` (${before} open before the trade)` : ""}.
             </Notice>
           );
@@ -320,7 +355,8 @@ function LineupTable({ before, after }: { before: LineupWeek; after: LineupWeek 
 function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
   const ro = s.roster;
   const iss = ro.issues_before_drops;
-  const cost = ro.forced_drop_lineup_cost === null ? `${ro.forced_drop_known_lineup_cost.toFixed(1)} known only` : ro.forced_drop_lineup_cost.toFixed(1);
+  const cost = dropCostText(ro.forced_drop_lineup_cost, ro.forced_drop_known_lineup_cost);
+  const capacity = capacityFacts(iss, ro.legality);
   return (
     <div className={styles.col}>
       <h3 className={styles.colTitle}>{s.team_name}</h3>
@@ -332,10 +368,12 @@ function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
       <dl className={styles.facts}>
         <dt>Active roster</dt>
         <dd>
-          {ro.active_before} → {ro.active_after} of {ro.active_capacity}
-          <span className={styles.sub}>
-            Before drops: {iss.active_before_drops} of {iss.active_capacity}{iss.over_capacity_by > 0 ? <> · <b>over capacity by {iss.over_capacity_by}</b></> : " · within capacity"}
-          </span>
+          {ro.legality ? <span title={ro.legality.reason}>{activeRosterText(ro, ro.legality)}</span> : activeRosterText(ro, ro.legality)}
+          {capacity && (
+            <span className={styles.sub}>
+              Before drops: {capacity.used} of {capacity.capacity}{capacity.over > 0 ? <> · <b>over capacity by {capacity.over}</b></> : " · within capacity"}
+            </span>
+          )}
         </dd>
         {iss.position_limits.length > 0 && <>
           <dt>Position limits</dt>
@@ -343,7 +381,7 @@ function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
         </>}
         <dt>Mandatory drop</dt>
         <dd>
-          {ro.forced_drops.length === 0 ? <span className="faint">none</span> : <>
+          {ro.forced_drops.length === 0 ? <span className="faint">{noDropText(ro.legality)}</span> : <>
             {ro.forced_drops.map((d) => (
               <span key={d.espn_player_id}><PlayerLink id={d.espn_player_id} name={d.name} /> <Pos value={d.position} />{d.is_incoming ? " (incoming)" : ""}</span>
             ))}
@@ -354,7 +392,9 @@ function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
           </>}
         </dd>
         <dt>Open roster spots</dt>
-        <dd>{ro.open_active_roster_spots}{ro.open_active_roster_spots_before !== ro.open_active_roster_spots ? ` (was ${ro.open_active_roster_spots_before})` : ""}</dd>
+        <dd>{ro.open_active_roster_spots === null
+          ? <span title={ro.legality?.reason}>unverified</span>
+          : <>{ro.open_active_roster_spots}{ro.open_active_roster_spots_before !== ro.open_active_roster_spots ? ` (was ${ro.open_active_roster_spots_before})` : ""}</>}</dd>
         {s.hypothetical_fa_fill?.player && <>
           <dt>Best hypothetical FA fill</dt>
           <dd>
@@ -371,13 +411,13 @@ function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
         </Notice>
       )}
       {ro.forced_drops.length > 0 && (
-        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
+        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points; players who start only in slots no engine fills (IDP, P, HC) are never the automatic choice. {pv} undroppable-list restrictions are not modeled.</p>
       )}
 
       <Method title="Weekly lineups before and after" className={styles.details}>
         {s.lineups.before.map((b, i) => (
           <div key={b.week} className={styles.lineupWeek}>
-            <div className="faint">Week {b.week} · {num(b.projected_lineup_points, 1, why)} → {num(s.lineups.after[i].projected_lineup_points, 1, why)}</div>
+            <div className="faint">Week {b.week} · {weekTotal(b, why)} → {weekTotal(s.lineups.after[i], why)}</div>
             <div className="table-wrap flat"><LineupTable before={b} after={s.lineups.after[i]} /></div>
           </div>
         ))}
