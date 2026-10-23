@@ -3,6 +3,7 @@
 // unit-test runner.
 import type { ApiResult } from "./api.ts";
 import type { Provider } from "./labels.ts";
+import { isLeagueId } from "./league-scope.ts";
 import type { NavGroup } from "./navigation.ts";
 import { injuryText, rosterStatus } from "./roster-status.ts";
 
@@ -17,6 +18,11 @@ export type PaletteItem = {
   href: string;
   /** Extra words that should find this item (page names an action stands in for). */
   keywords?: string[];
+  /**
+   * A player's hint as Recent may keep it: only what is the same in every league (his position). The live hint names
+   * this league's holder, roster status and injury, which must not follow the visitor into another league.
+   */
+  recentHint?: string;
 };
 
 export type PaletteSection = { key: "recent" | "actions" | "pages" | "players"; title: string; items: PaletteItem[] };
@@ -160,29 +166,86 @@ export function wrapIndex(current: number, delta: number, length: number): numbe
 
 export const RECENT_LIMIT = 5;
 
-/** Add `item` to the front of `recents` (de-duplicated by destination, capped). */
+/** A player hint Recent may hold: a bare position code ("RB", "D/ST"), never a holder, status or injury. */
+const PLAYER_RECENT_HINT = /^[A-Z][A-Z/]{0,4}$/;
+const playerRecentHint = (hint: unknown) => (typeof hint === "string" && PLAYER_RECENT_HINT.test(hint) ? hint : undefined);
+
+/**
+ * Add `item` to the front of `recents` (de-duplicated by destination, capped). A player keeps only his league-independent
+ * hint (`recentHint`, his position): who holds him, his roster status and injury belong to the league searched.
+ */
 export function pushRecent(recents: readonly PaletteItem[], item: PaletteItem): PaletteItem[] {
-  const slim: PaletteItem = { id: item.id, kind: item.kind, label: item.label, hint: item.hint, href: item.href };
+  const hint = item.kind === "player" ? playerRecentHint(item.recentHint) : item.hint;
+  const slim: PaletteItem = { id: item.id, kind: item.kind, label: item.label, hint, href: item.href };
   return [slim, ...recents.filter((r) => r.href !== item.href)].slice(0, RECENT_LIMIT);
 }
 
-/** Parse the stored recents defensively: anything malformed or off-site is dropped. */
+function recentItems(data: unknown): PaletteItem[] {
+  if (!Array.isArray(data)) return [];
+  const out: PaletteItem[] = [];
+  for (const r of data) {
+    if (r && typeof r === "object" && typeof r.id === "string" && typeof r.label === "string"
+        && typeof r.href === "string" && r.href.startsWith("/") && !r.href.startsWith("//")
+        && (r.kind === "action" || r.kind === "page" || r.kind === "player")) {
+      const hint = r.kind === "player" ? playerRecentHint(r.hint) : typeof r.hint === "string" ? r.hint : undefined;
+      out.push({ id: r.id, kind: r.kind, label: r.label, hint, href: r.href });
+    }
+  }
+  return out.slice(0, RECENT_LIMIT);
+}
+
+/** Parse a stored recents list defensively: anything malformed or off-site is dropped, a player keeps only his position. */
 export function parseRecents(raw: string | null): PaletteItem[] {
   if (!raw) return [];
   try {
-    const data: unknown = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-    const out: PaletteItem[] = [];
-    for (const r of data) {
-      if (r && typeof r === "object" && typeof r.id === "string" && typeof r.label === "string"
-          && typeof r.href === "string" && r.href.startsWith("/") && !r.href.startsWith("//")
-          && (r.kind === "action" || r.kind === "page" || r.kind === "player")) {
-        out.push({ id: r.id, kind: r.kind, label: r.label, hint: typeof r.hint === "string" ? r.hint : undefined, href: r.href });
-      }
-    }
-    return out.slice(0, RECENT_LIMIT);
+    return recentItems(JSON.parse(raw));
   } catch {
     return [];
+  }
+}
+
+/**
+ * The browser-wide recents key used before issue #200. Its player hints could name one league's holders, so it is never
+ * read again (nothing from it is migrated) and is removed when a league's recents are written.
+ */
+export const LEGACY_RECENT_KEY = "fantasy-intel:palette-recent";
+
+/** Recents per league, like the other device-local stores; none outside a league (no shared fallback). */
+export function recentsKey(leagueId: string | null | undefined): string | null {
+  return isLeagueId(leagueId) ? `fi:palette-recent:v1:${leagueId}` : null;
+}
+
+/** A league's recents. The payload names its league, so a value copied under another league's key is refused. */
+export function parseLeagueRecents(raw: string | null, leagueId: string): PaletteItem[] {
+  try {
+    const v = JSON.parse(raw ?? "null") as { v?: unknown; league?: unknown; items?: unknown } | null;
+    if (!v || typeof v !== "object" || v.v !== 1 || v.league !== leagueId) return [];
+    return recentItems(v.items);
+  } catch {
+    return [];
+  }
+}
+
+export function readLeagueRecents(storage: Pick<Storage, "getItem">, leagueId: string | null): PaletteItem[] {
+  const key = recentsKey(leagueId);
+  if (!key) return [];
+  try {
+    return parseLeagueRecents(storage.getItem(key), leagueId!);
+  } catch {
+    return [];
+  }
+}
+
+/** Store a league's recents (each re-slimmed by pushRecent's rules) and drop the legacy browser-wide list. */
+export function writeLeagueRecents(storage: Pick<Storage, "setItem" | "removeItem">, leagueId: string | null, items: readonly PaletteItem[]): boolean {
+  const key = recentsKey(leagueId);
+  if (!key) return false;
+  try {
+    storage.removeItem(LEGACY_RECENT_KEY);
+    storage.setItem(key, JSON.stringify({ v: 1, league: leagueId, items: recentItems(items) }));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -256,20 +319,21 @@ export function searchResponse(res: ApiResult<SearchBackendPlayer[]> | null): Re
 /**
  * A player result: name, then position, NFL team ("No NFL team" when he has none; "FA" would read as a fantasy free
  * agent), any injury designation and who holds him in this league, in the provider's own terms (lib/roster-status.ts:
- * a Sleeper player off every roster is "Not rostered", never "Free agent"). A payload without a roster state (an older
- * caller) falls back to the team name alone.
+ * a Sleeper player off every roster is "Not rostered", never "Free agent"). `provider` null (not confirmed for the
+ * league searched) uses only wording true for every provider. A payload without a roster state (an older caller) falls
+ * back to the team name alone.
  */
-export function playerItem(p: SearchPlayer, provider: Provider = "espn"): PaletteItem {
+export function playerItem(p: SearchPlayer, provider: Provider | null = "espn"): PaletteItem {
   const roster = p.availability === undefined ? (p.owner ?? null) : rosterStatus(p.availability, p.owner, provider).text;
   const hint = [p.position, p.team ?? "No NFL team", injuryText(p.injury), roster].filter(Boolean).join(" · ");
-  return { id: `player:${p.id}`, kind: "player", label: p.name, hint, href: `/players?id=${p.id}` };
+  return { id: `player:${p.id}`, kind: "player", label: p.name, hint, href: `/players?id=${p.id}`, recentHint: playerRecentHint(p.position) };
 }
 
 /**
  * Player results as palette items. Two players with the same name and the same hint (same position, NFL team, status
  * and holder) would be indistinguishable, so each of those also shows its player ID.
  */
-export function playerItems(players: readonly SearchPlayer[], provider: Provider = "espn"): PaletteItem[] {
+export function playerItems(players: readonly SearchPlayer[], provider: Provider | null = "espn"): PaletteItem[] {
   const items = players.map((p) => playerItem(p, provider));
   const sig = (i: PaletteItem) => `${normalize(i.label)}|${i.hint ?? ""}`;
   const counts = new Map<string, number>();

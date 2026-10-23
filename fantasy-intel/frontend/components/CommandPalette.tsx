@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
-  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItems, pushRecent, searchSrc,
+  type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, playerItems, pushRecent, readLeagueRecents, searchSrc,
+  writeLeagueRecents,
   wrapIndex,
 } from "@/lib/palette";
 import type { Provider } from "@/lib/labels";
@@ -15,21 +16,21 @@ import { useTeam } from "./useTeam";
 import { useHiddenHrefs, useNavGroups } from "./NavVisibility";
 import styles from "./CommandPalette.module.css";
 
-const RECENT_KEY = "fantasy-intel:palette-recent";
 const DEBOUNCE_MS = 150;
-const NO_PLAYERS: PaletteItem[] = [];
+const NO_PLAYERS: SearchPlayer[] = [];
 
-function readRecents(): PaletteItem[] {
+/** This league's recents (`fi:palette-recent:v1:<lg>`); none outside a league. Storage can be blocked: then none. */
+function readRecents(league: string | null): PaletteItem[] {
   try {
-    return parseRecents(window.localStorage.getItem(RECENT_KEY));
+    return readLeagueRecents(window.localStorage, league);
   } catch {
     return [];
   }
 }
 
-function writeRecents(items: PaletteItem[]) {
+function writeRecents(league: string | null, items: PaletteItem[]) {
   try {
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(items));
+    writeLeagueRecents(window.localStorage, league, items);
   } catch {
     // Storage can be blocked (private windows, site settings); recents are a convenience.
   }
@@ -45,10 +46,12 @@ function isEditable(target: EventTarget | null): boolean {
 
 /**
  * The app bar's search trigger and the palette dialog it opens. Mounted once, in the root layout, which passes the
- * league's provider so player results name roster states in that provider's terms (the layout re-renders when the
- * league changes, ScopeRefresh).
+ * league's provider and the league it belongs to (`providerLeague`, null on the classic site), so player results name
+ * roster states in that provider's terms. The layout re-renders after a client-side league switch (ScopeRefresh), so
+ * for a moment the prop can still describe the previous league: results are worded with the provider only when it
+ * belongs to the league they came from, and with provider-neutral words until then.
  */
-export function CommandPalette({ provider = "espn" }: { provider?: Provider }) {
+export function CommandPalette({ provider = "espn", providerLeague = null }: { provider?: Provider; providerLeague?: string | null }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -92,15 +95,20 @@ export function CommandPalette({ provider = "espn" }: { provider?: Provider }) {
         <span className={styles.triggerLabel}>Search players, pages…</span>
         <kbd className={styles.kbd} aria-hidden="true">{mac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
-      {open && createPortal(<PaletteDialog onClose={close} team={team} provider={provider} />, document.body)}
+      {open && createPortal(<PaletteDialog onClose={close} team={team} provider={provider} providerLeague={providerLeague} />, document.body)}
     </>
   );
 }
 
-/** `key`: the league and query the players answer, so another league's results are never shown for the same text. */
-type PlayerResult = { key: string; players: PaletteItem[]; failed: boolean };
+/**
+ * `key`: the league and query the players answer, so another league's results are never shown for the same text;
+ * `league`: the league they came from, which decides whether the provider prop may word them.
+ */
+type PlayerResult = { key: string; league: string | null; players: SearchPlayer[]; failed: boolean };
 
-function PaletteDialog({ onClose, team, provider }: { onClose: () => void; team: string | null; provider: Provider }) {
+function PaletteDialog({ onClose, team, provider, providerLeague }: {
+  onClose: () => void; team: string | null; provider: Provider; providerLeague: string | null;
+}) {
   const league = useLeagueId();
   const router = useRouter();
   const uid = useId();
@@ -108,14 +116,17 @@ function PaletteDialog({ onClose, team, provider }: { onClose: () => void; team:
   const dialog = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [recents] = useState<PaletteItem[]>(readRecents);
-  const [result, setResult] = useState<PlayerResult>({ key: "", players: [], failed: false });
+  const [recents] = useState<PaletteItem[]>(() => readRecents(league));
+  const [result, setResult] = useState<PlayerResult>({ key: "", league: null, players: [], failed: false });
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const q = query.trim();
   const key = `${league ?? ""} ${q}`;
   const pending = q !== "" && result.key !== key;
-  const players = result.key === key ? result.players : NO_PLAYERS;
+  const raw = result.key === key ? result.players : NO_PLAYERS;
+  // The provider prop words the results only when it describes the league that produced them; else neutral words.
+  const wording = providerLeague === result.league ? provider : null;
+  const players = useMemo(() => playerItems(raw, wording), [raw, wording]);
   const groups = useNavGroups();
   const pages = useMemo(() => pageItems(groups), [groups]);
   const hidden = useHiddenHrefs();
@@ -135,16 +146,16 @@ function PaletteDialog({ onClose, team, provider }: { onClose: () => void; team:
         const res = await fetch(leagueRouteHref(searchSrc(q), league), { signal: ctrl.signal });
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { players: SearchPlayer[] };
-        setResult({ key, players: playerItems(body.players, provider), failed: false });
+        setResult({ key, league, players: body.players, failed: false });
       } catch {
-        if (!ctrl.signal.aborted) setResult({ key, players: [], failed: true });
+        if (!ctrl.signal.aborted) setResult({ key, league, players: [], failed: true });
       }
     }, DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q, league, key, provider]);
+  }, [q, league, key]);
 
   // Lock page scroll while open (the stable gutter in globals.css keeps the layout from shifting).
   useEffect(() => {
@@ -165,7 +176,7 @@ function PaletteDialog({ onClose, team, provider }: { onClose: () => void; team:
   }, [active, uid]);
 
   const choose = useCallback((item: PaletteItem) => {
-    writeRecents(pushRecent(readRecents(), item));
+    writeRecents(league, pushRecent(readRecents(league), item));
     onClose();
     router.push(withLeague(withTeam(item.href, team), league));
   }, [league, onClose, router, team]);

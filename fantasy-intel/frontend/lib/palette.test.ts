@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { leagueRouteHref, proxyDecision, scopeApiPath } from "./league-scope.ts";
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
-  FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, normalize, pageItems, parseRecents, playerItem, playerItems, pushRecent,
+  FUZZY_SCORE, LEGACY_RECENT_KEY, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, normalize, pageItems, parseLeagueRecents,
+  parseRecents, playerItem, playerItems, pushRecent, readLeagueRecents, recentsKey, writeLeagueRecents,
   rankItems, scoreItem, searchPath, searchResponse, searchSrc, wrapIndex, type PaletteItem,
 } from "./palette.ts";
 
@@ -121,6 +122,63 @@ test("pushRecent de-duplicates by destination, puts the newest first and caps th
   for (let i = 0; i < 10; i++) r = pushRecent(r, { id: `p${i}`, kind: "page", label: `P${i}`, href: `/p${i}` });
   assert.equal(r.length, RECENT_LIMIT);
   assert.equal(r[0].id, "p9");
+});
+
+test("a player's recent keeps only his position: never this league's holder, roster status, injury or NFL team", () => {
+  const live = playerItem({ id: 9, name: "Echo RB", position: "RB", team: "KC", owner: "Team 1", availability: "ONTEAM", injury: "OUT" });
+  assert.equal(live.hint, "RB · KC · Out · Team 1");
+  const [recent] = pushRecent([], live);
+  assert.deepEqual(recent, { id: "player:9", kind: "player", label: "Echo RB", hint: "RB", href: "/players?id=9" });
+  for (const availability of ["WAIVERS", "FREEAGENT"] as const) {
+    const [r] = pushRecent([], playerItem({ id: 9, name: "Echo RB", position: "RB", team: "KC", owner: null, availability, injury: null }));
+    assert.equal(r.hint, "RB");
+  }
+  // A player item built elsewhere without a recentHint keeps no hint at all; pages keep theirs.
+  assert.equal(pushRecent([], { id: "player:3", kind: "player", label: "X", hint: "WR · Team 4", href: "/players?id=3" })[0].hint, undefined);
+  assert.equal(pushRecent([], QUICK_ACTIONS[0])[0].hint, QUICK_ACTIONS[0].hint);
+  // A stored player hint that is anything but a position is dropped on read.
+  const stored = JSON.stringify([{ id: "player:3", kind: "player", label: "X", hint: "WR · BAL · Gridiron Ghosts", href: "/players?id=3" },
+    { id: "player:4", kind: "player", label: "Y", hint: "D/ST", href: "/players?id=4" }]);
+  assert.deepEqual(parseRecents(stored).map((r) => r.hint), [undefined, "D/ST"]);
+});
+
+test("recents are kept per league, refused under another league's key, never outside a league; the legacy list is ignored and removed", () => {
+  const A = "lg_aaaaaaaaaaaaaaaa";
+  const B = "lg_bbbbbbbbbbbbbbbb";
+  const map = new Map<string, string>();
+  const io = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => { map.set(k, v); }, removeItem: (k: string) => { map.delete(k); } };
+  assert.equal(recentsKey(A), "fi:palette-recent:v1:lg_aaaaaaaaaaaaaaaa");
+  for (const lg of [null, undefined, "", "12345"]) assert.equal(recentsKey(lg), null);
+
+  // The pre-#200 browser-wide list (with a holder in a player hint) is never read, and goes on the first write.
+  map.set(LEGACY_RECENT_KEY, JSON.stringify([{ id: "player:2", kind: "player", label: "Zay Flowers", hint: "WR · BAL · Gridiron Ghosts", href: "/players?id=2" }]));
+  assert.deepEqual(readLeagueRecents(io, A), []);
+  const live = playerItem({ id: 309, name: "Waiver WR", position: "WR", team: "LAR", owner: null, availability: "WAIVERS", injury: null });
+  assert.equal(writeLeagueRecents(io, A, pushRecent([], live)), true);
+  assert.equal(map.has(LEGACY_RECENT_KEY), false);
+  assert.deepEqual(readLeagueRecents(io, A), [{ id: "player:309", kind: "player", label: "Waiver WR", hint: "WR", href: "/players?id=309" }]);
+  assert.doesNotMatch(map.get(recentsKey(A)!)!, /waivers|Free agent|LAR/i);
+
+  // League B sees nothing, even with A's payload copied under its key; nothing is stored outside a league.
+  assert.deepEqual(readLeagueRecents(io, B), []);
+  map.set(recentsKey(B)!, map.get(recentsKey(A)!)!);
+  assert.deepEqual(readLeagueRecents(io, B), []);
+  assert.equal(writeLeagueRecents(io, null, [live]), false);
+  assert.deepEqual(readLeagueRecents(io, null), []);
+  for (const raw of ["{", "null", "[]", JSON.stringify({ v: 2, league: A, items: [] }), JSON.stringify({ v: 1, league: A, items: "x" })])
+    assert.deepEqual(parseLeagueRecents(raw, A), [], raw);
+  const blocked = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("quota"); }, removeItem: () => {} };
+  assert.deepEqual(readLeagueRecents(blocked, A), []);
+  assert.equal(writeLeagueRecents(blocked, A, [live]), false);
+});
+
+test("before the provider is confirmed for the league searched, results use only provider-neutral words", () => {
+  const p = (availability: "ONTEAM" | "WAIVERS" | "FREEAGENT" | null, owner: string | null = null) =>
+    ({ id: 9, name: "Echo RB", position: "RB", team: "KC", owner, availability, injury: null });
+  assert.equal(playerItem(p("FREEAGENT"), null).hint, "RB · KC · Not rostered");
+  assert.equal(playerItem(p("ONTEAM", "Team 1"), null).hint, "RB · KC · Team 1");
+  assert.equal(playerItem(p("WAIVERS"), null).hint, "RB · KC · On waivers");
+  assert.equal(playerItem(p(null), null).hint, "RB · KC · Roster status unknown");
 });
 
 test("parseRecents survives garbage and rejects off-site destinations", () => {

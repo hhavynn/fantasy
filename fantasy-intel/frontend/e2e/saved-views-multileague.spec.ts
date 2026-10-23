@@ -106,6 +106,17 @@ for (const width of [1440, 375]) {
     await expect(box).toContainText("None yet.");
     expect(await page.evaluate((k) => localStorage.getItem(k), viewsKey(a, "waivers"))).toBeNull();
 
+    // Trade discovery: the suggested view is recognised as the open one, and a saved view keeps the repeated shape.
+    await page.goto(`/l/${a}/trades/discover?team=2&mode=fair&shape=1-for-1`);
+    box = await openViews(page, "Trade discovery");
+    await expect(box.getByRole("link", { name: "Fairer 1-for-1 swaps", exact: true })).toHaveAttribute("aria-current", "page");
+    await box.getByLabel("Save current filters as").fill("Fair swaps");
+    await box.getByRole("button", { name: "Save view" }).click();
+    await expect(box.getByRole("status")).toHaveText("Saved “Fair swaps” on this device for this league.");
+    expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).views, viewsKey(a, "discover")))
+      .toEqual([{ name: "Fair swaps", params: [["mode", "fair"], ["shape", "1-for-1"]] }]);
+    await noPageOverflow(page);
+
     expect(seen.writes).toEqual([]);
     expect(seen.errors).toEqual([]);
   });
@@ -148,6 +159,42 @@ for (const width of [1440, 375]) {
     await dialog.getByRole("combobox", { name: "Search players and pages" }).fill("Waiver");
     await expect(dialog.getByRole("option", { name: /^Waiver WR/ })).toContainText("Not rostered");
     await expect(dialog.getByRole("listbox")).not.toContainText("Free agent");
+    await page.keyboard.press("Escape");
+
+    // Recent: a player picked in league A is remembered for league A only, by name and position, without A's holder,
+    // roster status or injury, and none of it appears in the Sleeper league.
+    await page.goto(`/l/${a}/players?q=Kilo`);
+    await expect(rowOf("Kilo RB")).toBeVisible({ timeout: 30_000 });
+    const input = dialog.getByRole("combobox", { name: "Search players and pages" });
+    await page.keyboard.press("Control+k");
+    await input.fill("Kilo");
+    const kilo = dialog.getByRole("option", { name: /^Kilo RB/ });
+    await expect(kilo).toBeVisible();
+    const holder = (await kilo.textContent())!.split(" · ").pop()!.trim();
+    expect(holder).not.toBe("");
+    await kilo.click();
+    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\?id=207`));
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Kilo RB", { timeout: 30_000 });
+    await page.keyboard.press("Control+k");
+    await input.fill("Waiver WR");
+    await dialog.getByRole("option", { name: /^Waiver WR/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\?id=309`));
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Waiver WR", { timeout: 30_000 });
+    await page.keyboard.press("Control+k");
+    const recentA = dialog.getByRole("group", { name: "Recent" });
+    await expect(recentA.getByRole("option")).toHaveText([/^Waiver WR\s*WR$/, /^Kilo RB\s*RB$/]);
+    await page.keyboard.press("Escape");
+    const storedRecents = await page.evaluate((k) => localStorage.getItem(k), `fi:palette-recent:v1:${a}`);
+    expect(storedRecents).not.toMatch(new RegExp(`waivers|Free agent|${holder}`, "i"));
+    expect(await page.evaluate(() => localStorage.getItem("fantasy-intel:palette-recent"))).toBeNull();
+
+    await page.goto(`/l/${b}/rankings`);
+    await expect(page.getByRole("group", { name: "Rankings views" })).toBeVisible({ timeout: 30_000 });
+    await page.keyboard.press("Control+k");
+    await expect(input).toBeFocused();
+    await expect(dialog.getByRole("group", { name: "Recent" })).toHaveCount(0);
+    for (const text of ["Free agent", "On waivers", holder, "Kilo RB", "Waiver WR"]) await expect(dialog).not.toContainText(text);
+    await page.keyboard.press("Escape");
 
     expect(seen.writes).toEqual([]);
     expect(seen.errors).toEqual([]);

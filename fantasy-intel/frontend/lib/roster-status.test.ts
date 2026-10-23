@@ -17,6 +17,13 @@ test("Sleeper never says free agent: an unrostered player may still be on waiver
   assert.equal(rosterStatus("ONTEAM", "Team 2", "sleeper").text, "Team 2");
 });
 
+test("an unconfirmed provider (null) never says free agent", () => {
+  assert.equal(rosterStatus("FREEAGENT", null, null).text, "Not rostered");
+  assert.equal(rosterStatus("FREEAGENT", null, null).kind, "unrostered");
+  assert.doesNotMatch(rosterStatus("FREEAGENT", null, null).title, /ESPN|Sleeper/);
+  assert.equal(rosterStatus("FREEAGENT", null, undefined).text, "Free agent");   // omitted: the classic ESPN default
+});
+
 test("a missing or unknown status is unknown, never free; a team name alone still means rostered", () => {
   for (const a of [null, undefined, "", "OTHER"]) assert.equal(rosterStatus(a, null).kind, "unknown", String(a));
   assert.equal(rosterStatus(null, "Team 4").kind, "rostered");

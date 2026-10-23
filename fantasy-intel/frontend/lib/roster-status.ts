@@ -5,6 +5,10 @@
 // whether a player is rostered (app/sleeper/write.py writes ONTEAM or FREEAGENT), so an unrostered Sleeper player may
 // still be on waivers: he is "Not rostered", never "Free agent". Anything else (no status, an unknown value) is
 // "Roster status unknown", never assumed free.
+//
+// `provider` null means the provider is not confirmed for the league the data came from (the command palette right after
+// a client-side league switch, before the layout re-renders): then only wording true for every provider is used, so an
+// unrostered player is "Not rostered" (never "Free agent").
 
 import { normalizeProvider, type Provider } from "./labels.ts";
 
@@ -13,8 +17,8 @@ export type RosterStatus = { kind: RosterKind; text: string; title: string };
 
 export function rosterStatus(availability: string | null | undefined, owner: string | null | undefined,
   provider: Provider | string | null | undefined = "espn"): RosterStatus {
-  const pv = normalizeProvider(provider);
-  const name = pv === "sleeper" ? "Sleeper" : "ESPN";
+  const pv = provider === null ? null : normalizeProvider(provider);
+  const name = pv === "sleeper" ? "Sleeper" : pv === "espn" ? "ESPN" : "The provider";
   if (availability === "ONTEAM") {
     return owner
       ? { kind: "rostered", text: owner, title: `Rostered by ${owner}` }
@@ -22,9 +26,10 @@ export function rosterStatus(availability: string | null | undefined, owner: str
   }
   if (availability === "WAIVERS") return { kind: "waivers", text: "On waivers", title: `${name} lists him on waivers: a claim is needed` };
   if (availability === "FREEAGENT") {
+    if (pv === "espn") return { kind: "free", text: "Free agent", title: "ESPN lists him as a free agent: no claim needed" };
     return pv === "sleeper"
       ? { kind: "unrostered", text: "Not rostered", title: "Not on a roster in this league. Sleeper does not say whether he is on waivers" }
-      : { kind: "free", text: "Free agent", title: "ESPN lists him as a free agent: no claim needed" };
+      : { kind: "unrostered", text: "Not rostered", title: "Not on a roster in this league" };
   }
   // No status from the provider: a team name alone still means rostered (older payloads), otherwise unknown.
   if (owner) return { kind: "rostered", text: owner, title: `Rostered by ${owner}` };
