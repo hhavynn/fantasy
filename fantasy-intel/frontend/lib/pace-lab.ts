@@ -83,7 +83,8 @@ export type WeekRow = {
 };
 
 export type Range = { expected: number | null; low: number | null; high: number | null };
-export type MixResult = { measures: Record<Measure, Range>; range_reason: string | null };
+/** `available` false: no script mix or estimate to work from; every value is null and `range_reason` says why. */
+export type MixResult = { measures: Record<Measure, Range>; range_reason: string | null; available: boolean };
 
 export type OverviewRow = {
   team: string;
@@ -168,8 +169,9 @@ export type PaceLabResponse = {
     additive_plays: number | null; head_to_head_games: number;
   } | null;
   scenario?: {
-    hypothetical: true; input_mix: number[] | null; mix: number[]; baseline_mix: number[];
-    baseline_source: "observed" | "league"; baseline: MixResult; result: MixResult;
+    hypothetical: true; input_mix: number[] | null; mix: number[] | null; baseline_mix: number[] | null;
+    available: boolean; unavailable_reason: string | null;
+    baseline_source: "observed" | "league" | "unavailable"; baseline: MixResult; result: MixResult;
     change: Record<Measure, { expected: number | null }>;
   } | null;
 };
@@ -239,6 +241,13 @@ export function paceApiPath(s: PaceState): string {
   return `/api/pace-lab${qs ? `?${qs}` : ""}`;
 }
 
+/** The mix as the page's URL fields (`mc`, `ml`, `mt`), exactly as paceHref writes them, for hidden form inputs that
+ * must carry a custom mix through another filter's GET form; empty without a team or a mix. */
+export function mixFields(s: PaceState): [string, string][] {
+  if (!s.team || !s.mix) return [];
+  return [["mc", String(s.mix[0])], ["ml", String(s.mix[1])], ["mt", String(s.mix[2])]];
+}
+
 /** The page URL for a state with some fields changed (LeagueLink scopes it to the page's league). */
 export function paceHref(s: PaceState, patch: Partial<PaceState> = {}): string {
   const n = { ...s, ...patch };
@@ -249,11 +258,7 @@ export function paceHref(s: PaceState, patch: Partial<PaceState> = {}): string {
   if (n.team && n.opp) q.set("opp", n.opp);
   if (n.window !== "season") q.set("window", n.window);
   if (n.through !== null) q.set("through", String(n.through));
-  if (n.team && n.mix) {
-    q.set("mc", String(n.mix[0]));
-    q.set("ml", String(n.mix[1]));
-    q.set("mt", String(n.mix[2]));
-  }
+  for (const [k, v] of mixFields(n)) q.set(k, v);
   const qs = q.toString();
   return `${PATH}${qs ? `?${qs}` : ""}`;
 }
@@ -265,7 +270,8 @@ export function seasonsText(seasons: number[]): string {
 }
 
 /** A mix as "60% competitive, 20% leading, 20% trailing" (shares 0-1). */
-export function mixText(mix: number[]): string {
+export function mixText(mix: number[] | null): string {
+  if (!mix) return "unavailable";
   return SCRIPTS.map((s, i) => `${Math.round((mix[i] ?? 0) * 100)}% ${s}`).join(", ");
 }
 

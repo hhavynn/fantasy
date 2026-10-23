@@ -352,6 +352,37 @@ def test_the_scenario_changes_against_the_observed_mix_and_says_it_is_hypothetic
         r["expected"] - trail["baseline"]["measures"]["plays"]["expected"], abs=0.11)
 
 
+def test_without_any_final_score_the_scenario_is_unavailable_not_zero(tmp_path):
+    """No schedule stored (or no final score): nothing can be classified, so neither the team nor the league has a
+    script mix. The scenario is unavailable with a reason, never a centre of 0 plays."""
+    con = duckdb.connect(str(tmp_path / "noschedule.duckdb"))
+    init_db(con)
+    _tw(con, 2025, 1, "KC", "BUF", 60)
+    _tw(con, 2025, 1, "BUF", "KC", 62)
+    for q in (PaceQuery(team="KC"), PaceQuery(team="KC", mix=(20, 70, 10))):
+        sc = build_pace_lab(con, q)["scenario"]
+        assert sc["available"] is False and sc["unavailable_reason"], q
+        assert sc["baseline_source"] == "unavailable" and sc["baseline_mix"] is None
+        for res in (sc["baseline"], sc["result"]):
+            assert res["available"] is False
+            assert all(v is None for m in res["measures"].values() for v in m.values()), res
+        assert all(c["expected"] is None for c in sc["change"].values())
+    assert build_pace_lab(con, PaceQuery(team="KC"))["scenario"]["mix"] is None
+    # A schedule with no final score: no game counts at all, so the team is refused (422), never shown with zeros.
+    con2 = _db(tmp_path)
+    _game(con2, 2025, 1, "KC", "BUF", None, None)
+    _tw(con2, 2025, 1, "KC", "BUF", 60)
+    with pytest.raises(PaceLabError):
+        build_pace_lab(con2, PaceQuery(team="KC"))
+
+
+def test_a_zero_weight_mix_is_unavailable():
+    per = _scripts((60.0, 56.0, 70.0), (0.5, 0.4, 0.7))
+    out = pl_.mixture((0.0, 0.0, 0.0), per, {s: [0.0] for s in pl_.SCRIPTS}, 0.8)
+    assert out["available"] is False and out["range_reason"]
+    assert all(v is None for m in out["measures"].values() for v in m.values())
+
+
 # ----------------------------------------------------------------------------- backtest
 
 

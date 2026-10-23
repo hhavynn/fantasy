@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  PRESETS, backtestSentences, coverageText, mixText, paceApiPath, paceHref, parsePaceState, presetActive, resultText,
+  PRESETS, backtestSentences, coverageText, mixFields, mixText, paceApiPath, paceHref, parsePaceState, presetActive, resultText,
   seasonsText, type Backtest, type WeekRow,
 } from "./pace-lab.ts";
 
@@ -67,4 +67,17 @@ test("a result line needs both scores", () => {
   assert.equal(resultText(row), "W 27-20");
   assert.equal(resultText({ ...row, points_for: 10, points_against: 31 }), "L 10-31");
   assert.equal(resultText({ ...row, points_for: null }), null);
+});
+
+test("the filter form carries a custom mix as the same fields the page links write", () => {
+  const s = parsePaceState({ team: "LV", mc: "20", ml: "70", mt: "10", through: "9" });
+  assert.deepEqual(mixFields(s), [["mc", "20"], ["ml", "70"], ["mt", "10"]]);
+  const linked = new URL(paceHref(s), "http://x").searchParams;
+  for (const [k, v] of mixFields(s)) assert.equal(linked.get(k), v);
+  // Submitting the filter form (team switched to KC) with those hidden fields keeps the mix.
+  const submitted = parsePaceState({ team: "KC", through: "9", ...Object.fromEntries(mixFields(s)) });
+  assert.deepEqual(submitted.mix, [20, 70, 10]);
+  assert.deepEqual(mixFields(parsePaceState({ team: "LV" })), []);
+  assert.deepEqual(mixFields(parsePaceState({ mc: "20" })), []);
+  assert.equal(mixText(null), "unavailable");
 });

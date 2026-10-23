@@ -2,7 +2,7 @@ import Link from "@/components/LeagueLink";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import {
-  PATH, SPANS, WINDOWS, WINDOW_LABEL, paceHref, seasonsText, type PaceLabResponse, type PaceState,
+  PATH, SPANS, WINDOWS, WINDOW_LABEL, mixFields, paceHref, seasonsText, type PaceLabResponse, type PaceState,
 } from "@/lib/pace-lab";
 import { plural } from "@/lib/plural";
 import styles from "./pace-lab.module.css";
@@ -52,6 +52,8 @@ export async function Controls({ state, d }: { state: PaceState; d: PaceLabRespo
           {state.season !== null && <input type="hidden" name="season" value={state.season} />}
           {state.seasons !== 1 && <input type="hidden" name="seasons" value={state.seasons} />}
           {state.window !== "season" && <input type="hidden" name="window" value={state.window} />}
+          {/* A custom script mix survives a team, opponent or week change (parsePaceState drops it without a team). */}
+          {mixFields(state).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           <label className={styles.field}>
             Team
             <select name="team" defaultValue={state.team ?? ""}>

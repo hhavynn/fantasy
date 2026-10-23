@@ -482,8 +482,13 @@ def normalize_mix(raw: Sequence[float]) -> tuple[float, ...]:
 
 def mixture(mix: Sequence[float], per_script: dict, pools: dict[str, list[float]], targets_rate: float | None) -> dict:
     """Central estimate and range of plays, dropbacks, designed runs and targets for a script mix. A script with
-    weight 0 contributes nothing; a weighted script without an estimate or a spread leaves the range unknown."""
+    weight 0 contributes nothing; a weighted script without an estimate or a spread leaves the range unknown. A mix
+    with no positive weight (no classified game to take a mix from) is unavailable: every value null, never zero."""
     measures = ("plays", "dropbacks", "designed_rushes", "targets")
+    if mix is None or not any(w > 0 for w in mix):
+        return {"measures": {m: {"expected": None, "low": None, "high": None} for m in measures},
+                "range_reason": "no script mix is available: no game in this filter has a final score to classify",
+                "available": False}
     central = dict.fromkeys(measures, 0.0)
     points: dict[str, list[tuple[float, float]]] = {m: [] for m in measures}
     reasons = []
@@ -521,7 +526,8 @@ def mixture(mix: Sequence[float], per_script: dict, pools: dict[str, list[float]
         if c is not None and points and not reasons:
             lo, hi = (weighted_quantile(points[meas], q) for q in RANGE_QUANTILES)
         out[meas] = {"expected": _r(c, 1), "low": _r(lo, 1), "high": _r(hi, 1)}
-    return {"measures": out, "range_reason": "; ".join(reasons) or None}
+    return {"measures": out, "range_reason": "; ".join(reasons) or None,
+            "available": out["plays"]["expected"] is not None}
 
 
 def observed_mix(games: Sequence[TeamGame]) -> tuple[tuple[float, ...] | None, int]:
@@ -664,7 +670,8 @@ def build_pace_lab(con, q: PaceQuery) -> dict:
     per_script = script_estimates(shown, league, overall)
     mix_obs, n_classified = observed_mix(shown)
     lmix = tuple(league["scripts"][s]["share"] or 0.0 for s in SCRIPTS)
-    baseline_mix, baseline_label = (mix_obs, "observed") if mix_obs else (lmix, "league")
+    baseline_mix, baseline_label = ((mix_obs, "observed") if mix_obs
+                                    else (lmix, "league") if any(lmix) else (None, "unavailable"))
     listed = sorted({g.listed_as for g in by_team[team] if g.listed_as})
     out["team"] = {"team": team, "listed_as": listed, "games": [_week_row(g) for g in shown],
                    "window_games": len(window_games), "summary": overall, "scripts": per_script,
@@ -688,6 +695,9 @@ def build_pace_lab(con, q: PaceQuery) -> dict:
                                if None not in (scen_res["measures"][m]["expected"], base_res["measures"][m]["expected"])
                                else None)} for m in scen_res["measures"]}
     out["scenario"] = {"hypothetical": True, "input_mix": list(q.mix) if q.mix is not None else None,
-                       "mix": [_r(x, 3) for x in mix_in], "baseline_mix": [_r(x, 3) for x in baseline_mix],
+                       "mix": [_r(x, 3) for x in mix_in] if mix_in else None,
+                       "available": scen_res["available"],
+                       "unavailable_reason": None if scen_res["available"] else scen_res["range_reason"],
+                       "baseline_mix": [_r(x, 3) for x in baseline_mix] if baseline_mix else None,
                        "baseline_source": baseline_label, "baseline": base_res, "result": scen_res, "change": change}
     return out

@@ -30,7 +30,7 @@ export async function Scenario({ state, d, bt, sentence }: {
   const sc = d.scenario!;
   const team = d.team!.team;
   const action = withLeague(PATH, (await currentLeague())?.id);
-  const pct = sc.mix.map((x) => Math.round(x * 100));
+  const pct = sc.mix ? sc.mix.map((x) => Math.round(x * 100)) : null;
   const why = sc.result.range_reason ?? "Not enough past games to measure";
   const cond = bt.status === "frozen" ? coverageText(bt.range_coverage.conditional_on_script) : null;
   return (
@@ -60,7 +60,7 @@ export async function Scenario({ state, d, bt, sentence }: {
           <label key={s} className={styles.field}>
             {SCRIPT_LABEL[s]} %
             <input type="number" name={["mc", "ml", "mt"][i]} min={0} max={100} step={5} inputMode="numeric"
-              defaultValue={pct[i]} aria-describedby={`rule-${s}`} />
+              defaultValue={pct ? pct[i] : undefined} aria-describedby={`rule-${s}`} />
             <span id={`rule-${s}`} className={styles.sub}>{SCRIPT_RULE[s]}</span>
           </label>
         ))}
@@ -68,9 +68,16 @@ export async function Scenario({ state, d, bt, sentence }: {
       </form>
       <p className={styles.note}>
         Scenario: {mixText(sc.mix)}{sc.input_mix && sc.input_mix.reduce((a, b) => a + b, 0) !== 100 ? " (weights rescaled to 100%)" : ""}.
-        {" "}Compared with {sc.baseline_source === "observed" ? `${team}'s observed mix in this filter` : "the league's mix (no classified game for this team)"}:
+        {" "}Compared with {sc.baseline_source === "observed" ? `${team}'s observed mix in this filter`
+          : sc.baseline_source === "league" ? "the league's mix (no classified game for this team)"
+            : "no mix (no game in this filter has a final score to classify)"}:
         {" "}{mixText(sc.baseline_mix)}.
       </p>
+      {!sc.available ? (
+        <Notice tone="caution" title="Scenario unavailable">
+          No centre or range can be given: {sc.unavailable_reason ?? "the per-script estimates are missing"}. Nothing here is a measured zero.
+        </Notice>
+      ) : (
       <div className="table-wrap">
         <table>
           <thead>
@@ -93,6 +100,7 @@ export async function Scenario({ state, d, bt, sentence }: {
           </tbody>
         </table>
       </div>
+      )}
       <p className={styles.note}>
         Range: the middle 80% of past team-games shaped like the mix (10th to 90th percentile), not a probability.
         {cond ? ` In the backtest, the range for the script that actually happened contained ${cond}.` : ""}
