@@ -4,7 +4,7 @@ The automated gates (issue #202) catch navigation, layout, chart and missing-dat
 
 ## What runs in CI
 
-All of it runs in the existing `E2E smoke (Playwright)` job in `.github/workflows/ci.yml`.
+All of it runs in the parallel E2E jobs in `.github/workflows/ci.yml`. The UX gates run with the route smoke shards (`npm run e2e`) and the multi-league job (`npm run e2e:multileague`), and visual regression runs with the Sleeper smoke. The `E2E smoke (Playwright)` check is the aggregate that passes only when every E2E job passed.
 
 | Step | Spec | Fixture | Widths | Checks |
 |---|---|---|---|---|
