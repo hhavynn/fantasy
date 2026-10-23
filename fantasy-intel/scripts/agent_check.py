@@ -184,8 +184,10 @@ APP_WIDE_AUDITS: list[str] = [
 QUICK_EXCLUDED_TESTS: dict[str, str] = {
     "tests/test_league_scope.py": "~66-85 s",
     "tests/test_v2_authorization_matrix.py": "~28 s",
+    "tests/test_schedule_intelligence.py": "~73 s",
 }
 QUICK_MAX_FILES = 3
+QUICK_BUDGET_S = 60.0
 
 
 def select_quick_tests(backend_tests: list[str]) -> tuple[list[str], list[str]]:
@@ -987,7 +989,12 @@ class VerificationRunner:
                 selected_quick, deferred = select_quick_tests(backend_tests)
                 if selected_quick:
                     title = f"Quick Backend ({len(selected_quick)} of {len(backend_tests)} affected files)"
-                    self.run_backend_tests(selected_quick, title=title, timeout=60.0)
+                    res = self.run_backend_tests(selected_quick, title=title, timeout=QUICK_BUDGET_S)
+                    if res is not None and res.status == "FAIL" and res.summary.startswith("TIMEOUT"):
+                        # Running out of quick's budget is not a test failure: `affected` is the gate for these files.
+                        res.status = "UNVERIFIED"
+                        res.summary = (f"Exceeded quick's {QUICK_BUDGET_S:.0f}s budget (not a test failure); "
+                                       "run 'affected' for these files")
                 if deferred:
                     self.results.append(StepResult(
                         name="Quick Deferred",
