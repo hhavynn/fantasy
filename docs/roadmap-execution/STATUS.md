@@ -67,7 +67,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #183 trade scenarios | 4 | MERGED | #263 → 042e229 | |
 | #184 trade-market values | 4 | MERGED | #266 → eaa3fa7 | value board; unmeasured replacement → no value |
 | #185 draft-pick valuation | 4 | RESEARCH-ONLY | — | |
-| #188 SOS heatmaps | 5 | NOT STARTED | — | |
+| #188 SOS heatmaps | 5 | MERGED | #271 | QB/WR/TE share pass-defense metric (stated); WR/TE target share as context |
 | #189 projection comparison | 5 | NOT STARTED | — | |
 | #190 opportunity trees | 5 | NOT STARTED | — | |
 | #198 defensive matchups | 5 | NOT STARTED | — | data-rights research first |
@@ -292,6 +292,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Full CI runs | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #271 | 09:01 | 09:47 (97a26a1) | 09:20 MEDIUM+3 LOW → self-check 09:45 | 09:50 (49 min) | 2 | 0 |
 | #268 | 08:02 | 09:36 (aedc728) | 08:30 REQUEST CHANGES (F1 HIGH) → 08:55 N1 MEDIUM → self-check 09:15 | 09:37 (95 min) | 4 | 0 |
 | #266 | 07:09 | 08:18 (62440cd; e2e skeleton race + shard-4 guard list) | 07:20 MEDIUM+4 LOW + Codex P1/2×P2 → re-checks 07:55 (N1/N2) | 08:18 (69 min) | 4 | 1 (main.py vs #264) |
 | #267 | 07:25 | 08:16 (1e3674e; shard 3 ran 43 min) | 07:29 approve 4 LOW → 3 fixed | 08:16 (51 min) | 2 | 0 |
