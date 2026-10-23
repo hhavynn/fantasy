@@ -225,12 +225,13 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 **Lanes (D-13), 2026-10-23 03:25Z:**
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
-| A | #180 claim planner (#249 merged 03:22Z → 17d26e2) | agent | `.worktrees/fi-180-claim-planner` | targeted until granted |
-| B | #182 targeted trade discovery | agent | `.worktrees/fi-182-trade-discovery` | heavyweight + Playwright |
-| C | #253 phase 2 (phase 1 inventory done: G1 P0 Start/Sit empty-slot total; G2–G10 → diagnostic + follow-ups; S1–S3 → #254) | agent | `.worktrees/fi-253-compat` | targeted until granted |
+| A | #180 claim planner: built, running affected/security/e2e | agent | `.worktrees/fi-180-claim-planner` | holds heavyweight + Playwright |
+| B | #182 targeted trade discovery: built (229cc42 TradeEvidence scope fix, 3e2b93e feature), awaiting slot | agent | `.worktrees/fi-182-trade-discovery` | queued 3rd |
+| C | #253 phase 2: built (fe1cd54), awaiting slot | agent | `.worktrees/fi-253-compat` | queued 2nd (no Playwright) |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
+1a. Bounded fix: `components/CommandPalette.tsx` fetches `/api/search` without `/l/<lg>/` (same wrong-league class as TradeEvidence, fixed in #182). Lane C candidate once a slot frees.
 3. #179 FAAB intelligence (P1). Capability audit first; shares `app/waivers/*` with #180, so not in parallel with it.
 4. #183 trade scenarios (P1). Overlaps `app/trades/*` with #182, so after #182.
 5. #254 scoring fidelity (P1). After #253's contract and confirmed gaps; an isolated read-only audit can go earlier.
