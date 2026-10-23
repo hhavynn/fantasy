@@ -1,0 +1,282 @@
+// /api/research/game-splits/players
+{
+ "body": {
+  "players": [
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB01",
+    "name": "Synthetic RB 1",
+    "position": "RB",
+    "team": "BUF"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNRB10",
+    "name": "Synthetic RB 10",
+    "position": "RB",
+    "team": "DAL"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNRB11",
+    "name": "Synthetic RB 11",
+    "position": "RB",
+    "team": "SF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB12",
+    "name": "Synthetic RB 12",
+    "position": "RB",
+    "team": "DET"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNRB02",
+    "name": "Synthetic RB 2",
+    "position": "RB",
+    "team": "DAL"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNRB03",
+    "name": "Synthetic RB 3",
+    "position": "RB",
+    "team": "SF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB04",
+    "name": "Synthetic RB 4",
+    "position": "RB",
+    "team": "DET"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB05",
+    "name": "Synthetic RB 5",
+    "position": "RB",
+    "team": "MIA"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB06",
+    "name": "Synthetic RB 6",
+    "position": "RB",
+    "team": "PHI"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB07",
+    "name": "Synthetic RB 7",
+    "position": "RB",
+    "team": "CIN"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNRB08",
+    "name": "Synthetic RB 8",
+    "position": "RB",
+    "team": "KC"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNRB09",
+    "name": "Synthetic RB 9",
+    "position": "RB",
+    "team": "BUF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE01",
+    "name": "Synthetic TE 1",
+    "position": "TE",
+    "team": "BUF"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNTE10",
+    "name": "Synthetic TE 10",
+    "position": "TE",
+    "team": "DAL"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNTE02",
+    "name": "Synthetic TE 2",
+    "position": "TE",
+    "team": "DAL"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNTE03",
+    "name": "Synthetic TE 3",
+    "position": "TE",
+    "team": "SF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE04",
+    "name": "Synthetic TE 4",
+    "position": "TE",
+    "team": "DET"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE05",
+    "name": "Synthetic TE 5",
+    "position": "TE",
+    "team": "MIA"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE06",
+    "name": "Synthetic TE 6",
+    "position": "TE",
+    "team": "PHI"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE07",
+    "name": "Synthetic TE 7",
+    "position": "TE",
+    "team": "CIN"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNTE08",
+    "name": "Synthetic TE 8",
+    "position": "TE",
+    "team": "KC"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNTE09",
+    "name": "Synthetic TE 9",
+    "position": "TE",
+    "team": "BUF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR01",
+    "name": "Synthetic WR 1",
+    "position": "WR",
+    "team": "BUF"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNWR10",
+    "name": "Synthetic WR 10",
+    "position": "WR",
+    "team": "DAL"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNWR11",
+    "name": "Synthetic WR 11",
+    "position": "WR",
+    "team": "SF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR12",
+    "name": "Synthetic WR 12",
+    "position": "WR",
+    "team": "DET"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR13",
+    "name": "Synthetic WR 13",
+    "position": "WR",
+    "team": "MIA"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR14",
+    "name": "Synthetic WR 14",
+    "position": "WR",
+    "team": "PHI"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR15",
+    "name": "Synthetic WR 15",
+    "position": "WR",
+    "team": "CIN"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNWR16",
+    "name": "Synthetic WR 16",
+    "position": "WR",
+    "team": "KC"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNWR02",
+    "name": "Synthetic WR 2",
+    "position": "WR",
+    "team": "DAL"
+   },
+   {
+    "games": 5,
+    "gsis_id": "00-SYNWR03",
+    "name": "Synthetic WR 3",
+    "position": "WR",
+    "team": "SF"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR04",
+    "name": "Synthetic WR 4",
+    "position": "WR",
+    "team": "DET"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR05",
+    "name": "Synthetic WR 5",
+    "position": "WR",
+    "team": "MIA"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR06",
+    "name": "Synthetic WR 6",
+    "position": "WR",
+    "team": "PHI"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR07",
+    "name": "Synthetic WR 7",
+    "position": "WR",
+    "team": "CIN"
+   },
+   {
+    "games": 6,
+    "gsis_id": "00-SYNWR08",
+    "name": "Synthetic WR 8",
+    "position": "WR",
+    "team": "KC"
+   },
+   {
+    "games": 7,
+    "gsis_id": "00-SYNWR09",
+    "name": "Synthetic WR 9",
+    "position": "WR",
+    "team": "BUF"
+   }
+  ],
+  "season": 2026,
+  "seasons": [
+   2025,
+   2026
+  ],
+  "status": "ok",
+  "truncated": false,
+  "version": "game-splits.v1"
+ },
+ "status": 200
+}
