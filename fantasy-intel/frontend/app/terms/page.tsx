@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PageHeader, Section } from "@/components/ui";
 import styles from "./legal.module.css";
 

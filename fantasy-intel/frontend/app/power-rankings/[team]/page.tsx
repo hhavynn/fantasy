@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { TeamLink } from "@/components/TeamLink";
 import { UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, PageHeader, Section } from "@/components/ui";

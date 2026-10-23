@@ -8,7 +8,7 @@ import {
   totalsText, type MoversResponse,
 } from "@/lib/projection-movers";
 import type { SearchParams } from "@/lib/sort";
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Controls } from "./Controls";
 import { Detail } from "./Detail";
 import { Answer, RisersFallers } from "./Lists";

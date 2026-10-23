@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { CSSProperties } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { BarChart, LineChart, ScatterChart } from "@/components/charts";

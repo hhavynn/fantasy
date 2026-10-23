@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useEffect } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Notice, PageHeader } from "@/components/ui";

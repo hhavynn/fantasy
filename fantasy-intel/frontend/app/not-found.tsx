@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PageHeader, Section } from "@/components/ui";
 import { NAV_GROUPS } from "@/lib/navigation";
 import styles from "./route-state.module.css";

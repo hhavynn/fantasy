@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useActionState, useId } from "react";
 import { Notice } from "@/components/ui";
 import { sendLink, type LoginState } from "./actions";

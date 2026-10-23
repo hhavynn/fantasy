@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { LEAGUE_COOKIE, LEAGUE_HEADER, proxyDecision } from "./lib/league-scope";
+import { LEAGUE_COOKIE, LEAGUE_HEADER, proxyDecision, type ProxyDecision } from "./lib/league-scope";
 import { FixedWindowLimiter, clientIp, limitFromEnv } from "./lib/rate-limit";
 import { basicAuthOk } from "./lib/site-auth";
 import { refreshSession } from "./lib/supabase/proxy";
@@ -38,18 +38,25 @@ export async function proxy(request: NextRequest) {
     cookie: request.cookies.get(LEAGUE_COOKIE)?.value ?? null,
     classic: process.env.CLASSIC_SITE_ENABLED !== "0",
   });
-  switch (decision.kind) {
+  // Defence in depth: a rewrite or redirect target is always this site. lib/league-scope.ts never builds one that is
+  // not (splitLeaguePath rejects `/l/<lg>//host`), but `new URL()` would follow a `//host` path to another origin.
+  // Such a target is answered like any unmatched path (the default branch below). Both sides resolve against
+  // request.url, so only a target that names another host differs.
+  const target = decision.kind === "next" ? null
+    : new URL(decision.kind === "rewrite" ? decision.path : decision.location, request.url);
+  const d: ProxyDecision = target && target.origin !== new URL(request.url).origin ? { kind: "next" } : decision;
+  switch (d.kind) {
     case "rewrite": {
       const headers = new Headers(request.headers);
-      headers.set(LEAGUE_HEADER, decision.league);
-      const response = NextResponse.rewrite(new URL(decision.path, request.url), { request: { headers } });
-      response.cookies.set(LEAGUE_COOKIE, decision.league, { path: "/", sameSite: "lax", maxAge: COOKIE_MAX_AGE, httpOnly: true });
+      headers.set(LEAGUE_HEADER, d.league);
+      const response = NextResponse.rewrite(target!, { request: { headers } });
+      response.cookies.set(LEAGUE_COOKIE, d.league, { path: "/", sameSite: "lax", maxAge: COOKIE_MAX_AGE, httpOnly: true });
       return refreshSession(request, response);
     }
-    case "redirect":
-      return NextResponse.redirect(new URL(decision.location, request.url), 307);
+    case "redirect":   // also /l/<lg>/<page>?league=clear -> /l/<lg>/<page> without it
+      return NextResponse.redirect(target!, 307);
     case "clear": {
-      const response = NextResponse.redirect(new URL(decision.location, request.url), 307);
+      const response = NextResponse.redirect(target!, 307);
       response.cookies.delete(LEAGUE_COOKIE);
       return response;
     }

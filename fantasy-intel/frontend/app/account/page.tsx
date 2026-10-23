@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { connection } from "next/server";
 import { Notice, PageHeader, Section } from "@/components/ui";
 import { authConfig } from "@/lib/auth-config";

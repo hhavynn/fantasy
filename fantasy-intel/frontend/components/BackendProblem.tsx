@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { Notice } from "@/components/ui";
 import { isFirstRun, isFirstSync, type ApiErrorKind } from "@/lib/api-errors";

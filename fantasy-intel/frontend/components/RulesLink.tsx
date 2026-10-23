@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { cx } from "@/lib/cx";
 import { RULES_PATH } from "@/lib/league-rules";

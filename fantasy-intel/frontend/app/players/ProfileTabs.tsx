@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useId, type ReactNode } from "react";
 import { TeamLink } from "@/components/TeamLink";
 import { Badge, EmptyState, Glossary, ProvenanceBadge, Section, SkeletonStatStrip, SkeletonTable } from "@/components/ui";

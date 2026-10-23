@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { EmptyState, Notice, PageHeader, Section, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";

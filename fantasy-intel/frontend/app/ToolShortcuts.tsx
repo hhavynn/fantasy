@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { decisionHref, type DecisionContext } from "@/lib/weekly-decisions";
 import styles from "./home.module.css";
 

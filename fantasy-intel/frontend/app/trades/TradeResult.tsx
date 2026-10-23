@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BarChart, type BarDatum } from "@/components/charts";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";

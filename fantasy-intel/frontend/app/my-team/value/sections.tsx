@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BarChart, LineChart } from "@/components/charts";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Delta, EmptyState, Method, Pos, Section, SortableTh, VisuallyHidden } from "@/components/ui";
