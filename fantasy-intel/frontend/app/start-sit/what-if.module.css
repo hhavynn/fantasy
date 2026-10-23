@@ -33,6 +33,20 @@
 .remove { font-size: 13px; }
 .kept { color: var(--ink-faint); font-size: 13px; }
 
+/* Phones: the table is flat (no pinned first column) and each slot restacks into one block: the player and his
+   projection on the first line, the change on the next, then the move control at full width. Nothing scrolls
+   sideways, and no column can sit over the controls. The header row stays for assistive tech only. */
 @media (max-width: 720px) {
-  .tryCell { min-width: 180px; }
+  .table, .table tbody { display: block; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .table td { display: block; padding: 0; border: 0; min-width: 0; white-space: normal; }
+  .playerCell { grid-column: 1; }
+  .projCell { grid-column: 2; align-self: start; text-align: right; }
+  .change, .tryCell { grid-column: 1 / -1; min-width: 0; }
+  .changed { background: var(--accent-soft); }
+  .changed td { background: none; }
+  .pickerSelect { flex-basis: 100%; }
+  .pickerSelect + button { flex: 1 1 auto; }
+  .remove { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

@@ -120,7 +120,9 @@ export async function WhatIf({ apiPath, whatif, sp, provider, ours, invalidParam
         {atLimit && <p className={styles.lockNote}>Move limit reached ({d.scenario.move_limit}). Undo a move or reset to try more.</p>}
       </div>
 
-      <div className="table-wrap">
+      {/* Not pinned (flat): on phones the rows restack into one block per slot, so the move controls get the full
+          width and nothing scrolls over them (what-if.module.css). */}
+      <div className="table-wrap flat">
         <table className={styles.table}>
           <caption className={styles.caption}>What-if lineup by slot, compared with the recommended lineup</caption>
           <thead>
@@ -175,7 +177,7 @@ function SlotRow({ s, players, slots, ours, carried }: {
     .map((o) => ({ value: o.whatif as string, label: optionLabel(o, players, slots) }));
   return (
     <tr className={s.changed ? styles.changed : undefined}>
-      <td>
+      <td className={styles.playerCell}>
         {p ? (
           <PlayerIdentity id={p.player_id} name={p.name} position={p.position} team={p.pro_team}
                           lead={<span title="Lineup slot">{s.label}</span>}
@@ -184,7 +186,7 @@ function SlotRow({ s, players, slots, ours, carried }: {
           <span className={styles.lineCell}><span className={styles.slotName}>{s.label}</span><span className={styles.empty}>Empty</span></span>
         )}
       </td>
-      <td className="num">
+      <td className={`num ${styles.projCell}`}>
         {p ? <><OriginTag origin={p.projection_origin} ours={ours} /> <b>{num(p.projected_points, 1, "No projection: unknown, not zero")}</b></> : <Missing why="No player in this slot" />}
       </td>
       <td className={styles.change}>

@@ -25,6 +25,23 @@ async function press(page: Page, locator: ReturnType<Page["locator"]>) {
 
 const whatIf = (page: Page) => page.getByRole("region", { name: "What-if lineup" });
 
+/** The control is fully on screen, at least 44px tall on phones, and nothing (a pinned column) sits over its centre. */
+async function uncovered(page: Page, locator: ReturnType<Page["locator"]>) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  const vw = page.viewportSize()?.width ?? 0;
+  expect(box, "control has no box").toBeTruthy();
+  expect(box!.x, "control starts off screen").toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width, "control ends off screen").toBeLessThanOrEqual(vw + 0.5);
+  if (isPhone()) expect(box!.height, "touch target shorter than 44px").toBeGreaterThanOrEqual(44);
+  const hit = await locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return top !== null && (top === el || el.contains(top));
+  });
+  expect(hit, "another element covers the control").toBe(true);
+}
+
 test("try a swap, see the points and the slot change, then reset to the recommendation", async ({ page }) => {
   await page.goto("/start-sit");
   await loaded(page);
@@ -43,10 +60,9 @@ test("try a swap, see the points and the slot change, then reset to the recommen
   const delta = /· ([+−]?\d+\.\d) vs best/.exec(label)?.[1];
   expect(name && delta, label).toBeTruthy();
   await flex.selectOption((await option.getAttribute("value")) as string);
-  // keyboard, as the disclosure below: the control sits in the last column, which the pinned first column can
-  // overlap when a phone scrolls the table sideways
-  await flexRow.getByRole("button", { name: "Try" }).focus();
-  await page.keyboard.press("Enter");
+  const tryButton = flexRow.getByRole("button", { name: "Try" });
+  await uncovered(page, tryButton);
+  await press(page, tryButton);
 
   await expect(page).toHaveURL(/whatif=w\d+t2/);
   await expect(section.getByText("Changed", { exact: true })).toHaveCount(1);
@@ -71,9 +87,8 @@ test("ineligible and IR players are never offered, and say why", async ({ page }
   const kRow = section.getByRole("row").filter({ hasText: "Takes K" });
   await expect(kRow).toContainText("No other eligible player");
   const why = section.locator("details").filter({ has: page.locator("summary", { hasText: "Not available here" }) }).first();
-  // keyboard: the disclosure sits in the table's last column, which the pinned first column can overlap on phones
-  await why.locator("summary").focus();
-  await page.keyboard.press("Enter");
+  await uncovered(page, why.locator("summary"));
+  await press(page, why.locator("summary"));
   await expect(why).toContainText("fantasy IR slot and cannot start");
 });
 
@@ -90,4 +105,20 @@ test("a what-if link for another roster or a garbled link is not applied and say
   await expect(whatIf(page)).toContainText("This what-if link could not be read", { timeout: 20_000 });
   const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
   expect(o.scroll, `horizontal scroll at ${o.client}px`).toBeLessThanOrEqual(o.client);
+});
+
+test("the move controls also work from the keyboard", async ({ page }) => {
+  await page.goto("/start-sit");
+  await loaded(page);
+  const section = whatIf(page);
+  await expect(section.getByRole("table")).toBeVisible({ timeout: 20_000 });
+  const flex = section.getByLabel("Move into FLEX");
+  const value = await flex.locator("option:not([disabled])").first().getAttribute("value");
+  await flex.focus();
+  await flex.selectOption(value as string);
+  await page.keyboard.press("Tab");
+  await expect(section.getByRole("button", { name: "Try" }).and(page.locator(":focus"))).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/whatif=w\d+t2/);
+  await expect(section.getByText("Changed", { exact: true }).first()).toBeVisible();
 });
