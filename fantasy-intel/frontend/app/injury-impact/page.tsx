@@ -16,7 +16,7 @@ import {
 import type { OpportunityTreeResponse } from "@/lib/opportunity-tree";
 import { plural } from "@/lib/plural";
 import type { SearchParams } from "@/lib/sort";
-import { isUnknownTeam, readTeamSelection, selectedTeamId, teamParamFrom, withTeamId } from "@/lib/team-perspective";
+import { isUnknownTeam, readTeamSelection, selectedTeamId, teamParamFrom, withTeam, withTeamId } from "@/lib/team-perspective";
 import { ImpactEntry } from "./ImpactEntry";
 import { OpportunityTree } from "./OpportunityTree";
 import { RosterActions } from "./RosterActions";
@@ -126,6 +126,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
             : <>No week {data.week} NFL report yet</>}
           {" "}· {prov} statuses {when(f.espn_players_synced_at)} · usage through week {f.usage_through_week ?? "—"}
           {f.depth_chart_as_of && <> · depth charts {when(f.depth_chart_as_of)}</>}.
+          {" "}Every report on your roster in order, with its source and time: <Link href={withTeam("/injury-impact/timeline", team)}>Availability timeline</Link>.
         </p>
         <p className="faint">
           {f.summary.teams > 0

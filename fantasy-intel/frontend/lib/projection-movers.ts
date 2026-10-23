@@ -2,6 +2,7 @@
 // "projection-movers/v1"). Every number, rank and evidence signal comes from the backend; these helpers
 // validate the URL, select, order and phrase those values. They never recompute a projection, a delta or a
 // rank, and they never decide what caused a change.
+import type { Attribution } from "./projection-attribution.ts";
 import type { ProjectionGovernance } from "./projection-source.ts";
 import type { SortState } from "./sort.ts";
 
@@ -87,6 +88,9 @@ export type Mover = {
   weeks: MoverWeek[];
   components: { availability: number; per_game: number } | null;
   evidence: Evidence | null;
+  /** Why the forecast changed (projection-attribution/v1): listed risers, fallers and the requested player; absent on
+   * older payloads. */
+  attribution?: Attribution | null;
 };
 
 export type Thresholds = { min_delta: number; relevant_per_week: number; pct_floor: number; flat: number };
@@ -126,6 +130,12 @@ export type MoversResponse = {
   fallers: Mover[];
   players: Mover[];
   thresholds: Thresholds;
+  /** Present only when a player was requested: whether he is listed, and why not. */
+  requested_player?: {
+    espn_player_id: number;
+    status: "listed" | "filtered" | "not_comparable" | "not_found";
+    reason: string | null;
+  };
 };
 
 export const DEFAULT_THRESHOLDS: Thresholds = { min_delta: 0.5, relevant_per_week: 3.0, pct_floor: 1.0, flat: 0.05 };
@@ -173,6 +183,24 @@ export function moversQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
   if (state.position) qs.set("position", state.position);
   if (state.baseline) qs.set("baseline", state.baseline);
   return qs.toString();
+}
+
+/**
+ * The query the page sends: `moversQuery` plus the selected player, so the backend keeps him in the response even beyond
+ * its cap of largest changes, says why when he cannot be shown, and (Fantasy Intel's forecasts) explains his change.
+ */
+export function moversApiQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
+  const q = moversQuery(state, limit);
+  return state.player ? `${q}&player=${state.player}` : q;
+}
+
+/** Why the requested player is not shown, in words, when the backend said so (`requested_player`); else null. */
+export function requestedMissingText(d: Pick<MoversResponse, "requested_player">): string | null {
+  const r = d.requested_player;
+  if (!r || r.status === "listed") return null;
+  if (r.status === "filtered") return `That player is ${r.reason ?? "outside the position filter"}.`;
+  if (r.status === "not_comparable") return `That player could not be compared: ${r.reason ?? "a forecast is missing"}.`;
+  return "That player has no forecast in either compared snapshot.";
 }
 
 /**

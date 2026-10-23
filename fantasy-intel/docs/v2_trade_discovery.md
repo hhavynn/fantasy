@@ -94,11 +94,14 @@ all_candidates_evaluated`). If the evaluation cap (`max_exact`, 20,000) is reach
 (`termination: evaluation_cap`, `exhaustive: false`): the results are the best among the candidates evaluated,
 not a proven top list, and the largest unevaluated bound is reported only when the bounds are valid.
 
-Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-only solver: the same optimal
-picks summed in the same slot order with the same `sum()` (bit-identical totals, so every rounded delta,
-average and week count is equal), the same forced-drop choice (`resolve_roster`'s search over legal
-removals, keeping the largest known total, ties by lowest ids, incoming players last), the same completeness
-and rounding. Leagues with mixed flex types (e.g. RB/WR + WR/TE) use the exact `assign_lineup` search itself.
+Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-only solver
+(`analytics/lineup_totals.py`): the same optimal picks summed in the same slot order with the same `sum()`
+(bit-identical totals, so every rounded delta, average and week count is equal), the same forced-drop choice
+(`resolve_roster`'s search over legal removals, keeping the largest known total, ties by lowest ids, incoming
+players last), the same completeness and rounding. Nested flex types (each flex slot takes every position the slot
+before it takes: one flex type, or FLEX then OP) fill slot by slot with the best remaining value; other mixed flex
+types (e.g. RB/WR + WR/TE) and, for nested ones, weeks with a negative value use the exact `assign_lineup` search
+itself. See "Deep leagues" below for how the solver avoids re-solving.
 The tests compare discovery and the evaluator on well over a thousand candidates, including forced drops, IR,
 position limits and mixed flex slots.
 
@@ -169,6 +172,64 @@ with the full evaluator took ~90 s for 5,000 candidates of a 12-team league; the
 plus the totals-only solver bring a full page (stage A, results, per-manager summary, 20 full evaluations) to
 roughly 2-3 s. The API keeps the last few stage-A searches in memory, keyed by the database file's
 modification time, anchor, shapes and evaluation window, so changing the sort or filter reuses them.
+
+## Deep leagues (FX-17) and the beam's work budget
+
+FX-17 (`tests/compat_fixtures.py`: six teams, 17 starters with 3 FLEX and 1 OP, 10 bench, 3 IR) took ~470 s for one
+`GET /api/trades/discover` and ~19 s for the team-value trade preview. A cProfile of the request put ~95% of the time
+in forced-drop resolution: a 27-player active roster is full, so nearly every uneven package needs drops, and
+`trades.choose_forced_drops` solved a full 15-week lineup for every single-player removal (its lower bounds) and for
+every zero-bound drop set (C(10, k) bench sets). Every one of those solves went through `assign_lineup`
+(4.6 million calls), because FLEX + OP counted as "mixed flex types".
+
+Exact changes (results unchanged; the search and every choice are the same):
+
+* Nested flex types use the fast fill (above); `lineup._best_flex` skips its matching bound when the first leaf is
+  provably optimal (nested slots, no negative value, no player listed twice), which returns the same picks.
+* `LineupTotals.removal_total` (RemovalTotal): the forced-drop search only removes players from one roster. A week
+  whose lineup a removal leaves alone (every removed player below the lowest value the lineup uses at his position, or
+  tying it with enough equal players left) keeps the full roster's value; any other week is re-solved from the full
+  roster's sorted values minus the removed ones. Same values, same fill, same `sum()`.
+* `choose_forced_drops` takes two optional hooks: `total_without(combo)` (the total without a few players, without
+  rebuilding the roster) and `single_bound(p)` (a player's single-removal cost for the lower bounds). The lineup is a
+  maximum-weight independent set of a matroid and starters at one position are interchangeable, so one solve per week
+  and position gives every starter's single cost (exact up to float rounding, ~1e-13, far inside `DROP_EPS`). Any
+  valid lower bound leaves the choice unchanged: a set is left unsolved only when its bound exceeds the best exact
+  cost by `DROP_EPS`. Discovery and trade-vs-free-agency use both hooks; the manual evaluator uses `total_without`
+  only and keeps its exact singles.
+* Each team's current lineup values per week are kept once (`LineupTotals.base`); stage A, the beam's signals, stage
+  B's sides and each forced-drop search start from them and edit only the positions a trade touches (`vec_change`).
+
+Then a disclosed safety net, for the heuristic beam only (V3, `v3_trade_intelligence.md` section 8): a deterministic
+work budget of 15,000 lineup totals per opponent. Standard leagues stay well below it, so their results are unchanged
+(the E2E goldens and the synthetic M1/M8 leagues compare identical); FX-17 reaches it for every opponent and says so
+in `coverage.heuristic.work_budget` and its note ("evaluated 657 of the 803 packages it generated"). The exact search
+(stages A-C) is never cut by it: its top list stays proven. A package's cost is counted by the call that solves it
+(`TradeSearch._pair`), never as the growth of a counter the search shares: the API serves one cached search to
+concurrent requests, and charging their work to a package would stop a beam at a point that depends on timing
+(`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`). A package whose forced-drop search stops at
+`MAX_DROP_SOLVES` (`EvaluationUnavailable`) is charged the solves it made before stopping (the exception carries
+them), so abstaining packages spend the budget like any other.
+
+The forced-drop search's `MAX_DROP_SOLVES` cap charges the single-removal costs as one solve per player on both paths
+(exact singles in the evaluator, `single_bound` in discovery), so both abstain on the same rosters. If the manual
+evaluator still abstains on a listed trade (`EvaluationUnavailable`), the view leaves that row out and counts it in
+`excluded.evaluation_unavailable` (present only when it happens) instead of failing the whole response.
+
+Measured on the 4-core container (one request, fresh process, before = f805d5e; two runs where given):
+
+| request | before | after | after, budget off |
+|---|---|---|---|
+| FX-17, discover, team 1 | 465.8 / 469.6 s | 12.6 s | 21.0 s (response identical to before) |
+| FX-17, discover, team 2 | 285.2 s | 10.2 s | 13.8 s (identical) |
+| FX-17, team value (trade preview) | 19.9 / 18.3 s | 2.4 s | same |
+| FX-17, team value, `trades=false` | 0.55 s | 0.51 s | same |
+| M1 standard, discover, team 1 / team 2 | 6.0 / 5.0 s | 2.5 / 2.3 s | budget not reached |
+| M8 IDP, discover, team 1 / team 2 | 6.8 / 6.4 s | 3.6 / 2.6 s | budget not reached |
+| E2E golden league, discover, team 1 / team 2 | 1.4 / 1.8 s | 1.2 / 1.5 s | budget not reached |
+| 12-team FX-17-shaped league, discover, team 1 / team 2 | not run | 25.2 / 17.5 s | not run |
+
+Stages A and B are exact and grow with the number of opponents; that is what is left in the 12-team deep league.
 
 ## Targeted discovery (issue #182)
 

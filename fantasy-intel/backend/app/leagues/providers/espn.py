@@ -39,11 +39,13 @@ from ..models import (CANONICAL_STATS, FLEX_POSITIONS, SUPERFLEX_POSITIONS, Leag
 from .base import (FreeAgent, LeagueAccess, LeagueNotFound, LeagueProvider, LeagueSummary, Matchup, ProviderError,
                    ProviderUnavailable, Standing, Transaction)
 
+# Shown to visitors verbatim (the /leagues host card), so it names no settings, keys or versions. For operators: ESPN
+# is enabled by a credential wrapping key (CREDENTIALS_PUBKEY_V<n>, private leagues) or ESPN_PUBLIC_IMPORT_ENABLED=1
+# (public leagues); see app/config.py and docs/multileague/ADR-0002.
 DISABLED_REASON = (
-    "ESPN has no documented public fantasy API and no third-party authorization. Private leagues need a league "
-    "member's espn_s2/SWID session cookies, stored encrypted and used only by sync jobs; that requires a credential "
-    "wrapping key (CREDENTIALS_PUBKEY_V<n>), which this deployment does not have. Public leagues need "
-    "ESPN_PUBLIC_IMPORT_ENABLED.")
+    "ESPN has no documented public fantasy API and no third-party sign-in. Private ESPN leagues need a league "
+    "member's session cookies, kept encrypted, and public ESPN leagues need importing switched on; neither is set "
+    "up on this deployment yet.")
 
 T = TypeVar("T")
 ClientFactory = Callable[[LeagueKey, LeagueAccess], Any]

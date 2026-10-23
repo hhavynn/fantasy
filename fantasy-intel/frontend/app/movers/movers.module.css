@@ -85,5 +85,34 @@
 .missingList { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
 .note { margin: 12px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
 
+/* ---------- Why it changed ---------- */
+.why { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); min-width: 0; }
+.whyRows { margin: 0 0 8px; padding: 0; list-style: none; }
+.whyRow { border-top: 1px solid var(--line); min-width: 0; }
+.whyRow:first-child { border-top: 0; }
+.whySummary {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 2px 12px;
+  min-height: var(--tap); padding: 8px 0; cursor: pointer; font-size: 13px; line-height: 19px;
+}
+.whySummary::-webkit-details-marker { display: none; }
+.whyLabel { min-width: 0; overflow-wrap: anywhere; }
+.whyLabel::before { content: "▸"; display: inline-block; width: 1.2em; color: var(--ink-faint); }
+details[open] > .whySummary .whyLabel::before { content: "▾"; }
+.whyKind { color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.whyPts { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 6ch; }
+.whyBody { padding: 0 0 10px 16px; display: grid; gap: 4px; min-width: 0; }
+.whyLine { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.whyMeta { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.whyList { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.whyMore { margin: 8px 0 12px; font-size: 13px; line-height: 19px; }
+.whyMore > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; }
+@media (max-width: 720px) {
+  .whySummary { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label pts" "kind kind"; }
+  .whyLabel { grid-area: label; }
+  .whyPts { grid-area: pts; }
+  .whyKind { grid-area: kind; }
+  .whyBody { padding-left: 8px; }
+}
+
 /* ---------- Table ---------- */
 .tablePlayer { min-width: 180px; }

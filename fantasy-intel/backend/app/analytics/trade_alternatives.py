@@ -181,6 +181,13 @@ class FreeAgencyBoard:
             self._totals[key] = sum(self.T.vec(list(key)))
         return self._totals[key]
 
+    def drop_search(self, players, legal_base, incoming: set[int]) -> dict:
+        """trades.choose_forced_drops on `players` with self.total's values (same memo): a week a drop leaves alone
+        keeps the full roster's value (LineupTotals.removal_total, exact)."""
+        known = self.T.removal_total(_active(players), self._totals)
+        return choose_forced_drops(players, legal_base, self.state, incoming, lambda ps: known(_active(ps)),
+                                   self.negative, known.dropping, known.bound)
+
     def team(self, players: list[RosterPlayer]) -> dict:
         key = tuple(sorted((p.espn_player_id, p.on_ir, p.on_taxi) for p in players))
         if key not in self._teams:
@@ -217,7 +224,7 @@ class FreeAgencyBoard:
                 total = base + bound
             else:
                 try:
-                    res = choose_forced_drops(after, legal_base, st, {c.espn_player_id}, self.total, self.negative)
+                    res = self.drop_search(after, legal_base, {c.espn_player_id})
                 except EvaluationUnavailable:
                     stats["evaluation_unavailable"] += 1
                     continue
@@ -296,8 +303,7 @@ class FreeAgencyBoard:
         drops: tuple = ()
         if not legal_roster(players, st, st.rosters[team_id]):
             try:
-                res = choose_forced_drops(players, st.rosters[team_id], st, incoming | {fa.espn_player_id}, self.total,
-                                          self.negative)
+                res = self.drop_search(players, st.rosters[team_id], incoming | {fa.espn_player_id})
             except EvaluationUnavailable as err:
                 return {"available": False, "reason": "evaluation_unavailable", "team": None, "drops": [],
                         "drop_cost_unknown": False, "retained_player_ids": [], "error": str(err)}

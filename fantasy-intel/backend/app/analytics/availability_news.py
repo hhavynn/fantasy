@@ -43,6 +43,7 @@ class Entry:
     reported_on: str
     note: str
     espn_player_id: int | None = None
+    sources: tuple[str, ...] = ()        # the reports the entry summarizes (http(s) links); shown, never fetched
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,8 @@ def parse(data: dict) -> list[Entry]:
                   kind=str(raw["kind"]), from_week=int(raw["from_week"]),
                   return_window=None if win is None else (int(win[0]), int(win[1])),
                   reported_on=str(raw["reported_on"]), note=str(raw.get("note") or ""),
-                  espn_player_id=raw.get("espn_player_id"))
+                  espn_player_id=raw.get("espn_player_id"),
+                  sources=tuple(str(s) for s in raw.get("sources") or () if str(s).startswith(("https://", "http://"))))
         if e.kind not in KINDS:
             raise ValueError(f"availability news for {e.name}: kind {e.kind!r} is not one of {KINDS}")
         if e.return_window is not None:
