@@ -22,7 +22,11 @@ const manifest = (): Manifest =>
 const ADD = "/waivers?team=1&add=209";
 const TRADE = "/trades?ta=1&tb=2&a=202&b=204";
 
-/** Navigate and wait for the page's own heading (never the loading.tsx skeleton, which has no h1 text). */
+/**
+ * Navigate, then wait for the heading and for no `aria-busy` skeleton left in main. The heading alone proves nothing:
+ * several loading.tsx skeletons (League rules, Waivers, Trades, Leagues) render the final h1. So every step below also
+ * waits on content only the loaded page has, and runs the quality bar only after those waits.
+ */
 async function visit(page: Page, url: string, h1: string | RegExp) {
   const res = await page.goto(url, { waitUntil: "load" });
   expect(res?.status(), `${url}: HTTP status`).toBe(200);
@@ -61,6 +65,8 @@ async function keyboard(page: Page) {
 /** A Verdict figure's value (`<dt>label</dt><dd>value</dd>`). */
 const figure = (page: Page, label: string): Locator =>
   page.locator("main dt", { hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`, "i") }).first().locator("xpath=following-sibling::dd[1]");
+/** The number in a figure or cell text such as "115.0*" or "1541.5"; NaN when there is none. */
+const numberIn = (text: string): number => Number((text.match(/-?\d+(\.\d+)?/) ?? ["NaN"])[0]);
 const slotRow = (page: Page, code: string): Locator =>
   page.locator("#roster tbody tr").filter({ has: page.locator("td:first-child b", { hasText: new RegExp(`^${code}$`) }) });
 
@@ -92,7 +98,10 @@ for (const width of [1440, 375]) {
         await qualityBar(page, true);
         await page.getByRole("link", { name: "Connect your league" }).click();
         await expect(page).toHaveURL(/\/leagues$/);
-        await expect(page.locator("main h1")).toHaveCount(1);
+        // The connect page's own content (its loading.tsx renders the same "Leagues" h1): the way back to the demo.
+        await expect(page.getByRole("link", { name: "Open the demo league" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.locator('main [aria-busy="true"]')).toHaveCount(0);
+        await qualityBar(page, false);
       });
 
       await test.step("supported: every slot is filled by the engines", async () => {
@@ -149,13 +158,15 @@ for (const width of [1440, 375]) {
         for (const label of ["Submitted (proj)", "Recommended (proj)"]) {
           const value = figure(page, label);
           await expect(value, `${label} is marked partial`).toHaveText(/^\d+\.\d\*$/);
-          await expect(value, `${label} is not a measured 0`).not.toHaveText(/^0\.0/);
+          expect(numberIn(await value.innerText()), `${label}: the known part is measured, not 0`).toBeGreaterThan(0);
           await expect(value.locator("xpath=following-sibling::dd[1]"), `${label} note`)
             .toHaveText("*Partial: leaves out DL, LB (no engine fills these slots)");
         }
-        // The two IDP starters are not in the player data: counted and named as missing, never shown with 0 points.
+        // The two IDP starters are not in the player data: counted and named as missing, never a row with 0 points.
         await expect(page.locator("main")).toContainText("2 starters are not in the synced player data");
-        await expect(page.locator("main").getByText(/^Sleeper (DL|LB) \d$/)).toHaveCount(0);
+        const cells = await page.locator("main table td.num").allInnerTexts();
+        expect(cells.length, "the lineup table has projection cells").toBeGreaterThan(0);
+        expect(cells.filter((c) => /^\s*-?0(\.0+)?\*?\s*$/.test(c)), "no projection cell reads 0").toEqual([]);
         await qualityBar(page, true);
         await keyboard(page);
       });
@@ -167,9 +178,14 @@ for (const width of [1440, 375]) {
         await expect(sim).toContainText("Legality unverified");
         await expect(sim).toContainText("2 rostered players are not in the synced player data");
         await expect(sim).toContainText("Lineup totals leave DL, LB out, so each one is partial");
-        // A value the waiver engine cannot measure is a titled dash, never 0.
-        const missing = page.locator("main .missing[title]");
-        expect(await missing.count(), "missing values render as a titled dash").toBeGreaterThan(0);
+        // A value the waiver engine cannot measure is a dash with its reason, never 0.
+        const missing = page.locator("main .missing");
+        const texts = await missing.allTextContents();          // some sit in collapsed rows: text, not innerText
+        expect(texts.length, "missing values are shown as missing").toBeGreaterThan(0);
+        expect(texts.map((t) => t.trim()), "each missing value is a bare dash, no 0").toEqual(texts.map(() => "—"));
+        for (const title of await missing.evaluateAll((els) => els.map((e) => e.getAttribute("title") ?? ""))) {
+          expect(title.trim(), "each dash names its reason").not.toBe("");
+        }
         await qualityBar(page, true);
       });
 
@@ -179,6 +195,13 @@ for (const width of [1440, 375]) {
         await expect(main.getByText("Sleeper Alpha: roster legality unverified")).toBeVisible({ timeout: 30_000 });
         await expect(main.getByText("Sleeper Bravo: roster legality unverified")).toBeVisible();
         await expect(main).toContainText(/\d+\.\d → \d+\.\d pts\* \(partial\)/);
+        // Both sides' known totals, before and after: measured numbers above 0, never a 0 standing in for the IDP slots.
+        const totals = [...(await main.innerText()).matchAll(/(\d+\.\d) → (\d+\.\d) pts\* \(partial\)/g)];
+        expect(totals.length, "a partial total for each side").toBeGreaterThanOrEqual(2);
+        for (const [, before, after] of totals) {
+          expect(Number(before), "known total before").toBeGreaterThan(0);
+          expect(Number(after), "known total after").toBeGreaterThan(0);
+        }
         await expect(main).not.toContainText("No drop is needed");
         await qualityBar(page, true);
       });

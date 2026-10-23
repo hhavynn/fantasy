@@ -544,32 +544,44 @@ TOOL_ROUTES = ("/api/league-rules", "/api/league-compatibility", "/api/overview"
                "/api/playoff-race")
 
 
+# Pinned exceptions to "200": the only abstentions these imported files are expected to produce. A Sleeper league file
+# that the analytics pipeline has not run on has no stored waiver suggestions for the other teams, and /api/waivers says
+# so (503, "... have not been computed yet. Run the analytics refresh ..."); an ESPN file computes them on request.
+NOT_COMPUTED = (503, "have not been computed yet")
+EXPECTED = {("M3", "/api/waivers?team_id=1"): NOT_COMPUTED, ("M6s", "/api/waivers?team_id=1"): NOT_COMPUTED,
+            ("M7", "/api/waivers?team_id=1"): NOT_COMPUTED, ("M8s", "/api/waivers?team_id=1"): NOT_COMPUTED}
+# Trade discovery on standard-size rows only (about 5 s each). FX-17 (M2, M3, M7) is left out on purpose: one request
+# took 451 s offline, with no budget and no abstention (STATUS follow-up 1p, branch fix/trade-discovery-budget).
+DISCOVERY_ROWS = ("M6s", "M8p", "M8s")
+
+
 @pytest.mark.parametrize("row", ["M2", "M3", "M6s", "M7", "M8p", "M8s"])
 def test_every_tool_answers_or_abstains_with_a_reason_from_the_imported_file(tmp_path, monkeypatch, row):
-    """The league file each matrix row's real import writes, served by the API: every tool's route answers (200) or
-    abstains with a stated reason (4xx/503 with a `detail`), never a server error; an evaluated trade answers too.
-    Trade discovery is left out on purpose: on FX-17-sized rosters it does not finish in a usable time (a follow-up in
-    docs/compatibility/253-gap-inventory.md, "Completion audit")."""
+    """The league file each matrix row's real import writes, served by the API: every tool's route answers (200), and
+    the only abstention is the pinned one in EXPECTED, with its reason; no 404 and no 5xx anywhere else. An evaluated
+    trade answers too. Team value runs with `trades=false`: its trade preview alone took 19 s on FX-17 (0.6 s without),
+    the same discovery cost as above, so this test checks the value part and leaves the preview to that follow-up."""
     db = tmp_path / f"{row}.duckdb"
     con = duckdb.connect(str(db))
     init_db(con)
     cf.import_row(con, cf.MATRIX[row])
     con.close()
     api = _client(monkeypatch, db)
-    for route in TOOL_ROUTES:
+    routes = TOOL_ROUTES + (("/api/trades/discover?team_id=1",) if row in DISCOVERY_ROWS else ())
+    for route in routes:
         r = api.get(route)
-        assert r.status_code == 200 or (400 <= r.status_code < 600 and r.status_code != 500
-                                        and isinstance(r.json().get("detail"), str) and r.json()["detail"]), \
-            (route, r.status_code, r.text[:300])
+        status, reason = EXPECTED.get((row, route), (200, None))
+        assert r.status_code == status, (route, r.status_code, r.text[:300])
+        if reason:
+            assert reason in r.json()["detail"], (route, r.text[:300])
     players = cf.league_players(cf.MATRIX[row])
     give = next(p.pid for p in players if p.team == 1 and p.slot == "BE")
     get = next(p.pid for p in players if p.team == 2 and p.slot == "BE")
     r = api.post("/api/trades/evaluate", json={"team_a_id": 1, "team_b_id": 2, "team_a_sends": [give],
-                                                  "team_b_sends": [get]})
+                                               "team_b_sends": [get]})
     assert r.status_code == 200, r.text[:300]
-    body = r.json()
-    if cf.MATRIX[row].provider == "sleeper" and row != "M7":               # no projections at all: nothing measured
-        assert body["team_a"]["deltas"]["ros_delta"] is None
+    if cf.MATRIX[row].provider == "sleeper":         # no projections in a Sleeper file without Ours runs: not measured
+        assert r.json()["team_a"]["deltas"]["ros_delta"] is None
 
 
 # ---- league rules codes ------------------------------------------------------------------------------------------------
