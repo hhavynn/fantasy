@@ -65,7 +65,7 @@ function ProfileHeader({ d, q, profile, leagueId }: { d: Detail; q: string; prof
   const provider = providerName(profile.provider);
   const p = d.player;
   const f = d.forward_projection;
-  const owner = ownerBadge(p.fantasy_team, p.availability_status);
+  const owner = ownerBadge(p.fantasy_team, p.availability_status, profile.provider);
   const byes = f?.summary.bye_weeks ?? [];
   const latestInj = d.injuries[0];
   const report = latestInj?.report_status;
@@ -78,7 +78,7 @@ function ProfileHeader({ d, q, profile, leagueId }: { d: Detail; q: string; prof
           <Pos value={p.position} />
           <span>{p.pro_team ?? "No NFL team"}</span>
           {byes.length > 0 && <span>· Bye week {byes.join(", ")}</span>}
-          <Badge value={owner.text} tone={owner.tone} />
+          <Badge value={owner.text} tone={owner.tone} title={owner.title} />
           {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title={`${provider} injury designation`} />}
         </span>
       }
