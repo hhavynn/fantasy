@@ -90,6 +90,36 @@ export function parseActionCenter(payload: unknown): ActionCenterPayload | null 
   };
 }
 
+// ---- when the action center itself did not answer -------------------------------------------------------------------
+
+export type CenterProblem = {
+  tone: "caution" | "negative";
+  title: string;
+  body: string;
+  /** Where "Try again" goes: this page, reloaded (the server checks the leagues again). */
+  retryHref: string;
+};
+
+/**
+ * What the page says when GET /v2/action-center did not answer with leagues. A 503 is the server being busy (every
+ * build slot taken, or the control plane briefly away): an explicit "try again", never an error page and never an
+ * empty list that would read as nothing to do. Anything else is an error, still with a retry.
+ */
+export function centerProblem(res: { status?: number; error: string }): CenterProblem {
+  if (res.status === 503) {
+    return {
+      tone: "caution", title: "Your leagues could not be checked just now",
+      body: "The server is busy checking leagues, so nothing below means there is nothing to do. Try again in a few seconds; each league's Overview still has its own decisions.",
+      retryHref: "/leagues#action-center",
+    };
+  }
+  return {
+    tone: "negative", title: "This week's decisions could not be loaded",
+    body: `${res.error} Your leagues are listed below; each league's Overview still has its own decisions.`,
+    retryHref: "/leagues#action-center",
+  };
+}
+
 // ---- decisions --------------------------------------------------------------------------------------------------------
 
 const LOCKED_REASON = "His game has kicked off, so the lineup slot is locked.";

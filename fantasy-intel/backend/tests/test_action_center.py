@@ -380,8 +380,9 @@ def test_one_users_burst_shares_one_build_and_never_starves_another_user(pg, cli
     assert len(bodies) == 1 and set(next(iter(bodies))) == set(mine)
 
 
-def test_past_the_admission_slots_the_answer_is_503_at_once(pg, client, served, monkeypatch):
+def test_past_the_admission_slots_the_answer_is_503_after_a_short_wait(pg, client, served, monkeypatch):
     import time
+    from app.api import action_center
     monkeypatch.setenv("ACTION_CENTER_CONCURRENCY", "6")    # 6 workers // 6 = one build at a time in this process
     with pg.connect() as con:
         mine = seed_league(con, visibility="private", checked_at=None, name="Mine")
@@ -389,7 +390,7 @@ def test_past_the_admission_slots_the_answer_is_503_at_once(pg, client, served, 
         con.commit()
     _member(pg, U1, mine)
     _member(pg, U2, theirs)
-    _slow_for(monkeypatch, {mine}, 2.0)
+    _slow_for(monkeypatch, {mine}, 4.0)
     threads, out = _fire(client, [U1])
     time.sleep(0.5)
     t0 = time.monotonic()
@@ -397,10 +398,110 @@ def test_past_the_admission_slots_the_answer_is_503_at_once(pg, client, served, 
     elapsed = time.monotonic() - t0
     for t in threads:
         t.join()
-    assert busy.status_code == 503 and busy.headers["retry-after"] and elapsed < 1.0, (busy.status_code, elapsed)
+    assert busy.status_code == 503 and busy.headers["retry-after"], busy.status_code
+    assert action_center.ADMISSION_WAIT_S - 0.2 < elapsed < action_center.ADMISSION_WAIT_S + 1.0, elapsed
     assert "Theirs" not in busy.text and "Mine" not in busy.text
     assert out[0][1] == 200
     assert client.get(URL, headers=bearer(U2)).status_code == 200                  # the slot is free again
+
+
+def test_a_waiting_user_gets_the_slot_that_frees_within_the_window(pg, client, served, monkeypatch):
+    import time
+    monkeypatch.setenv("ACTION_CENTER_CONCURRENCY", "6")    # one slot
+    with pg.connect() as con:
+        mine = seed_league(con, visibility="private", checked_at=None, name="Mine")
+        theirs = seed_league(con, visibility="private", checked_at=None, name="Theirs")
+        con.commit()
+    _member(pg, U1, mine)
+    _member(pg, U3, theirs)
+    _slow_for(monkeypatch, {mine}, 1.0)
+    threads, out = _fire(client, [U1])
+    time.sleep(0.4)
+    third = client.get(URL, headers=bearer(U3))             # waits ~0.6 s for U1's slot, then builds
+    for t in threads:
+        t.join()
+    assert third.status_code == 200 and _ids(third.json()) == [theirs]
+    assert out[0][1] == 200
+
+
+def test_two_users_with_the_same_leagues_never_share_a_build(pg, client, served, monkeypatch):
+    with pg.connect() as con:
+        shared = seed_league(con, visibility="private", checked_at=None, name="Shared")
+        con.commit()
+    _member(pg, U1, shared)
+    _member(pg, U2, shared)
+    calls = _slow_for(monkeypatch, {shared}, 1.0)
+    threads, out = _fire(client, [U1, U2])
+    for t in threads:
+        t.join()
+    assert sorted(status for _, status, _, _ in out) == [200, 200]
+    assert calls[shared] == 2                                # each user's own evaluation, never joined
+
+
+def test_one_user_never_holds_two_slots_even_for_a_different_league_set(pg, client, served, monkeypatch):
+    import threading
+    import time
+    from app.api import action_center
+    with pg.connect() as con:
+        a = seed_league(con, visibility="private", checked_at=None, name="A")
+        b = seed_league(con, visibility="private", checked_at=None, name="B")
+        con.commit()
+    _member(pg, U1, a)
+    _slow_for(monkeypatch, {a, b}, 1.0)
+    live, peak, lock = [0], [0], threading.Lock()
+    real_build = action_center.build
+
+    async def counted(principal, granted, now=None):
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        try:
+            return await real_build(principal, granted, now)
+        finally:
+            with lock:
+                live[0] -= 1
+
+    monkeypatch.setattr(action_center, "build", counted)
+    first, out1 = _fire(client, [U1])
+    time.sleep(0.4)
+    _member(pg, U1, b)                                       # the second request is authorized for {a, b}
+    second, out2 = _fire(client, [U1])
+    for t in first + second:
+        t.join()
+    assert peak[0] == 1
+    assert out1[0][1] == out2[0][1] == 200
+    assert set(_ids(out2[0][3].json())) == {a, b}            # it waited, then built its own (not the other's) result
+
+
+def test_a_cancelled_build_leaves_nothing_queued(monkeypatch):
+    import asyncio
+    import threading
+    import time
+    from types import SimpleNamespace
+    from app.api import action_center
+    monkeypatch.setattr(action_center, "POOL_WORKERS", 1)  # the second league waits in the pool's queue
+    monkeypatch.setenv("ACTION_CENTER_CONCURRENCY", "2")
+    started, lock = [], threading.Lock()
+
+    def fake(principal, access, now):
+        with lock:
+            started.append(access.league_id)
+        time.sleep(0.5)
+        return {"league": {"league_id": access.league_id}, "stale": False}
+
+    monkeypatch.setattr(action_center, "evaluate_league", fake)
+    leagues = [SimpleNamespace(league_id=f"lg_{i:024d}", to_json=lambda: {}) for i in range(2)]
+
+    async def run():
+        task = asyncio.ensure_future(action_center.build(SimpleNamespace(user_id=U1), leagues))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    time.sleep(1.0)                                          # the running one finishes; the queued one must not start
+    assert started == [leagues[0].league_id]
 
 
 def test_a_cold_league_never_downloads_in_a_pool_thread_past_the_budget(pg, served, client, e2e, tmp_path, monkeypatch):
@@ -464,3 +565,28 @@ def test_one_league_failing_unexpectedly_never_fails_the_others(pg, served, clie
     assert by["Broken League"]["state"] == "unavailable" and by["Broken League"]["overview"] is None
     assert by["Fine League"]["state"] == "ready" and by["Fine League"]["overview"]["roster"]
     assert "secret detail" not in r.text
+
+
+def test_a_deterministic_error_is_cached_briefly_and_a_transient_one_is_not(pg, served, client, e2e, tmp_path,
+                                                                             monkeypatch):
+    from fastapi import HTTPException
+    from app.api import action_center, start_sit
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private", name="Offseason")
+    _member(pg, U1, pub.league_id)
+    _select_team(pg, U1, pub.league_id, my_team(e2e))
+    calls = []
+
+    def offseason(**kw):
+        calls.append(1)
+        raise HTTPException(422, "Week 19 is outside valid fantasy season (1-17)")
+
+    monkeypatch.setattr(start_sit, "get_start_sit", offseason)
+    one = client.get(URL, headers=bearer(U1)).json()["leagues"][0]
+    two = client.get(URL, headers=bearer(U1)).json()["leagues"][0]
+    assert len(calls) == 1 and one["errors"]["start_sit"] and two == one
+    cache = action_center.summary_cache()
+    (expires, _, _), = cache._entries.values()
+    assert expires - cache.clock() <= action_center.ERROR_TTL_S
+    assert action_center.deterministic(HTTPException(503, "This league's data (schema v6) is older than v8."))
+    assert not action_center.deterministic(HTTPException(503, "Projections are being rebuilt."))
+    assert not action_center.deterministic(HTTPException(500, "boom"))

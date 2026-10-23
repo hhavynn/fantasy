@@ -34,6 +34,7 @@
 .info { color: var(--accent); }
 .positive { color: var(--positive); }
 .moreLink { margin: 0; font-size: 13px; }
+.retry { font-weight: 600; white-space: nowrap; }
 
 .foot { display: grid; gap: 8px; justify-items: start; padding-top: 10px; border-top: 1px solid var(--line); min-width: 0; }
 
@@ -47,5 +48,6 @@
   .decision { grid-template-columns: 20px minmax(0, 1fr); }
   .decisionLink { grid-column: 2; justify-self: start; min-height: var(--tap); }
   .cta { min-height: var(--tap); }
+  .retry { display: inline-flex; align-items: center; min-height: var(--tap); }
   .moreList a { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

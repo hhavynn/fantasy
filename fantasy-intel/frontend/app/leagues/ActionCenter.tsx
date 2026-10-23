@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Notice, ProvenanceBadge, Section, Skeleton, ToneIcon } from "@/components/ui";
 import {
-  buildActionCenter, kickoffText, parseActionCenter, shortVersion, untilText, type CenterCard,
+  buildActionCenter, centerProblem, kickoffText, parseActionCenter, shortVersion, untilText, type CenterCard,
 } from "@/lib/action-center";
 import { joinNames } from "@/lib/action-items";
 import { apiRequest } from "@/lib/api";
@@ -26,10 +26,13 @@ const badgeTone = (tone: string) => (tone === "neutral" ? "" : tone);
 export async function ActionCenter() {
   const res = await apiRequest<unknown>("/v2/action-center");
   if (!res.ok) {
+    const problem = centerProblem(res);
     return (
       <Section title={TITLE} subtitle={SUBTITLE} id="action-center">
-        <Notice tone="negative" title="This week's decisions could not be loaded">
-          {res.error} Your leagues are listed below; each league&apos;s Overview still has its own decisions.
+        <Notice tone={problem.tone} title={problem.title}>
+          {problem.body}{" "}
+          {/* A full reload: the page is rendered per request, so the leagues are checked again. */}
+          <a href={problem.retryHref} className={styles.retry}>Try again</a>
         </Notice>
       </Section>
     );

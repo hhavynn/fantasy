@@ -19,7 +19,8 @@ The page turns these payloads into decisions with the Overview's own contract (l
 ranks, scores or recommends. Fan-out is capped (MAX_LEAGUES evaluated, the rest listed in `more`), bounded (CONCURRENCY
 of a request's leagues at once on one process-wide pool of POOL_WORKERS threads, BUDGET_S overall: a league still
 running then is reported as not ready, never dropped; files not already here are fetched in the background, never in a
-pool thread), admitted (one build per user at a time, at most POOL_WORKERS // CONCURRENCY in the process, else 503) and cached per (user,
+pool thread), admitted (one build per user at a time, at most POOL_WORKERS // CONCURRENCY in the process, a short wait for a slot,
+else 503) and cached per (user,
 league, data and global versions, visibility epoch, perspective, provider) for at most CACHE_TTL_S and never past the
 next kickoff it saw. Nothing here contacts a provider or queues a sync.
 """
@@ -49,6 +50,7 @@ MAX_LEAGUES = 8              # leagues evaluated per request; the rest are liste
 CONCURRENCY = 3              # leagues evaluated at once
 BUDGET_S = 20.0              # the whole fan-out; a league not done by then is "not_ready" (still loading)
 CACHE_TTL_S = 120.0
+ERROR_TTL_S = 15.0           # a section with a deterministic error (4xx, data schema): kept briefly, re-read soon
 CACHE_MAX_ENTRIES = 256
 
 NOT_SYNCED = {
@@ -110,9 +112,9 @@ class SummaryCache:
             self._entries.move_to_end(key)
             return value
 
-    def put(self, key: tuple, value: dict, valid_until: datetime | None) -> None:
+    def put(self, key: tuple, value: dict, valid_until: datetime | None, ttl_s: float | None = None) -> None:
         with self._lock:
-            self._entries[key] = (self.clock() + self.ttl_s, valid_until, value)
+            self._entries[key] = (self.clock() + (self.ttl_s if ttl_s is None else ttl_s), valid_until, value)
             self._entries.move_to_end(key)
             while len(self._entries) > self.max_entries:
                 self._entries.popitem(last=False)
@@ -145,6 +147,13 @@ def _section(access, state: str, reason: str | None = None, **extra) -> dict:
 
 def _detail(err: HTTPException) -> str:
     return err.detail if isinstance(err.detail, str) and err.detail else UNREADABLE
+
+
+def deterministic(err: HTTPException) -> bool:
+    """An answer the same files will give again: a 4xx (the offseason's 422 "outside valid fantasy season") or the
+    league file's schema being too old (a 503 that names the schema). Anything else (a 5xx, a busy database) is
+    transient and is never cached."""
+    return 400 <= err.status_code < 500 or (err.status_code == 503 and "schema" in _detail(err).lower())
 
 
 def _parse_utc(value: Any) -> datetime | None:
@@ -213,13 +222,14 @@ def _read(scope: LeagueScope, team: int) -> dict:
     from .league_rules import league_rules
     from .routes import overview
     from .start_sit import get_start_sit
-    out: dict[str, Any] = {"overview": None, "start_sit": None, "lock": None, "errors": {}}
+    out: dict[str, Any] = {"overview": None, "start_sit": None, "lock": None, "errors": {}, "transient": False}
     try:
         ov = overview(team_id=team)
     except HTTPException as err:
         if err.status_code == 404:
             return {**out, "team_gone": True}
         out["errors"]["overview"] = _detail(err)
+        out["transient"] |= not deterministic(err)
     else:
         if ov.get("team") is None:
             return {**out, "team_gone": True}
@@ -230,12 +240,14 @@ def _read(scope: LeagueScope, team: int) -> dict:
         if err.status_code == 404:
             return {**out, "team_gone": True}
         out["errors"]["start_sit"] = _detail(err)
+        out["transient"] |= not deterministic(err)
         ss = None
     rule = None
     try:
         rule = league_rules().get("lineup_lock")
     except HTTPException as err:
-        out["errors"]["league_rules"] = _detail(err)     # the lock rule is then unknown, and the section is not cached
+        out["errors"]["league_rules"] = _detail(err)     # the lock rule is then unknown
+        out["transient"] |= not deterministic(err)
     if ss is not None:
         out["start_sit"] = ss
         out["lock"] = lock_summary(ss, rule)
@@ -335,9 +347,11 @@ def _evaluate(principal, access, now: datetime) -> dict:
     if access.provider != "espn":                         # Sleeper's wording, as the league's own pages get it
         for part in ("overview", "start_sit", "lock", "errors"):
             section[part] = provider_copy.rewrite(section[part])
-    if not pair.degraded and not read["errors"]:         # a degraded or partial read is retried next time
+    # Never cached: a degraded read (fresh files may arrive) or a transient failure. A deterministic error is cached
+    # briefly, so the offseason's 422 does not re-run every league on every request.
+    if not pair.degraded and not read["transient"]:
         lock = section.get("lock") or {}
-        cache.put(key, section, _parse_utc(lock.get("next_kickoff_utc")))
+        cache.put(key, section, _parse_utc(lock.get("next_kickoff_utc")), ERROR_TTL_S if read["errors"] else None)
     return section
 
 
@@ -373,25 +387,29 @@ async def build(principal, granted: list, now: datetime | None = None) -> tuple[
     pending = list(enumerate(evaluated))
     running: dict[asyncio.Future, int] = {}
     pool = worker_pool()
-    while pending or running:
-        while pending and len(running) < concurrency:
-            i, access = pending.pop(0)
-            running[asyncio.wrap_future(pool.submit(evaluate_league, principal, access, now))] = i
-        left = deadline - loop.time()
-        if left <= 0:
-            break
-        done, _ = await asyncio.wait(running, timeout=left, return_when=asyncio.FIRST_COMPLETED)
-        if not done:
-            break
-        for fut in done:
-            i = running.pop(fut)
-            try:
-                results[i] = fut.result()
-            except Exception as err:  # noqa: BLE001 - evaluate_league does not raise; a replacement still must not
-                log.warning("action center: league %s failed: %s", evaluated[i].league_id, type(err).__name__)
-                results[i] = _section(evaluated[i], "unavailable", UNREADABLE)
-    for fut in running:
-        fut.cancel()                 # a queued one never runs; a running one finishes and releases its own files
+    try:
+        while pending or running:
+            while pending and len(running) < concurrency:
+                i, access = pending.pop(0)
+                running[asyncio.wrap_future(pool.submit(evaluate_league, principal, access, now))] = i
+            left = deadline - loop.time()
+            if left <= 0:
+                break
+            done, _ = await asyncio.wait(running, timeout=left, return_when=asyncio.FIRST_COMPLETED)
+            if not done:
+                break
+            for fut in done:
+                i = running.pop(fut)
+                try:
+                    results[i] = fut.result()
+                except Exception as err:  # noqa: BLE001 - evaluate_league does not raise; a replacement still must not
+                    log.warning("action center: league %s failed: %s", evaluated[i].league_id, type(err).__name__)
+                    results[i] = _section(evaluated[i], "unavailable", UNREADABLE)
+    finally:
+        # Also when this build is cancelled mid-wait: a queued evaluation never runs, a running one finishes and
+        # releases its own files.
+        for fut in running:
+            fut.cancel()
     out = [s if s is not None else _section(evaluated[i], "not_ready", TOO_SLOW) for i, s in enumerate(results)]
     body = {
         "contract": CONTRACT,
@@ -428,43 +446,74 @@ def _admission() -> threading.BoundedSemaphore:
         return sem
 
 
+ADMISSION_WAIT_S = 1.75     # how long a request waits for a free build slot before the 503
+_POLL_S = 0.05
+
+
+async def _acquire_slot(sem: threading.BoundedSemaphore, wait_s: float) -> bool:
+    """A build slot within `wait_s`, polled on the event loop (never a blocking wait that would stall it)."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + wait_s
+    while not sem.acquire(blocking=False):
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(_POLL_S)
+    return True
+
+
 async def serve(principal, granted: list) -> tuple[dict, bool]:
     """`build`, with two process-wide guards (the pool is shared by every user):
 
-      * single flight per user: a request from a user whose build is already running, for exactly the same authorized
-        leagues, waits for that build instead of starting another (its own authorization has already run);
-      * admission: at most POOL_WORKERS // CONCURRENCY builds at once; past that the answer is Busy (503) at once,
-        never a queue behind another user's leagues."""
+      * one build per user: a request from a user whose build is running joins it when it is for exactly the same
+        authorized leagues (its own authorization has already run), and otherwise waits for it to finish and then
+        builds once, so one user never holds two slots. Flights are keyed by the verified user id: two users never
+        share a build, whatever their leagues;
+      * admission: at most POOL_WORKERS // CONCURRENCY builds at once in the process. A request waits up to
+        ADMISSION_WAIT_S for a slot (on the event loop), then gets Busy (503 with Retry-After): never a long queue
+        behind other users' leagues."""
     ids = tuple(a.league_id for a in granted)
-    with _ADMISSION_LOCK:
-        flight = _FLIGHTS.get(principal.user_id)
-        if flight is not None and flight[0] == ids:
-            joined = flight[1]
-        else:
-            joined = None
-    if joined is not None:
+    user = principal.user_id
+    loop = asyncio.get_running_loop()
+    give_up = loop.time() + limits()[2] + 10
+    while True:
+        with _ADMISSION_LOCK:
+            flight = _FLIGHTS.get(user)
+            if flight is None:
+                mine: Future = Future()
+                mine.set_running_or_notify_cancel()    # a running future cannot be cancelled by anyone who joins it
+                _FLIGHTS[user] = (ids, mine)           # claimed before a slot: the user's other requests wait on it
+                break
+        same, theirs = flight[0] == ids, flight[1]
+        left = give_up - loop.time()
+        if left <= 0:
+            raise Busy()
         try:
             # Shielded: this request going away never cancels the build other requests share.
-            return await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(joined)), limits()[2] + 10)
-        except (Exception, TimeoutError):  # noqa: BLE001 - the shared build failed or ran long: build our own below
-            pass
-    sem = _admission()
-    if not sem.acquire(blocking=False):
-        raise Busy()
-    mine: Future = Future()
-    mine.set_running_or_notify_cancel()        # a running future cannot be cancelled by anyone who joins it
-    with _ADMISSION_LOCK:
-        _FLIGHTS.setdefault(principal.user_id, (ids, mine))
+            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(theirs)), left)
+        except Busy:
+            raise
+        except (Exception, TimeoutError):  # noqa: BLE001 - that build failed or ran long: look again
+            if loop.time() >= give_up:
+                raise Busy() from None
+            continue
+        if same:
+            return result
+        # Different leagues (a membership changed in between): that build is over; build our own next round.
     try:
-        result = await build(principal, granted)
+        sem = _admission()
+        if not await _acquire_slot(sem, ADMISSION_WAIT_S):
+            raise Busy()
+        try:
+            result = await build(principal, granted)
+        finally:
+            sem.release()
         mine.set_result(result)
         return result
     except BaseException as err:
-        # Joiners see a plain error (and build their own), never this request's cancellation.
+        # Joiners see Busy or a plain error, never this request's cancellation.
         mine.set_exception(err if isinstance(err, Exception) else RuntimeError("the shared build was cancelled"))
         raise
     finally:
         with _ADMISSION_LOCK:
-            if _FLIGHTS.get(principal.user_id, (None, None))[1] is mine:
-                del _FLIGHTS[principal.user_id]
-        sem.release()
+            if _FLIGHTS.get(user, (None, None))[1] is mine:
+                del _FLIGHTS[user]

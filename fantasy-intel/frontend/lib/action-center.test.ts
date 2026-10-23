@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ACTION_CENTER_CONTRACT, CARD_DECISIONS, applyLocks, buildActionCenter, buildCard, kickoffText, parseActionCenter, rankCards,
+  ACTION_CENTER_CONTRACT, CARD_DECISIONS, applyLocks, buildActionCenter, buildCard, centerProblem, kickoffText, parseActionCenter, rankCards,
   untilText, type CenterCard,
 } from "./action-center.ts";
 import { buildActionItems, type RosterInput } from "./action-items.ts";
@@ -153,4 +153,16 @@ test("times are words, in UTC, and never invented", () => {
 test("the evaluation time comes from the backend, never the render", () => {
   assert.equal(parse(payload([])).generatedAt, T0);
   assert.equal(parse({ ...payload([]), generated_at: undefined }).generatedAt, null);
+});
+
+test("a busy server is an explicit try-again, never an error page or an all-clear", () => {
+  const busy = centerProblem({ status: 503, error: "Your leagues are being checked for other requests right now." });
+  assert.equal(busy.tone, "caution");
+  assert.match(busy.title, /could not be checked just now/);
+  assert.match(busy.body, /nothing below means there is nothing to do/);
+  assert.equal(busy.retryHref, "/leagues#action-center");
+  const broken = centerProblem({ status: 500, error: "Internal Server Error" });
+  assert.equal(broken.tone, "negative");
+  assert.match(broken.body, /^Internal Server Error /);
+  assert.equal(broken.retryHref, "/leagues#action-center");
 });
