@@ -60,6 +60,17 @@ export function withLeague(href: string, league: string | null | undefined): str
 }
 
 /**
+ * The href a link rendered on the page at `pathname` should carry (components/LeagueLink.tsx, TeamLink, and the
+ * client navigations that push a server-built href): `withLeague` with `league` when given, else with the league the
+ * page itself is in (`/l/<lg>/...`). So `/players?id=1` on `/l/<lg>/rankings` becomes `/l/<lg>/players?id=1` and the
+ * click never depends on the last-viewed-league cookie. Identity on the classic site; external, relative (`?q`,
+ * `#x`), unscoped and already-scoped hrefs are returned unchanged (`withLeague`).
+ */
+export function leagueLinkHref(href: string, pathname: string | null | undefined, league?: string | null): string {
+  return withLeague(href, league || (pathname ? splitLeaguePath(pathname).league : null));
+}
+
+/**
  * A same-origin Next route handler (`/api/...` under app/api) fetched by a client component on a league page:
  * `/api/trade-evidence?k` -> `/l/<lg>/api/trade-evidence?k`. proxy.ts rewrites that with the league header, so the
  * handler's `api()` call reaches the league's /v2 mount; a bare `/api/...` fetch is unscoped (the proxy strips any league

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { CSSProperties } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { BarChart } from "@/components/charts";
@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { projectionName, providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import {
   backendQuery, cutlineIndex, parseRaceQuery, raceHref, weeksText, withCutline, withOverride, type RaceQuery,
 } from "@/lib/playoff-view";
@@ -49,7 +51,7 @@ function StatusBadge({ s, title }: { s: PrStatus | undefined; title?: string }) 
 export default async function PlayoffRacePage({ searchParams }: PageProps<"/playoff-race">) {
   const sp = await searchParams;
   const q = parseRaceQuery(sp);
-  const [res, profile] = await Promise.all([api<PlayoffRace>(`/api/playoff-race?${backendQuery(q)}`), getLeagueProfile()]);
+  const [res, profile, league] = await Promise.all([api<PlayoffRace>(`/api/playoff-race?${backendQuery(q)}`), getLeagueProfile(), currentLeague()]);
   const labels: L = { prov: providerName(profile.provider), proj: projectionName(profile.defaultSource) };
   if (!res.ok) {
     return (
@@ -60,10 +62,11 @@ export default async function PlayoffRacePage({ searchParams }: PageProps<"/play
       </div>
     );
   }
-  return <Body d={res.data} q={q} L={labels} />;
+  // The no-JS spotlight form stays in the page's league (`/l/<lg>/playoff-race`), whatever the league cookie says.
+  return <Body d={res.data} q={q} L={labels} action={withLeague("/playoff-race", league?.id)} />;
 }
 
-function Body({ d, q, L }: { d: PlayoffRace; q: Q; L: L }) {
+function Body({ d, q, L, action }: { d: PlayoffRace; q: Q; L: L; action: string }) {
   const teams = new Map(d.teams.map((t) => [t.team_id, t]));
   const focus = d.focus_team_id !== null ? teams.get(d.focus_team_id) : undefined;
   const name: Name = (id) => (id === null || id === undefined ? "?" : teams.get(id)?.name ?? `Team ${id}`);
@@ -83,7 +86,7 @@ function Body({ d, q, L }: { d: PlayoffRace; q: Q; L: L }) {
           . Deterministic scenarios from {L.proj} projections, not probabilities.
         </>}
         actions={
-          <form action="/playoff-race" className={styles.spotlightForm}>
+          <form action={action} className={styles.spotlightForm}>
             {q.base !== "projected" && <input type="hidden" name="base" value={q.base} />}
             {Object.entries(q.o).map(([mid, out]) => <input key={mid} type="hidden" name="o" value={`${mid}:${out}`} />)}
             <label>Spotlight <select name="team" defaultValue={d.focus_team_id ?? ""}>

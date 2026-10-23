@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerPhoto } from "./PlayerPhoto";
 
 export function PlayerLink({ id, name }: { id: number; name: string | null }) {

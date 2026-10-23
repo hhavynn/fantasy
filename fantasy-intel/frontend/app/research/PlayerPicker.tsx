@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
+import { useLeagueHref } from "@/components/useAppPathname";
 import styles from "./research.module.css";
 
 export type PickerOption = { id: string; label: string; href: string };
@@ -15,6 +16,7 @@ export function PlayerPicker({ options, label, placeholder, action }: {
   action: string;
 }) {
   const router = useRouter();
+  const leagueHref = useLeagueHref();
   const id = useId();
   const [value, setValue] = useState("");
   const [miss, setMiss] = useState(false);
@@ -26,7 +28,8 @@ export function PlayerPicker({ options, label, placeholder, action }: {
       ?? options.find((o) => o.label.toLowerCase().startsWith(q))
       ?? options.find((o) => o.label.toLowerCase().includes(q));
     setMiss(!hit);
-    if (hit) router.push(hit.href, { scroll: false });
+    // On a league page the selection stays in that league (/l/<lg>/research/...).
+    if (hit) router.push(leagueHref(hit.href), { scroll: false });
   };
   return (
     <form className={styles.picker} onSubmit={submit} role="search">

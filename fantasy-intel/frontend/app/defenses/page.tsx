@@ -6,6 +6,7 @@ import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlaye
 import { Missing, num, when } from "@/lib/format";
 import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { DstChart } from "./DstChart";
 import styles from "./defenses.module.css";
@@ -68,7 +69,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   }
   const d = res.data;
   const weekForm = (
-    <form action="/defenses" className={styles.weekForm}>
+    <form action={withLeague("/defenses", league?.id)} className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
       <TeamLink href="/schedule-intelligence#kdst-streaming" league={league?.id ?? null}>Multi-week streaming plan</TeamLink>
