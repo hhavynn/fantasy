@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { shortlistKey, parseShortlist, toggleShortlist, readShortlist, writeShortlist } from "./waiver-shortlist.ts";
+import { isShortlistCandidate, shortlistKey, parseShortlist, toggleShortlist, readShortlist, writeShortlist } from "./waiver-shortlist.ts";
 
 const A = "lg_aaaaaaaaaaaaaaaa";
 const B = "lg_bbbbbbbbbbbbbbbb";
@@ -55,4 +55,16 @@ test("defense IDs survive save, persistence, reload, and remove alongside offens
   assert.deepEqual(ids, [101, -16012]);
   assert.deepEqual(parseShortlist(JSON.stringify(ids)), [101, -16012]);
   assert.deepEqual(toggleShortlist(ids, -16012), [101]);
+});
+
+test("isShortlistCandidate: only free agents and waiver players; rostered or unknown availability is never offered", () => {
+  assert.equal(isShortlistCandidate("FREEAGENT", null), true);
+  assert.equal(isShortlistCandidate("WAIVERS", undefined), true);
+  assert.equal(isShortlistCandidate("ONTEAM", null), false);
+  assert.equal(isShortlistCandidate("ONTEAM", "Team 1"), false);
+  // ESPN copies pool_entry.status, which can be null: an "Unknown" owner badge must not get Save.
+  assert.equal(isShortlistCandidate(null, null), false);
+  assert.equal(isShortlistCandidate(undefined, undefined), false);
+  assert.equal(isShortlistCandidate("", null), false);
+  assert.equal(isShortlistCandidate("FREEAGENT", "Team 2"), false);
 });

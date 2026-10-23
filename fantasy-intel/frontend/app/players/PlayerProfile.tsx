@@ -1,84 +1,67 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
-import { Badge, Glossary, Notice, PageHeader, Pos, ProvenanceBadge, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
+import { Badge, Notice, PageHeader, Pos, ProvenanceBadge, Rating, Section, Stat, StatStrip, TabList, TabPanel, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
 import { isOursNumber, oursBlock, oursByWeek } from "@/lib/forward-view";
 import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
+import { profileTabItems, type ProfileState } from "@/lib/player-tabs";
 import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
 import { signalsOf } from "@/lib/signal-provenance";
+import { isShortlistCandidate } from "@/lib/waiver-shortlist";
 import { BASIS_LABEL } from "@/lib/types";
-import { ForwardView } from "./ForwardView";
-import { GameLog } from "./GameLog";
-import { ContextSection, RouteSection, ScheduleLink } from "./PlayerContext";
+import { SavePlayer, ShortlistProvider } from "../waivers/Shortlist";
 import { SearchForm } from "./PlayerSearch";
-import { UsageCharts } from "./UsageCharts";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { Detail } from "./types";
-import type { PlayerRange } from "@/lib/projection-ranges";
-import { TeamLink } from "@/components/TeamLink";
 
 const SKILL = ["QB", "RB", "WR", "TE"];
+const TABS_ID = "player-tabs";
 
-/** A player profile: who and what state, the key numbers, the verdict signals, then the evidence by week. */
-export function PlayerProfile({ d, q, cols, range = null, profile = ESPN_PROFILE }: {
-  d: Detail; q: string; cols: "all" | "core"; range?: PlayerRange | null;
+/**
+ * A player profile: one header (who, what state, the key numbers, compare and save) above URL-addressable tabs.
+ * Only the selected tab's panel is rendered, so a tab's evidence is fetched and drawn when it is opened.
+ * `leagueId` is the scoped league (null on the classic site), for the device-local waiver shortlist.
+ */
+export function PlayerProfile({ d, state, profile = ESPN_PROFILE, leagueId = null, children }: {
+  d: Detail;
+  state: ProfileState;
   /** The league's provider and whether it publishes projections (a Sleeper league: no ESPN numbers, no ownership). */
   profile?: LeagueProfile;
+  leagueId?: string | null;
+  /** The selected tab's content. */
+  children: ReactNode;
 }) {
   const p = d.player;
-  const f = d.forward_projection;
   const hasUsage = d.weekly.length > 0 || d.score !== null;
-  return (
+  const body = (
     <div className="stack">
       <div className={styles.hero}>
-        <ProfileHeader d={d} q={q} profile={profile} />
+        <ProfileHeader d={d} q={state.q} profile={profile} leagueId={leagueId} />
         <div className={styles.heroStrip}><KeyNumbers d={d} hasUsage={hasUsage} profile={profile} /></div>
-        {hasUsage && (
-          <p className={styles.explainer}>
-            <b>PPR / game</b> is what the player scored. <b>Expected PPR</b> (nflverse xFP) is what an average player would score with the same targets,
-            carries and field position, so the gap between them separates role from efficiency.
-          </p>
-        )}
       </div>
 
       {p.match_method === "unmatched" && (
         <Notice tone="caution" title="No usage data for this player">
-          There is no nflverse ID match for this {profile.provider === "espn" ? "ESPN player" : "player"}, so the usage numbers and charts below are empty. {p.mapping_notes}
+          There is no nflverse ID match for this {profile.provider === "espn" ? "ESPN player" : "player"}, so the usage numbers and charts are empty. {p.mapping_notes}
         </Notice>
       )}
 
-      {d.waiver && (
-        <Section title="Waiver view" actions={<TeamLink href="/waivers">All waivers</TeamLink>}>
-          <div className={styles.badgeRow}>
-            <Badge value={d.waiver.recommendation} />
-            <span>Waiver score {d.waiver.waiver_score.toFixed(2)}</span>
-          </div>
-          <ul className={styles.reasons}>{d.waiver.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
-        </Section>
-      )}
-
-      {/* Outlook first (what to expect), then the role behind it, then week-by-week evidence. */}
-      {f && <ForwardView f={f} range={range} espnProjections={profile.providerProjections} />}
-      {SKILL.includes(p.position ?? "") && <ScheduleLink id={p.espn_player_id} />}
-
-      {d.score && <ValueAndTrends d={d} />}
-
-      <UsageCharts d={d} profile={profile} />
-
-      {d.context && <ContextSection d={d} />}
-      {d.route_data && <RouteSection r={d.route_data} />}
-
-      <GameLog d={d} all={cols === "all"} id={String(p.espn_player_id)} profile={profile} />
-      <Glossary terms={["PPR/g", "xFP", "FPOE", "Snap share", "Target share", "Backfield share", "aDOT", "ROS", "Value rating", "—"]} />
+      <div className={styles.tabs}>
+        <TabList label={`${p.full_name} profile`} idBase={TABS_ID} current={state.tab} items={profileTabItems(state)} />
+        <TabPanel idBase={TABS_ID} current={state.tab} className={`stack ${styles.panel}`}>{children}</TabPanel>
+      </div>
     </div>
   );
+  // Save is the waiver shortlist's action (device-local, per league), so it is offered for a scoped league only.
+  return leagueId ? <ShortlistProvider key={leagueId} leagueId={leagueId}>{body}</ShortlistProvider> : body;
 }
 
-function ProfileHeader({ d, q, profile }: { d: Detail; q: string; profile: LeagueProfile }) {
+function ProfileHeader({ d, q, profile, leagueId }: { d: Detail; q: string; profile: LeagueProfile; leagueId: string | null }) {
   const provider = providerName(profile.provider);
   const p = d.player;
   const f = d.forward_projection;
@@ -102,6 +85,8 @@ function ProfileHeader({ d, q, profile }: { d: Detail; q: string; profile: Leagu
       provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
       actions={<>
         <CompareLink a={p.espn_player_id} aName={p.full_name} />
+        {/* The shortlist holds waiver candidates: only a free agent or waiver player, never a rostered or unknown one. */}
+        {leagueId && isShortlistCandidate(p.availability_status, p.fantasy_team) && <SavePlayer id={p.espn_player_id} name={p.full_name} />}
         <RankingsLink position={p.position} />
         <SearchForm q={q} compact />
       </>}
@@ -183,69 +168,73 @@ function KeyNumbers({ d, hasUsage, profile }: { d: Detail; hasUsage: boolean; pr
   );
 }
 
-/** The signals behind the verdict, then the recent-vs-baseline table that produced the trend label. */
-function ValueAndTrends({ d }: { d: Detail }) {
+/** The signals behind the profile's labels: role, trend, production against the role, and the ratings. */
+export function UnderlyingValue({ d }: { d: Detail }) {
   const p = d.player;
   const score = d.score!;
   return (
-    <div className={styles.pair}>
-      <Section title="Underlying value vs box score">
-        <div className={styles.badgeRow}>
-          <Badge value={p.market_signal} title="Market signal (needs a meaningful absolute role for BUY)" />
-          <span className="faint">role</span><Badge value={p.opportunity_tier} title="Absolute opportunity tier" />
-          <span className="faint">trend</span><Badge value={p.role_trend} title="Composite usage trend" />
-          <span className="faint">production</span>
-          <Badge
-            value={p.production_sustainability ?? p.value_gap_label}
-            title="Production vs the opportunity (xFP) baseline. Regression evidence only, not a sell signal: xFP is an average-player model."
-          />
-        </div>
-        <div className="kv">
-          <span className="k">Opportunity rating</span>
-          <span><Rating rating={ratingFor(p, "opportunity")} kind="opportunity" /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>
-          <span className="k">Production rating</span><Rating rating={ratingFor(p, "production")} kind="production" />
-          <span className="k">Usage trend score</span><span>{signed(p.usage_trend_score, 2)} <span className="faint">(−1…+1)</span></span>
-          <span className="k">PPR / game</span><span>{num(p.fp_per_game)}</span>
-          <span className="k">Expected PPR / game</span><span>{num(p.xfp_per_game)} <span className="faint">(nflverse xFP)</span></span>
-          <span className="k">Actual − expected</span><span>{signed(p.fp_minus_xfp)}</span>
-          <span className="k">Value rating</span><Rating rating={ratingFor(p, "value")} kind="value" />
-        </div>
-        <ul className={styles.reasons}>{score.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
-        <p className={styles.note}>
-          Opportunity basis: {BASIS_LABEL[score.components.opportunity_basis] ?? score.components.opportunity_basis}, weeks {score.components.recent_weeks.join(", ")}. {score.components.value_formula}.
-        </p>
-        <p className={styles.noteTight}>{RATING_CAVEAT} Opportunity ratings with different bases are ranked in separate pools.</p>
-      </Section>
+    <Section title="Underlying value vs box score">
+      <div className={styles.badgeRow}>
+        <Badge value={p.market_signal} title="Market signal (needs a meaningful absolute role for BUY)" />
+        <span className="faint">role</span><Badge value={p.opportunity_tier} title="Absolute opportunity tier" />
+        <span className="faint">trend</span><Badge value={p.role_trend} title="Composite usage trend" />
+        <span className="faint">production</span>
+        <Badge
+          value={p.production_sustainability ?? p.value_gap_label}
+          title="Production vs the opportunity (xFP) baseline. Regression evidence only, not a sell signal: xFP is an average-player model."
+        />
+      </div>
+      <div className="kv">
+        <span className="k">Opportunity rating</span>
+        <span><Rating rating={ratingFor(p, "opportunity")} kind="opportunity" /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>
+        <span className="k">Production rating</span><Rating rating={ratingFor(p, "production")} kind="production" />
+        <span className="k">Usage trend score</span><span>{signed(p.usage_trend_score, 2)} <span className="faint">(−1…+1)</span></span>
+        <span className="k">PPR / game</span><span>{num(p.fp_per_game)}</span>
+        <span className="k">Expected PPR / game</span><span>{num(p.xfp_per_game)} <span className="faint">(nflverse xFP)</span></span>
+        <span className="k">Actual − expected</span><span>{signed(p.fp_minus_xfp)}</span>
+        <span className="k">Value rating</span><Rating rating={ratingFor(p, "value")} kind="value" />
+      </div>
+      <ul className={styles.reasons}>{score.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
+      <p className={styles.note}>
+        Opportunity basis: {BASIS_LABEL[score.components.opportunity_basis] ?? score.components.opportunity_basis}, weeks {score.components.recent_weeks.join(", ")}. {score.components.value_formula}.
+      </p>
+      <p className={styles.noteTight}>{RATING_CAVEAT} Opportunity ratings with different bases are ranked in separate pools.</p>
+    </Section>
+  );
+}
 
-      <Section title="Usage trends (recent vs baseline games)" flush>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Metric</th><th className="num">Baseline</th><th className="num">Recent</th><th className="num">Δ</th>
-                <th className="num">Threshold</th><th>Label</th>
-              </tr>
-            </thead>
-            <tbody>
-              {score.components.trends.map((t) => {
-                const isPct = ["offense_pct", "target_share", "team_rush_share", "backfield_rush_share"].includes(t.metric);
-                const fmt = (v: number | null) => (isPct ? pct(v) : num(v));
-                return (
-                  <tr key={t.metric}>
-                    <td>{metricLabel(t.metric)}</td>
-                    <td className="num">{fmt(t.baseline_avg)} <span className="faint">{t.baseline_weeks.length ? `wk ${t.baseline_weeks.join(",")}` : ""}</span></td>
-                    <td className="num">{fmt(t.recent_avg)} <span className="faint">{t.recent_weeks.length ? `wk ${t.recent_weeks.join(",")}` : ""}</span></td>
-                    <td className="num">{t.delta === null ? <span className="missing" title="Not enough games">—</span> : isPct ? signed(t.delta * 100, 0) : signed(t.delta)}</td>
-                    <td className="num faint">{isPct ? `${(t.threshold * 100).toFixed(0)} pts` : t.threshold}</td>
-                    <td><Badge value={t.label} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-    </div>
+/** The recent-vs-baseline table that produced the usage trend label. */
+export function UsageTrendTable({ d }: { d: Detail }) {
+  const score = d.score!;
+  return (
+    <Section title="Usage trends (recent vs baseline games)" flush>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th><th className="num">Baseline</th><th className="num">Recent</th><th className="num">Δ</th>
+              <th className="num">Threshold</th><th>Label</th>
+            </tr>
+          </thead>
+          <tbody>
+            {score.components.trends.map((t) => {
+              const isPct = ["offense_pct", "target_share", "team_rush_share", "backfield_rush_share"].includes(t.metric);
+              const fmt = (v: number | null) => (isPct ? pct(v) : num(v));
+              return (
+                <tr key={t.metric}>
+                  <td>{metricLabel(t.metric)}</td>
+                  <td className="num">{fmt(t.baseline_avg)} <span className="faint">{t.baseline_weeks.length ? `wk ${t.baseline_weeks.join(",")}` : ""}</span></td>
+                  <td className="num">{fmt(t.recent_avg)} <span className="faint">{t.recent_weeks.length ? `wk ${t.recent_weeks.join(",")}` : ""}</span></td>
+                  <td className="num">{t.delta === null ? <span className="missing" title="Not enough games">—</span> : isPct ? signed(t.delta * 100, 0) : signed(t.delta)}</td>
+                  <td className="num faint">{isPct ? `${(t.threshold * 100).toFixed(0)} pts` : t.threshold}</td>
+                  <td><Badge value={t.label} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 

@@ -18,10 +18,16 @@
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 .tab:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
-.tab[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.tab[aria-current="page"], .tab[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 .tab[aria-current="page"] .count { color: var(--accent); }
 .count { color: var(--ink-faint); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 
+/* TabList (role="tablist"): the tab focus ring sits inside the row, which clips overflow. */
+.tablist .tab:focus-visible { outline-offset: -2px; }
+/* TabPanel: focusable so the keyboard can step from the tabs into it; its ring stays off the content. */
+.panel:focus-visible { outline-offset: 4px; }
+
 @media (max-width: 720px) {
   .tab { min-height: 40px; }
+  .tablist .tab { min-height: var(--tap); }
 }

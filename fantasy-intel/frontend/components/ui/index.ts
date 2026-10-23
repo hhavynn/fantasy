@@ -15,6 +15,8 @@ export { SortableTh } from "./SortableTh";
 export { Sparkline } from "./Sparkline";
 export { Stat, StatStrip, type StatTone } from "./StatStrip";
 export { Tabs, type TabItem } from "./Tabs";
+export { TabList, type TabListItem } from "./TabList";
+export { TabPanel } from "./TabPanel";
 export { TrendArrow } from "./TrendArrow";
 export { VisuallyHidden } from "./VisuallyHidden";
 export { Verdict, VerdictFigure } from "./Verdict";

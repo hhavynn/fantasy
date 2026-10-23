@@ -42,9 +42,19 @@
 .facts li { display: block; }
 .factLabel { color: var(--ink-faint); }
 
-/* ---------- Two-up sections ---------- */
-.pair { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
-.pair > * { min-width: 0; }
+/* ---------- Profile tabs ---------- */
+/* The tablist sits under the hero; the selected tab's panel opens with a summary (headline, scoring, source, window). */
+.tabs { min-width: 0; }
+.panel { margin-top: 16px; }
+.summary { min-width: 0; }
+.summaryHeadline { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.summaryFacts { display: flex; flex-wrap: wrap; gap: 2px 20px; margin: 6px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.summaryFacts > div { display: flex; gap: 6px; min-width: 0; }
+.summaryFacts dt { flex: none; color: var(--ink-faint); }
+.summaryFacts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.summaryBadge { margin-top: 8px; }
+@media (max-width: 720px) { .summaryHeadline { font-size: 16px; line-height: 22px; } .summaryFacts { flex-direction: column; } }
+
 .badgeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; }
 .reasons { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); }
 .reasons li { margin: 2px 0; }

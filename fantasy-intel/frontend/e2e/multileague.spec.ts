@@ -110,9 +110,41 @@ test("a link across the league boundary re-renders the header, both ways", async
   // /leagues -> a league by a client-side link: the league header comes back.
   await page.goto("/leagues", { waitUntil: "load" });
   await expect(page.locator("button.sync-pill")).toHaveCount(0);
-  await page.getByRole("link", { name: "Private Fixture League" }).first().click();
+  // The league list's own link: the action center above it ("Across your leagues", streamed in) links the same
+  // league with ?team=, so the region is matched exactly.
+  await page.getByRole("region", { name: "Your leagues", exact: true }).getByRole("link", { name: "Private Fixture League", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/l/${lg}$`));
   await expect(page.locator("button.sync-pill")).toBeVisible();
+});
+
+// Player profile tabs (#187): a deep-linked tab, a tab switch and a week window all stay under /l/<lg>/, and the
+// profile's Save writes only that league's device-local shortlist.
+test("a player profile tab keeps its league, and Save writes only that league's shortlist", async ({ page }) => {
+  const { espn_public: a, sleeper: b } = manifest().leagues;
+  // Fixture players have no real ESPN photo: stub the CDN, as the parity matrix above does.
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const errors = collectErrors(page);
+  // Name any missing resource, so a console 404 says which request it was.
+  page.on("response", (r) => { if (r.status() === 404) errors.push(`404: ${r.url()}`); });
+  await page.goto(`/l/${a}/players?id=209&tab=usage`, { waitUntil: "load" });
+  const tabs = page.getByRole("tablist", { name: /profile$/ });
+  await expect(tabs.getByRole("tab", { name: "Usage", exact: true })).toHaveAttribute("aria-selected", "true");
+  await tabs.getByRole("tab", { name: "Game log", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=209&tab=game-log$`));
+  await page.getByRole("group", { name: "Weeks shown" }).getByRole("link", { name: "Last 3 weeks" }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=209&tab=game-log&weeks=3$`));
+  const save = page.locator("main").getByRole("button", { name: /^Save .* to shortlist$/ });
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.locator("main").getByRole("button", { name: /^Remove .* from shortlist$/ })).toHaveAttribute("aria-pressed", "true");
+  const stored = await page.evaluate(([ka, kb]) => [localStorage.getItem(ka), localStorage.getItem(kb)],
+    [`fi:waiver-shortlist:v1:${a}`, `fi:waiver-shortlist:v1:${b}`]);
+  expect(stored).toEqual(["[209]", null]);
+  // A rostered player has nothing to save for.
+  await page.goto(`/l/${a}/players?id=201`, { waitUntil: "load" });
+  await expect(page.getByRole("tablist", { name: /profile$/ }).getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("main").getByRole("button", { name: /shortlist$/ })).toHaveCount(0);
+  expect(errors, "console errors").toEqual([]);
 });
 
 // Shortlist uses the real scoped page/API and browser storage; no mocked waiver responses.
