@@ -72,10 +72,10 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #190 opportunity trees | 5 | MERGED | #274 | observed / hypothesis / abstain; return needs week-W report evidence |
 | #198 defensive matchups | 5 | NOT STARTED | — | data-rights research first |
 | #199 consensus/ADP | 5 | RESEARCH-ONLY | — | |
-| #200 saved views/search | 5 | MERGED / 1t PR OPEN | PR #280 → 6d6769b; 1t sign-out purge PR #291 | 1t owned by Session 3 |
+| #200 saved views/search | 5 | MERGED | PR #280 → 6d6769b; 1t sign-out purge PR #291 → 5b40133 | FI-owned keys only; two-account e2e |
 | #191 positional strength | 6 | MERGED | PR #283 → 41e0cbc (2026-10-23) | league analyzer; owner-only pace-lab router kept beside it |
 | #192 playoff what-if | 6 | MERGED (#278 → 2c5e648) | — | clinch/elimination stays unclaimed until tiebreaks are mapped; Sleeper median games disclosed, not modelled |
-| #194 post-game feedback | 6 | NOT STARTED | — | |
+| #194 post-game feedback | 6 | PR OPEN | PR #301 (Session 4), Part of #194 | start/sit only; waiver grading needs a snapshot table (follow-up) |
 | #172 confidence/alternatives | 6 | NOT STARTED | — | calibration evidence required |
 | #173 live matchup | 6 | NOT STARTED | — | provider cadence limits |
 | #174 win probability | 6 | RESEARCH-ONLY | — | backtest gate; PRODUCT.md bans unsupported probabilities |
@@ -97,16 +97,16 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 | #229 superflex replacement level | fix | MERGED | PR #238 → c419856 (2 Codex P2s fixed) | a 632 + audits/golden 194; rules row → HANDLED (verified waiver needs + flex reference count OP) |
 | #212 Breakout Radar | A | NOT STARTED | — | #168 merged; backtest gate |
 | #210 Game Splits | A | MERGED | PR #285 → 79908ce (2026-10-23) | E2E splits world relabelled to 2023 (clear of pace lab 2024-25) |
-| #226 Advanced screener | A | NOT STARTED | — | backend now; UI after #170/#200; feeds #219 |
+| #226 Advanced screener | A | PR OPEN | PR #299 (Session 4) | nav conflict with 1u to resolve; security review |
 | #225 Projection change attribution | A | NOT STARTED | — | reuses projection_movers; audit-restricted modules |
 | #216 Marginal roster utility | B | NOT STARTED | — | #169 + #178 lineup contract |
 | #218 Stash/handcuff planner | B | NOT STARTED | — | #216 |
-| #209 Cross-league portfolio | B | NOT STARTED | — | #166 |
+| #209 Cross-league portfolio | B | PR OPEN | PR #300 (Session 3) | security review: 2 blockers fixed; pinned non-member leagues excluded (merge-captain default) |
 | #211 Pace / game-script lab | B | MERGED | PR #287 → 495557d (2026-10-23) | nav entry = follow-up 1u |
 | #213 NFL what-if lab | C | NOT STARTED | — | #190; never alters production forecasts |
 | #214 Trade counteroffers | C | NOT STARTED | — | #182, #183 |
 | #217 Playoff rooting guide | C | NOT STARTED | — | #192 |
-| #215 Manager trade tendencies | C | PR OPEN | PR #290 (799c02a) | Session 2; needs fallback review (Codex quota) |
+| #215 Manager trade tendencies | C | MERGED | PR #290 → c600a4c (2026-10-23) | counterparty patterns; one-sided trades shown as minimums |
 | #222 Custom scoring sensitivity | C | NOT STARTED | — | #169 (PR #207) |
 | #219 Ask Fantasy Intel | D | NOT STARTED | — | #226, #200; no paid LLM |
 | #221 Fantasy Wrapped | D | NOT STARTED | — | #194, #197 |
@@ -291,6 +291,8 @@ prerequisites (see table).
 **Wave 2 (next):** #201 perf (backend cache/single-flight + timing), #167 onboarding (`app/leagues/*`), then #165
 weekly hub using the #168 contract. #170 runs after these, alone, because it owns Nav/layout/globals.
 
+
+**Coordination update (2026-10-23 19:55 UTC):** merged #293 → a0e8732 (#285 nits) · #291 → 5b40133 (1t) · #290 → c600a4c (#215) · #294 → 54780b2 (1u) · #295 → 34439f6 (#253 G6/G7/G9/G12/G14) · #298 → 37999ba (#254 phase 3 part 1). #225: (b) PR #297, (a) design approved on #225 with a size budget; (c) deferred (production data). All Session 1 implementation agents finished.
 
 **Coordination update (2026-10-23 19:00 UTC):** further merges: #288 → 42c7295 · #284 → 7af0942 (1q/1l) · #277 → b69fd28 (canonical trade-discovery perf; #279 closed as superseded) · #282 → 19c5237 · #283 → 41e0cbc · #292 → 716f7de (drain-log test flake) · #285 → 79908ce. #254 phase 3 unblocked (deferred while the queue is busy).
 
