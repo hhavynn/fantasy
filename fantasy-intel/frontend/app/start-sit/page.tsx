@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";
 import { CompareLink } from "@/components/CompareLink";
@@ -9,7 +10,8 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { RangeLine } from "@/components/RangeLine";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, SortableTh, Verdict, VerdictFigure,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, SkeletonTable, SortableTh, Verdict,
+  VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -29,6 +31,8 @@ import {
   startSitVerdict,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
+import { WhatIf } from "./WhatIf";
+import { readWhatIf } from "@/lib/what-if";
 import { signalsOf } from "@/lib/signal-provenance";
 import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
@@ -51,6 +55,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const sp: SP = await searchParams;
   const qs = new URLSearchParams();
   const sel = readTeamSelection(sp);
+  const whatIf = readWhatIf(sp);
   const week = one(sp.week);
   if (week) qs.set("week", week);
   if (sel.kind === "invalid") {
@@ -208,6 +213,20 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       >
         <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} ranges={ranges} />
       </Section>
+
+      {/* The what-if builder streams in: it re-reads the evaluation with the scenario applied. */}
+      <Suspense fallback={
+        <Section title="What-if lineup" subtitle="Loading the what-if builder" flush><SkeletonTable rows={9} cols={4} /></Section>
+      }>
+        <WhatIf
+          apiPath={withTeamId(withSource(`/api/start-sit/what-if?${qs.toString()}`, source), sel)}
+          whatif={whatIf.kind === "value" ? whatIf.value : null}
+          invalidParam={whatIf.kind === "invalid"}
+          sp={sp}
+          provider={provider}
+          ours={ours}
+        />
+      </Suspense>
 
       {d.injury_warnings.length > 0 || d.schedule_warnings.length > 0 ? (
         <Section title="Availability alerts" flush={d.injury_warnings.length > 0}>

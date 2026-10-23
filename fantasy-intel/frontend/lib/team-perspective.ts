@@ -12,9 +12,9 @@ export const TEAM_SCOPED_PATHS = [
   "/schedule-intelligence", "/luck-lab", "/playoff-race", "/power-rankings", "/injury-impact",
 ] as const;
 
-/** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset) and are
- *  dropped when the team changes. */
-export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override"];
+/** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset, a Start/Sit
+ *  what-if lineup) and are dropped when the team changes. */
+export const TEAM_SPECIFIC_PARAMS = ["opponent", "vs", "schedule_of", "offset", "player", "ta", "tb", "a", "b", "override", "whatif"];
 
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
