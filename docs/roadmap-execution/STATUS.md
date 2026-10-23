@@ -61,7 +61,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | MERGED | PR #249 → 17d26e2 (2026-10-23) | security MEDIUM resolved by #252; Codex P2 fixed; LineupTooLargeError 422 test |
 | #180 claim planner | 3 | MERGED | PR #255 → e11ff5d (2026-10-23) | review MEDIUM×2 (open-spot/position limits = Codex P2; Sleeper waiver status) + 3 LOW fixed |
-| #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
+| #179 FAAB intelligence | 3 | IN PROGRESS | `feature/fi-179-faab-intelligence` from c6ecf8c | capability-gated; owns waiver files after #260 |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | MERGED | PR #258 → 386e546 (2026-10-23) | Codex P1×2 + P2, review MEDIUM + 2 LOW fixed; evidence fetch league-scoped (no exposure) |
 | #183 trade scenarios | 4 | IN PROGRESS | `feature/fi-183-trade-scenarios` from 386e546 | |
@@ -289,6 +289,7 @@ conflicts.
 | #256 | 04:25 | 05:12 (99c96de, 3rd full CI) | 04:46 MEDIUM → re-check 05:00 → G1 remainder | 05:13 (48 min) | 3 | 0 |
 | #259 | 05:12 | 05:18 (46331f9) | 05:23 approve (Codex quota out) | 05:24 (12 min) | 1 | 0 |
 | #258 | 04:44 | 05:36 (38f99c6; first CI blocked by conflict) | 05:13 → re-check approve 05:40 | 05:41 (57 min) | 1 | 1 (test_league_scope vs #257) |
+| #260 | 05:12 | 05:48 (64718c2) | 05:38 HIGH+2 MEDIUM → re-check approve 06:05 | 06:06 (54 min) | 2 | 0 |
 | #257 | 04:30 | 04:36 | 04:34 (approve) | 04:37 (7 min) | 0 | 0 |
 | #249 | 02:01 | 03:22 | 02:17 (MEDIUM → fixed by #252, merged 03:07) | 03:22 (81 min) | 0 | 1 (waivers/page.tsx vs #244/#250) |
 
