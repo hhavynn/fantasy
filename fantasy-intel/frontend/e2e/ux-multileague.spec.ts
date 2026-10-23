@@ -1,19 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import {
-  collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues, expectNoSidewaysScroll,
-  expectStructure, open, stubPhotos,
+  applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
+  expectNoSidewaysScroll, expectStructure, open, stubPhotos, useTheme, type Theme,
 } from "./ux";
 
 // UX acceptance gates on the multi-league site (issue #202), run by playwright.multileague.config.ts beside the
 // parity matrix. Provider fixtures (scripts/e2e_multileague.py): a private ESPN league the viewer is signed in to, a
 // public Sleeper league (superflex, FLEX and TE premium: the complex roster slots), a league whose sync paused after a
-// publish a week earlier (stale) and one connected but never synced (blank). Each core destination at 320, 390 and
-// 1440 for ESPN private (768 runs on the demo league in ux-gates.spec.ts), 320 and 1440 for Sleeper: one h1 and the
+// publish a week earlier (stale), one connected but never synced (blank) and a public league whose published data is
+// partial (ESPN's projection missing for every other player). Each core destination at 320, 390 and 1440 for ESPN
+// private (768 runs on the demo league in ux-gates.spec.ts), 320 and 1440 for Sleeper, in both themes: one h1 and the
 // landmarks, decision first, no sideways scroll, an app bar that fits (the league switcher included), no leaked
-// undefined/NaN/null or engine identifier, axe-core clean or triaged, no console error.
-type Kind = "espn_public" | "espn_private" | "sleeper" | "espn_stale" | "espn_blank";
+// undefined/NaN/null or engine identifier, axe-core clean or triaged (light at every width, dark at 390 and 1440, as in
+// ux-gates.spec.ts), no console error. Then the not-found page, a signed-out visitor on a private league and the
+// partial league, at 320 and 1440 in both themes.
+type Kind = "espn_public" | "espn_private" | "sleeper" | "espn_stale" | "espn_blank" | "espn_partial";
 type Manifest = { leagues: Record<Kind, string>; cookie: { name: string; value: string } };
 const manifest = (): Manifest =>
   JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../data/e2e-multileague/manifest.json"), "utf8"));
@@ -39,9 +42,24 @@ const MATRIX = [
   { kind: "sleeper", signedIn: false, widths: [320, 1440] },
 ] as const;
 
+// Colours fade for 120ms on a theme switch; reduced motion makes the switch instant, so axe never samples mid-fade.
+test.use({ reducedMotion: "reduce" });
+
 test.beforeEach(async ({ page }) => {
   await stubPhotos(page);
 });
+
+/** No sideways scroll and an app bar that fits in both themes; axe in light, and in dark too when `axeDark`. */
+async function bothThemes(page: Page, axeDark: boolean) {
+  for (const theme of ["light", "dark"] as Theme[]) {
+    await test.step(theme, async () => {
+      await applyTheme(page, theme);
+      await expectNoSidewaysScroll(page);
+      await expectAppBarFits(page);
+      if (theme === "light" || axeDark) await expectAccessible(page, theme);
+    });
+  }
+}
 
 for (const { kind, signedIn, widths } of MATRIX) {
   for (const width of widths) {
@@ -51,13 +69,12 @@ for (const { kind, signedIn, widths } of MATRIX) {
         test(`${kind} ${route.name} ${width}px`, async ({ page, context }) => {
           if (signedIn) await signIn(context);
           const errors = collectErrors(page);
+          await useTheme(page, "light");
           await open(page, `/l/${manifest().leagues[kind]}${route.path === "/" ? "" : route.path}`);
           await expectStructure(page);
           await expectNoBrokenValues(page);
           await expectDecisionFirst(page, { verdict: !!route.verdict });
-          await expectNoSidewaysScroll(page);
-          await expectAppBarFits(page);
-          await expectAccessible(page);
+          await bothThemes(page, width >= 390);
           expect(errors, "console errors").toEqual([]);
         });
       }
@@ -124,6 +141,75 @@ for (const width of [320, 1440]) {
         await expectNoSidewaysScroll(page);
         await expectAppBarFits(page);
         await expectAccessible(page);
+      }
+      expect(errors, "console errors").toEqual([]);
+    });
+  });
+}
+
+/** A well-formed league id that was never created. */
+const UNKNOWN_LEAGUE = "lg_NeverCreatedLeague0000";
+/** The 404 notice a refused league read shows: the local/e2e developer copy, or the hosted visitor copy. */
+const SIGNED_OUT_ANSWER = /The backend returned an error \(404\)|This could not be loaded/;
+
+// The states beside a ready league (issue #202): a page that does not exist under a league, a signed-out visitor on a
+// private league and a league whose published data is partial (pages say what is missing in words, never a NaN or an
+// error box). The private league answers a signed-out visitor exactly as a league that does not exist ("League not
+// found", the API's 404), so the page neither shows nor confirms it; that answer is the content and must meet the bar.
+for (const width of [320, 1440]) {
+  test.describe(`league states at ${width}px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+
+    test(`not found under a league (${width}px)`, async ({ page, context }) => {
+      await signIn(context);
+      const errors = collectErrors(page, { documentMayBe404: true });
+      await useTheme(page, "light");
+      await open(page, `/l/${manifest().leagues.espn_private}/no-such-page`, 404);
+      await expect(page.locator("main h1")).toHaveText("Page not found");
+      await expectStructure(page);
+      await expectNoBrokenValues(page);
+      await bothThemes(page, true);
+      expect(errors, "console errors").toEqual([]);
+    });
+
+    test(`a signed-out visitor on a private league (${width}px)`, async ({ page }) => {
+      test.slow();
+      const errors = collectErrors(page);
+      await useTheme(page, "light");
+      for (const p of ["", "/waivers"]) {
+        // The answer for a league id that was never created, to compare with.
+        const unknown = await page.goto(`/l/${UNKNOWN_LEAGUE}${p}`, { waitUntil: "networkidle" });
+        const unknownText = await page.locator("main").innerText();
+        const res = await page.goto(`/l/${manifest().leagues.espn_private}${p}`, { waitUntil: "load" });
+        expect(res?.status(), "same HTTP status as a league that does not exist").toBe(unknown?.status());
+        await open(page, `/l/${manifest().leagues.espn_private}${p}`, unknown?.status());
+        expect(await page.locator("main").innerText(), "same page as a league that does not exist").toBe(unknownText);
+        await expect(page.locator("main")).toContainText("League not found");
+        await expect(page.locator("body")).not.toContainText("Private Fixture League");
+        await expect(page.locator("body")).not.toContainText("Echo RB");
+        await expectStructure(page, { problem: SIGNED_OUT_ANSWER });
+        await expectNoBrokenValues(page);
+        await bothThemes(page, true);
+      }
+      expect(errors, "console errors").toEqual([]);
+    });
+
+    test(`a league with partial data says what is missing (${width}px)`, async ({ page }) => {
+      test.slow();
+      const errors = collectErrors(page);
+      await useTheme(page, "light");
+      for (const p of ["", "/start-sit", "/matchup", "/waivers"]) {
+        await open(page, `/l/${manifest().leagues.espn_partial}${p}`);
+        await expectStructure(page);
+        await expectNoBrokenValues(page);
+        if (p === "/start-sit") await expect(page.locator("main")).toContainText("Projections are incomplete, so no gain is claimed");
+        // The Overview's hub (issue #165) never reads as an all-clear on it: the incomplete source is named.
+        if (p === "") {
+          await expect(page.locator("main")).toContainText("Some players have no projection, so Start/Sit claims no gain");
+          await expect(page.locator("main")).toContainText("not an all-clear");
+          await expect(page.locator("main").getByText("Lineup is set")).toHaveCount(0);
+        }
+        await bothThemes(page, true);
       }
       expect(errors, "console errors").toEqual([]);
     });

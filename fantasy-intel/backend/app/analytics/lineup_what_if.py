@@ -5,7 +5,7 @@ list of moves, "put player P in slot S", applied to the recommended lineup of ap
 comes from that same evaluation (its `capture` hook), so an empty scenario is the recommendation exactly, and every rule
 is the engine's own:
 
-  * slot instances and positional eligibility: start_sit.build_slot_instances and lineup.eligible (FLEX_ELIGIBILITY);
+  * slot instances and positional eligibility: start_sit.build_slot_instances and lineup.eligible (lineup.slot_positions);
   * kickoff locks: a starter whose game has kicked off keeps his slot, a bench player whose game has kicked off stays
     on the bench (start_sit.preserve_locked_assignments);
   * fantasy IR and taxi players (app/analytics/reserve_slots.py) are rostered but never start;
@@ -33,7 +33,7 @@ from datetime import datetime
 from typing import Any
 
 from .league_rules import build_league_rules
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, eligible, slot_positions
 from .start_sit import (ACTION_NO_CHANGE, LOCK_UNKNOWN, PlayerLock, SlotInstance, load_start_sit_evaluation,
                         no_change_strength)
 
@@ -42,7 +42,7 @@ MAX_MOVES = 20
 MAX_ALTERNATIVES = 3      # legal single moves listed per recommended starting slot (issue #172)
 MAX_PARAM_LEN = 400
 
-_SLOT_TYPES = "|".join(re.escape(s) for s in sorted((*FIXED_SLOTS, *FLEX_ELIGIBILITY), key=len, reverse=True))
+_SLOT_TYPES = "|".join(re.escape(s) for s in sorted((*FIXED_SLOTS, *FLEX_SLOTS), key=len, reverse=True))
 _MOVE = rf"(?:{_SLOT_TYPES})_\d{{1,2}}\.-?\d{{1,12}}"
 _PARAM = re.compile(rf"w(\d{{1,2}})t(\d{{1,6}})(?:~({_MOVE}(?:,{_MOVE}){{0,{MAX_MOVES - 1}}}))?")
 
@@ -126,7 +126,7 @@ class Board:
 
 
 def _positions(slot_type: str) -> str:
-    allowed = FLEX_ELIGIBILITY.get(slot_type, (slot_type,))
+    allowed = slot_positions(slot_type)
     return allowed[0] if len(allowed) == 1 else ", ".join(allowed[:-1]) + " or " + allowed[-1]
 
 
@@ -386,7 +386,7 @@ def evaluate_what_if(con: Any, *, team_id: int | None = None, week: int | None =
                 })
         slot_rows.append({
             "slot_id": sid, "slot": slot.slot_type, "label": board.label(slot), "is_flex": slot.is_flex,
-            "eligible_positions": list(FLEX_ELIGIBILITY.get(slot.slot_type, (slot.slot_type,))),
+            "eligible_positions": list(slot_positions(slot.slot_type)),
             "locked": sid in board.locked_slots,
             "lock_reason": (f"{board.name(board.locked_slots[sid])}'s game has kicked off, so he keeps this slot."
                             if sid in board.locked_slots else None),

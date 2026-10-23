@@ -24,7 +24,7 @@ from typing import Any
 import json
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import (FIXED_SLOTS, FLEX_ELIGIBILITY, NON_STARTING_SLOTS, assign_lineup, eligible, separable,
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, NON_STARTING_SLOTS, assign_lineup, eligible, separable,
                      unsupported_slots)
 from .player_availability import load_availability
 from .reserve_slots import is_taxi
@@ -294,7 +294,7 @@ def build_slot_instances(roster_slots: dict[str, int]) -> list[SlotInstance]:
             slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=False))
 
     # Flex slots in canonical order (sorted by eligibility width)
-    for s in sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])):
+    for s in FLEX_SLOTS:
         count = int((roster_slots or {}).get(s, 0))
         for i in range(count):
             slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=True))
@@ -441,7 +441,7 @@ def split_held_starters(starters: list[dict], unsupported) -> tuple[list[dict], 
     unrecognised slot) is kept where he is: the recommendation never moves him and no total counts him, so the
     submitted and recommended lineups differ only in the slots the engines fill and the gain between them is exact
     (issue #253 G2)."""
-    fillable = {*FIXED_SLOTS, *FLEX_ELIGIBILITY}
+    fillable = {*FIXED_SLOTS, *FLEX_SLOTS}
 
     def is_held(p: dict) -> bool:          # also a starter whose label no engine fills but the counts do not list
         label = slot_label(p)

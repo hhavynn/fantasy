@@ -27,7 +27,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_exists
-from .lineup import FLEX_ELIGIBILITY, eligible, slots_left_out
+from .lineup import eligible, is_flex, slots_left_out
 from .playoff_race import RaceData, build_playoff_race, load_race_data
 from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_addition, compare, project_team,
                            projection, r, replacement_market, roster_marginal_value, slot_filled, slot_flags, source_label,
@@ -242,8 +242,8 @@ def bench_reason(p: RosterPlayer, week: dict, proj, byes: list[int] | None, name
         return {"code": "bye" if bye else "zero_projection",
                 "text": "NFL bye (projected 0)" if bye else "ESPN projects 0"}
     held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p.position)]
-    fixed = [a for a in held if a["slot"] not in FLEX_ELIGIBILITY]
-    flex = [a for a in held if a["slot"] in FLEX_ELIGIBILITY]
+    fixed = [a for a in held if not is_flex(a["slot"])]
+    flex = [a for a in held if is_flex(a["slot"])]
     def who(rows):
         return ", ".join(f"{a.get('name') if a.get('streamer') else names.get(a['player_id']) or a['player_id']} "
                          f"({a['points']:.1f})" for a in sorted(rows, key=lambda a: -(a["points"] or 0)))
