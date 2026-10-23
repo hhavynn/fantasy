@@ -41,6 +41,9 @@ export const GLOSSARY = {
   "Rank gap": "The provider's rank minus Fantasy Intel's (Ours) rank for the same player, within his position or across all positions. Positive means Ours ranks him higher. When one side has no rank, the cell names the missing side in words instead; a gap is never shown as zero for a missing rank.",
   "Floor and ceiling": "The 10th and 90th percentile of a player's points if he plays, from Fantasy Intel's point-distribution model around next week's Ours projection: 80% of outcomes are expected between them. Shown for RB, WR and TE only, and never for the rest of the season.",
   "—": "A dash means the number is missing or not computed, never zero. A measured zero is shown as 0.",
+  "N/A": "Not applicable: the measure does not describe this player's position (a quarterback's target share, a kicker's snap share). It is not a zero and not missing data.",
+  "Best projected": "The player with the highest stored projection for the week among those who can fill the chosen slot, from the projection source the page shows. Players within half a point of the top are tied. It is a projection, not a start/sit verdict or a consensus.",
+  "Start pick": "The player you mark to start in the shortlist. It is your call and is kept only in the page link; nothing is sent to your league.",
 } as const;
 
 export type GlossaryTerm = keyof typeof GLOSSARY;

@@ -13,7 +13,7 @@ import {
 } from "@/lib/navigation";
 import type { ProjectionSource } from "@/lib/projection-source";
 import type { SyncState } from "@/lib/sync-status";
-import { isTeamScoped, perspectiveHref, teamOptionLabel, withTeam } from "@/lib/team-perspective";
+import { isTeamScopedView, perspectiveHref, teamOptionLabel, withTeam } from "@/lib/team-perspective";
 import { useNavGroups } from "./NavVisibility";
 import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
@@ -131,7 +131,7 @@ function RailTeamPicker({ teams }: { teams: RailTeams }) {
   const onChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const id = Number(e.target.value);
     const next = id === teams.defaultId ? null : id;
-    if (isTeamScoped(pathname)) start(() => router.push(leagueHref(perspectiveHref(pathname, search, next))));
+    if (isTeamScopedView(pathname, search)) start(() => router.push(leagueHref(perspectiveHref(pathname, search, next))));
     else rememberTeam(league, next === null ? null : String(next));
   };
   return (

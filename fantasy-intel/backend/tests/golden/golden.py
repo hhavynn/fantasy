@@ -54,6 +54,11 @@ def sample_ids(con) -> dict:
     return {
         "espn_player_id": q("SELECT espn_player_id FROM lineup_snapshots ORDER BY espn_player_id LIMIT 1"),
         "other_player_id": q("SELECT DISTINCT espn_player_id FROM lineup_snapshots ORDER BY espn_player_id LIMIT 1 OFFSET 1"),
+        # a four-player shortlist (issue #175): the first rostered RB, WR and TE by id, then the first QB
+        "shortlist_ids": ",".join(str(x[0]) for x in con.execute(
+            "SELECT min(l.espn_player_id) FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id) "
+            "WHERE fp.position IN ('RB', 'WR', 'TE', 'QB') GROUP BY fp.position "
+            "ORDER BY fp.position = 'QB', fp.position").fetchall()),
         "team_id": q("SELECT team_id FROM fantasy_teams ORDER BY team_id LIMIT 1 OFFSET 1"),
         "gsis_id": q("SELECT gsis_id FROM player_id_map WHERE gsis_id IS NOT NULL ORDER BY gsis_id LIMIT 1"),
     }
@@ -63,6 +68,13 @@ def sample_ids(con) -> dict:
 def _required_query(path: str, ids: dict, client) -> dict | None:
     if path == "/api/compare":
         return {"a": ids["espn_player_id"], "b": ids["other_player_id"]}
+    if path == "/api/compare/shortlist":
+        # Four rostered players for the league's FLEX slot (issue #175), when the league starts one.
+        q = {"ids": ids["shortlist_ids"]}
+        body = client.get(path + "?" + urlencode(q)).json() if client is not None else {}
+        if any(s.get("slot") == "FLEX" for s in body.get("slots") or []):
+            q["slot"] = "FLEX"
+        return q
     if path == "/api/research/opportunity":
         return {"position": "WR"}
     if path == "/api/trades/discover/evidence":

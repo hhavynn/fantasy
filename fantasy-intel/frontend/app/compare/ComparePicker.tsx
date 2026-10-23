@@ -55,17 +55,25 @@ export function ComparePicker({ a, b }: { a: PickerSelection | null; b: PickerSe
   );
 }
 
-function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
-  side: Side;
+/**
+ * One search-and-pick box. On the pair view it is Player A or B; the shortlist reuses it as "Add a player" (no side
+ * colour, its own `label` and `placeholder`).
+ */
+export function PlayerSlot({ side, selected, onPick, autoFocus = false, label, placeholder, disabled = false }: {
+  side?: Side;
   selected: PickerSelection | null;
   onPick: (id: number) => void;
   autoFocus?: boolean;
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
 }) {
   const league = useLeagueId();
   const uid = useId();
   const inputId = `${uid}-input`;
   const listId = `${uid}-list`;
-  const letter = side === "a" ? "A" : "B";
+  const letter = side === "b" ? "B" : "A";
+  const name = label ?? `Player ${letter}`;
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
@@ -148,14 +156,14 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
   return (
     <div
       ref={box}
-      className={cx(styles.slot, side === "a" ? styles.sideA : styles.sideB)}
+      className={cx(styles.slot, side === "a" && styles.sideA, side === "b" && styles.sideB, !side && styles.slotPlain)}
       onBlur={(e) => {
         if (!box.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}
     >
       {showInput
-        ? <label className={styles.slotLabel} htmlFor={inputId}>Player {letter}</label>
-        : <span className={styles.slotLabel}>Player {letter}</span>}
+        ? <label className={styles.slotLabel} htmlFor={inputId}>{name}</label>
+        : <span className={styles.slotLabel}>{name}</span>}
 
       {showInput ? (
         <div className={styles.combo}>
@@ -172,7 +180,8 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
             autoComplete="off"
             spellCheck={false}
             autoFocus={autoFocus}
-            placeholder={`Search a player to be ${letter}`}
+            disabled={disabled}
+            placeholder={placeholder ?? `Search a player to be ${letter}`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -189,7 +198,7 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
           )}
           {open && q && !pendingSearch && (
             players.length > 0 ? (
-              <ul id={listId} role="listbox" aria-label={`Player ${letter} search results`} className={styles.popover}>
+              <ul id={listId} role="listbox" aria-label={`${name} search results`} className={styles.popover}>
                 {players.map((p, i) => (
                   <li
                     key={p.id}
@@ -225,7 +234,7 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
               <span className={styles.optionMeta}><Pos value={selected.position} /> {selected.team ?? "FA"}</span>
             )}
           </span>
-          <button type="button" className={styles.ghost} onClick={() => setEditing(true)} aria-label={`Change player ${letter}`}>
+          <button type="button" className={styles.ghost} onClick={() => setEditing(true)} aria-label={label ? `Change ${label.toLowerCase()}` : `Change player ${letter}`}>
             Change
           </button>
         </div>

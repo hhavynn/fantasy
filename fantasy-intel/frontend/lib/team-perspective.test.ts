@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ALL_NAV_PAGES } from "./navigation.ts";
 import {
-  isTeamScoped, isUnknownTeam, navTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
+  isTeamScoped, isTeamScopedView, isUnknownTeam, navTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
   TEAM_SCOPED_PATHS, withTeam, withTeamId,
 } from "./team-perspective.ts";
 
@@ -108,4 +108,33 @@ test("Trade analyzer and Discovery links keep the analyzed team; links that name
   assert.equal(withTeam("/trades?ta=4&tb=2&a=11&b=12", "4"), "/trades?ta=4&tb=2&a=11&b=12&team=4");
   assert.equal(withTeam("/trades/discover?mode=balanced", "4"), "/trades/discover?mode=balanced&team=4");
   assert.equal(withTeam("/luck-lab?team=2&vs=5", "4"), "/luck-lab?team=2&vs=5");
+});
+
+test("the Compare shortlist is team-scoped; the pair view and other /compare URLs stay league-wide (#175 review)", () => {
+  assert.equal(isTeamScopedView("/compare", new URLSearchParams("ids=201,401")), true);
+  assert.equal(isTeamScopedView("/compare", new URLSearchParams("ids=")), true);
+  assert.equal(isTeamScopedView("/compare", { ids: "201,401", team: "1" }), true);
+  assert.equal(isTeamScopedView("/compare/", new URLSearchParams("ids=1,2")), true);
+  assert.equal(isTeamScopedView("/compare", new URLSearchParams("a=201&b=401")), false);
+  assert.equal(isTeamScopedView("/compare", new URLSearchParams("a=201&b=401&ids=201,401")), false);   // a pair from a shortlist
+  assert.equal(isTeamScopedView("/compare", new URLSearchParams("")), false);
+  assert.equal(isTeamScopedView("/compare", null), false);
+  assert.equal(isTeamScopedView("/rankings", new URLSearchParams("ids=1,2")), false);
+  assert.equal(isTeamScopedView("/start-sit", null), true);
+  assert.equal(isTeamScoped("/compare"), false);                    // the path alone is not
+});
+
+test("shortlist links carry the team; the rail's URL keeps the shortlist and drops the start pick", () => {
+  assert.equal(withTeam("/compare?ids=201,401&slot=FLEX", "1"), "/compare?ids=201%2C401&slot=FLEX&team=1");
+  assert.equal(withTeam("/compare?a=201&b=401", "1"), "/compare?a=201&b=401");
+  assert.equal(withTeam("/compare", "1"), "/compare");
+  // the rail picker and the page's "Analyzing" picker both build this URL (perspectiveHref, default reset)
+  const sp = new URLSearchParams("ids=201,401,301&slot=FLEX&start=301&team=2");
+  assert.equal(perspectiveHref("/compare", sp, 1), "/compare?ids=201%2C401%2C301&slot=FLEX&team=1");
+  assert.equal(perspectiveHref("/compare", sp, null), "/compare?ids=201%2C401%2C301&slot=FLEX");
+  // on the shortlist the URL is the truth for the rail, as on any team-scoped page: no team = the default
+  const scoped = isTeamScopedView("/compare", new URLSearchParams("ids=1,2"));
+  assert.equal(navTeam("/compare", null, "4", scoped), null);
+  assert.equal(navTeam("/compare", "1", "4", scoped), "1");
+  assert.equal(navTeam("/compare", null, "4", isTeamScopedView("/compare", new URLSearchParams("a=1&b=2"))), "4");
 });
