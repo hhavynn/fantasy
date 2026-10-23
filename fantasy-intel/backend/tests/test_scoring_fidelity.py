@@ -356,3 +356,75 @@ def test_every_module_level_cache_in_the_app_is_reviewed_for_league_isolation():
         found |= {f"{rel}:{m.group(1)}" for m in assign.finditer(text)}
         found |= {f"{rel}:@{m.group(1)}" for m in decorated.finditer(text)}
     assert found == set(MODULE_CACHES), (sorted(found - set(MODULE_CACHES)), sorted(set(MODULE_CACHES) - found))
+
+
+# ---- review fixes on #276 ---------------------------------------------------------------------------------------------
+
+def _served(tmp_path, monkeypatch, row: str, drop_source: bool = False):
+    from fastapi.testclient import TestClient
+    db = tmp_path / f"{row}.duckdb"
+    con = duckdb.connect(str(db))
+    init_db(con)
+    cf.import_row(con, cf.MATRIX[row])
+    if drop_source:          # a league file built before the column existed
+        con.execute("ALTER TABLE espn_player_weekly_points DROP COLUMN actual_source")
+    con.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db))
+    for name in ("FANTASY_API_KEY", "MULTILEAGUE_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    from app.main import app
+    return db, TestClient(app, raise_server_exceptions=False)
+
+
+def test_kdst_streaming_provenance_on_a_sleeper_league_without_numbers_is_ours_unavailable(league, tmp_path,
+                                                                                         monkeypatch):
+    """The plan's label is "Unavailable" when the Ours state holds no number; the provenance decides the source from
+    the league, never from that label (it used to fall to "ESPN weekly projections")."""
+    from app.analytics.kdst_streaming import build_kdst_streaming
+    from app.api.schedule_intelligence import kdst_streaming_provenance
+    con = league("M3")
+    out = build_kdst_streaming(con, team_id=1)
+    assert out["projection_source"] == "Unavailable"
+    sig = next(s for s in kdst_streaming_provenance(con, out)["signals"] if s["signal"] == "projections")
+    assert sig["source"] == "fantasy_intel" and "ESPN" not in sig["label"] and sig["reason_unavailable"]
+    _, api = _served(tmp_path, monkeypatch, "M3")
+    r = api.get("/api/schedule-intelligence/kdst-streaming?team_id=1")
+    assert r.status_code == 200, r.text[:300]
+    sig = next(s for s in r.json()["provenance"]["signals"] if s["signal"] == "projections")
+    assert sig["source"] == "fantasy_intel" and "ESPN" not in json.dumps(r.json()["provenance"])
+
+
+def test_an_older_league_file_without_actual_source_reads_as_before(tmp_path, monkeypatch):
+    db, api = _served(tmp_path, monkeypatch, "M1", drop_source=True)
+    players = [p for p in cf.league_players(cf.MATRIX["M1"]) if p.position in ("QB", "RB", "WR", "TE")]
+    a, b = players[0].pid, players[1].pid
+    r = api.get(f"/api/players/{a}")
+    assert r.status_code == 200, r.text[:300]
+    assert all("actual_source" not in row for row in r.json()["league_points"])
+    r = api.get(f"/api/compare?a={a}&b={b}")
+    assert r.status_code == 200, r.text[:300]
+    con = duckdb.connect(str(db), read_only=True)
+    from app.db.connection import table_columns
+    assert "actual_source" not in table_columns(con, "espn_player_weekly_points")       # still the older shape
+    con.close()
+
+
+def test_start_sit_names_its_source_from_the_teams_own_players(league, monkeypatch):
+    """Codex P2 on #276: another team's model numbers never make this team's all-ESPN view "Independent model"."""
+    from app.analytics.start_sit import load_start_sit_evaluation
+    from datetime import datetime, timezone
+    con = league("M2")
+    players = cf.league_players(cf.MATRIX["M2"])
+    other = next(p.pid for p in players if p.team == 2 and p.slot not in cf.RESERVE)
+    real_weekly = ps.weekly
+
+    def weekly(con, season, week, source):
+        w = real_weekly(con, season, week, "espn")
+        return {**w, "source": source, "available": True,
+                "origin": {pid: (ps.OURS if pid == other else ps.ESPN) for pid in w["values"]}}
+    monkeypatch.setattr(ps, "weekly", weekly)
+    now = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    mine = load_start_sit_evaluation(con, team_id=1, now=now, source="independent")
+    theirs = load_start_sit_evaluation(con, team_id=2, now=now, source="independent")
+    assert mine["projection_source"] == "ESPN"
+    assert theirs["projection_source"] == "Independent model"

@@ -1213,7 +1213,10 @@ def load_start_sit_evaluation(
         ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
-        "projection_source": projection_source_label(source, src["available"], projections, origin),
+        # named from the players this response shows (the team's roster), never from another team's numbers
+        "projection_source": projection_source_label(
+            source, src["available"], {pid: projections.get(pid) for pid in player_map},
+            {pid: origin[pid] for pid in player_map if pid in origin}),
         "projection_source_detail": describe(src),
         "summary": {
             # With slots no engine fills, a total covers the other slots only: partial (None), the known sum kept (G3).

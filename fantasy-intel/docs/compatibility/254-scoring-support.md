@@ -240,8 +240,8 @@ Under `source=independent` the switch fills the numbers the models abstain on wi
 
 | Surface | Before | Phase 2 |
 |---|---|---|
-| Start/Sit `projection_source` (`start_sit.projection_source_label`) | "Independent model" whenever a verified run exists, even when every shown number is ESPN's fallback (for example a re-score that abstained on a missing component) | "ESPN" when no shown number came from a model (`projection_source.MODEL_ORIGINS`); rows keep their own `projection_origin` |
-| team_lineups tools (`team_lineups.source_label`): add/drop, K/D/ST streaming, power rankings, team value, replacement market | "Ours" for a Sleeper league without any Ours number | "Unavailable" when the state holds no number. Under the league default an Ours state never holds a provider number: a league defaults to Ours only when its provider publishes none (`projected_points` is always NULL for Sleeper). |
+| Start/Sit `projection_source` (`start_sit.projection_source_label`) | "Independent model" whenever a verified run exists, even when every shown number is ESPN's fallback (for example a re-score that abstained on a missing component) | "ESPN" when no number shown for the team's own roster came from a model (`projection_source.MODEL_ORIGINS`; another team's numbers never count); rows keep their own `projection_origin` |
+| team_lineups tools (`team_lineups.source_label`): add/drop, K/D/ST streaming, power rankings, team value, replacement market | "Ours" for a Sleeper league without any Ours number | "Unavailable" when the state holds no number; the add/drop and streaming pages read it as "no projections" (`labels.projectionsPhrase`), and the K/D/ST streaming provenance decides Ours or ESPN from the league, never from this label. Under the league default an Ours state never holds a provider number: a league defaults to Ours only when its provider publishes none (`projected_points` is always NULL for Sleeper). |
 | Stored rest-of-season rows (`player_ros_projections.projection_source`, `projections.build_ros_projections`) | "Ours" on every row of an Ours league, including rows without a number | each row names the source of its own numbers (`projection_source.served_label`: "Ours", "ESPN", "Ours and ESPN", or "Unavailable") |
 | Matchup, Start/Sit rows, forward view, trade values board | per-row origin already | unchanged |
 | Rankings (Ours basis) | ranks Ours values only; never fills with ESPN | unchanged |
@@ -258,7 +258,8 @@ Tests: `test_served_label_names_only_sources_that_supplied_numbers`,
 - Readers: the player route (`GET /api/players/{id}`, `routes.league_points_sources`) gives each `league_points` row its
   `actual_source` only when the player's rows are not all the provider's, so every ESPN league and every Sleeper player
   scored only by Sleeper keep their exact shape. The player comparison names the weeks scored from the box score in its
-  notes. Older league files without the column read as before (`table_columns` check).
+  notes. Older league files without the column read as before (`table_columns` check;
+  `test_an_older_league_file_without_actual_source_reads_as_before`).
 - Not yet surfaced: the waiver fallback percentile (`waivers.load_values`, used only for a player without usage data,
   who rarely has a box score), the player usage table (`player_week_usage.league_points`), and the frontend.
 
