@@ -311,3 +311,42 @@ def test_api_answers_and_limits(client):
     players = client.get("/api/research/game-splits/players", params={"season": 2025})
     assert players.status_code == 200 and len(players.json()["players"]) == 3
     assert client.get("/api/research/game-splits/players", params={"season": 1}).status_code == 422
+
+
+@pytest.mark.parametrize("status", [None, "", "  "])
+def test_a_blank_roster_status_is_unknown_never_without(con, status):
+    con.execute("UPDATE nfl_rosters_weekly SET status = ? WHERE gsis_id = ? AND week = 5", [status, S.WR2])
+    w5 = by_week(split(con))[5]
+    assert (w5["outcome"], w5["reason"]) == ("excluded", "roster_record_incomplete")
+
+
+def test_a_roster_row_without_a_team_is_unknown_and_does_not_crash(con):
+    # beside the INA row: a NULL status next to a real one used to raise in sorted(); a NULL team read as other_team
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2025, 5, 'REG', 'SPL', '00-SPLWR02', 'WR', NULL, 'x')")
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2025, 6, 'REG', NULL, '00-SPLWR02', 'WR', 'ACT', 'x')")
+    con.execute("UPDATE nfl_rosters_weekly SET team = NULL WHERE gsis_id = ? AND week = 8", [S.WR2])
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2025, 9, 'REG', NULL, '00-SPLWR01', 'WR', 'ACT', 'x')")
+    weeks = by_week(split(con))
+    for w in (5, 6, 8):
+        assert (weeks[w]["outcome"], weeks[w]["reason"]) == ("excluded", "roster_record_incomplete"), w
+    assert weeks[9]["outcome"] == "without"           # the subject's own NULL-team row does not move his team
+
+
+def test_a_lowercase_status_is_read_as_the_code(con):
+    con.execute("UPDATE nfl_rosters_weekly SET status = ' ina ' WHERE gsis_id = ? AND week = 5", [S.WR2])
+    w5 = by_week(split(con))[5]
+    assert (w5["outcome"], w5["reason"]) == ("without", "inactive")
+
+
+def test_group_counts_and_metrics_read_the_same_games(con):
+    # a week listed at another position is not in the WR/RB/TE metric rows, so it cannot be in the group count
+    con.execute("UPDATE player_week_usage SET position = 'QB' WHERE gsis_id = ? AND week = 1", [S.SUBJECT])
+    out = split(con)
+    assert by_week(out)[1]["reason"] == "subject_position_not_covered"
+    for g in ("with", "without"):
+        assert out["groups"][g]["games"] == out["groups"][g]["metrics"]["games"]
+
+
+def test_the_stored_through_week_respects_the_cutoff(con):
+    assert split(con)["window"]["usage_through_week"] == 12
+    assert split(con, as_of="2025-10-01")["window"]["usage_through_week"] == 4

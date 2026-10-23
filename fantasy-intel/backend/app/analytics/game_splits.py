@@ -79,6 +79,7 @@ REASONS = MappingProxyType({
     "partial_game": "Partial game (well below his usual snap share)",
     "no_roster_record": "No roster record for him that week",
     "roster_data_missing": "No roster data for the team that week",
+    "roster_record_incomplete": "Roster record without a team or status",
     # not a sample (subject side)
     "bye": "Bye",
     "no_schedule": "No game in the stored schedule",
@@ -86,6 +87,7 @@ REASONS = MappingProxyType({
     "after_cutoff": "On or after the cutoff date",
     "subject_did_not_play": "Did not play",
     "subject_metrics_missing": "Played; xFP or PPR not published",
+    "subject_position_not_covered": "Listed at a position other than WR, RB or TE that week",
     "not_teammates": "Not teammates on this team in the window",
     "no_record": "No record",
 })
@@ -292,6 +294,11 @@ def appeared(r: dict | None) -> bool:
     return r is not None and (played(r) or r.get("stats_source") in ("stats+snaps", "stats_only"))
 
 
+def _code(v) -> str | None:
+    """A roster team or status as stored, trimmed and upper-cased; None when blank (unknown, not a status)."""
+    return (v.strip().upper() or None) if isinstance(v, str) else None
+
+
 def teammate_status(team: str, usage: list[dict], roster: list[dict], roster_known: bool,
                     reference_share: float | None, reference_games: int) -> tuple[str, str, dict]:
     """(group, reason, evidence) for one subject game on `team`. Group is "with", "without" or "excluded"; a status
@@ -315,14 +322,18 @@ def teammate_status(team: str, usage: list[dict], roster: list[dict], roster_kno
         return "without", "other_team", evidence
     if here is not None and here.get("offense_snaps") == 0 and not (here.get("opportunities") or 0):
         return "without", "no_offensive_snaps", evidence           # a snap record: measured, not missing
-    teams = sorted({r["team"] for r in roster})
+    if any(_code(r["team"]) is None for r in roster):
+        return "excluded", "roster_record_incomplete", evidence   # a listing on an unknown team proves nothing
+    teams = sorted({_code(r["team"]) for r in roster})
     if len(teams) > 1:
         return "excluded", "ambiguous_roster", evidence
     if teams and teams[0] == team:
-        statuses = sorted({r["status"] for r in roster})
+        statuses = {_code(r["status"]) for r in roster}
         if "ACT" in statuses:
             return "excluded", "active_no_record", evidence
-        status = statuses[0] if statuses else None
+        if None in statuses:
+            return "excluded", "roster_record_incomplete", evidence   # a blank status is unknown, not off the roster
+        status = sorted(statuses)[0]
         if status in ABSENT_STATUS:
             return "without", ABSENT_STATUS[status][0], evidence
         return "without", "off_active_roster", evidence
@@ -490,7 +501,8 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
     # The partial-game baseline is the teammate's snap share over the subject's counted games only (played, with
     # xFP and PPR, final, before the cutoff): a game the subject missed or lacks numbers for never moves it.
     counted = {(u["season"], u["week"], u["team"]) for u in subject_all
-               if is_qualifying(u) and eligible_week(u["season"], u["week"], u["team"])}
+               if is_qualifying(u) and u["position"] in SUBJECT_POSITIONS
+               and eligible_week(u["season"], u["week"], u["team"])}
     ref: dict[str, list[float]] = defaultdict(list)
     for (s, w), rows in mate_usage_by.items():
         for u in rows:
@@ -531,7 +543,7 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
                 not_counted[reason] += 1
                 continue
             u = subject_by.get((s, w))
-            roster_teams = sorted({r["team"] for r in subject_roster.get((s, w), [])})
+            roster_teams = sorted({r["team"] for r in subject_roster.get((s, w), []) if r["team"]})
             team = u["team"] if u else (roster_teams[0] if len(roster_teams) == 1 else None)
             game = schedule.get((s, w, team)) if team else None
             row = {"season": s, "week": w, "team": team, "opponent": game["opponent"] if game else None,
@@ -556,6 +568,9 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
                         reason = "subject_did_not_play"
                     elif not is_qualifying(u):
                         reason = "subject_metrics_missing"
+                    elif u["position"] not in SUBJECT_POSITIONS or (s, w) not in full_rows:
+                        # the group metrics read WR/RB/TE rows only: a game counted here must be in them too
+                        reason = "subject_position_not_covered"
                     elif team not in pair_teams:
                         reason = "not_teammates"
                     else:
@@ -620,7 +635,11 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
         cautions.append(f"{sum(excluded.values())} games are excluded because his status is unknown; they are not "
                         "counted as games without him.")
 
-    usage_weeks = con.execute(f"""SELECT max(week) FROM player_week_usage WHERE season = {int(q.season_to)}""").fetchone()
+    # the latest stored week of the end season; with a cutoff, only weeks that started before it (nothing later is read)
+    stored = [r[0] for r in con.execute(f"""SELECT DISTINCT week FROM player_week_usage
+                                            WHERE season = {int(q.season_to)} AND week IS NOT NULL""").fetchall()]
+    if q.as_of is not None:
+        stored = [w for w in stored if (week_first_day.get((q.season_to, w)) or q.as_of) < q.as_of]
     return {
         **base,
         "status": "ok" if enough else "low_n",
@@ -629,7 +648,7 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
                      "position": mate_pos, "teams_with_player": sorted(pair_teams)},
         "window": {"start": {"season": q.season_from, "week": q.week_from},
                    "end": {"season": q.season_to, "week": q.week_to}, "as_of": q.as_of,
-                   "weeks_listed": len(weeks), "usage_through_week": usage_weeks[0] if usage_weeks else None},
+                   "weeks_listed": len(weeks), "usage_through_week": max(stored, default=None)},
         "groups": summary,
         "differences": differences,
         "abstention": abstention,

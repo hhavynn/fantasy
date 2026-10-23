@@ -316,9 +316,11 @@
     "practice_squad": "Practice squad",
     "reserve": "Reserve list (injured, PUP or NFI)",
     "roster_data_missing": "No roster data for the team that week",
+    "roster_record_incomplete": "Roster record without a team or status",
     "snap_record_missing": "Appeared, but no snap record (a partial game cannot be ruled out)",
     "subject_did_not_play": "Did not play",
     "subject_metrics_missing": "Played; xFP or PPR not published",
+    "subject_position_not_covered": "Listed at a position other than WR, RB or TE that week",
     "suspended": "Suspended"
    },
    "scoring_basis": "nflverse full PPR; xFP is nflverse ffopportunity expected PPR points",
