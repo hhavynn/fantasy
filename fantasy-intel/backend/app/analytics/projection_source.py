@@ -110,10 +110,16 @@ def default_source(con, season: int | None = None) -> str:
     return "independent" if isinstance(settings, dict) and settings.get("provider") == "sleeper" else "espn"
 
 
-def league_projections(con, season: int, weeks, source: str) -> dict[int, dict[int, tuple[float, object]]]:
+def league_projections(con, season: int, weeks, source: str,
+                       detail: dict | None = None) -> dict[int, dict[int, tuple[float, object]]]:
     """{player: {week: (points, stamp)}} for the league's weeks from `source`: "espn" reads the provider's stored
     weekly projections (stamp = synced_at), "independent" exactly what `weekly(..., "independent")` shows for each week
-    (Ours, its K and D/ST overlays, the provider's number where the models abstain; stamp = the run's created_at)."""
+    (Ours, its K and D/ST overlays, the provider's number where the models abstain; stamp = the run's created_at).
+
+    `detail` (optional, independent only): filled with {week: {pid: (origin, version)}} for every value returned, where
+    origin is "espn" (the provider's number: no run, or the models abstain), "ours" / "ours_zero" (the weekly model),
+    "kicker_model", "dst_model" or "dst_carried" (a D/ST's latest model projection carried to a later week), and
+    version names what produced it ("ESPN" or the run's model_version). The values are unchanged by it."""
     out: dict[int, dict[int, tuple[float, object]]] = {}
     weeks = list(weeks)
     if not weeks:
@@ -132,6 +138,7 @@ def league_projections(con, season: int, weeks, source: str) -> dict[int, dict[i
         values = dict(_espn(con, season, w))
         sel = batch.get(w) or {}
         stamp = None
+        tags: dict[int, tuple[str, str | None]] = {pid: (ESPN, "ESPN") for pid in values}
         if sel.get("run") is not None:
             stamp = sel["run"]["created_at"]
             origin = {pid: ESPN for pid in values}
@@ -141,16 +148,29 @@ def league_projections(con, season: int, weeks, source: str) -> dict[int, dict[i
                     values[pid], origin[pid] = float(r["expected_points"]), OURS
                 elif r["coverage_status"] in ZERO_STATUSES:
                     values[pid], origin[pid] = 0.0, OURS_ZERO
-            _kicker_overlay(con, season, w, values, origin)
-            _dst_overlay(con, season, w, values, origin)
+            tags.update({pid: (o, sel["run"]["model_version"]) for pid, o in origin.items() if o != ESPN})
+            before = dict(origin)
+            k_run = _kicker_overlay(con, season, w, values, origin)
+            tags.update({pid: ("kicker_model", (k_run or {}).get("model_version"))
+                         for pid, o in origin.items() if before.get(pid, ESPN) == ESPN and o != ESPN})
+            before = dict(origin)
+            d_run = _dst_overlay(con, season, w, values, origin)
+            tags.update({pid: ("dst_model", (d_run or {}).get("model_version"))
+                         for pid, o in origin.items() if before.get(pid, ESPN) == ESPN and o != ESPN})
         for pid, v in values.items():
             if v is not None:
                 out.setdefault(pid, {})[w] = (float(v), stamp)
-    _carry_dst_forward(con, season, weeks, out)
+                if detail is not None:
+                    detail.setdefault(w, {})[pid] = tags.get(pid, (ESPN, "ESPN"))
+    carried: dict | None = {} if detail is not None else None
+    _carry_dst_forward(con, season, weeks, out, carried)
+    for (pid, w), src in (carried or {}).items():
+        version = (detail.get(src) or {}).get(pid, (None, None))[1]
+        detail.setdefault(w, {})[pid] = ("dst_carried", version)
     return out
 
 
-def _carry_dst_forward(con, season: int, weeks: list[int], out: dict) -> None:
+def _carry_dst_forward(con, season: int, weeks: list[int], out: dict, carried: dict | None = None) -> None:
     """The D/ST model projects the coming week only. For the weeks after it, a defense keeps its latest projection
     (flat, labeled by the stamp of the run it came from) in every week its NFL team plays; a bye stays empty. Without
     this every lineup with a D/ST would be incomplete beyond next week in a league with no provider projections."""
@@ -165,12 +185,14 @@ def _carry_dst_forward(con, season: int, weeks: list[int], out: dict) -> None:
         for t in (r["home_team"], r["away_team"]):
             plays.setdefault(t, set()).add(int(r["week"]))
     for pid in dsts:
-        by_week, last = out[pid], None
+        by_week, last, src = out[pid], None, None
         for w in weeks:
             if w in by_week:
-                last = by_week[w]
+                last, src = by_week[w], w
             elif last is not None and w in plays.get(teams.get(pid), set()):
                 by_week[w] = last
+                if carried is not None:
+                    carried[(pid, w)] = src       # (pid, week) -> the week whose projection was carried
 
 
 def _espn(con, season: int, week: int) -> dict[int, float | None]:
