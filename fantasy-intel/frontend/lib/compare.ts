@@ -782,6 +782,8 @@ export type ShortlistPlayer = {
 
 export type BestProjected = {
   source: "espn" | "ours";
+  /** The source named on the page: "ESPN" or "Fantasy Intel" only when some player has a number from it, else "Unavailable". */
+  source_label: string;
   week: number;
   slot: string | null;
   leaders: number[];
@@ -998,7 +1000,7 @@ export function startPickNote(r: ShortlistResponse, start: number | null): strin
   if (!p) return null;
   const name = playerName(p.card);
   const best = r.best_projected;
-  const src = best.source === "ours" ? "Fantasy Intel" : "ESPN";
+  const src = best.source_label;
   if (p.slot_eligible === false) return `Your pick, ${name}, cannot start at ${r.slot}.`;
   if (best.leaders.includes(start)) {
     return best.leaders.length > 1
@@ -1007,7 +1009,9 @@ export function startPickNote(r: ShortlistResponse, start: number | null): strin
   }
   const cell = nextWeekCell(p.card, best.source);
   if (cell.kind === "bye") return `Your pick, ${name}, is on bye in week ${best.week}.`;
-  if (cell.kind !== "value" || best.value === null) return `Your pick, ${name}, has no ${src} projection to compare with.`;
+  if (cell.kind !== "value" || best.value === null) {
+    return `Your pick, ${name}, has no ${best.source_label === "Unavailable" ? "" : `${src} `}projection to compare with.`;
+  }
   const own = best.source === "ours" ? p.card.projection?.next_week?.ours : p.card.projection?.next_week?.espn;
   const gap = finite(own) ? best.value - own : null;
   return gap === null ? null : `Your pick, ${name}, is projected ${gap.toFixed(1)} points below the best projected (${src}).`;

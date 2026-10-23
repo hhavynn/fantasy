@@ -141,7 +141,9 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
 
   const r = res.data;
   const best = r.best_projected;
-  const src = best.source === "ours" ? "Fantasy Intel" : "ESPN";
+  // Named only when some player has a number from it (#276 / D-14): otherwise "Unavailable", never ESPN or Ours.
+  const src = best.source_label;
+  const named = src !== "Unavailable";
   const teamName = r.team?.name ?? null;
   const meta = (
     <>
@@ -157,10 +159,10 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
       {urlNotice}
       <Verdict
         tone={best.status === "none" || best.status === "incomplete" ? "caution" : "info"}
-        eyebrow={`Week ${best.week} · ${slot ? `${slot} slot` : "any slot"} · ${src} projections`}
+        eyebrow={`Week ${best.week} · ${slot ? `${slot} slot` : "any slot"} · ${named ? `${src} projections` : "no projections"}`}
         headline={bestHeadline(r)}
         figures={<>
-          <VerdictFigure label={`Best projected (${src})`} value={best.value === null ? DASH : best.value.toFixed(1)} note={bestPlayer ? playerName(bestPlayer.card) : best.leaders.length > 1 ? "Tied" : "None"} emphasis />
+          <VerdictFigure label={named ? `Best projected (${src})` : "Best projected"} value={best.value === null ? DASH : best.value.toFixed(1)} note={bestPlayer ? playerName(bestPlayer.card) : best.leaders.length > 1 ? "Tied" : "None"} emphasis />
           <VerdictFigure label="Gap to the next player" value={best.gap === null ? DASH : best.gap.toFixed(1)} note={best.gap === null ? "No other player to compare" : "Projected points"} />
           <VerdictFigure label="Players compared" value={`${best.considered.length} of ${r.players.length}`} note={best.excluded.length ? `${best.excluded.length} left out, reasons below` : "All of them"} />
         </>}
@@ -210,7 +212,7 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
           <p className={styles.disclaimerText}>{r.disclaimer}</p>
           <Method>
             <p>
-              Each player is the same card as the two-player comparison: {src} projections for week {r.as_of_week} in this league&apos;s scoring, usage
+              Each player is the same card as the two-player comparison: {best.source === "ours" ? "Fantasy Intel" : "ESPN"} projections for week {r.as_of_week} (where they exist) in this league&apos;s scoring, usage
               from completed weeks only (through week {r.completed_through_week}), and the latest injury designation. Slot eligibility is the lineup
               engine&apos;s, over the slots this league starts.
             </p>
@@ -263,7 +265,7 @@ function opponent(card: CompareCard): string | null {
 /** Measures down, players across: four narrow columns fit a phone, and the table scrolls inside itself if not. */
 function ShortlistGrid({ r, start, espnProjections }: { r: ShortlistResponse; start: number | null; espnProjections: boolean }) {
   const field = r.best_projected.source;
-  const src = field === "ours" ? "Ours" : "ESPN";
+  const src = r.best_projected.source_label === "Unavailable" ? "Unavailable" : field === "ours" ? "Ours" : "ESPN";
   const week = r.as_of_week;
   const rows: GridRow[] = [];
   if (r.slot) {

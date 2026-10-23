@@ -37,7 +37,7 @@ function shortlist(): ShortlistResponse {
     slots: [{ slot: "WR", count: 2, positions: ["WR"] }, { slot: "FLEX", count: 1, positions: ["RB", "WR", "TE"] }],
     unsupported_slots: [], slot: "FLEX", team: { team_id: 3, name: "Team Three", is_owner_default: true }, players,
     best_projected: {
-      source: "espn", week: pair.as_of_week, slot: "FLEX", leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
+      source: "espn", source_label: "ESPN", week: pair.as_of_week, slot: "FLEX", leaders: [11], value: 14.2, gap: 2.2, considered: [11, 12],
       excluded: [
         { espn_player_id: 13, reason: "not_eligible", text: "Charlie QB (QB) cannot start at FLEX." },
         { espn_player_id: 14, reason: "no_projection", text: "Delta TE has no ESPN projection." },
@@ -190,4 +190,7 @@ test("the start pick is the viewer's, compared with best projected from the back
   assert.equal(startPickNote(r, 13), "Your pick, Charlie QB, cannot start at FLEX.");
   assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no ESPN projection to compare with.");
   assert.equal(startPickNote(r, 99), null);
+  r.best_projected.source_label = "Unavailable";            // no player has a number: no source is named
+  r.best_projected.value = null;
+  assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no projection to compare with.");
 });

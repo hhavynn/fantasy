@@ -24,6 +24,7 @@ from .legacy_league import latest_league
 from .league_rules import provider_of
 from .lineup import FLEX_ELIGIBILITY, eligible, lineup_slots
 from .projections import league_window, load_schedule
+from .start_sit import NO_PROJECTIONS
 
 MIN_PLAYERS, MAX_PLAYERS = 2, 4
 CLOSE_GAP = pc.NEXT_WEEK_EDGE          # projected points: a smaller gap to the top is a tie, as in the two-player lab
@@ -90,9 +91,17 @@ def _source_name(field: str) -> str:
     return "Fantasy Intel" if field == "ours" else "ESPN"
 
 
+def source_label(entries: list[dict], field: str) -> str:
+    """The source the block names: ESPN or Fantasy Intel only when at least one player on the list has a number from it
+    for the week (D-14: a source with no values is never named), else NO_PROJECTIONS ("Unavailable")."""
+    has = any(e["next_week"] and not e["next_week"]["on_bye"] and e["next_week"][field] is not None for e in entries)
+    return _source_name(field) if has else NO_PROJECTIONS
+
+
 def best_projected(entries: list[dict], field: str, week: int, slot: str | None) -> dict:
     """The best-projected block from each player's {espn_player_id, name, position, slot_eligible, next_week}."""
     src = _source_name(field)
+    label = source_label(entries, field)
     considered: list[tuple[float, dict]] = []
     excluded: list[dict] = []
     for e in entries:
@@ -111,12 +120,12 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None)
         else:
             considered.append((float(nw[field]), e))
     missing = [x for x in excluded if x["reason"] == "no_projection"]
-    out = {"source": field, "week": week, "slot": slot, "leaders": [], "value": None, "gap": None,
+    out = {"source": field, "source_label": label, "week": week, "slot": slot, "leaders": [], "value": None, "gap": None,
            "considered": [e["espn_player_id"] for _, e in considered], "excluded": excluded,
            "complete": not missing, "status": "none", "text": ""}
     if not considered:
-        out["text"] = (f"No player who can fill {'the slot' if slot is None else slot} has a {src} projection for "
-                       f"week {week}, so none is best projected.")
+        out["text"] = (f"No player who can fill {'the slot' if slot is None else slot} has a projection for week "
+                       f"{week}, so none is best projected.")
         return out
     considered.sort(key=lambda t: (-t[0], t[1]["espn_player_id"]))
     top = considered[0][0]

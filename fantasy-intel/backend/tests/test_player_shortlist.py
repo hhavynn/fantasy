@@ -75,7 +75,7 @@ def test_flex_shortlist_reuses_the_lab_cards_and_the_lineup_engines_eligibility(
     best = out["best_projected"]
     assert (best["status"], best["leaders"], best["value"], best["gap"], best["complete"]) == \
         ("leader", [WALLY], 10.0, 2.0, True)
-    assert best["source"] == "espn" and best["considered"] == [ACE, ZED, WALLY]
+    assert best["source"] == "espn" and best["source_label"] == "ESPN" and best["considered"] == [ACE, ZED, WALLY]
     assert best["excluded"] == [{"espn_player_id": QUINN, "reason": "not_eligible",
                                  "text": "Quinn QB (QB) cannot start at FLEX."}]
     assert "start" not in best["text"].lower().replace("cannot start", "")      # never a start/sit verdict
@@ -113,7 +113,7 @@ def test_no_slot_means_no_eligibility_filter(w):
 def test_independent_source_ranks_on_the_model_and_names_it(w):
     out = sl.shortlist(w, [ACE, ZED], slot="FLEX", source="independent")
     best = out["best_projected"]
-    assert out["source"] == "independent" and best["source"] == "ours"
+    assert out["source"] == "independent" and best["source"] == "ours" and best["source_label"] == "Fantasy Intel"
     assert best["value"] == ours_value(CURRENT, ZED) and best["status"] == "close"       # 16.3 vs 16.1
     assert "Fantasy Intel" in best["text"] and "ESPN" not in best["text"]
 
@@ -135,6 +135,19 @@ def test_nobody_with_a_projection_names_no_leader():
         {"espn_player_id": 2, "name": "B", "position": "QB", "slot_eligible": False, "next_week": None},
     ], "espn", 6, "WR")
     assert best["status"] == "none" and best["leaders"] == [] and best["value"] is None and not best["complete"]
+    # a source with no value for anyone is never named (D-14): "Unavailable", and the text names none
+    assert best["source_label"] == "Unavailable" and "ESPN" not in best["text"]
+
+
+def test_a_source_with_values_only_for_an_ineligible_player_is_still_named():
+    best = sl.best_projected([
+        {"espn_player_id": 1, "name": "A", "position": "QB", "slot_eligible": False,
+         "next_week": {"on_bye": False, "espn": 18.0, "ours": None}},
+        {"espn_player_id": 2, "name": "B", "position": "WR", "slot_eligible": True,
+         "next_week": {"on_bye": False, "espn": None, "ours": None}},
+    ], "espn", 6, "WR")
+    assert best["source_label"] == "ESPN" and best["status"] == "none"
+    assert sl.best_projected([], "ours", 6, None)["source_label"] == "Unavailable"
 
 
 def test_roster_status_is_relative_to_the_team(w):
