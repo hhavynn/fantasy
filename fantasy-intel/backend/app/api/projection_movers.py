@@ -29,7 +29,7 @@ def projection_movers(source: str | None = None, view: str = "ros", position: st
     with db() as con:
         try:
             result = pm.movement(con, season, source=source, view=view, position=position, baseline=baseline,
-                                 limit=limit)
+                                 limit=limit, player=player)
         except ValueError as err:
             raise HTTPException(422, str(err))
         result = mover_evidence.attach(con, season, result)

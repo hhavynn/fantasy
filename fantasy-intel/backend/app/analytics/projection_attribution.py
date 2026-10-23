@@ -191,11 +191,24 @@ def model_changes(before: dict, after: dict) -> list[str]:
     return out
 
 
-def _participation_version(run: dict, row: dict) -> str | None:
+# Stored markers of a step applied on top of the participation model's P(plays): the frozen QB calibration map
+# (context_model.calibrate_rows, horizon 0 only), the availability news (the live run store), and a median
+# borrowed from the run when the player had no estimate of his own. A change in any of them is a change of method.
+PARTICIPATION_MODIFIERS = (("calibration", "calibration"), ("availability_news", "availability news"),
+                           ("base_p_play_source", "borrowed estimate"))
+
+
+def participation_method(run: dict, row: dict) -> str | None:
+    """The method behind a row's chance to play: the participation model (row-level version, else the run's) plus
+    every stored modifier. Two rows compare as measured availability only when this is equal."""
     q = _json(row.get("participation"))
-    if isinstance(q, dict) and q.get("model_version"):
-        return str(q["model_version"])
-    return run.get("participation_version")
+    q = q if isinstance(q, dict) else {}
+    base = str(q["model_version"]) if q.get("model_version") else run.get("participation_version")
+    mods = [f"{label} {q[key]}" if key != "base_p_play_source" else label
+            for key, label in PARTICIPATION_MODIFIERS if q.get(key)]
+    if base is None and not mods:
+        return None
+    return " + ".join([base or "unknown model", *mods])
 
 
 def as_of_problem(run: dict, row: dict | None, week: int, first_kickoff: datetime | None) -> str | None:
@@ -325,9 +338,9 @@ def _week(acc: _Acc, w: int, wk: dict, position: str, sides: dict, first_kickoff
     avail, per_game = (p1 - p0) * x0, p1 * (x1 - x0)
     acc.resid("rounding", d - avail - per_game, w)
     acc.tolerance += 2 * TOLERANCE_PER_NUMBER
-    pv0, pv1 = _participation_version(b_run, b_row), _participation_version(a_run, a_row)
+    pv0, pv1 = participation_method(b_run, b_row), participation_method(a_run, a_row)
     if pv0 != pv1:
-        reason = f"availability model {pv0 or 'unknown'} → {pv1 or 'unknown'}"
+        reason = f"availability method {pv0 or 'unknown'} → {pv1 or 'unknown'}"
         acc.model_reasons.setdefault(reason, []).append(w)
         acc.part("model:availability", {"key": "model:availability", "kind": "model", "exact": True,
                                         "label": "Availability model changed", "unit": "points"}, avail, w)

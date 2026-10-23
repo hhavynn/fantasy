@@ -359,3 +359,51 @@ def test_the_number_of_queries_does_not_grow_with_the_number_of_movers(tmp_path,
         c.close()
         return counter.n
     assert queries(0) == queries(30)
+
+
+# ----------------------------------------------------------------------------- review follow-ups (#286)
+
+
+@pytest.mark.parametrize("marker", [{"calibration": "ipm-cal-0.1.0", "uncalibrated_p_play": 0.8},
+                                    {"availability_news": "an-1", "news_p_play": 0.5, "base_p_play": 0.9},
+                                    {"base_p_play_source": "median P(plays) of this run's projected RB rows"}])
+def test_a_participation_modifier_on_one_side_only_is_an_availability_method_change(marker):
+    """Codex P2 on #286: the QB calibration map (horizon 0 only), availability news or a borrowed median applied to one
+    forecast only is a change of method, never a measured availability change."""
+    q = {"model_version": "ipm-1", "p_play": 0.6}
+    b = row(0.9, 10.0, [term("targets_pg", 1.0)], participation=json.dumps({"model_version": "ipm-1", "p_play": 0.9}))
+    a = row(0.6, 10.0, [term("targets_pg", 1.0)], participation=json.dumps({**q, **marker}))
+    block, m = attribute({7: (b, a)})
+    assert "availability" not in parts(block) and parts(block)["model:availability"]["points"] == -3.0
+    assert block["status"] == "model_changed" and total_of(block) == m["delta"]
+    assert any(r["text"].startswith("availability method ipm-1 → ipm-1 + ") for r in block["model"]["reasons"])
+    same, _ = attribute({7: (row(0.9, 10.0, participation=json.dumps({**q, **marker})),
+                             row(0.6, 10.0, participation=json.dumps({**q, **marker})))})
+    assert parts(same)["availability"]["points"] == -3.0 and same["model"]["changed"] is False   # same method both sides
+
+
+def test_a_requested_player_beyond_the_cap_is_kept_and_explained(con, fp, monkeypatch):
+    """Codex P2 on #286: a requested mover outside the MAX_PLAYERS largest changes used to be dropped, so a stale link
+    showed someone else. He is kept (last) and attributed; one who cannot be shown is reported with the reason."""
+    explained_runs(con)
+    monkeypatch.setattr(pm, "MAX_PLAYERS", 2)
+    plain = pm.movement(con, tpm.SEASON, source="independent")
+    assert 5 not in [m["espn_player_id"] for m in plain["players"]] and "requested_player" not in plain
+    kept = pa.attach(con, tpm.SEASON, pm.movement(con, tpm.SEASON, source="independent", player=5), player=5)
+    assert [m["espn_player_id"] for m in kept["players"]][-1] == 5 and len(kept["players"]) == 3
+    assert kept["requested_player"] == {"espn_player_id": 5, "status": "listed", "reason": None}
+    assert kept["players"][-1]["attribution"]["contract"] == pa.CONTRACT
+    wr_only = pm.movement(con, tpm.SEASON, source="independent", position="WR", player=3)
+    assert wr_only["requested_player"]["status"] == "filtered" and "RB" in wr_only["requested_player"]["reason"]
+    missing = pm.movement(con, tpm.SEASON, source="independent", player=999)
+    assert missing["requested_player"]["status"] == "not_found"
+
+
+def test_a_requested_player_without_a_comparable_forecast_says_why(con, fp):
+    tpm.seed(con)
+    tpm.cycle(con, 6, tpm.C6)
+    tpm.cycle(con, 7, tpm.C7, tweak=lambda pid, week: {"status": "abstain_no_history", "p": None, "x": None}
+              if pid == 1 and week == 8 else None)
+    r = pm.movement(con, tpm.SEASON, source="independent", player=1)
+    assert r["requested_player"]["status"] == "not_comparable"
+    assert "week 8" in r["requested_player"]["reason"] and 1 not in [m["espn_player_id"] for m in r["players"]]

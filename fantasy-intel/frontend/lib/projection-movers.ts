@@ -130,6 +130,12 @@ export type MoversResponse = {
   fallers: Mover[];
   players: Mover[];
   thresholds: Thresholds;
+  /** Present only when a player was requested: whether he is listed, and why not. */
+  requested_player?: {
+    espn_player_id: number;
+    status: "listed" | "filtered" | "not_comparable" | "not_found";
+    reason: string | null;
+  };
 };
 
 export const DEFAULT_THRESHOLDS: Thresholds = { min_delta: 0.5, relevant_per_week: 3.0, pct_floor: 1.0, flat: 0.05 };
@@ -180,12 +186,21 @@ export function moversQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
 }
 
 /**
- * The query the page sends: `moversQuery` plus, for Fantasy Intel's forecasts, the selected player, so the backend also
- * explains why his forecast changed when he is not among the listed risers and fallers.
+ * The query the page sends: `moversQuery` plus the selected player, so the backend keeps him in the response even beyond
+ * its cap of largest changes, says why when he cannot be shown, and (Fantasy Intel's forecasts) explains his change.
  */
 export function moversApiQuery(state: MoversState, limit = DEFAULT_LIMIT): string {
   const q = moversQuery(state, limit);
-  return state.source === "independent" && state.player ? `${q}&player=${state.player}` : q;
+  return state.player ? `${q}&player=${state.player}` : q;
+}
+
+/** Why the requested player is not shown, in words, when the backend said so (`requested_player`); else null. */
+export function requestedMissingText(d: Pick<MoversResponse, "requested_player">): string | null {
+  const r = d.requested_player;
+  if (!r || r.status === "listed") return null;
+  if (r.status === "filtered") return `That player is ${r.reason ?? "outside the position filter"}.`;
+  if (r.status === "not_comparable") return `That player could not be compared: ${r.reason ?? "a forecast is missing"}.`;
+  return "That player has no forecast in either compared snapshot.";
 }
 
 /**

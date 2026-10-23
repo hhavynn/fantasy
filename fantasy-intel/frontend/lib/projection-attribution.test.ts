@@ -4,7 +4,7 @@ import {
   attributionHeadline, attributionRows, inputValue, kindText, reconcileText, sideText, signedText, unattributedInputs, weeksText,
   type Attribution,
 } from "./projection-attribution.ts";
-import { moversApiQuery, parseMoversState } from "./projection-movers.ts";
+import { moversApiQuery, parseMoversState, requestedMissingText } from "./projection-movers.ts";
 
 // Synthetic block following projection-attribution/v1 (invented numbers).
 const base: Attribution = {
@@ -89,9 +89,19 @@ test("kind and as-of wording are words, not colours", () => {
   assert.equal(sideText(null), "not stored");
 });
 
-test("the API query asks for the selected player's split only for Fantasy Intel's forecasts", () => {
+test("the API query names the selected player for either source", () => {
   const ours = parseMoversState({ source: "independent", player: "7" });
   assert.equal(moversApiQuery(ours), "source=independent&view=ros&limit=15&player=7");
-  assert.equal(moversApiQuery(parseMoversState({ player: "7" })), "source=espn&view=ros&limit=15");
+  assert.equal(moversApiQuery(parseMoversState({ player: "7" })), "source=espn&view=ros&limit=15&player=7");
   assert.equal(moversApiQuery(parseMoversState({ source: "independent" })), "source=independent&view=ros&limit=15");
+});
+
+test("a requested player who cannot be shown is explained in words", () => {
+  assert.equal(requestedMissingText({}), null);
+  assert.equal(requestedMissingText({ requested_player: { espn_player_id: 7, status: "listed", reason: null } }), null);
+  assert.equal(requestedMissingText({ requested_player: { espn_player_id: 7, status: "filtered", reason: "a WR, outside the RB filter" } }),
+    "That player is a WR, outside the RB filter.");
+  assert.match(requestedMissingText({ requested_player: { espn_player_id: 7, status: "not_comparable",
+    reason: "no independent estimate for week 8 in the latest run" } }) ?? "", /could not be compared: no independent estimate for week 8/);
+  assert.match(requestedMissingText({ requested_player: { espn_player_id: 7, status: "not_found", reason: null } }) ?? "", /no forecast/);
 });

@@ -108,8 +108,12 @@ every week, and nothing here rebuilds a feature.
 | status | one forecast projected him, the other did not (bye, withheld) | measured; cites only the reason stored on the row |
 | availability | `(p1 - p0) * x0` | exact (the movers' split) |
 | input `f` | same model version and artifact, neither re-scored, neither floored at 0, `f` stored in both rows | `p1 * (c1 - c0)`, exact for RB/WR/TE (linear before the floor); QB labelled approximate |
-| model changed | different model version, retrained artifact, unknown artifact, re-scored; or a different participation model/method (availability) | the whole per-game (or availability) change, never split between inputs; the inputs both rows stored are listed with values only |
+| model changed | different model version, retrained artifact, unknown artifact, re-scored; or a different participation model/method, including a stored modifier on one side only (QB calibration map, availability news, a borrowed median) (availability) | the whole per-game (or availability) change, never split between inputs; the inputs both rows stored are listed with values only |
 | residual | inputs stored in one row or neither, a floored row, a missing row or chance, a failed as-of check, and the rounding of stored 2-decimal values | each reason with its points |
+
+A requested `player=` is kept in `players` even beyond the 300 largest changes; `requested_player` (present only when
+`player` is given) says whether he is listed, filtered out by the position filter or not comparable (with the reason),
+so a stale link never silently shows someone else.
 
 `status` is `explained` (residual within `tolerance`: 0.005 per stored rounded number used), `partial`, `model_changed`,
 `not_decomposed` (nothing measured) or `unavailable` (ESPN: one total per week and no inputs, labelled "ESPN", never as
