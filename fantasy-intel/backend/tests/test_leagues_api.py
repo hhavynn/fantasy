@@ -130,7 +130,7 @@ def test_league_view_shape_and_membership(client, world):
     body = client.get(f"/v2/leagues/{world['pub']}", headers=bearer(U2)).json()
     assert body == {"league_id": world["pub"], "provider": "espn", "external_league_id": body["external_league_id"],
                     "season": 2026, "name": "Public League", "visibility": "public", "status": "active", "role": None,
-                    "pinned": False, "perspective_team_id": None, "sync_state": "ready", "sync_issue": None,
+                    "pinned": False, "perspective_team_id": None, "sync_state": "ready", "sync_issue": None, "sync_stalled": False,
                     "data": {"data_version": "v1", "global_version": "g1", "committed_at": body["data"]["committed_at"]}}
     assert "object_key" not in body and "leagues/" not in str(body)
     priv = client.get(f"/v2/leagues/{world['priv']}", headers=bearer(U1)).json()

@@ -4,7 +4,7 @@
 // only turns them into words, steps and the next thing to do. Every step lives in the URL, so a reload resumes it.
 
 import { providerName } from "./labels.ts";
-import { issueSentence, isLeagueRef, leagueState, MAX_SEASON, MIN_SEASON, type MyLeague } from "./my-leagues.ts";
+import { issueSentence, isLeagueRef, leagueState, MAX_SEASON, MIN_SEASON, STALLED_QUEUED, STALLED_RUNNING, type MyLeague } from "./my-leagues.ts";
 
 export type Host = "espn" | "sleeper";
 export const HOSTS: readonly Host[] = ["espn", "sleeper"];
@@ -229,7 +229,7 @@ export type Progress = {
 };
 
 /** GET /v2/leagues/{id} -> the three steps from "added" to "dashboard ready", and what to do next. */
-export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncState" | "syncIssue" | "visibility" | "role">): Progress {
+export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncState" | "syncIssue" | "visibility" | "role"> & { syncStalled?: boolean }): Progress {
   const name = providerName(l.provider);
   const added: ProgressStep = { label: "Added to your leagues", state: "done", detail: null };
   const build = (state: StepState, detail: string | null = null): ProgressStep => ({ label: "Dashboard ready", state, detail });
@@ -260,10 +260,20 @@ export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncStat
   }
   switch (l.syncState) {
     case "first_sync_running":
+      if (l.syncStalled) {
+        return { headline: "The first sync is taking much longer than usual", tone: "warn",
+          steps: [added, read("waiting", STALLED_RUNNING), build("todo")],
+          ready: false, polling: true, actions: ["refresh"] };
+      }
       return { headline: `Reading your league from ${name}`, tone: "info",
         steps: [added, read("current", "Teams, rosters, scoring and matchups. This usually takes a few minutes."), build("todo")],
         ready: false, polling: true, actions: ["wait"] };
     case "first_sync_queued":
+      if (l.syncStalled) {
+        return { headline: "The first sync is taking much longer than usual", tone: "warn",
+          steps: [added, read("waiting", STALLED_QUEUED), build("todo")],
+          ready: false, polling: true, actions: ["refresh"] };
+      }
       if (l.syncIssue) {
         return { headline: "Retrying the first sync", tone: "warn",
           steps: [added, read("waiting", `${issueSentence(l.syncIssue, name)} It is retried automatically, a little later each time.`), build("todo")],
@@ -276,7 +286,8 @@ export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncStat
       const why = l.syncIssue ? `${issueSentence(l.syncIssue, name)} ` : "";
       const access = l.syncIssue === "access" && privateEspn;
       return { headline: "The first sync stopped", tone: "bad",
-        steps: [added, read("failed", `${why}It stopped after repeated tries.`), build("todo")],
+        steps: [added, read("failed", l.syncIssue === "empty" ? `${why}Try again once the league has its teams.`
+          : `${why}It stopped after repeated tries.`), build("todo")],
         ready: false, polling: false,
         actions: access && l.role ? ["cookies", "refresh"] : ["refresh"] };
     }

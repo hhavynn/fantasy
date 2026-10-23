@@ -22,7 +22,7 @@ test("the backend's league list becomes the page's view model; malformed rows ar
   assert.equal(rest.length, 0);
   assert.deepEqual(l, { id: "lg_abcdefghijklmnop", provider: "espn", externalId: "4242", season: 2026, name: null,
     visibility: "private", status: "active", role: "admin", pinned: false, teamId: "3", syncState: "ready",
-    syncIssue: null, committedAt: "2026-10-21T12:00:00Z" });
+    syncIssue: null, syncStalled: false, committedAt: "2026-10-21T12:00:00Z" });
   assert.equal(leagueName(l), "ESPN league 4242");
   assert.deepEqual(parseMyLeagues({}), []);
 });
@@ -86,4 +86,13 @@ test("league names and states are provider-aware, ESPN wording unchanged", () =>
   assert.equal(gone.label, "Unavailable on Sleeper");
   assert.doesNotMatch(gone.detail, /ESPN|cookie/i);
   assert.equal(leagueState({ status: "unavailable", syncState: "ready", visibility: "public" }).label, "Unavailable on ESPN");
+});
+
+test("a stalled first sync is a delay on the league card, never a failure; sync_stalled is read strictly (#167)", () => {
+  assert.equal(leagueState({ status: "active", syncState: "first_sync_queued", visibility: "public", syncStalled: true }).label, "First sync delayed");
+  assert.equal(leagueState({ status: "active", syncState: "first_sync_running", visibility: "public", syncStalled: true }).tone, "warn");
+  assert.equal(leagueState({ status: "active", syncState: "first_sync_queued", visibility: "public" }).label, "First sync queued");
+  const raw = { league_id: "lg_aaaaaaaaaaaaaaaaaaaaaa", provider: "espn", external_league_id: "1", season: 2026, visibility: "public" };
+  assert.equal(parseMyLeagues({ leagues: [{ ...raw, sync_stalled: true }] })[0].syncStalled, true);
+  for (const v of [undefined, "true", 1, null]) assert.equal(parseMyLeagues({ leagues: [{ ...raw, sync_stalled: v }] })[0].syncStalled, false);
 });
