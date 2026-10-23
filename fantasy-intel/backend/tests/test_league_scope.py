@@ -428,3 +428,21 @@ def test_server_timing_names_phases_without_the_league(pg, served, client, e2e, 
     for header in st.values():
         assert pub.league_id not in header and "app;dur=" in header
     assert "server-timing" in client.get("/health").headers
+
+
+def test_response_key_cannot_be_forged_with_encoded_separators():
+    """An encoded `=`/`&` inside one query name must not produce the same response-cache key as the real pairs."""
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from app.api.league_scope import _response_key
+
+    def key(qs: str) -> str | None:
+        req = Request({"type": "http", "method": "GET", "path": "/v2/leagues/lg_x/api/start-sit/what-if",
+                       "query_string": qs.encode(), "headers": []})
+        return _response_key(SimpleNamespace(cache_key="lg_x|1|1|0|-"), req)
+
+    assert key("week=7&whatif=w7t3~FLEX_0.8") != key("week%3D7%26whatif=w7t3~FLEX_0.8")
+    assert key("a=1&b=2") != key("a=1%26b%3D2")
+    assert key("b=2&a=1") == key("a=1&b=2")                     # order-insensitive, as before

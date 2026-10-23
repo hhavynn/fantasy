@@ -33,6 +33,7 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -229,7 +230,8 @@ async def serve_cached(request: Request, exc: CachedResponse) -> Response:
 def _response_key(scope: LeagueScope, request: Request) -> str | None:
     if request.method != "GET":
         return None
-    query = "&".join(f"{k}={v}" for k, v in sorted(request.query_params.multi_items()))
+    # Re-encode the decoded pairs: joining them raw would let `?a%3D1%26b=2` collide with `?a=1&b=2`.
+    query = urlencode(sorted(request.query_params.multi_items()))
     return f"{scope.cache_key}|{request.url.path}|{query}"
 
 
