@@ -110,7 +110,9 @@ test("a link across the league boundary re-renders the header, both ways", async
   // /leagues -> a league by a client-side link: the league header comes back.
   await page.goto("/leagues", { waitUntil: "load" });
   await expect(page.locator("button.sync-pill")).toHaveCount(0);
-  await page.getByRole("link", { name: "Private Fixture League" }).first().click();
+  // The league list's own link: the action center above it ("Across your leagues", streamed in) links the same
+  // league with ?team=, so the region is matched exactly.
+  await page.getByRole("region", { name: "Your leagues", exact: true }).getByRole("link", { name: "Private Fixture League", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/l/${lg}$`));
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
@@ -119,7 +121,11 @@ test("a link across the league boundary re-renders the header, both ways", async
 // profile's Save writes only that league's device-local shortlist.
 test("a player profile tab keeps its league, and Save writes only that league's shortlist", async ({ page }) => {
   const { espn_public: a, sleeper: b } = manifest().leagues;
+  // Fixture players have no real ESPN photo: stub the CDN, as the parity matrix above does.
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
   const errors = collectErrors(page);
+  // Name any missing resource, so a console 404 says which request it was.
+  page.on("response", (r) => { if (r.status() === 404) errors.push(`404: ${r.url()}`); });
   await page.goto(`/l/${a}/players?id=209&tab=usage`, { waitUntil: "load" });
   const tabs = page.getByRole("tablist", { name: /profile$/ });
   await expect(tabs.getByRole("tab", { name: "Usage", exact: true })).toHaveAttribute("aria-selected", "true");
