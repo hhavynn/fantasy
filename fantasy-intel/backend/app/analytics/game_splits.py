@@ -543,7 +543,7 @@ def build_game_splits(con, q: SplitsQuery) -> dict:
                 not_counted[reason] += 1
                 continue
             u = subject_by.get((s, w))
-            roster_teams = sorted({r["team"] for r in subject_roster.get((s, w), []) if r["team"]})
+            roster_teams = sorted({_code(r["team"]) for r in subject_roster.get((s, w), [])} - {None})
             team = u["team"] if u else (roster_teams[0] if len(roster_teams) == 1 else None)
             game = schedule.get((s, w, team)) if team else None
             row = {"season": s, "week": w, "team": team, "opponent": game["opponent"] if game else None,

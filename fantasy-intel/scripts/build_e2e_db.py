@@ -98,8 +98,8 @@ def build(db_path: Path) -> dict:
         stats["pace"] = synthetic_pace.write(con, (SEASON - 2, SEASON - 1))
         # Game splits (issue #210): an invented team with weekly roster statuses, in SEASON - 3 (2023). Not 2024-2025: the
         # pace lab reads every final schedule row of its seasons, so the invented teams' games would show there as
-        # final games with no play-by-play. Written after the pace lab, which creates nfl_schedules with its overtime
-        # column.
+        # final games with no play-by-play. nfl_schedules already exists here (the league fixture creates it), so
+        # neither writer creates it; each replaces only its own rows.
         stats["game_splits"] = synthetic_splits.write(con, SEASON - 3)
         return stats
     finally:
