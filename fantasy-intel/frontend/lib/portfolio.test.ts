@@ -134,3 +134,13 @@ test("words for designations and problems", () => {
   assert.equal(portfolioProblem({ status: 503, error: "x" }).tone, "caution");
   assert.doesNotMatch(portfolioProblem({ status: 500, error: "http://internal:8000 trace" }).body, /internal/);
 });
+
+test("an exposure whose league id is not a league id is dropped, never put into a link", () => {
+  const bad = player("gsis:00-0000001", "Avery Example", 1, {
+    exposures: [exposure(0), exposure(1, { league_id: "../../admin" }), exposure(2, { league_id: "lg_x" })],
+  });
+  const parsed = parsePortfolio(payload({ players: [bad] }));
+  assert.ok(parsed);
+  const ids = parsed.players[0].exposures.map((e) => e.leagueId);
+  assert.deepEqual(ids, [LG(0)]);
+});

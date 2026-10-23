@@ -445,6 +445,7 @@ def admission_slots() -> int:
 _ADMISSION_LOCK = threading.Lock()
 _ADMISSION: dict[str, Any] = {}
 _FLIGHTS: dict[str, tuple[tuple, Future]] = {}      # user id (or kind:user id) -> (its authorized league ids, its build)
+_HOLDERS: dict[str, Future] = {}                    # user id -> the build of whichever kind holds (or awaits) its slot
 
 
 def _admission() -> threading.BoundedSemaphore:
@@ -480,6 +481,8 @@ async def serve(principal, granted: list, *, kind: str = "action-center", build_
         authorized leagues (its own authorization has already run), and otherwise waits for it to finish and then
         builds once, so one user never holds two slots. Flights are keyed by the verified user id: two users never
         share a build, whatever their leagues;
+      * one slot per user across kinds: a user's build of another kind (the portfolio beside the action center) waits for
+        the first to finish before it takes a slot, so one user can never hold every slot;
       * admission: at most POOL_WORKERS // CONCURRENCY builds at once in the process. A request waits up to
         ADMISSION_WAIT_S for a slot (on the event loop), then gets Busy (503 with Retry-After): never a long queue
         behind other users' leagues.
@@ -515,7 +518,26 @@ async def serve(principal, granted: list, *, kind: str = "action-center", build_
         if same:
             return result
         # Different leagues (a membership changed in between): that build is over; build our own next round.
+    holder = False
     try:
+        while True:
+            with _ADMISSION_LOCK:
+                other = _HOLDERS.get(principal.user_id)
+                if other is None:
+                    _HOLDERS[principal.user_id] = mine
+                    holder = True
+                    break
+            left = give_up - loop.time()
+            if left <= 0:
+                raise Busy()
+            if other.done():                           # finished, its holder entry about to go: look again shortly
+                await asyncio.sleep(_POLL_S)
+                continue
+            try:
+                await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(other)), left)
+            except (Exception, TimeoutError):  # noqa: BLE001 - that build failed or ran long: look again
+                if loop.time() >= give_up:
+                    raise Busy() from None
         sem = _admission()
         if not await _acquire_slot(sem, ADMISSION_WAIT_S):
             raise Busy()
@@ -533,3 +555,5 @@ async def serve(principal, granted: list, *, kind: str = "action-center", build_
         with _ADMISSION_LOCK:
             if _FLIGHTS.get(user, (None, None))[1] is mine:
                 del _FLIGHTS[user]
+            if holder and _HOLDERS.get(principal.user_id) is mine:
+                del _HOLDERS[principal.user_id]

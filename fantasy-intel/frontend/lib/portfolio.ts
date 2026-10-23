@@ -5,7 +5,7 @@
 // and sorts it and words its states. It computes no score and never turns a missing value into 0. Pure, so node --test
 // covers it.
 
-import { leaguePath } from "./league-scope.ts";
+import { isLeagueId, leaguePath } from "./league-scope.ts";
 import { parseMyLeague, type MyLeague } from "./my-leagues.ts";
 import { progressHref } from "./onboarding.ts";
 import type { ProvenancePayload } from "./signal-provenance.ts";
@@ -126,7 +126,8 @@ function parseLeague(raw: unknown): PortfolioLeague | null {
 }
 
 function parseExposure(raw: unknown): Exposure | null {
-  if (!isRecord(raw) || typeof raw.league_id !== "string" || typeof raw.player_id !== "number") return null;
+  // The league id goes into links (leaguePath): anything that is not a league id is dropped, never linked.
+  if (!isRecord(raw) || !isLeagueId(raw.league_id) || typeof raw.player_id !== "number") return null;
   const origin = raw.projection_origin === "provider" || raw.projection_origin === "model" ? raw.projection_origin : null;
   return {
     leagueId: raw.league_id, provider: str(raw.provider) ?? "espn", leagueName: str(raw.league_name),

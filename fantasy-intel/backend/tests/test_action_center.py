@@ -590,3 +590,43 @@ def test_a_deterministic_error_is_cached_briefly_and_a_transient_one_is_not(pg, 
     assert action_center.deterministic(HTTPException(503, "This league's data (schema v6) is older than v8."))
     assert not action_center.deterministic(HTTPException(503, "Projections are being rebuilt."))
     assert not action_center.deterministic(HTTPException(500, "boom"))
+
+
+def test_one_user_never_holds_two_slots_across_kinds(monkeypatch):
+    """#300 review: the portfolio shares the action center's admission slots with its own flight per kind. A user's
+    action center and portfolio requests at once must not take both slots (2 by default): the second kind waits for the
+    first, and another user still gets a slot at once. No Postgres: serve() with stand-in builds."""
+    import asyncio
+    from types import SimpleNamespace
+    from app.api import action_center
+    monkeypatch.setattr(action_center, "POOL_WORKERS", 6)
+    monkeypatch.setenv("ACTION_CENTER_CONCURRENCY", "3")
+    monkeypatch.setattr(action_center, "ADMISSION_WAIT_S", 0.2)   # far below a build: a taken slot means Busy
+    assert action_center.admission_slots() == 2
+    running: dict[str, int] = {}
+    peak: dict[str, int] = {}
+
+    def slow(tag):
+        async def build(principal, granted):
+            running[principal.user_id] = running.get(principal.user_id, 0) + 1
+            peak[principal.user_id] = max(peak.get(principal.user_id, 0), running[principal.user_id])
+            await asyncio.sleep(0.6)
+            running[principal.user_id] -= 1
+            return {"kind": tag, "who": principal.user_id}
+        return build
+
+    alice, bob = SimpleNamespace(user_id="u-alice"), SimpleNamespace(user_id="u-bob")
+    granted = [SimpleNamespace(league_id="lg_aaaaaaaaaaaaaaaa")]
+
+    async def run():
+        a1 = asyncio.ensure_future(action_center.serve(alice, granted, build_fn=slow("action-center")))
+        a2 = asyncio.ensure_future(action_center.serve(alice, granted, kind="portfolio", build_fn=slow("portfolio"),
+                                                       budget_s=5))
+        await asyncio.sleep(0.1)
+        b = await action_center.serve(bob, granted, build_fn=slow("action-center"))      # never Busy
+        return await a1, await a2, b
+
+    first, second, other = asyncio.run(run())
+    assert first["kind"] == "action-center" and second["kind"] == "portfolio" and other["who"] == "u-bob"
+    assert peak == {"u-alice": 1, "u-bob": 1}                        # alice's two kinds ran one after the other
+    assert action_center._HOLDERS == {} and action_center._FLIGHTS == {}

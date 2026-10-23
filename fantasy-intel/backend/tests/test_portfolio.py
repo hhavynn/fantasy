@@ -87,6 +87,21 @@ def test_a_crosswalk_the_map_marks_conflicting_stays_apart():
     assert a["key"] != b["key"]
 
 
+def test_one_espn_player_is_one_row_when_only_one_espn_league_marks_his_crosswalk_conflicting():
+    """#300 review: one ESPN id in two ESPN leagues, one league's map conflicting and the other's verified, is one ESPN
+    player. Both join by the ESPN id (no NFL link), so he is never two rows or counted twice on a bye."""
+    conflicting = _p(401, "Drew Dummy", gsis="00-0000004", method="espn_id:nfl_players",
+                     notes="Conflicting crosswalks: 00-0000004 (nfl_players), 00-0000009 (ff_playerids)")
+    players, weeks, coverage = aggregate([_section(0, [conflicting]),
+                                          _section(1, [_p(401, "Drew Dummy", gsis="00-0000004",
+                                                          method="espn_id:nfl_players")])])
+    assert len(players) == 1 and coverage["players"] == 1
+    drew = players[0]
+    assert drew["key"] == "espn:401" and drew["leagues"] == 2 and drew["identity"]["gsis_id"] is None
+    bye = next(w for w in weeks if w["week"] == 9)["bye"]
+    assert bye["players"] == 1 and bye["names"].count("Drew Dummy") == 1
+
+
 def test_one_player_id_linked_to_two_gsis_ids_is_kept_apart():
     a = _exposure(0, _p(501, "Emery Fake", gsis="00-0000005", method="espn_id:nfl_players"))
     b = _exposure(1, _p(501, "Emery Fake", gsis="00-0000006", method="espn_id:nfl_players"), "sleeper")

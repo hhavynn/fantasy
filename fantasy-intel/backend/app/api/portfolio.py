@@ -81,6 +81,8 @@ REASON = {
     "synthetic": "This player has no ESPN or NFL id in this league's data; not joined across leagues.",
     "dst_unknown": "A team defense without a known NFL team; not joined across leagues.",
     "id_split": "Your leagues link this player id to different NFL players, so no NFL link is used.",
+    "map_conflict_elsewhere": "Another of your ESPN leagues' NFL id sources disagree for this player, so no NFL link is "
+                              "used.",
     "gsis_split": "Two different player ids link to the same NFL player, so no NFL link is used.",
     "espn_only": "Joined with your other ESPN leagues by ESPN's player id only; not linked to NFL data.",
     "espn_propagated": "Joined by ESPN's player id: another of your ESPN leagues links it to NFL data.",
@@ -96,9 +98,12 @@ def _env_number(name: str, default: float, lo: float, hi: float) -> float:
 
 
 def limits() -> tuple[int, int, float]:
-    """(max leagues, concurrency, budget seconds): bounded whatever the environment says."""
+    """(max leagues, concurrency, budget seconds): bounded whatever the environment says. Concurrency never exceeds the
+    action center's, which sizes the admission slots both share (action_center.admission_slots), so a portfolio build
+    never takes more of the pool than one slot allows."""
+    from . import action_center
     return (int(_env_number("PORTFOLIO_MAX_LEAGUES", MAX_LEAGUES, 1, MAX_LEAGUES)),
-            int(_env_number("PORTFOLIO_CONCURRENCY", CONCURRENCY, 1, 6)),
+            int(_env_number("PORTFOLIO_CONCURRENCY", CONCURRENCY, 1, action_center.limits()[1])),
             _env_number("PORTFOLIO_BUDGET_S", BUDGET_S, 1.0, 60.0))
 
 
@@ -337,6 +342,12 @@ def resolve(exposures: list[dict]) -> None:
             e["_status"], e["_ref"], e["_reason"] = "conflict", None, REASON["id_split"]
         elif len(by_gsis[e["_ref"]]) > 1:
             e["_status"], e["_ref"], e["_reason"] = "conflict", None, REASON["gsis_split"]
+    # One ESPN id is one ESPN player: when any ESPN league marks it conflicting, every ESPN exposure of that id joins by
+    # the ESPN id alone. Keeping another league's GSIS link would split one player into two rows and count him twice.
+    espn_conflicts = {e["player_id"] for e in exposures if e["provider"] == "espn" and e["_status"] == "conflict"}
+    for e in exposures:
+        if e["provider"] == "espn" and e["_status"] == "verified" and e["player_id"] in espn_conflicts:
+            e["_status"], e["_ref"], e["_reason"] = "conflict", None, REASON["map_conflict_elsewhere"]
     # ESPN's own id joins ESPN leagues: an ESPN exposure with no verified link takes the one GSIS id its ESPN id has
     # in another ESPN league (after the conflict rules above), else it joins by the ESPN id alone.
     espn_gsis: dict[int, set[str]] = {}
