@@ -18,3 +18,12 @@ export function isFirstRun(detail: string | null | undefined): boolean {
 export function isFirstSync(status: number | undefined, detail: string | null | undefined): boolean {
   return status === 409 && !!detail && /first sync in progress/i.test(detail);
 }
+
+/**
+ * A hosted deployment (on Vercel, or a dashboard holding the backend's service key, README "Hosting") rather than a
+ * local run. Hosted visitors never see the internal backend address or the start-the-server instructions. Pass the
+ * two variables explicitly: in a client bundle both are undefined (a local run's wording).
+ */
+export function isHostedDeployment(env: { API_KEY?: string; VERCEL?: string }): boolean {
+  return Boolean(env.API_KEY || env.VERCEL);
+}

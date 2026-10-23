@@ -1,6 +1,7 @@
 """EspnProvider: payloads from tests/espn_fixture.py (never the network) translated into the contract models."""
 
 import copy
+import re
 
 import pytest
 
@@ -54,7 +55,9 @@ def with_op_slot(count=1):
 def test_enabled_only_for_the_encrypted_credential_path_or_the_public_flag():
     assert not EspnProvider(public_import_enabled=False, private_access_enabled=False).capabilities().enabled
     reason = EspnProvider(public_import_enabled=False, private_access_enabled=False).capabilities().reason
-    assert "no documented public fantasy API" in reason and "CREDENTIALS_PUBKEY_V" in reason
+    assert "no documented public fantasy API" in reason and "set up on this deployment yet" in reason
+    # Visitors read this on the /leagues host card: plain words, never the settings, keys or versions behind it.
+    assert not re.search(r"CREDENTIALS_|PUBKEY|ESPN_PUBLIC_IMPORT|_ENABLED|V<n>|[A-Z]{2,}_[A-Z]{2,}", reason)
     assert EspnProvider(public_import_enabled=True, private_access_enabled=False).capabilities().enabled
     assert EspnProvider(public_import_enabled=False, private_access_enabled=True).capabilities().enabled
 

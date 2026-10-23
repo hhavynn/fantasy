@@ -2,19 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, type ApiResult } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
 import {
   cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, parseMyLeagues, parseProviderChoice,
   parseSleeperLeagueInput, validSeason,
 } from "@/lib/my-leagues";
 import { canSkipImport, connectProblem, findExisting, privateHref, progressHref, type Host, type NextAction } from "@/lib/onboarding";
+import { actionErrorMessage } from "@/lib/route-error";
 import { currentUser } from "@/lib/supabase/server";
 
 // Server actions are public POST endpoints: each re-checks the flag and the signed-in user on the server, and the
 // backend authorizes again with the user's own token (lib/api.ts forwards it). Cookies are passed straight to the
 // backend and never returned, logged or kept in state. Each step of adding a league is its own URL (lib/onboarding.ts):
-// success redirects to the next one, so a reload resumes where the visitor was.
+// success redirects to the next one, so a reload resumes where the visitor was. A failed backend call shows only
+// `actionErrorMessage`'s words (lib/route-error.ts): the backend's own 4xx message or fixed text, never the internal
+// API_URL, a start-the-server hint or a server error.
 
 /** The add-league forms' state. Success never lands here: it redirects to the next step's URL (lib/onboarding.ts). */
 export type AddState = {
@@ -31,6 +34,9 @@ export type AddState = {
 export type ActionResult = { ok: boolean; message: string | null };
 
 const SIGN_IN = "Sign in to add or change leagues.";
+const NOT_ADDED = "The league could not be added right now.";
+const NOT_CONNECTED = "The league could not be connected right now.";
+const NOT_DONE = "That could not be done right now. Try again in a few minutes.";
 
 async function gate(): Promise<string | null> {
   if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) return NOT_ENABLED_REASON;
@@ -46,8 +52,10 @@ function invalid(form: FormData, message: string): AddState {
   return { status: "error", title: "Check what you entered", message, next: "fix_input", hint: null, ...typed(form) };
 }
 
-function failed(form: FormData, host: Host, status: number | undefined, message: string): AddState {
-  const p = connectProblem(status, message, host);
+/** A failed add or connect: `res` is the backend's answer (ok but empty counts as a 500 with `fallback`). */
+function failed(form: FormData, host: Host, res: ApiResult<unknown>, fallback: string): AddState {
+  const status = res.ok ? 500 : res.status;
+  const p = connectProblem(status, res.ok ? fallback : actionErrorMessage(res, fallback), host);
   return { status: "error", title: p.title, message: p.message, hint: p.hint, next: p.next, ...typed(form) };
 }
 
@@ -78,7 +86,7 @@ async function addSleeperLeague(form: FormData): Promise<AddState> {
   const existing = await alreadyFollowed("sleeper", parsed.leagueId, null);
   if (existing) redirect(progressHref(existing, "already"));
   const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: { provider: "sleeper", league: parsed.leagueId } });
-  if (!res.ok || !res.data) return failed(form, "sleeper", res.ok ? 500 : res.status, res.ok ? "The league could not be added." : res.error);
+  if (!res.ok || !res.data) return failed(form, "sleeper", res, NOT_ADDED);
   revalidatePath("/leagues");
   redirect(progressHref(res.data.league_id));
 }
@@ -99,7 +107,7 @@ export async function addLeague(_prev: AddState, form: FormData): Promise<AddSta
   }
   // 409 with ESPN's "private" answer: the league exists but needs a member's cookies (the next step asks, with consent).
   if (!res.ok && res.status === 409 && /private/i.test(res.error)) redirect(privateHref(input.league, input.season));
-  return failed(form, "espn", res.ok ? 500 : res.status, res.ok ? "The league could not be added." : res.error);
+  return failed(form, "espn", res, NOT_ADDED);
 }
 
 /** The cookie step: a private ESPN league, with the visitor's own ESPN cookies and their explicit consent. */
@@ -116,7 +124,7 @@ export async function connectPrivate(_prev: AddState, form: FormData): Promise<A
   if (!cookies) return invalid(form, "Paste both cookies: espn_s2 (a long value) and SWID (in braces).");
   const res = await apiRequest<{ league_id: string; cookies: string }>("/v2/leagues/connect",
     { body: { ...input, ...cookies, consent: true } });
-  if (!res.ok || !res.data) return failed(form, "espn", res.ok ? 500 : res.status, res.ok ? "The league could not be connected." : res.error);
+  if (!res.ok || !res.data) return failed(form, "espn", res, NOT_CONNECTED);
   revalidatePath("/leagues");
   redirect(progressHref(res.data.league_id, res.data.cookies === "existing" ? "joined" : null));
 }
@@ -128,7 +136,7 @@ async function leagueCall(leagueId: string, path: string, method: "POST" | "PUT"
   const res = await apiRequest(`/v2/leagues/${leagueId}${path}`, { method, body });
   revalidatePath("/leagues");
   revalidatePath(`/leagues/${leagueId}`);
-  return res.ok ? { ok: true, message: null } : { ok: false, message: res.error };
+  return res.ok ? { ok: true, message: null } : { ok: false, message: actionErrorMessage(res, NOT_DONE) };
 }
 
 export async function refreshLeague(leagueId: string): Promise<ActionResult> {
@@ -170,7 +178,9 @@ export async function createInvite(leagueId: string, _prev: InviteState, _form: 
   if (!isLeagueRef(leagueId)) return { ok: false, message: "Unknown league." };
   const res = await apiRequest<{ token: string }>(`/v2/leagues/${leagueId}/invites`, { method: "POST", body: {} });
   revalidatePath(`/leagues/${leagueId}`);
-  if (!res.ok || !res.data) return { ok: false, message: res.ok ? "No invite was created." : res.error };
+  if (!res.ok || !res.data) {
+    return { ok: false, message: res.ok ? "No invite was created." : actionErrorMessage(res, "No invite was created. Try again in a few minutes.") };
+  }
   // The token travels in the fragment: browsers never send it to a server, so it stays out of logs.
   return { ok: true, message: null, link: `/invite#${res.data.token}` };
 }
@@ -191,6 +201,8 @@ export async function redeemInvite(token: string): Promise<ActionResult> {
   if (blocked) return { ok: false, message: blocked };
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return { ok: false, message: "This invite link is not complete." };
   const res = await apiRequest<{ league_id: string }>("/v2/invites/redeem", { body: { token } });
-  if (!res.ok || !res.data) return { ok: false, message: res.ok ? "This invite is not valid." : res.error };
+  if (!res.ok || !res.data) {
+    return { ok: false, message: res.ok ? "This invite is not valid." : actionErrorMessage(res, "The invite could not be used right now. Try again in a few minutes.") };
+  }
   redirect(`/l/${res.data.league_id}`);
 }

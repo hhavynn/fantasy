@@ -1,7 +1,7 @@
 import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { Notice } from "@/components/ui";
-import { isFirstRun, isFirstSync, type ApiErrorKind } from "@/lib/api-errors";
+import { isFirstRun, isFirstSync, isHostedDeployment, type ApiErrorKind } from "@/lib/api-errors";
 import styles from "./BackendProblem.module.css";
 
 /** A terminal command block. Paths are relative to the repository's `fantasy-intel/` folder. */
@@ -62,7 +62,8 @@ export function FirstRunGuide() {
 
 /**
  * Explains a failed backend call and what to do about it, by `kind` (see `ApiErrorKind`).
- * Pass the fields of a failed `api()` result. Safe in server and client components.
+ * Pass the fields of a failed `api()` result. Safe in server and client components. A local run shows the developer
+ * the error and how to start the backend; a hosted deployment's visitors get plain words and no server commands.
  */
 export function BackendProblem({ error, kind = "unknown", status }: {
   error: string;
@@ -82,7 +83,10 @@ export function BackendProblem({ error, kind = "unknown", status }: {
     );
   }
 
-  if (kind === "offline") {
+  if (kind === "offline" && isHostedDeployment({ API_KEY: process.env.API_KEY, VERCEL: process.env.VERCEL })) {
+    title = "The league data is not answering";
+    body = <p>The dashboard could not load its data. Try again in a minute.</p>;
+  } else if (kind === "offline") {
     title = "Can't reach the backend";
     body = (
       <>

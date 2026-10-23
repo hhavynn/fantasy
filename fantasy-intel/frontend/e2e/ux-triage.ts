@@ -67,14 +67,6 @@ export const CONTENT_TRIAGE: ContentTriageEntry[] = [
     owner: "n/a (by design)",
   },
   {
-    route: /^\/leagues$/,
-    text: /CREDENTIALS_PUBKEY_V<n>|ESPN_PUBLIC_IMPORT_ENABLED/,
-    reason: "Found by the #253 journey: on the multi-league connect page, an unavailable ESPN host card prints the "
-      + "provider's operator reason, which names the deployment settings it lacks (a credential wrapping key and the "
-      + "public-import switch) to visitors. Fix: give visitors a reason without setting names.",
-    owner: "backend/app/leagues/providers/espn.py capability copy (#253 follow-up)",
-  },
-  {
     route: /^\/l\/:league\/start-sit(\?|$)/,
     text: /\(null\)/,
     reason: "A Sleeper team has no abbreviation, and the page header prints it as \"Sleeper Alpha (null)\". Fix: omit the "
