@@ -38,16 +38,23 @@ export type OtpError = { status?: number; code?: string; name?: string } | null 
 
 /**
  * What a Supabase signInWithOtp answer means to the visitor. Every answer that could depend on whether the address has
- * an account reads as "sent": no such account while sign-in only (otp_disabled), Supabase's own sign-up switch
- * (signup_disabled), an address the project may not email, or a failure sending the email (500). `log` names the
- * code worth an operator's attention (never the address). Only answers that are about the request itself get their
- * own message: the address's shape, a rate limit, and Supabase being unreachable.
+ * an account reads as "sent", on Sign in and Sign up alike:
+ *   - otp_disabled: no such account while sign-in only (expected, not logged);
+ *   - over_email_send_rate_limit: Supabase's email throttle, which only an address that gets emails can reach (per
+ *     address, or the project's email quota), so telling it apart would say the address has an account;
+ *   - signup_disabled: Supabase's own "Allow new users to sign up" is off while both app gates are open, a
+ *     misconfiguration (logged);
+ *   - an address the project may not email, a failure sending the email (500), or any other refusal.
+ * `log` names the code worth an operator's attention (never the address). Only answers about the request itself get
+ * their own message: the address's shape, the per-IP request limit (over_request_rate_limit), and Supabase being
+ * unreachable.
  */
 export function linkOutcome(error: OtpError): { outcome: LinkOutcome; log: string | null } {
   if (!error) return { outcome: "sent", log: null };
   const code = error.code ?? "";
-  if (error.status === 429 || code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
-    return { outcome: "rate_limited", log: null };
+  if (code === "over_request_rate_limit") return { outcome: "rate_limited", log: null };
+  if (code === "over_email_send_rate_limit" || error.status === 429) {
+    return { outcome: "sent", log: code || "http_429" };
   }
   if (code === "email_address_invalid") return { outcome: "invalid_email", log: null };
   // A network failure (status 0) or a gateway error reaches every address alike.
@@ -69,12 +76,12 @@ export const LINK_MESSAGES = {
   off: "Sign-in is not available in this deployment.",
   invalidEmail: "Enter a valid email address, like name@example.com.",
   recent: "A link for this address was sent less than a minute ago. Check your inbox and spam folder; that link still works. You can ask again after a minute.",
-  rateLimited: "Too many link emails were asked for. Wait a few minutes, then ask for a new link.",
+  rateLimited: "Too many requests came from this connection. Wait a few minutes, then ask for a new link.",
   unavailable: "The sign-in service could not be reached. Try again in a moment.",
   closed: "Sign-ups are not open yet. If you already have an account, sign in instead.",
   sent: {
     signin: "If this address has an account, a sign-in link is on its way. Open it in this browser within an hour; it works once.",
-    signup: "If this address can be used here, a link is on its way. It finishes creating your account, or signs you in if the address already has one. Open it in this browser within an hour; it works once.",
+    signup: "If this address can be used here, a link is on its way. Opening it sets up your Fantasy Intel account, or signs you in if the address already has one. Open it in this browser within an hour; it works once.",
   },
 } as const;
 
@@ -88,9 +95,11 @@ export function linkState(intent: LinkIntent, outcome: LinkOutcome): LinkState {
   }
 }
 
-// One link per address per browser per minute, decided before Supabase is asked, so a repeated submit gets the same
-// answer whether or not the address has an account (Supabase itself throttles only addresses it has) and does not
-// replace the link already on its way. The cookie holds a hash of the address, never the address.
+// One link per address per browser per minute, decided before Supabase is asked, so an honest repeated submit gets a
+// helpful answer (the same whether or not the address has an account) and does not replace the link already on its
+// way. A convenience only: the cookie is the visitor's, so a script without it gets Supabase's answer, which
+// linkOutcome already makes identical for every address. The cookie holds a keyed hash of the address
+// (lib/link-guard.ts), never the address.
 export const RECENT_LINK_COOKIE = "fi_link_recent";
 export const RECENT_LINK_SECONDS = 60;
 
@@ -159,4 +168,37 @@ export const CALLBACK_PROBLEMS: Record<CallbackProblem, { title: string; body: s
 /** /login or /signup, carrying an explicitly chosen in-app destination (already passed through safeNext). */
 export function authHref(page: "/login" | "/signup", next: string): string {
   return next === "/leagues" ? page : `${page}?next=${encodeURIComponent(next)}`;
+}
+
+/**
+ * The Location for a redirect after the email link: a same-site path (already passed through safeNext), percent-encoded
+ * the way a header value must be, and never protocol-relative. Anything else becomes the leagues page.
+ */
+export function sameSiteLocation(path: string): string {
+  let url: URL;
+  try {
+    url = new URL(path, "http://site.invalid");
+  } catch {
+    return "/leagues";
+  }
+  const location = url.pathname + url.search + url.hash;
+  return url.origin === "http://site.invalid" && location.startsWith("/") && !location.startsWith("//") ? location : "/leagues";
+}
+
+/**
+ * Whether GET /v2/me refused the freshly signed-in account. Its only 403 is the API's sign-up gate
+ * (fi.ensure_app_user: signups_closed), so the status alone decides, whatever the wording.
+ */
+export function apiRefusedAccount(res: { ok: boolean; status?: number }): boolean {
+  return !res.ok && res.status === 403;
+}
+
+/** The `intent` carried on the email link's callback URL: only ever "signup" or "signin", never trusted beyond that. */
+export function parseIntent(value: string | null | undefined): LinkIntent {
+  return value === "signup" ? "signup" : "signin";
+}
+
+/** Where a failed email link goes back to: the page the visitor started from, which re-checks the gates. */
+export function callbackFailureHref(intent: LinkIntent, problem: CallbackProblem, next: string): string {
+  return `${intent === "signup" ? "/signup" : "/login"}?error=${problem}&next=${encodeURIComponent(next)}`;
 }

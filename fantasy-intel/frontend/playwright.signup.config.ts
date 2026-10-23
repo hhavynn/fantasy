@@ -19,6 +19,7 @@ const web = (port: number, signupsOpen: string) => ({
     MULTILEAGUE_UI_ENABLED: "1", CLASSIC_SITE_ENABLED: "0",
     SUPABASE_URL: SIGNUP_E2E.fake, SUPABASE_PUBLISHABLE_KEY: "e2e-publishable-key", SUPABASE_LOCAL: "1",
     SITE_URL: `http://127.0.0.1:${port}`, SIGNUPS_OPEN: signupsOpen,
+    LINK_GUARD_SECRET: "signup-e2e-link-guard-secret",   // a test-only key for the repeat guard (lib/link-guard.ts)
   },
   timeout: 60_000,
   reuseExistingServer: false,

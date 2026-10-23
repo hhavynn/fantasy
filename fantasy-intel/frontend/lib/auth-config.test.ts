@@ -27,9 +27,15 @@ test("after sign-in the redirect stays inside the site", () => {
   for (const bad of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "leagues",
     // The URL parser strips tabs and newlines and reads a backslash as a slash: each of these would leave the site.
     "/\t/evil.example", "/\n/evil.example", "/\r//evil.example", "/\t\\evil.example", "/x\\..\\..\\evil", "/\u0000/evil",
-    "javascript:alert(1)", `/${"a".repeat(2048)}`]) {
+    "javascript:alert(1)", `/${"a".repeat(2048)}`,
+    // Dot segments, raw or percent-encoded, resolve `/x/..//host` to `//host`: refused wherever they appear.
+    "/.//evil.example", "/..//evil.example", "/a/..//evil.example", "/%2e//evil.example", "/%2E%2E//evil.example", "/a/./b",
+    "/%zz"]) {
     assert.equal(safeNext(bad), "/leagues", JSON.stringify(bad));
   }
+  // The value comes back in the URL parser's normal form, so what was checked is what is used.
+  assert.equal(safeNext("/terms?q=a b"), "/terms?q=a%20b");
+  assert.equal(safeNext("/a..b/c.d"), "/a..b/c.d", "dots inside a segment are fine");
   // Whatever passes resolves to this origin.
   for (const ok of ["/", "/terms", "/l/lg_abcdefghijklmnop/waivers?team=2#x", "/%5Cevil.example"]) {
     assert.equal(new URL(safeNext(ok), "https://app.example").origin, "https://app.example", ok);

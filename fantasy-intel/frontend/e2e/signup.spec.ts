@@ -7,7 +7,7 @@ import { applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectNo
 // answers, safe redirects, and the pages at 1440 and 375px, by keyboard and in both themes. No real email is sent.
 
 const { fake, closed: CLOSED, open: OPEN } = SIGNUP_E2E;
-type OtpRequest = { email: string; create_user: boolean; redirect_to: string; pkce: string | null };
+type OtpRequest = { email: string; create_user: boolean; redirect_to: string; pkce: string | null; throttled?: boolean };
 type FakeState = { apiOpen: boolean; otp: OtpRequest[]; users: Record<string, { app: boolean; created: boolean }> };
 
 async function control(path: string, body?: unknown) {
@@ -15,7 +15,8 @@ async function control(path: string, body?: unknown) {
     : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   return res.json();
 }
-const reset = (apiOpen: boolean, otpDelayMs = 0) => control("/__test/reset", { apiOpen, otpDelayMs });
+const reset = (apiOpen: boolean, otpDelayMs = 0, extra: { throttleSeconds?: number; refusal?: string } = {}) =>
+  control("/__test/reset", { apiOpen, otpDelayMs, ...extra });
 const fakeState = (): Promise<FakeState> => control("/__test/state");
 const emailLink = async (email: string): Promise<string> => (await control(`/__test/link?email=${encodeURIComponent(email)}`)).link;
 
@@ -97,8 +98,10 @@ test.describe("this app open, the API closed (a mismatch)", () => {
     await expect(sentStatus(page)).toBeVisible();
     await control("/__test/gate", { open: false });
     await page.goto(await emailLink("late@example.test"));
-    await expect(page).toHaveURL(/\/login\?error=closed/);
-    await expect(page.getByText(/not accepting new accounts yet/)).toBeVisible();
+    // A sign-up link returns to Create account, which re-checks the gates and explains once.
+    await expect(page).toHaveURL(/\/signup\?error=closed/);
+    await expect(page.getByText(/not accepting new accounts yet/)).toHaveCount(1);
+    await expect(emailField(page)).toHaveCount(0);
     await expectSignedOut(page);
     expect((await fakeState()).users["late@example.test"].app, "the API never accepted it").toBe(false);
   });
@@ -174,14 +177,81 @@ test.describe("sign-ups open on both sides (a controlled test environment)", () 
     await expectSignedIn(page);
     await page.goto(`${OPEN}/signup?next=${encodeURIComponent("/terms")}`);
     await expect(page).toHaveURL(`${OPEN}/terms`);
-    for (const bad of ["//evil.example/x", "https://evil.example", "/\t/evil.example"]) {
+    for (const bad of ["//evil.example/x", "https://evil.example", "/\t/evil.example", "/.//evil.example", "/%2E%2E//evil.example"]) {
       await page.goto(`${OPEN}/signup?next=${encodeURIComponent(bad)}`);
       await expect(page).toHaveURL(`${OPEN}/leagues`);
+      await page.goto(`${OPEN}/login?next=${encodeURIComponent(bad)}`);
+      await expect(page).toHaveURL(`${OPEN}/leagues`);
     }
+    // The reviewer's reproduction: a signed-in browser on the callback with a dot-segment next once got
+    // `Location: //evil.example`. It must stay on this site.
+    for (const raw of ["%2F.%2F%2Fevil.example", "%2F..%2F%2Fevil.example", "%2Fa%2F..%2F%2Fevil.example", "%2F%252e%2F%2Fevil.example",
+      "%2F%252E%252E%2F%2Fevil.example"]) {
+      const res = await page.request.get(`${OPEN}/auth/callback?next=${raw}`, { maxRedirects: 0 });
+      const location = res.headers()["location"] ?? "";
+      expect(location.startsWith("/") && !location.startsWith("//"), `${raw} -> ${location}`).toBe(true);
+      await page.goto(`${OPEN}/auth/callback?next=${raw}`);
+      expect(new URL(page.url()).origin, raw).toBe(OPEN);
+      await expect(page).toHaveURL(`${OPEN}/leagues`);
+    }
+  });
+
+  test("Supabase's per-address throttle answers exactly like an unknown address, with no cookies", async ({ browser }) => {
+    // A script that drops the repeat-guard cookie reaches Supabase every time. Supabase throttles only addresses it
+    // emails, so the second request for an existing address is refused (over_email_send_rate_limit) while an unknown
+    // one never is: the page must not show the difference.
+    await reset(true, 0, { throttleSeconds: 60 });
+    const answers: Record<string, string> = {};
+    for (const path of ["login", "signup"] as const) {
+      for (const email of ["member@example.test", `nobody-${path}@example.test`]) {
+        for (const attempt of [1, 2]) {
+          const context = await browser.newContext();      // no cookies, as a script would send
+          const page = await context.newPage();
+          await page.goto(`${OPEN}/${path}`);
+          await requestLink(page, email);
+          await expect(sentStatus(page)).toBeVisible();
+          answers[`${path} ${email.startsWith("member") ? "existing" : "unknown"} ${attempt}`] = await page.getByRole("main").innerText();
+          await context.close();
+        }
+      }
+    }
+    for (const path of ["login", "signup"]) {
+      const texts = Object.entries(answers).filter(([k]) => k.startsWith(path)).map(([, v]) => v);
+      expect(new Set(texts).size, `${path}: one answer for existing/unknown, first/second`).toBe(1);
+    }
+    // The member really was throttled on its second requests (the fake's GoTrue refused them).
+    const member = (await fakeState()).otp.filter((r) => r.email === "member@example.test");
+    expect(member.map((r) => !!r.throttled)).toEqual([false, true, true, true]);
   });
 });
 
 test.describe("the email link", () => {
+  test("an expired sign-up link returns to Create account with a working form, not to Sign in", async ({ page }) => {
+    await reset(true);
+    await page.goto(`${OPEN}/signup?next=${encodeURIComponent("/terms")}`);
+    await requestLink(page, "newbie@example.test");
+    await expect(sentStatus(page)).toBeVisible();
+    expect(new URL((await fakeState()).otp[0].redirect_to).searchParams.get("intent")).toBe("signup");
+    await control("/__test/expire", { email: "newbie@example.test" });
+    await page.goto(await emailLink("newbie@example.test"));
+    await expect(page).toHaveURL(`${OPEN}/signup?error=expired&next=%2Fterms`);
+    await expect(page.getByRole("alert").filter({ hasText: "That link has expired or was already used" })).toBeVisible();
+    // The recovery form is the sign-up form: it asks Supabase to create the account, so a new visitor is not stuck.
+    await page.context().clearCookies({ name: "fi_link_recent" });
+    await requestLink(page, "newbie@example.test");
+    await expect(sentStatus(page)).toBeVisible();
+    expect((await fakeState()).otp.map((r) => r.create_user)).toEqual([true, true]);
+  });
+
+  test("the API's refusal signs out by status, whatever its wording", async ({ page }) => {
+    await reset(false, 0, { refusal: "Account creation is paused." });
+    await page.goto(`${CLOSED}/login`);
+    await requestLink(page, "authonly@example.test");
+    await page.goto(await emailLink("authonly@example.test"));
+    await expect(page).toHaveURL(/\/login\?error=closed/);
+    await expectSignedOut(page);
+  });
+
   test("expired, reused, replaced, foreign-browser and broken links each say what happened and how to recover", async ({ page, browser }) => {
     await reset(false);
     // Expired.
@@ -265,7 +335,7 @@ test.describe("form states", () => {
         await requestLink(page, "bad@invalid.test");
         await expect(page.getByRole("alert").filter({ hasText: "Enter a valid email address" })).toBeVisible();
         await requestLink(page, "ratelimit@example.test");
-        await expect(page.getByRole("alert").filter({ hasText: "Too many link emails" })).toBeVisible();
+        await expect(page.getByRole("alert").filter({ hasText: "Too many requests came from this connection" })).toBeVisible();
         await expect(emailField(page)).not.toHaveAttribute("aria-invalid", "true");
       }
     }

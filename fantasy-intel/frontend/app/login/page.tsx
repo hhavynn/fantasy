@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { Notice, PageHeader, Section } from "@/components/ui";
 import { authConfig, safeNext } from "@/lib/auth-config";
-import { CALLBACK_PROBLEMS, authHref, parseCallbackProblem } from "@/lib/auth-flow";
+import { CALLBACK_PROBLEMS, authHref, parseCallbackProblem, sameSiteLocation } from "@/lib/auth-flow";
 import { signupGateNow } from "@/lib/email-link.server";
 import { currentUser } from "@/lib/supabase/server";
 import { EmailLinkForm } from "./EmailLinkForm";
@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </div>
     );
   }
-  if (await currentUser()) redirect(next);
+  if (await currentUser()) redirect(sameSiteLocation(next));
   const problem = parseCallbackProblem(params.error);
   const gate = await signupGateNow();
   return (

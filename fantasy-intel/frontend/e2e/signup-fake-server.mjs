@@ -18,15 +18,20 @@ const JWK = { ...publicKey.export({ format: "jwk" }), kid: "signup-e2e", alg: "R
 
 // Scripted Supabase answers for request-level problems, by address.
 const FORCED = {
-  "ratelimit@example.test": [429, { code: "over_email_send_rate_limit", msg: "email rate limit exceeded" }],
+  // The per-IP request limit (address-independent): the one rate limit the visitor is told about.
+  "ratelimit@example.test": [429, { code: "over_request_rate_limit", msg: "Request rate limit reached" }],
   "bad@invalid.test": [400, { code: "email_address_invalid", msg: "Email address \"bad@invalid.test\" is invalid" }],
 };
 
 let state;
-function reset({ apiOpen = false, otpDelayMs = 0 } = {}) {
+// throttleSeconds: GoTrue's per-address email throttle (over_email_send_rate_limit), which only an address that gets
+// an email can reach. refusal: the wording of /v2/me's 403 (the web app must go by the status alone).
+function reset({ apiOpen = false, otpDelayMs = 0, throttleSeconds = 0, refusal = "Sign-ups are not open yet." } = {}) {
   state = {
     apiOpen,
     otpDelayMs,
+    throttleSeconds,
+    refusal,
     // member: a Supabase user the API knows. authonly: a Supabase user the API has never accepted (no fi.app_users row).
     users: new Map([
       ["member@example.test", { id: crypto.randomUUID(), app: true, created: false }],
@@ -105,16 +110,22 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const email = String(body.email ?? "").toLowerCase();
       const redirectTo = url.searchParams.get("redirect_to") ?? "";
-      state.otp.push({ email, create_user: body.create_user, redirect_to: redirectTo, pkce: body.code_challenge_method ?? null });
+      const record = { email, create_user: body.create_user, redirect_to: redirectTo, pkce: body.code_challenge_method ?? null };
+      state.otp.push(record);
       if (state.otpDelayMs) await new Promise((r) => setTimeout(r, state.otpDelayMs));
       if (FORCED[email]) return send(res, ...FORCED[email]);
       let user = state.users.get(email);
       if (!user && body.create_user !== true) return send(res, 422, { code: "otp_disabled", msg: "Signups not allowed for otp" });
+      const last = latestFlow(email);
+      if (user && last && state.throttleSeconds && Date.now() - last.at < state.throttleSeconds * 1000) {
+        record.throttled = true;
+        return send(res, 429, { code: "over_email_send_rate_limit", msg: "For security purposes, you can only request this after 59 seconds." });
+      }
       if (!user) {
         user = { id: crypto.randomUUID(), app: false, created: true };    // GoTrue creates the auth user here
         state.users.set(email, user);
       }
-      state.flows.push({ email, token: crypto.randomBytes(16).toString("hex"), code: crypto.randomUUID(), redirectTo,
+      state.flows.push({ email, at: Date.now(), token: crypto.randomBytes(16).toString("hex"), code: crypto.randomUUID(), redirectTo,
         challenge: body.code_challenge, method: body.code_challenge_method, verified: false, used: false, expired: false });
       return send(res, 200, {});
     }
@@ -161,7 +172,7 @@ const server = http.createServer(async (req, res) => {
       const hit = claims && userById(claims.sub);
       if (!hit) return send(res, 401, { detail: "Sign in to use this endpoint." });
       const u = hit[1];
-      if (!u.app && !state.apiOpen) return send(res, 403, { detail: "Sign-ups are not open yet." });
+      if (!u.app && !state.apiOpen) return send(res, 403, { detail: state.refusal });
       u.app = true;                                                     // fi.ensure_app_user accepted the account
       return send(res, 200, { user_id: u.id, is_platform_admin: false, created_at: new Date().toISOString(), pins: [] });
     }

@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { Notice, PageHeader, Section } from "@/components/ui";
 import { authConfig, safeNext } from "@/lib/auth-config";
-import { CALLBACK_PROBLEMS, authHref, parseCallbackProblem } from "@/lib/auth-flow";
+import { CALLBACK_PROBLEMS, authHref, parseCallbackProblem, sameSiteLocation } from "@/lib/auth-flow";
 import { signupGateNow } from "@/lib/email-link.server";
 import { currentUser } from "@/lib/supabase/server";
 import { EmailLinkForm } from "../login/EmailLinkForm";
@@ -30,13 +30,14 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
       </div>
     );
   }
-  if (await currentUser()) redirect(next);
+  if (await currentUser()) redirect(sameSiteLocation(next));
   const problem = parseCallbackProblem(params.error);
   const gate = await signupGateNow();
   return (
     <div className={styles.page}>
       <PageHeader eyebrow="Account" title="Create account" meta={meta} />
-      {problem ? (
+      {/* A link refused because sign-ups closed is explained inside the "not open yet" notice below, not twice. */}
+      {problem && !(problem === "closed" && !gate.open) ? (
         <Notice tone={problem === "closed" ? "caution" : "negative"} title={CALLBACK_PROBLEMS[problem].title}>
           {CALLBACK_PROBLEMS[problem].body}
         </Notice>
@@ -47,15 +48,18 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
             <ol className={styles.steps}>
               <li>Enter your email and we send you a one-time link.</li>
               <li>Open the link in this browser within an hour. It only works where you asked for it, and only once.</li>
-              <li>Your account is ready when the link opens. Nothing is created before that.</li>
+              <li>
+                Asking for the link registers your address with our sign-in service. Your Fantasy Intel account is
+                created only when you open the link, and only while sign-ups are open.
+              </li>
             </ol>
             <EmailLinkForm intent="signup" next={next} />
           </div>
         </Section>
       ) : (
         <Notice tone="info" title="Sign-ups are not open yet">
-          New accounts cannot be created right now, so nothing here sends an email. If you already have an account,
-          sign in. Public leagues and the demo league work without one.
+          {problem === "closed" ? `${CALLBACK_PROBLEMS.closed.body} Public leagues and the demo league work without one.`
+            : "New accounts cannot be created right now, so nothing here sends an email. If you already have an account, sign in. Public leagues and the demo league work without one."}
           <span className={styles.links}>
             <Link href="/leagues/demo" prefetch={false}>Open the demo league</Link>
             <Link href="/leagues" prefetch={false}>Open a public league</Link>
