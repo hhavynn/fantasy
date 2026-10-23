@@ -21,6 +21,7 @@ sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
 import synthetic_research  # noqa: E402
+import synthetic_splits  # noqa: E402
 from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
 from app.analytics.pipeline import run_analytics  # noqa: E402
@@ -91,6 +92,8 @@ def build(db_path: Path) -> dict:
         # Research Lab pool (WR/RB/TE usage) on top of the league fixture; written after analytics so the
         # ESPN-only pipeline leaves it alone.
         stats["research"] = synthetic_research.write(con, SEASON)
+        # Game splits (issue #210): an invented 2025 team with weekly roster statuses, beside the 2026 league.
+        stats["game_splits"] = synthetic_splits.write(con)
         return stats
     finally:
         con.close()

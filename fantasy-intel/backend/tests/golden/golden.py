@@ -65,6 +65,9 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         return {"a": ids["espn_player_id"], "b": ids["other_player_id"]}
     if path == "/api/research/opportunity":
         return {"position": "WR"}
+    if path == "/api/research/game-splits":
+        # The synthetic 2025 SPL world (tests/synthetic_splits.py): the receiver and his inactive/reserve teammate.
+        return {"player": "00-SPLWR01", "teammate": "00-SPLWR02", "season_from": 2025}
     if path == "/api/trades/discover/evidence":
         rows = client.get("/api/trades/discover").json() if client is not None else {}
         key = next((x["key"] for items in (rows.get("sections") or {}).values() for x in items), None)
