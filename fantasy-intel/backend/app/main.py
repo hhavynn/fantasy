@@ -19,6 +19,7 @@ from .api.start_sit import router as start_sit_router
 from .api.add_drop import router as add_drop_router
 from .api.claim_plan import router as claim_plan_router
 from .api.faab import router as faab_router
+from .api.trade_scenarios import router as trade_scenarios_router
 from .api.matchup import router as matchup_router
 from .api.projection_promotion import router as projection_promotion_router
 from .api.projection_performance import router as projection_performance_router
@@ -88,6 +89,7 @@ app.include_router(start_sit_router)
 app.include_router(add_drop_router)
 app.include_router(claim_plan_router)
 app.include_router(faab_router)
+app.include_router(trade_scenarios_router)
 app.include_router(matchup_router)
 app.include_router(projection_promotion_router)
 app.include_router(projection_performance_router)
@@ -118,7 +120,7 @@ mount_legacy_routers(app, [
     projection_promotion_router, projection_performance_router, projection_movers_router, weekly_recap_router,
     research_router, player_compare_router, rankings_router, kicker_projections_router, dst_projections_router,
     injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
-    transactions_router, add_drop_router, claim_plan_router, faab_router,
+    transactions_router, add_drop_router, claim_plan_router, faab_router, trade_scenarios_router,
 ], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router])
 app.middleware("http")(add_scope_headers)
 from .api.provider_copy import classic_copy  # noqa: E402

@@ -3,6 +3,8 @@ import { Section, Skeleton, SkeletonStatStrip, SkeletonTable } from "@/component
 import type { ApiResult } from "@/lib/api";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import type { TradeResultV3 } from "@/lib/trade-types";
+import type { ScenarioSelection } from "@/lib/trade-scenarios";
+import { ScenarioSave } from "./ScenarioSave";
 import { TradeResultView } from "./TradeResult";
 import styles from "./builder.module.css";
 
@@ -10,10 +12,19 @@ import styles from "./builder.module.css";
  * The evaluation for the URL selection. The exact lineup simulation takes a moment, so the page renders
  * this inside a Suspense boundary: the builder is usable while the result streams in.
  */
-export async function EvaluatedTrade({ result }: { result: Promise<ApiResult<TradeResultV3>> }) {
+export async function EvaluatedTrade({ result, selection }: {
+  result: Promise<ApiResult<TradeResultV3>>;
+  /** The evaluated selection: offered for the scenario watchlist only once its evaluation succeeded. */
+  selection?: ScenarioSelection;
+}) {
   const [r, profile] = await Promise.all([result, getLeagueProfile()]);
   if (!r.ok) return <BackendProblem error={r.error} kind={r.kind} status={r.status} />;
-  return <TradeResultView r={r.data} provider={profile.provider} />;
+  return (
+    <>
+      {selection && <ScenarioSave selection={selection} />}
+      <TradeResultView r={r.data} provider={profile.provider} />
+    </>
+  );
 }
 
 /** Placeholder for the result while the simulation runs. */

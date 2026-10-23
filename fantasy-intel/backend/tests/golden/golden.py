@@ -106,6 +106,21 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         if not q:
             return None
         return {"claims": ",".join(":".join(c.split(":")[:2]).rstrip(":") for c in q["claims"].split(","))}
+    if path == "/api/trades/scenarios":
+        # Four saved trades (issue #183) from the analyzer's rosters: the owner's first player for another team's
+        # first, the same player for that team's second (a shared-player conflict), a stale one naming a third team's
+        # player as the other team's (a roster move since saving), then the first trade with its sides swapped (a
+        # duplicate).
+        teams = (client.get("/api/trades/options").json().get("teams") or []) if client is not None else []
+        mine = next((t for t in teams if t["is_mine"] and t["roster"]), None)
+        others = [t for t in teams if mine and t["team_id"] != mine["team_id"] and t["roster"]]
+        if mine is None or len(others) < 2 or len(others[0]["roster"]) < 2:
+            return None
+        m, o, third = mine["team_id"], others[0], others[1]
+        give, get1, get2 = mine["roster"][0]["espn_player_id"], o["roster"][0]["espn_player_id"], o["roster"][1]["espn_player_id"]
+        moved = third["roster"][0]["espn_player_id"]
+        return {"scenarios": f"{m}:{o['team_id']}:{give}:{get1},{m}:{o['team_id']}:{give}:{get2},"
+                             f"{m}:{o['team_id']}:{give}:{moved},{o['team_id']}:{m}:{get1}:{give}"}
     return {}
 
 
