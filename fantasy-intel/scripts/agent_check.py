@@ -144,13 +144,14 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/playoff_race", ["tests/test_playoff_race.py"]),
     ("api/projection_ranges", ["tests/test_projection_ranges.py"]),
     ("api/power_rankings", ["tests/test_power_rankings.py"]),
-    ("api/league_rules", ["tests/test_league_rules.py", "tests/test_golden_legacy.py", "tests/test_provider_copy.py"]),
+    ("api/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
+                          "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("api/luck_lab", ["tests/test_luck_lab.py"]),
     ("api/dst_projections", ["tests/test_dst_production.py", "tests/test_dst_shadow.py"]),
 
     # Analytics engines
     ("analytics/trades", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_dual_value.py"]),
-    ("analytics/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py"]),
+    ("analytics/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_league_compatibility.py"]),
     ("analytics/lineup_what_if", ["tests/test_lineup_what_if.py", "tests/test_start_sit.py", "tests/test_sleeper_taxi.py",
                                   "tests/test_golden_legacy.py"]),
     ("analytics/add_drop", ["tests/test_add_drop.py", "tests/test_claim_plan.py", "tests/test_trades.py",
@@ -164,7 +165,10 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/waiver", ["tests/test_waivers.py", "tests/test_waiver_data.py", "tests/test_waiver_decisions.py"]),
     ("analytics/rescore", ["tests/test_rescore.py", "tests/test_sleeper_scoring.py", "tests/test_forward_ours.py"]),
     ("analytics/league_scoring", ["tests/test_sleeper_scoring.py", "tests/test_rescore.py"]),
-    ("analytics/league_rules", ["tests/test_league_rules.py", "tests/test_golden_legacy.py"]),
+    ("analytics/league_rules", ["tests/test_league_rules.py", "tests/test_league_compatibility.py",
+                                "tests/test_lineup_what_if.py", "tests/test_golden_legacy.py"]),
+    ("analytics/league_compatibility", ["tests/test_league_compatibility.py", "tests/test_golden_legacy.py",
+                                        "tests/test_provider_copy.py", "tests/test_league_scope.py"]),
     ("analytics/pipeline", ["tests/test_refresh_all.py", "tests/test_golden_legacy.py"]),
 
     # Provider packages

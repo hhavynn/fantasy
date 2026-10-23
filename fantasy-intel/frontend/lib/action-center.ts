@@ -12,6 +12,7 @@ import { leagueName, leagueState, parseMyLeague, type MyLeague, type Tone } from
 import { progressHref } from "./onboarding.ts";
 import { plural } from "./plural.ts";
 import { signalsOf, type ProvenancePayload, type SignalProvenance } from "./signal-provenance.ts";
+import { NO_PROJECTIONS } from "./start-sit-helpers.ts";
 import { parseTimestamp } from "./sync-status.ts";
 import { buildWeeklyHub, decisionHref, type DecisionContext, type WeeklyDecision, type WeeklyHub } from "./weekly-decisions.ts";
 
@@ -166,12 +167,28 @@ export function sectionHub(s: CenterSection): { hub: WeeklyHub; list: ActionList
   return { hub, list };
 }
 
+export { NO_PROJECTIONS };
+
+/** The card's projection note: whose projections Start/Sit used, or that the week has none. A league without numbers
+ * never reads as using a provider's projections. Null when Start/Sit did not answer. */
+export function projectionsNote(label: string | null | undefined): string | null {
+  if (!label) return null;
+  return label === NO_PROJECTIONS ? "no projections for this week" : `${label} projections`;
+}
+
+/** The decision context's projection source from Start/Sit's label: null when the week has no projection at all
+ * ("Unavailable"), never a provider's. */
+export function projectionSourceOf(label: string | null | undefined): DecisionContext["projectionSource"] {
+  if (label === NO_PROJECTIONS) return null;
+  return label === "Independent model" ? "ours" : "espn";
+}
+
 export function sectionContext(s: CenterSection): DecisionContext {
   return {
     league: s.league.id,
     team: s.team ? String(s.team.team_id) : null,
     week: s.week,
-    projectionSource: s.startSit?.projection_source === "Independent model" ? "ours" : "espn",
+    projectionSource: projectionSourceOf(s.startSit?.projection_source),
   };
 }
 
@@ -211,6 +228,7 @@ export type CenterCard = {
   lockUnknown: number;
   week: number | null;
   teamName: string | null;
+  /** "ESPN projections", "no projections for this week" (projectionsNote); null when Start/Sit did not answer. */
   projections: string | null;
   signals: SignalProvenance[];
   versions: CenterSection["versions"];
@@ -271,7 +289,7 @@ export function buildCard(s: CenterSection): CenterCard {
     lockUnknown: s.lock?.starters.unknown ?? 0,
     week: s.week,
     teamName: s.team?.name ?? null,
-    projections: s.startSit?.projection_source ?? null,
+    projections: projectionsNote(s.startSit?.projection_source),
     signals: hub?.signals ?? [],
     versions: s.versions,
     committedAt: s.league.committedAt,
