@@ -260,11 +260,12 @@ p { margin: 0 0 8px; }
   border-bottom: 1px solid var(--line);
 }
 /* Rows that scroll sideways fade at the edge they continue past, so a clipped chip reads as "more this way". */
-/* The fade is no wider than the row's end padding, so a row scrolled to its end shows its last link unfaded. */
+/* The fade is no wider than the row's end padding, so a row scrolled to its end shows its last link unfaded, and a row
+   that fits only fades its padding. Kept on desktops too: Players with every Research page is wider than the band beside
+   a collapsed rail at 1440px. */
 .subnav {
   mask-image: linear-gradient(to right, var(--ink) calc(100% - 16px), transparent 100%);
 }
-@media (min-width: 1100px) { .subnav { mask-image: none; } }
 .subnav a { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; color: var(--ink-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .subnav a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .subnav a[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
