@@ -299,9 +299,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # The browser download is cached (it once took 6-8 min in two jobs of one run); the key is the resolved
-      # @playwright/test version, which pins the browser build. The system packages are installed either way (what
-      # `--with-deps` did), as their own step so its time shows apart from the download's.
+      # The browser download is cached; the key is the resolved @playwright/test version, which pins the browser
+      # build. The 6-8 min install steps seen in CI were apt (`install-deps`), not the download, so the system
+      # packages are installed only when the runner image lacks a shared library the browser links against.
       - name: Resolve the Playwright version
         id: playwright
         run: |
@@ -317,12 +317,19 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
 
-      - name: Install Playwright system dependencies
-        run: npx playwright install-deps chromium
-
       - name: Install Playwright Chromium (cache miss)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --only-shell chromium
+
+      - name: Install Playwright system dependencies (only if missing)
+        run: |
+          bin=$(find ~/.cache/ms-playwright -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -n 1)
+          if [ -n "$bin" ] && libs=$(ldd "$bin" 2>&1) && ! grep -q "not found" <<< "$libs"; then
+            echo "All shared libraries of $bin are present; skipping install-deps."
+          else
+            echo "Missing shared libraries (or no browser binary found); installing system dependencies."
+            npx playwright install-deps chromium
+          fi
 
       - name: Build frontend
         id: build
