@@ -2,14 +2,18 @@
 
 1. Fill every fixed positional slot (QB, RB, WR, TE, K, D/ST) with the best
    eligible players (an exchange argument shows this is always optimal).
-2. Fill the flex slots (RB/WR, WR/TE, FLEX, OP) with an exact search over the
+2. Fill the flex slots (RB/WR, WR/TE, FLEX, OP) with an exact optimum over the
    best remaining eligible players, so non-nested flex combinations
-   (e.g. RB/WR + WR/TE) are still optimal. Ties break by player id.
+   (e.g. RB/WR + WR/TE) are still optimal. Ties break by player id: the result is
+   the one an exhaustive depth-first search returns, computed in polynomial time
+   (_best_flex).
 
 A FLEX is one slot: 2 RB + 2 WR + 1 FLEX = exactly five RB/WR/TE starters.
 """
 
 from __future__ import annotations
+
+from itertools import combinations
 
 FIXED_SLOTS = ("QB", "RB", "WR", "TE", "K", "D/ST")
 FLEX_ELIGIBILITY: dict[str, tuple[str, ...]] = {
@@ -18,6 +22,14 @@ FLEX_ELIGIBILITY: dict[str, tuple[str, ...]] = {
     "FLEX": ("RB", "WR", "TE"),
     "OP": ("QB", "RB", "WR", "TE"),
 }
+TIE_TOLERANCE = 1e-9    # flex totals this close to the optimum are ties (sums of the same values in another order differ
+                        # by ~1e-14; distinct projected totals by far more)
+MAX_FLEX_SLOTS = 30     # more flex slots than any real league; a provider can store any count, so more are refused
+MAX_SPLIT_IDS = 4       # players listed under two different flex positions in one pool (not seen in real data)
+
+
+class LineupTooLargeError(ValueError):
+    """The flex slots are beyond what the exact solver accepts (MAX_FLEX_SLOTS, MAX_SPLIT_IDS): refused, never guessed."""
 
 
 def lineup_slots(roster_slots: dict[str, int]) -> list[str]:
@@ -41,62 +53,204 @@ def _slot_row(slot: str, pick: dict | None) -> dict:
             "is_flex": slot in FLEX_ELIGIBILITY}
 
 
+def _compositions(total: int, caps: list[int]):
+    """Every way to take `total` players from lists with `caps` players left (one count per list)."""
+    if len(caps) == 1:
+        if total <= caps[0]:
+            yield (total,)
+        return
+    rest = sum(caps[1:])
+    for x in range(max(0, total - rest), min(caps[0], total) + 1):
+        for tail in _compositions(total - x, caps[1:]):
+            yield (x, *tail)
+
+
+def _matching_bound(flex: list[str], elig: dict, cands: list[dict], vals: list[float], pidx: dict) -> float | None:
+    """The max-weight matching of the positive candidate values to the flex slots, an upper bound on every leaf of
+    the search (a leaf is a matching). Greedy in candidate order is exact: the players that can start together form
+    a transversal matroid, and since players of one position fit the same slots, a set fits iff for every set S of
+    positions it has no more players at S than slots taking one of S (Hall). None when a player is listed under two
+    of these positions (the fast path is then skipped)."""
+    full = 1 << len(pidx)
+    slot_masks = [sum(1 << pidx[q] for q in elig[s]) for s in flex]
+    cap = [sum(1 for m in slot_masks if m & S) for S in range(full)]
+    cnt = [0] * full
+    containing = [[S for S in range(1, full) if S >> i & 1] for i in range(len(pidx))]
+    at: dict = {}
+    bound, placed = 0.0, 0
+    for c, v in zip(cands, vals):
+        i = pidx.get(c.get("position"))
+        if i is None:
+            continue
+        pid = c["espn_player_id"]
+        if pid in at:
+            if at[pid] != i:
+                return None
+            continue
+        at[pid] = i
+        if v <= 0.0 or placed == len(flex):
+            continue
+        if all(cnt[S] < cap[S] for S in containing[i]):
+            for S in containing[i]:
+                cnt[S] += 1
+            bound += v
+            placed += 1
+    return bound
+
+
 def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
-    """Exact max-value assignment of flex slots: the first maximum in depth-first order over candidates sorted by
-    (value desc, id), as an exhaustive search would return it. Two prunings keep that answer and skip the rest:
-      * consecutive identical slots take candidates in increasing order (any other order of the same players is a
-        later permutation with an equal total, which never replaces the best);
-      * a branch whose upper bound (picked so far + the best positive values still eligible) cannot beat the best
-        by more than the tie tolerance is cut (only a strictly larger total replaces the best)."""
+    """Exact max-value assignment of the flex slots: the first maximum in depth-first order over candidates sorted by
+    (value desc, id), exactly what an exhaustive search returns, in polynomial time.
+
+    The exhaustive search fills slot after slot, trying every eligible unused candidate in that order, and leaves a
+    slot empty only when no eligible candidate is left; it keeps the first total that beats the best so far (starting
+    from -1.0) by more than a tie tolerance. Three facts make that answer cheap to compute:
+      * two players at one position fit exactly the same slots, so the chosen leaf takes each position's players in
+        candidate order (swapping a later one in for an earlier one never raises the total and is earlier in the
+        order). A state is then just how many players of each position are used, plus which of the rare players
+        listed under two positions are used (`MAX_SPLIT_IDS`);
+      * consecutive identical slots (a run) take any min(run length, eligible players left) players of their
+        positions, so a run is one step of a dynamic programme over these states;
+      * the best total from any state (`best`) is exact, even with negative values (a slot cannot stay empty while
+        an eligible player is left), so the first leaf in order that reaches the optimum is found greedily, slot by
+        slot, without backtracking: the first candidate whose best completion still reaches the optimum.
+    A fast path returns the very first leaf when it already reaches an upper bound (`_matching_bound`).
+    Cost: (states) x (ways to fill one run), polynomial in the slot and player counts, never exponential; with the
+    slots in lineup_slots order there are at most four runs. More than MAX_FLEX_SLOTS slots are refused."""
+    k = len(flex)
+    if not k:
+        return []
+    if k > MAX_FLEX_SLOTS:
+        raise LineupTooLargeError(f"{k} flex slots: at most {MAX_FLEX_SLOTS} are supported")
     # Only the top len(flex) remaining players per position can matter.
     per_pos: dict[str, list[dict]] = {}
     for p in pool:
         lst = per_pos.setdefault(p.get("position"), [])
-        if len(lst) < len(flex):
+        if len(lst) < k:
             lst.append(p)
     cands = sorted((p for lst in per_pos.values() for p in lst),
                    key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
     vals = [c.get("value") or 0.0 for c in cands]
-    # one bit per player id, not per candidate: the same player listed twice still takes one slot
-    ids: dict = {}
-    bit = [1 << ids.setdefault(c["espn_player_id"], len(ids)) for c in cands]
-    ok = [[eligible(s, c.get("position")) for c in cands] for s in flex]
-    n, k = len(cands), len(flex)
-    # any_ok[i][j]: candidate j fits one of the slots i.. (for the bound)
-    any_ok = [[False] * n for _ in range(k + 1)]
-    for i in range(k - 1, -1, -1):
-        any_ok[i] = [a or b for a, b in zip(any_ok[i + 1], ok[i])]
-    best: tuple[float, list] = (-1.0, [None] * k)
+    elig = {s: FLEX_ELIGIBILITY.get(s, (s,)) for s in flex}
+    positions = sorted({q for e in elig.values() for q in e})
+    pidx = {q: i for i, q in enumerate(positions)}
+    # Fast path: the very first leaf (every slot takes its first eligible candidate) is the answer when it already
+    # reaches the max-weight matching of the positive values, an upper bound on every leaf.
+    bound = _matching_bound(flex, elig, cands, vals, pidx)
+    if bound is not None:
+        taken: set = set()
+        first_leaf: list[dict | None] = []
+        for s in flex:
+            pick = next((c for c in cands if c.get("position") in elig[s] and c["espn_player_id"] not in taken), None)
+            if pick is not None:
+                taken.add(pick["espn_player_id"])
+            first_leaf.append(pick)
+        reach = sum(c.get("value") or 0.0 for c in first_leaf if c is not None)
+        if reach >= bound - TIE_TOLERANCE and reach > -1.0 + 1e-12:
+            return first_leaf
+    # The first candidate per (player id, position): a later listing of the same player at the same position fits the
+    # same slots, is worth no more and comes later, so it is never chosen. Players listed twice still take one slot.
+    first: dict = {}
+    for j, c in enumerate(cands):
+        q = pidx.get(c.get("position"))
+        if q is not None:
+            first.setdefault(c["espn_player_id"], {}).setdefault(q, j)
+    lists: list[list[int]] = [[] for _ in positions]
+    split: list[dict[int, int]] = []        # players listed under two or more of these positions
+    for where in first.values():
+        if len(where) == 1:
+            (q, j), = where.items()
+            lists[q].append(j)
+        else:
+            split.append(where)
+    if len(split) > MAX_SPLIT_IDS:
+        raise LineupTooLargeError(f"more than {MAX_SPLIT_IDS} players are listed under two different flex positions")
+    for lst in lists:
+        lst.sort()
+    size = [len(lst) for lst in lists]
+    pre = [[0.0] for _ in lists]
+    for q, lst in enumerate(lists):
+        for j in lst:
+            pre[q].append(pre[q][-1] + vals[j])
+    runs: list[list] = []       # [eligible position indexes, length, split players eligible (index, value), slot]
+    for s in flex:
+        e = tuple(sorted(pidx[q] for q in elig[s]))
+        if runs and runs[-1][3] == s:
+            runs[-1][1] += 1
+        else:
+            runs.append([e, 1, [(i, max(vals[j] for q, j in where.items() if q in e))
+                                for i, where in enumerate(split) if any(q in e for q in where)], s])
+    R = len(runs)
+    memo: dict = {}
 
-    def bound(i: int, used: int) -> float:
-        left, total = k - i, 0.0
-        for j in range(n):
-            if left == 0 or vals[j] <= 0.0:
-                break
-            if any_ok[i][j] and not used & bit[j]:
-                total += vals[j]
-                left -= 1
-        return total
+    def best(r: int, rem: int, c: tuple[int, ...], mask: int) -> float:
+        """The most the last `rem` slots of run r and all later runs can add, with c players of each position and the
+        split players in `mask` already used."""
+        if r == R:
+            return 0.0
+        key = (r, rem, c, mask)
+        out = memo.get(key)
+        if out is not None:
+            return out
+        e, _, splits, _ = runs[r]
+        free = [(i, v) for i, v in splits if not mask >> i & 1]
+        room = [size[q] - c[q] for q in e]
+        take = min(rem, sum(room) + len(free))
+        if r == R - 1:      # last run: simply the `take` best players left (forced even when negative)
+            items = [v for _, v in free]
+            for q, a in zip(e, room):
+                items += [vals[j] for j in lists[q][c[q]:c[q] + min(a, take)]]
+            out = sum(sorted(items, reverse=True)[:take])
+        else:
+            out = float("-inf")
+            nxt = runs[r + 1][1]
+            for u in range(min(len(free), take) + 1):
+                if take - u > sum(room):
+                    continue
+                for group in combinations(free, u):
+                    gain0 = sum(v for _, v in group)
+                    mask2 = mask
+                    for i, _ in group:
+                        mask2 |= 1 << i
+                    for x in _compositions(take - u, room):
+                        c2, gain = list(c), gain0
+                        for q, xq in zip(e, x):
+                            if xq:
+                                gain += pre[q][c[q] + xq] - pre[q][c[q]]
+                                c2[q] += xq
+                        out = max(out, gain + best(r + 1, nxt, tuple(c2), mask2))
+        memo[key] = out
+        return out
 
-    def dfs(i: int, used: int, picks: list, total: float, prev: int) -> None:
-        nonlocal best
-        if i == k:
-            if total > best[0] + 1e-12:
-                best = (total, list(picks))
-            return
-        if total + bound(i, used) + 1e-9 < best[0] + 1e-12:
-            return
-        options = [j for j in range(n) if ok[i][j] and not used & bit[j]]
-        if not options:
-            dfs(i + 1, used, picks + [None], total, -1)
-            return
-        start = prev + 1 if i and flex[i] == flex[i - 1] else 0
-        for j in options:
-            if j >= start:
-                dfs(i + 1, used | bit[j], picks + [cands[j]], total + vals[j], j)
-
-    dfs(0, 0, [], 0.0, -1)
-    return best[1]
+    state, mask = (0,) * len(positions), 0
+    optimum = best(0, runs[0][1], state, mask)
+    if not optimum > -1.0 + 1e-12:          # the exhaustive search starts from -1.0 and keeps nothing below it
+        return [None] * k
+    floor = optimum - TIE_TOLERANCE
+    picks: list[dict | None] = []
+    total = 0.0
+    for r, (e, length, splits, _) in enumerate(runs):
+        for o in range(length):
+            options = [(lists[q][state[q]], state[:q] + (state[q] + 1,) + state[q + 1:], mask)
+                       for q in e if state[q] < size[q]]
+            options += [(split[i][q], state, mask | 1 << i)
+                        for i, _ in splits if not mask >> i & 1 for q in e if q in split[i]]
+            if not options:             # no eligible player left: the slot stays empty, as in the search
+                picks.append(None)
+                continue
+            options.sort()
+            chosen, top = None, None
+            for opt in options:         # the first candidate whose best completion still reaches the optimum
+                reach = total + vals[opt[0]] + best(r, length - o - 1, opt[1], opt[2])
+                if reach >= floor and reach > -1.0 + 1e-12:
+                    chosen = opt
+                    break
+                if top is None or reach > top[0]:
+                    top = (reach, opt)
+            j, state, mask = chosen or top[1]   # (best is exact: `top` only guards against float noise)
+            total += vals[j]
+            picks.append(cands[j])
+    return picks
 
 
 def assign_lineup(players: list[dict], slots: list[str]) -> list[dict]:
