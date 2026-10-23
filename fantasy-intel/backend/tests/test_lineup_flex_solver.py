@@ -187,6 +187,21 @@ def test_many_flex_slots_with_ties_or_starved_pools_solve_fast(monkeypatch, fast
         assert _solve_time(flex, _sorted(pool)) < 0.05, name      # ~1 ms; the old search took 0.1-4+ s
 
 
+def test_interleaved_slot_orders_stay_fast_at_moderate_sizes(monkeypatch):
+    """Callers pass slots in canonical order (each flex type contiguous); any other order is still exact and polynomial
+    but has a run per slot change. At 12 interleaved slots with ties, negatives and two players listed under two
+    positions it stays in the low milliseconds (~5 ms); the bound is loose on purpose."""
+    monkeypatch.setattr(lineup, "_matching_bound", lambda *a: None)
+    rng = random.Random(8)
+    flex = lineup_slots({"RB/WR": 3, "WR/TE": 3, "FLEX": 4, "OP": 2})
+    rng.shuffle(flex)
+    pool = [P(1000 + i, rng.choice(["RB", "WR", "WR", "TE", "QB"]), float(rng.choice([-2, 0, 0, 5, 10])))
+            for i in range(48)]
+    pool += [dict(pool[0], position="QB" if pool[0]["position"] != "QB" else "RB"),
+             dict(pool[1], position="TE" if pool[1]["position"] != "TE" else "WR")]
+    assert _solve_time(flex, _sorted(pool)) < 0.25
+
+
 def test_the_largest_accepted_lineup_is_still_polynomial(monkeypatch):
     """30 flex slots (the cap), 120 candidates, ties and negatives, no fast path: tens of ms, not hours."""
     monkeypatch.setattr(lineup, "_matching_bound", lambda *a: None)

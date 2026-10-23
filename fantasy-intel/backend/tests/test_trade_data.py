@@ -561,3 +561,24 @@ def test_v6_database_rebuilds_independent_projection_tables_with_participation_c
     assert "participation_version" in table_columns(con, "independent_projection_runs")
     assert con.execute("SELECT count(*) FROM espn_player_weekly_points").fetchone()[0] == 1
     con.close()
+
+
+def test_a_league_with_more_flex_slots_than_supported_gets_a_clean_422(tmp_path, monkeypatch):
+    """31 flex slots (a provider can store any count): the exact lineup solver refuses them, and trades evaluate
+    answers a fixed 422 that names no internals instead of a 500."""
+    from dataclasses import replace as dc_replace
+
+    from app.analytics.lineup import MAX_FLEX_SLOTS, UNSUPPORTED_LINEUP, lineup_slots
+    from app.api import routes
+
+    db_path = tmp_path / "flex31.duckdb"
+    synced(db_path).close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    real_state = routes._state
+    monkeypatch.setattr(routes, "_state", lambda con: dc_replace(
+        real_state(con), slots=lineup_slots({"QB": 1, "FLEX": MAX_FLEX_SLOTS + 1})))
+    from app.main import app
+    res = TestClient(app).post("/api/trades/evaluate", json={"team_a_id": 2, "team_b_id": 1, "team_a_sends": [304],
+                                                             "team_b_sends": [301, 302]})
+    assert res.status_code == 422
+    assert res.json() == {"detail": UNSUPPORTED_LINEUP}

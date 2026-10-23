@@ -28,8 +28,12 @@ MAX_FLEX_SLOTS = 30     # more flex slots than any real league; a provider can s
 MAX_SPLIT_IDS = 4       # players listed under two different flex positions in one pool (not seen in real data)
 
 
+UNSUPPORTED_LINEUP = "This league's lineup configuration is not supported."
+
+
 class LineupTooLargeError(ValueError):
-    """The flex slots are beyond what the exact solver accepts (MAX_FLEX_SLOTS, MAX_SPLIT_IDS): refused, never guessed."""
+    """The flex slots are beyond what the exact solver accepts (MAX_FLEX_SLOTS, MAX_SPLIT_IDS): refused, never guessed.
+    The API answers 422 UNSUPPORTED_LINEUP (app/main.py); the message itself is safe to show as well."""
 
 
 def lineup_slots(roster_slots: dict[str, int]) -> list[str]:
@@ -115,13 +119,17 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
         an eligible player is left), so the first leaf in order that reaches the optimum is found greedily, slot by
         slot, without backtracking: the first candidate whose best completion still reaches the optimum.
     A fast path returns the very first leaf when it already reaches an upper bound (`_matching_bound`).
-    Cost: (states) x (ways to fill one run), polynomial in the slot and player counts, never exponential; with the
-    slots in lineup_slots order there are at most four runs. More than MAX_FLEX_SLOTS slots are refused."""
+    Cost: (states) x (ways to fill one run), polynomial in the slot and player counts, never exponential. The small
+    constants assume canonical slot order, each flex type contiguous, as every caller passes them (lineup_slots and
+    start_sit.build_slot_instances): then there are at most four runs (~15 ms worst case at MAX_FLEX_SLOTS). Any other
+    order is still exact and polynomial but has one run per slot change, so the state space grows much faster
+    (interleaved slots with 4 split players reach ~5 s at 30 slots). The slots are never reordered here: the order is
+    part of the result (which player fills which slot). More than MAX_FLEX_SLOTS slots are refused."""
     k = len(flex)
     if not k:
         return []
     if k > MAX_FLEX_SLOTS:
-        raise LineupTooLargeError(f"{k} flex slots: at most {MAX_FLEX_SLOTS} are supported")
+        raise LineupTooLargeError(f"{UNSUPPORTED_LINEUP} At most {MAX_FLEX_SLOTS} flex slots are supported.")
     # Only the top len(flex) remaining players per position can matter.
     per_pos: dict[str, list[dict]] = {}
     for p in pool:
@@ -164,7 +172,7 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
         else:
             split.append(where)
     if len(split) > MAX_SPLIT_IDS:
-        raise LineupTooLargeError(f"more than {MAX_SPLIT_IDS} players are listed under two different flex positions")
+        raise LineupTooLargeError(f"{UNSUPPORTED_LINEUP} Too many players are listed under two positions.")
     for lst in lists:
         lst.sort()
     size = [len(lst) for lst in lists]
