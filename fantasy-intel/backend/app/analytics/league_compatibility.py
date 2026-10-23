@@ -227,13 +227,21 @@ class _League:
                         action="Read lineup totals as covering the other starting slots only.", value=self.unfilled)]
 
     def legality_finding(self) -> list[dict]:
-        """trades.roster_legality: with slots no engine fills, a roster the count shows legal is unverified (G4)."""
-        if not self.unfilled:
+        """trades.roster_legality (G4): legality is unverified only where the roster count is unknown. Rostered players
+        missing from the player data are reported by missing_players_finding; a team without any synced roster has no
+        count at all. When every rostered player is stored, the count is exact; only their lineup value is unmodelled."""
+        if not self.unfilled or self.facts.get("players_missing"):
             return []
-        return [finding("roster_legality", UNVERIFIED, f"{', '.join(self.unfilled)}: players in these slots are not "
-                        "valued, so roster legality is unverified: a move the count shows as fitting is never "
-                        "reported legal.", missing_input="an engine for these slots",
-                        action="Check your open roster spots in the provider's app.", value=self.unfilled)]
+        slots = ", ".join(self.unfilled)
+        teams, have = self.facts.get("teams") or 0, self.facts.get("teams_with_roster") or 0
+        if teams and have < teams:
+            return [finding("roster_legality", UNVERIFIED, f"{_plural(teams - have, 'team')} of {teams} have no synced "
+                            f"roster, so whether their players in {slots} are counted is unknown and roster legality "
+                            "is unverified for them.", missing_input=f"rosters for {self.wk()}",
+                            action="Sync the league again.", value=teams - have)]
+        return [finding("roster_legality", HANDLED, f"Every rostered player is in the player data, so roster counts "
+                        f"are exact; who may fill {slots} is not modelled, so players there are not valued.",
+                        value=self.unfilled)]
 
     def missing_players_finding(self, capacity: bool) -> list[dict]:
         n = self.facts.get("players_missing") or 0

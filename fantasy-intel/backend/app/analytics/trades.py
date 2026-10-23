@@ -96,7 +96,8 @@ class LeagueState:
     free_agent_status: dict = field(default_factory=dict)  # free agent id -> ESPN FREEAGENT | WAIVERS; absent = unknown
     projection_source: str = "espn"                # "independent": Ours (a league without provider projections)
     # team -> rostered players (current lineup rows) missing from the player data, so absent from `rosters` (Sleeper
-    # stores no individual defensive players): their roster spots are invisible to every count here (#253 G4)
+    # stores no individual defensive players): their roster spots are invisible to every count here (#253 G4). 0 = every
+    # rostered player is counted; no entry = no count for the team (trades.roster_legality)
     players_missing: dict = field(default_factory=dict)
 
     def window(self, start_week: int | None = None) -> Window:
@@ -133,27 +134,30 @@ ROSTER_UNVERIFIED = "ROSTER_UNVERIFIED"
 
 
 def roster_legality(state: LeagueState, team_id: int | None) -> dict | None:
-    """None when roster capacity can be checked from the synced rosters. A league that starts slots no engine fills
-    (IDP, punter, head coach, unrecognised) gets `unverified`: those players are not valued (a forced drop would
-    look free), and a provider that stores none of them (Sleeper IDP) leaves their roster spots out of every count, so
-    an open spot may not exist (issue #253 G4). A roster the count already shows over capacity stays illegal: the
-    players left out can only add to it."""
+    """None when the active roster count is exact. `unverified` only when it is not (issue #253 G4): the team has
+    rostered players missing from the player data (Sleeper stores no individual defensive players, so their spots are
+    invisible and an open spot may not exist), or, in a league that starts slots no engine fills, there is no player
+    count for the team at all (`players_missing` has no entry). A provider that stores every rostered player (ESPN, IDP,
+    P and HC included) keeps an exact count. A roster the count already shows over capacity stays illegal: players left
+    out can only add to it."""
     unsupported = unsupported_of(state.slots)
-    missing = int((state.players_missing or {}).get(team_id) or 0) if team_id is not None else 0
-    if not unsupported and not missing:
+    counts = state.players_missing or {}
+    if team_id is None:
         return None
-    parts = []
-    if unsupported:
-        parts.append(f"This league starts {', '.join(unsupported)}, slots no engine fills, so players there are not "
-                     "valued and roster moves around them are not checked.")
+    missing = int(counts.get(team_id) or 0)
     if missing:
-        parts.append(f"{missing} rostered player{'s are' if missing != 1 else ' is'} not in the synced player data "
-                     "(positions Fantasy Intel does not store, such as individual defensive players), so the active "
-                     "roster count leaves them out and an open spot may not exist.")
+        why = (f"{missing} rostered player{'s are' if missing != 1 else ' is'} not in the synced player data "
+               "(positions Fantasy Intel does not store, such as individual defensive players), so the active roster "
+               "count leaves them out and an open spot may not exist.")
+    elif unsupported and team_id not in counts:
+        why = (f"This league starts {', '.join(unsupported)}, slots no engine fills, and the synced rosters do not show "
+               "whether every rostered player is in the player data, so the active roster count may be short.")
+    else:
+        return None
     return {"status": UNVERIFIED, "code": ROSTER_UNVERIFIED, "unsupported_slots": list(unsupported),
             "players_missing": missing,
-            "reason": " ".join(parts) + " Roster legality is unverified: check your open roster spots in the "
-                                        "provider's app before acting."}
+            "reason": why + " Roster legality is unverified: check your open roster spots in the provider's app "
+                            "before acting."}
 
 
 def _active(players: list[RosterPlayer]) -> int:

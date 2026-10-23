@@ -350,7 +350,7 @@ def test_a_sparse_pool_flags_the_trade_replacement_level(league):
     assert tool(out, "trades")["feature"]["status"] == "handled"
 
 
-def test_idp_slots_are_partial_for_lineups_and_unverified_for_roster_legality(league):
+def test_idp_slots_are_partial_for_lineups_and_unverified_legality_only_when_players_are_missing(league):
     espn = diagnostic(league("M8"))
     assert espn["dimensions"]["roster"]["status"] == "partial"
     ss = tool(espn, "start_sit")["roster"]
@@ -367,15 +367,18 @@ def test_idp_slots_are_partial_for_lineups_and_unverified_for_roster_legality(le
     assert "are marked partial; a lineup change is still measured exactly" in race
     assert tool(espn, "bye_planner")["roster"]["status"] == "partial"
     assert tool(espn, "kdst_streaming")["roster"]["status"] == "handled"
-    for code in ("trades", "add_drop", "team_value", "trade_discovery", "waivers"):  # G4: legality unverified
+    for code in ("trades", "add_drop", "team_value", "trade_discovery"):    # G4: ESPN stores IDP players: exact count
         r = tool(espn, code)["roster"]
-        assert r["status"] == "unverified" and {"unfilled_slots", "roster_legality"} <= codes(r), code
+        assert r["status"] == "partial" and codes(r) == {"unfilled_slots"}, code
+        legal = next(e for e in r["evidence"] if e["code"] == "roster_legality")
+        assert legal["status"] == "handled" and legal["value"] == ["DL", "LB"]
 
     sleeper = diagnostic(league("M8s"))
     assert sleeper["dimensions"]["import"]["status"] == "partial"                  # G4: IDP players not stored
     for code in ("trades", "trade_discovery", "add_drop", "team_value", "waivers"):
         r = tool(sleeper, code)["roster"]
-        assert r["status"] == "unverified" and {"players_missing", "roster_legality"} <= codes(r), code
+        assert r["status"] == "unverified" and "players_missing" in codes(r), code
+        assert "roster legality is unverified" in r["reason"]
     assert tool(sleeper, "start_sit")["roster"]["status"] == "partial"
 
 
@@ -386,7 +389,7 @@ def test_punter_and_head_coach_slots_are_reported_unsupported(league):
     assert {s["code"]: s["engine"]["status"] for s in rules["roster"]["slots"]}["HC"] == UNSUPPORTED
     ss = tool(out, "start_sit")["roster"]
     assert ss["status"] == "partial" and ss["evidence"][0]["value"] == ["P", "HC"]
-    assert tool(out, "trades")["roster"]["status"] == "unverified"
+    assert tool(out, "trades")["roster"]["status"] == "partial"                    # exact count, slots unvalued
     assert out["dimensions"]["import"]["status"] == "handled"                      # ESPN stores P and HC players
 
 

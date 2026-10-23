@@ -13,9 +13,11 @@ trade analyzer's own machinery, unchanged:
     has kicked off, through the final one. A week already under way is never credited;
   * waiver_roster.ir_slot_eligible: an IR occupant without an IR-eligible status blocks adds at the provider;
   * waiver_decisions.resource_diagnostics: free agent, waiver priority or FAAB, the same words as the waiver table;
-  * trades.roster_legality: in a league starting slots no engine fills (IDP, P, HC), or whose rostered players are
-    missing from the player data, a roster the count shows legal is `unverified` (legal None, a ROSTER_UNVERIFIED
-    note, no open-spot count), never legal (issue #253 G4).
+  * trades.roster_legality: when rostered players are missing from the player data (Sleeper IDP), or a league that
+    starts slots no engine fills has no player count, a roster the count shows legal is `unverified` (legal None, a
+    ROSTER_UNVERIFIED note, no open-spot count), never legal (issue #253 G4). Where every rostered player is stored
+    (ESPN, IDP/P/HC included) the count is exact; dropping a player who can start only in such a slot gets an
+    UNSUPPORTED_SLOT_PLAYER note (his lineup value is not modelled).
 
 Honest data: a week's delta is None unless both lineups are complete; `known_delta` sums known projections only and
 is labelled as such. A missing projection is unknown, never 0. Nothing here predicts whether a claim succeeds.
@@ -27,7 +29,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible, unsupported_of
 from .team_lineups import (
     IR_HOLD_NOTE,
     STREAM_NOTE,
@@ -83,6 +85,7 @@ NFL_INELIGIBLE = "NFL_INELIGIBLE"
 NOT_LINEUP_ELIGIBLE = "NOT_LINEUP_ELIGIBLE"
 UNDROPPABLE_LIST = "UNDROPPABLE_LIST"
 ADD_INJURY = "ADD_INJURY"
+UNSUPPORTED_SLOT_PLAYER = "UNSUPPORTED_SLOT_PLAYER"
 
 POSITION_ORDER = {p: i for i, p in enumerate(FIXED_SLOTS)}
 
@@ -383,6 +386,12 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
             notes.append(_item(ADD_INJURY, f"{add_p.name} is listed {add_p.injury_status}. He is added to an active "
                                            "spot; moving him to IR is a separate move this simulation does not make.",
                                add, "caution"))
+    unsupported = unsupported_of(state.slots)
+    if drop_p is not None and unsupported and not lineup_relevant(drop_p.position, state.slots):
+        notes.append(_item(UNSUPPORTED_SLOT_PLAYER, f"{drop_p.name} ({drop_p.position}) can start only in "
+                                                    f"{', '.join(unsupported)}, which no engine fills: what he adds to "
+                                                    "your lineup is not modelled, so losing him is not counted.", drop,
+                           "caution"))
     if drop_p is not None and drop_p.reserved:
         notes.append(_item(DROP_RESERVED, f"{drop_p.name} is in {'an IR' if drop_p.on_ir else 'a taxi'} slot: dropping "
                                           "him frees no active roster spot and changes no lineup.", drop))

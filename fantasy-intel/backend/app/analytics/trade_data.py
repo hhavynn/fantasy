@@ -234,10 +234,11 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         rosters.setdefault(t["team_id"], [])
     # Rostered players the join above leaves out (no player data: Sleeper stores no individual defensive players).
     # They still hold roster spots, so roster legality cannot be verified for their teams (trades.roster_legality).
+    # 0 for a team whose every rostered player is counted; no entry for a team without lineup rows (no count at all).
     players_missing = {row["team_id"]: int(row["n"]) for row in fetch_dicts(con, """
-        SELECT l.team_id, count(*) AS n
+        SELECT l.team_id, sum(CASE WHEN fp.espn_player_id IS NULL THEN 1 ELSE 0 END) AS n
         FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
-        WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND fp.espn_player_id IS NULL
+        WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
         GROUP BY l.team_id""", [lg["league_id"], season, window.current])}
     rostered = {p.espn_player_id for ps in rosters.values() for p in ps}
     fa_rows = [f for f in fetch_dicts(con, f"""

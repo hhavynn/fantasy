@@ -292,11 +292,14 @@ Synthetic fixtures M8 (ESPN LB + DL), M8p (ESPN P + HC) and M8s (Sleeper DL + LB
   claim planner, FAAB, team value, power rankings, playoff race) shows known points only. A comparison stays exact
   (`team_lineups.delta_exact`) only when every such slot takes positions the engines never start and both rosters hold the
   same such players; otherwise it is known-only. Start/Sit and what-if totals are partial the same way.
-- **G4 fixed.** `trades.roster_legality`: with such slots, or rostered players missing from the player data (Sleeper IDP),
-  a roster the count shows legal is `unverified` (add/drop `legal` None with a `ROSTER_UNVERIFIED` note, no open-spot
-  count; trade sides carry `legality` and no open-spot count; the claim planner marks the claim unverified and FAAB repeats
-  the note). A count already over capacity stays illegal. The diagnostic reports `roster_legality` (unverified) for the
-  tools that check capacity.
+- **G4 fixed.** `trades.roster_legality` makes legality `unverified` only where the roster count is unknown: the team
+  has rostered players missing from the player data (Sleeper IDP: phantom open spots), or a league with such slots has
+  no player count for the team. Then add/drop gives `legal` None with a `ROSTER_UNVERIFIED` note and no open-spot count,
+  trade sides carry `legality` and no open-spot count, the claim planner marks the claim unverified and FAAB repeats the
+  note. Where every rostered player is stored (ESPN, IDP/P/HC included) the count is exact and the open-spot numbers
+  stay; dropping a player who can start only in such a slot gets an `UNSUPPORTED_SLOT_PLAYER` note (his value is not
+  modelled). A count already over capacity stays illegal. The diagnostic reports `players_missing` (unverified) or
+  `roster_legality` (handled, or unverified without rosters) for the tools that check capacity.
 
 ### Scoring-fidelity items left to #254 (inventory only)
 

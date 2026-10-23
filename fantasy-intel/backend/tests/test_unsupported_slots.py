@@ -4,8 +4,10 @@
       one total and missing from the other, so the projected gain compares like with like and is exact.
   G3  Every lineup total that leaves such a slot out is partial: never complete, never a full-lineup projection, the
       slots named. A comparison stays exact only when it cannot move a player who could start there.
-  G4  Roster legality in such a league is `unverified`, never legal (Sleeper stores no IDP players, so the active
-      count shows phantom open spots); a count that is already over capacity stays illegal.
+  G4  Roster legality is `unverified`, never legal, where the roster count is unknown: rostered players missing from
+      the player data (Sleeper stores no IDP players, so the active count shows phantom open spots), or no player count
+      at all. Where every rostered player is stored (ESPN, P/HC/IDP included) the count is exact and kept; a count that
+      is already over capacity stays illegal.
 
 Fixtures (tests/compat_fixtures.py): M8 ESPN with LB and DL, M8p ESPN with P and HC, M8s Sleeper with DL, LB and
 IDP_FLEX. All ids, names and scoring are invented.
@@ -13,13 +15,14 @@ IDP_FLEX. All ids, names and scoring are invented.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import duckdb
 import pytest
 
 import compat_fixtures as cf
-from app.analytics.add_drop import AddDropContext, evaluate_add_drop
+from app.analytics.add_drop import UNSUPPORTED_SLOT_PLAYER, AddDropContext, evaluate_add_drop
 from app.analytics.claim_plan import UNVERIFIED as CLAIM_UNVERIFIED, Claim, evaluate_claim_plan
 from app.analytics.faab import evaluate_faab
 from app.analytics.lineup import LineupSlots, lineup_slots, separable, unsupported_slots
@@ -27,7 +30,7 @@ from app.analytics.matchup import load_matchup
 from app.analytics.start_sit import load_start_sit_evaluation
 from app.analytics.team_lineups import RosterPlayer, Window, compare, project_team, project_week
 from app.analytics.trade_data import build_team_lineup_projections, load_league_state
-from app.analytics.trades import ROSTER_UNVERIFIED, evaluate_trade, roster_legality
+from app.analytics.trades import ROSTER_UNVERIFIED, LeagueState, evaluate_trade, roster_legality
 from app.db.connection import init_db
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)      # before any synthetic kickoff
@@ -209,22 +212,44 @@ def test_sleeper_idp_players_leave_phantom_spots_so_legality_is_unverified(leagu
     assert ro["open_active_roster_spots"] is None and ro["open_active_roster_spots_before"] is None
 
 
-def test_espn_unsupported_slots_never_show_a_move_as_legal(league):
+def test_espn_stores_every_rostered_player_so_its_count_stays_exact(league):
     con = league("M8p")
     st = load_league_state(con, now=NOW)
-    assert st.players_missing == {}                                  # ESPN stores P and HC players
+    assert st.players_missing == {1: 0, 2: 0, 3: 0, 4: 0}               # ESPN stores P and HC players
+    assert roster_legality(st, 1) is None
     mine = {p.position: p.espn_player_id for p in st.rosters[1] if not p.on_ir}
     fa = next(p for p in st.free_agents if p.position == "WR")
     swap = evaluate_add_drop(st, 1, fa.espn_player_id, mine["TE"], AddDropContext())
-    assert swap["roster"]["legal"] is None and swap["roster"]["legality"]["unsupported_slots"] == ["P", "HC"]
-    assert ROSTER_UNVERIFIED in {n["code"] for n in swap["notes"]}
+    r = swap["roster"]
+    assert (r["legal"], r["drop_required"], r["open_spots_before"], r["open_spots_after"]) == (True, False, 0, 0)
+    assert "legality" not in r and ROSTER_UNVERIFIED not in {n["code"] for n in swap["notes"]}
     full = evaluate_add_drop(st, 1, fa.espn_player_id, None, AddDropContext())
     assert full["roster"]["legal"] is False and full["status"] == "blocked"      # over capacity stays illegal
     assert [p["code"] for p in full["problems"]] == ["DROP_REQUIRED"]
+    # dropping the punter: legal, but what he adds in the P slot is not modelled, and the note says so
+    punt = evaluate_add_drop(st, 1, fa.espn_player_id, mine["P"], AddDropContext())
+    assert punt["roster"]["legal"] is True
+    note = next(n for n in punt["notes"] if n["code"] == UNSUPPORTED_SLOT_PLAYER)
+    assert "can start only in P, HC, which no engine fills" in note["message"]
+    t = evaluate_trade(st, 1, 2, [mine["WR"]], [p.espn_player_id for p in st.rosters[2]
+                                                if p.position == "WR" and not p.reserved][:1], scenarios=False)
+    ro = t["team_a"]["roster"]
+    assert "legality" not in ro and ro["open_active_roster_spots"] == 0
 
 
-@pytest.mark.parametrize("row", ["M8", "M8s"])
-def test_the_claim_planner_and_faab_say_why_a_claim_is_unverified(league, row):
+def test_no_player_count_falls_back_to_unverified():
+    """A league that starts slots no engine fills, with no count of the team's rostered players, is never `legal`."""
+    state = LeagueState(season=2026, slots=lineup_slots({"QB": 1, "LB": 1, "BE": 2}), final_week=17, last_regular=14,
+                        start_week=5, rosters={1: []}, free_agents=[], projections={}, active_capacity=4)
+    leg = roster_legality(state, 1)
+    assert leg["status"] == "unverified" and leg["players_missing"] == 0 and leg["unsupported_slots"] == ["LB"]
+    assert "do not show whether every rostered player is in the player data" in leg["reason"]
+    assert roster_legality(replace(state, players_missing={1: 0}), 1) is None
+    assert roster_legality(replace(state, slots=lineup_slots({"QB": 1, "BE": 2})), 1) is None
+
+
+@pytest.mark.parametrize("row, unverified", [("M8s", True), ("M8", False)])
+def test_the_claim_planner_and_faab_say_why_a_claim_is_unverified(league, row, unverified):
     con = league(row)
     st = load_league_state(con, now=NOW)
     te = next(p for p in st.rosters[1] if p.position == "TE" and not p.reserved)
@@ -234,11 +259,14 @@ def test_the_claim_planner_and_faab_say_why_a_claim_is_unverified(league, row):
                          rules={"is_faab": True, "faab_budget": 100}, team_row={"faab_spent": 0})
     plan = evaluate_claim_plan(st, 1, [Claim(fa.espn_player_id, te.espn_player_id, 5)], ctx)
     c = plan["claims"][0]
+    faab = evaluate_faab(plan, provider="espn", provider_label="ESPN", settings={}, team_row=ctx.team_row, teams=[],
+                         observed_rows=None)
+    if not unverified:                                  # ESPN stores the IDP players: the count is exact
+        assert c["roster"]["legal"] is True and ROSTER_UNVERIFIED not in {x["code"] for x in c["reasons"]}
+        return
     assert c["validation"] == CLAIM_UNVERIFIED and c["roster"]["legal"] is None
     reason = next(x for x in c["reasons"] if x["code"] == ROSTER_UNVERIFIED)
     assert reason["effect"] == CLAIM_UNVERIFIED and "Roster legality is unverified" in reason["message"]
-    faab = evaluate_faab(plan, provider="espn", provider_label="ESPN", settings={}, team_row=ctx.team_row, teams=[],
-                         observed_rows=None)
     assert faab["claims"][0]["validation"] == CLAIM_UNVERIFIED
     assert ROSTER_UNVERIFIED in {n["code"] for n in faab["claims"][0]["notes"]}
 
@@ -256,8 +284,6 @@ def test_a_standard_league_keeps_legal_moves_legal(league):
 def test_trade_discovery_never_calls_a_delta_exact_that_compare_cannot(league):
     """An unrecognised slot (ESPN `ER`) may take any position: compare gives no exact delta, and neither does discovery's
     own bit-identical total."""
-    from dataclasses import replace
-
     from app.analytics.trade_discovery import _Totals
     con = league("M1")
     st = load_league_state(con, now=NOW)
