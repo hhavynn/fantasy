@@ -12,6 +12,7 @@ import {
   rangeText,
   sideMissingText,
   sideRankText,
+  verdictNotes,
   type CompareDelta,
   type CompareSide,
 } from "./projection-compare.ts";
@@ -116,4 +117,16 @@ test("contributions: signed points, a measured zero, and nothing when the run re
   assert.equal(contributionText(1.05), "+1.1");
   assert.equal(contributionText(0.01), "0.0");
   assert.equal(contributionText(null), null);
+});
+
+test("verdict counts say they are totals before the Show filter whenever Show narrows the table", () => {
+  assert.deepEqual(verdictNotes("all", 28), { compared: "of 28 in view", large: "large gaps", scope: null });
+  for (const show of ["large", "compared", "missing"] as const) {
+    const n = verdictNotes(show, 28);
+    assert.equal(n.compared, "of 28 before the Show filter");
+    assert.equal(n.large, "large gaps, before the Show filter");
+    assert.match(n.scope ?? "", /all 28 players matching the position, roster and name filters, before the Show filter/);
+    assert.doesNotMatch(n.compared, /in view/);
+  }
+  assert.match(verdictNotes("missing", 3).scope ?? "", /\(One side missing\)/);
 });

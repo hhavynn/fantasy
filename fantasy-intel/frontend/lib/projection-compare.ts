@@ -227,6 +227,22 @@ export function contributionText(c: number | null | undefined): string | null {
   return Number(v) === 0 ? "0.0" : `${c > 0 ? "+" : "−"}${v}`;
 }
 
+/**
+ * The verdict's figures (compared, large gaps, direction totals) are counted over every player matching the position,
+ * roster and name filters, before the Show filter narrows the table. Their notes say so whenever Show is narrowing, so
+ * a figure is never read as a count of the rows listed below it.
+ */
+export function verdictNotes(show: CompareShow, matched: number): { compared: string; large: string; scope: string | null } {
+  const narrowed = show !== "all";
+  return {
+    compared: narrowed ? `of ${matched} before the Show filter` : `of ${matched} in view`,
+    large: narrowed ? "large gaps, before the Show filter" : "large gaps",
+    scope: narrowed
+      ? `These counts cover all ${matched} players matching the position, roster and name filters, before the Show filter (${SHOW_LABEL[show]}).`
+      : null,
+  };
+}
+
 export const SCOPE_LABEL: Record<CompareScope, string> = { position: "Within position", overall: "All positions" };
 export const SHOW_LABEL: Record<CompareShow, string> = {
   all: "All players", large: "Large gaps", compared: "Both ranked", missing: "One side missing",

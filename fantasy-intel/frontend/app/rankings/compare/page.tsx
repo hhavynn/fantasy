@@ -8,7 +8,7 @@ import { when } from "@/lib/format";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import {
-  COMPARE_PAGE_SIZE, compareApiPath, compareHref, parseCompareFilters, type CompareResponse, type CompareSource,
+  COMPARE_PAGE_SIZE, compareApiPath, compareHref, parseCompareFilters, verdictNotes, type CompareResponse, type CompareSource,
 } from "@/lib/projection-compare";
 import type { SearchParams } from "@/lib/sort";
 import { CompareControls } from "./CompareControls";
@@ -81,6 +81,7 @@ export default async function SourceComparePage({ searchParams }: PageProps<"/ra
   const hasPrev = filters.offset > 0;
   const hasNext = filters.offset + data.players.length < c.shown;
   const bothAvailable = provider.available && ours.available;
+  const notes = verdictNotes(data.show, c.matched);
   const explained = data.players.filter((r) => r.delta.large && r.explanation).length;
 
   return (
@@ -96,12 +97,13 @@ export default async function SourceComparePage({ searchParams }: PageProps<"/ra
             ? `${c.large} ${plural(c.large, "player")} with a large gap between ${name} and Ours`
             : `No large gap between ${name} and Ours in this view`}
           figures={<>
-            <VerdictFigure label="Compared" value={c.compared} note={`of ${c.matched} in view`} />
-            <VerdictFigure label="Ours higher" value={c.ours_higher} note="large gaps" />
-            <VerdictFigure label={`${name} higher`} value={c.provider_higher} note="large gaps" />
+            <VerdictFigure label="Compared" value={c.compared} note={notes.compared} />
+            <VerdictFigure label="Ours higher" value={c.ours_higher} note={notes.large} />
+            <VerdictFigure label={`${name} higher`} value={c.provider_higher} note={notes.large} />
           </>}>
           A large gap is {t.large_rank} or more {scopeWord} and at least {t.min_points_per_week.toFixed(1)} points a week, for a player
           either source projects {t.relevant_per_week.toFixed(1)} or more a week. {data.window.label}.
+          {notes.scope ? <> {notes.scope}</> : null}
         </Verdict>
       ) : (
         <Notice tone="caution" title={!provider.available ? `${provider.eligible ? name : "Provider"} rankings are unavailable here` : "Ours is unavailable here"}>

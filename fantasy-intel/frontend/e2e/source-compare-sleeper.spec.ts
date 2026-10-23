@@ -20,9 +20,11 @@ test("sleeper: no provider ranks, never zero, never ESPN; Ours is ranked", async
   await expect(providerCells.filter({ hasNotText: "Not published" })).toHaveCount(0);
   await expect(table.locator("tbody td:nth-child(3)").filter({ hasText: /^(T-)?(QB|RB|WR|TE)\d+$/ }).first()).toBeVisible();
   await expect(table.locator("tbody td:nth-child(4)").filter({ hasNotText: "Sleeper publishes none" })).toHaveCount(0);
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("main")).not.toContainText(/\bESPN\b/);
   const lines = (await page.locator("body").innerText()).split("\n").filter((l) => /\bESPN\b/.test(l));
   expect(lines, "no ESPN wording on a Sleeper league's page").toEqual([]);
-  const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(width, "no horizontal page scroll").toBeLessThanOrEqual(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    { message: "no horizontal page scroll" }).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
 });

@@ -20,8 +20,10 @@ test("ESPN ranks are listed, Ours is named unavailable and no gap is ever 0", as
   const errors: string[] = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   await page.goto("/rankings/compare");
-  await expect(page.locator("h1")).toHaveText("Source comparison");
+  // wait for the real page (only it renders the table), then for the loading skeleton's h1 to be gone
   await expect(table(page).locator("tbody tr").first()).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("h1")).toHaveText("Source comparison");
   await expect(table(page).getByRole("columnheader", { name: /ESPN rank/ })).toBeVisible();
   await expect(page.getByText("Ours is unavailable here")).toBeVisible();
   // the ESPN side ranks within the position (QB1), the Ours side says why it has no rank
@@ -31,8 +33,8 @@ test("ESPN ranks are listed, Ours is named unavailable and no gap is ever 0", as
   await expect(table(page).locator("tbody td:nth-child(4)").filter({ hasText: ZERO_GAP })).toHaveCount(0);
   await expect(page.getByText("Neither column is an expert consensus.").first()).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/FantasyPros|consensus rank/i);
-  const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(width, "no horizontal page scroll").toBeLessThanOrEqual(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    { message: "no horizontal page scroll" }).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
 });
 
@@ -66,5 +68,7 @@ test("Rankings links to the comparison", async ({ page }) => {
   await page.goto("/rankings");
   await page.getByRole("link", { name: "Compare sources" }).click();
   await expect(page).toHaveURL(/\/rankings\/compare/);
+  await expect(table(page).locator("tbody tr").first()).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toHaveText("Source comparison");
 });
