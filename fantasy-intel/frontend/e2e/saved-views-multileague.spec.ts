@@ -173,12 +173,12 @@ for (const width of [1440, 375]) {
     const holder = (await kilo.textContent())!.split(" · ").pop()!.trim();
     expect(holder).not.toBe("");
     await kilo.click();
-    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\?id=207`));
+    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=207`));
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Kilo RB", { timeout: 30_000 });
     await page.keyboard.press("Control+k");
     await input.fill("Waiver WR");
     await dialog.getByRole("option", { name: /^Waiver WR/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\?id=309`));
+    await expect(page).toHaveURL(new RegExp(`/l/${a}/players\\?id=309`));
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Waiver WR", { timeout: 30_000 });
     await page.keyboard.press("Control+k");
     const recentA = dialog.getByRole("group", { name: "Recent" });
