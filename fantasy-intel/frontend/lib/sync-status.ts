@@ -32,7 +32,13 @@ export type SyncSummary = {
   nflLatestWeek: number | null;
   /** The status read itself was served from the league's previous files (`ApiResult.stale`): the data may be older. */
   degraded: boolean;
+  /** The league has no published data yet (the API's 409 "first sync in progress"): the backend is up, not offline. */
+  firstSync?: true;
 };
+
+/** The pill's text for a league with no published data yet. The API's 409 comes whether its first sync is queued, running
+ *  or has failed, so the pill says only what is true in every case; the progress steps say which. */
+export const FIRST_SYNC_TEXT = "No league data yet";
 
 /** The pill's text when the backend served older files and nothing else is wrong. */
 export const DEGRADED_TEXT = "Showing older data";
@@ -56,14 +62,19 @@ const feedLabel = (source: string) => [...FEEDS, ...feedsFor("sleeper")].find((f
 
 /**
  * One conservative health summary for the /api/status payload.
- * - null (backend unreachable) is offline.
+ * - null (backend unreachable) is offline, unless the read answered "first sync in progress" (`firstSync`): a league
+ *   that has no data yet, with the backend up.
  * - A failure counts only when it is its source's latest run and no newer success cleared it.
  * - Any feed never synced, or the oldest feed older than STALE_HOURS, is stale.
  * - `degraded` (the backend answered from the league's previous files) is stale too; a more specific problem keeps
  *   its own text, and the popover says why either way.
  */
 export function computeSyncSummary(data: StatusPayload, now: number = Date.now(), provider: Provider = "espn",
-                                   degraded = false): SyncSummary {
+                                   degraded = false, firstSync = false): SyncSummary {
+  if (!data && firstSync) {
+    return { state: "stale", text: FIRST_SYNC_TEXT, feeds: [], activeFailures: [], nflLatestWeek: null, degraded: false,
+      firstSync: true };
+  }
   if (!data) {
     return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null, degraded: false };
   }

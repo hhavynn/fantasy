@@ -6,6 +6,7 @@ from espn_api.requests.espn_requests import ESPNAccessDenied, ESPNInvalidLeague,
 
 from app.analytics.validation import ValidationError
 from app.db.r2 import R2Error
+from app.sync.build import EmptyLeague
 from app.sync.failures import Outcome, classify
 
 
@@ -28,6 +29,7 @@ from app.sync.failures import Outcome, classify
     (KeyError("teams"), False, Outcome("dead", "parse_error")),
     (TypeError("NoneType"), False, Outcome("dead", "parse_error")),
     (ValidationError([]), False, Outcome("dead", "validation_error")),
+    (EmptyLeague("no teams"), False, Outcome("dead", "provider_empty")),   # retrying the same payload cannot help
     (ZeroDivisionError(), False, Outcome("retry", "unexpected")),
 ])
 def test_every_row_of_the_failure_table(err, authenticated, expected):

@@ -165,14 +165,15 @@ for (const width of [320, 1440]) {
   });
 }
 
-// Known defect, found by this gate: a connected league with no data yet shows the generic "The backend returned an
-// error (409)" box and a "Backend offline" sync pill instead of first-sync guidance (PRODUCT.md: first run is never an
-// error box). Un-fixme once the page and the pill handle the 409 "no data yet" answer.
-test.fixme("a never-synced league explains its first sync instead of showing an error", async ({ page, context }) => {
+// A connected league with no data yet answers 409 "first sync in progress": the page explains the first sync and the
+// header's sync state says so, never an error box or "Backend offline" (PRODUCT.md: first run is never an error box).
+test("a never-synced league explains its first sync instead of showing an error", async ({ page, context }) => {
   await signIn(context);
   await open(page, `/l/${manifest().leagues.espn_blank}`);
   await expect(page.locator("main")).not.toContainText(/The backend returned an error/);
+  await expect(page.locator("main")).toContainText("still syncing for the first time");
   await expect(page.getByText("Backend offline")).toHaveCount(0);
+  await expect(page.getByText("No league data yet").first()).toBeAttached();
 });
 
 test("league switching works from the keyboard and re-renders the header for the new league", async ({ page, context }) => {

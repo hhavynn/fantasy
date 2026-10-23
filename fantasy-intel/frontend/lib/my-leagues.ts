@@ -27,11 +27,13 @@ export type MyLeague = {
   syncState: string;                  // ready | first_sync_queued | first_sync_running | first_sync_failed | no_data
   /** Why the latest sync job is retrying or gave up (backend authz._sync_issue), or null when nothing went wrong. */
   syncIssue: SyncIssue | null;
+  /** The latest sync job is overdue far beyond the worker cadence (backend authz._sync_stalled); false when unknown. */
+  syncStalled: boolean;
   committedAt: string | null;         // when the served version was published
 };
 
-export type SyncIssue = "provider_unreachable" | "access" | "not_found" | "internal";
-const SYNC_ISSUES: readonly string[] = ["provider_unreachable", "access", "not_found", "internal"];
+export type SyncIssue = "provider_unreachable" | "access" | "not_found" | "empty" | "internal";
+const SYNC_ISSUES: readonly string[] = ["provider_unreachable", "access", "not_found", "empty", "internal"];
 
 /** The backend's category; a value this client does not know reads as "internal" (something went wrong). */
 export function parseSyncIssue(value: unknown): SyncIssue | null {
@@ -58,6 +60,7 @@ export function parseMyLeague(raw: unknown): MyLeague | null {
     teamId: str(raw.perspective_team_id),
     syncState: str(raw.sync_state) ?? "no_data",
     syncIssue: parseSyncIssue(raw.sync_issue),
+    syncStalled: raw.sync_stalled === true,
     committedAt: data ? str(data.committed_at) : null,
   };
 }
@@ -73,7 +76,11 @@ export function leagueName(l: Pick<MyLeague, "name" | "externalId"> & { provider
 }
 
 /** What a reader of this league sees right now, in words, and how worried to be. */
-export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility"> & { provider?: string; syncIssue?: SyncIssue | null }): { label: string; tone: Tone; detail: string } {
+/** A first sync overdue far beyond the worker cadence (authz.STALL_AFTER): said plainly, never called failed. */
+export const STALLED_QUEUED = "No sync worker has picked it up for over an hour. It stays in the queue; try again, or remove it.";
+export const STALLED_RUNNING = "It started over an hour ago and has not finished. Try again, or remove it.";
+
+export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility"> & { provider?: string; syncIssue?: SyncIssue | null; syncStalled?: boolean }): { label: string; tone: Tone; detail: string } {
   // Sleeper leagues are always public and need no cookies: a pause or a missing league is Sleeper's answer, not a credential.
   if (normalizeProvider(l.provider) === "sleeper" && (l.status === "stale" || l.status === "unavailable")) {
     const name = providerName(l.provider);
@@ -97,13 +104,19 @@ export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibili
   switch (l.syncState) {
     case "ready": return { label: "Up to date", tone: "good", detail: "Syncs every few hours, hourly on game days." };
     case "first_sync_queued":
+      if (l.syncStalled) return { label: "First sync delayed", tone: "warn", detail: STALLED_QUEUED };
       return l.syncIssue
         ? { label: "Retrying first sync", tone: "warn", detail: `${issueSentence(l.syncIssue, providerName(l.provider))} It is retried automatically.` }
         : { label: "First sync queued", tone: "info", detail: "Usually ready within a few minutes." };
-    case "first_sync_running": return { label: "First sync running", tone: "info", detail: "Usually ready within a few minutes." };
+    case "first_sync_running":
+      return l.syncStalled
+        ? { label: "First sync delayed", tone: "warn", detail: STALLED_RUNNING }
+        : { label: "First sync running", tone: "info", detail: "Usually ready within a few minutes." };
     case "first_sync_failed":
       return { label: "First sync failed", tone: "bad",
-        detail: `${l.syncIssue ? `${issueSentence(l.syncIssue, providerName(l.provider))} ` : ""}It stopped after repeated tries; refresh to try again.` };
+        detail: l.syncIssue === "empty"
+          ? `${issueSentence("empty", providerName(l.provider))} Refresh once the league has its teams.`
+          : `${l.syncIssue ? `${issueSentence(l.syncIssue, providerName(l.provider))} ` : ""}It stopped after repeated tries; refresh to try again.` };
     default: return { label: "No data yet", tone: "neutral", detail: "Refresh to start a sync." };
   }
 }
@@ -114,6 +127,7 @@ export function issueSentence(issue: SyncIssue, provider: string): string {
     case "provider_unreachable": return `${provider} did not answer.`;
     case "access": return `${provider} refused access to this league.`;
     case "not_found": return `${provider} could not find this league.`;
+    case "empty": return `${provider} returned this league with no teams yet.`;
     default: return "Something went wrong on our side while building the league.";
   }
 }

@@ -4,7 +4,7 @@
 // only turns them into words, steps and the next thing to do. Every step lives in the URL, so a reload resumes it.
 
 import { providerName } from "./labels.ts";
-import { issueSentence, isLeagueRef, leagueState, MAX_SEASON, MIN_SEASON, type MyLeague } from "./my-leagues.ts";
+import { issueSentence, isLeagueRef, leagueState, MAX_SEASON, MIN_SEASON, STALLED_QUEUED, STALLED_RUNNING, type MyLeague } from "./my-leagues.ts";
 
 export type Host = "espn" | "sleeper";
 export const HOSTS: readonly Host[] = ["espn", "sleeper"];
@@ -165,7 +165,7 @@ export function canSkipImport(l: Pick<MyLeague, "visibility" | "status">): boole
 
 // ---- connect errors: a clear message and the next action --------------------------------------------------------------
 
-export type NextAction = "fix_input" | "retry_later" | "sign_in" | "invite" | "cookies" | "manage" | "none";
+export type NextAction = "fix_input" | "retry_later" | "sign_in" | "invite" | "cookies" | "manage" | "demo" | "none";
 export type ConnectProblem = { title: string; message: string; next: NextAction; hint: string | null };
 
 /**
@@ -187,16 +187,26 @@ export function connectProblem(status: number | undefined, message: string, host
   if (status === 403 && /invite/i.test(message)) {
     return p("Your ESPN account is not in this league", "invite", "Ask a member of the league to send you an invite link from the league's settings.");
   }
-  if (status === 403) return p("Not allowed", "none", null);
+  if (status === 403 && /sign-ups/i.test(message)) {
+    return p("Sign-ups are not open yet", "demo", "Nothing was added. The demo league shows what a connected league looks like.");
+  }
+  if (status === 403) return p("Not allowed", "manage", "Nothing was added. Your other leagues are not affected.");
   if (status === 400) {
     return p(`${name} did not accept these cookies`, "cookies",
       `Copy both values again from a browser that is signed in to ${name} with the account that is in this league.`);
   }
   if (status === 409 && /25 leagues/.test(message)) return p("Your list is full", "manage", "Unpin a league below, then add this one.");
   if (status === 409 && /public/i.test(message)) return p("This league is public", "fix_input", "Add it without cookies.");
-  if (status === 409) return p("This league cannot be added right now", "none", null);
+  if (status === 409 && /already sync/i.test(message)) {
+    return p("Another member already connected this league", "invite", "Ask them for an invite link from the league's settings.");
+  }
+  if (status === 409 && /paused/i.test(message)) return p("Syncing is paused for this league", "manage", null);
+  if (status === 409) return p("This league cannot be added right now", "manage", "Nothing was added. Your other leagues are not affected.");
   if (status === 503 && /^private leagues are not available/i.test(message)) {
-    return p(`Private ${name} leagues are not available here`, "none", "Nothing was added.");
+    return p(`Private ${name} leagues are not available here`, "none", "Nothing was added. A public league can still be added.");
+  }
+  if (status === 503 && /temporarily unavailable/i.test(message)) {
+    return p(`${name} leagues are not available right now`, "retry_later", "Nothing was added. Try again later.");
   }
   if (status === 503) return p(`${name} could not be reached`, "retry_later", "Nothing was added. Try again in a few minutes.");
   return p("The league could not be added", "retry_later", null);
@@ -219,7 +229,7 @@ export type Progress = {
 };
 
 /** GET /v2/leagues/{id} -> the three steps from "added" to "dashboard ready", and what to do next. */
-export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncState" | "syncIssue" | "visibility" | "role">): Progress {
+export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncState" | "syncIssue" | "visibility" | "role"> & { syncStalled?: boolean }): Progress {
   const name = providerName(l.provider);
   const added: ProgressStep = { label: "Added to your leagues", state: "done", detail: null };
   const build = (state: StepState, detail: string | null = null): ProgressStep => ({ label: "Dashboard ready", state, detail });
@@ -250,10 +260,20 @@ export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncStat
   }
   switch (l.syncState) {
     case "first_sync_running":
+      if (l.syncStalled) {
+        return { headline: "The first sync is taking much longer than usual", tone: "warn",
+          steps: [added, read("waiting", STALLED_RUNNING), build("todo")],
+          ready: false, polling: true, actions: ["refresh"] };
+      }
       return { headline: `Reading your league from ${name}`, tone: "info",
         steps: [added, read("current", "Teams, rosters, scoring and matchups. This usually takes a few minutes."), build("todo")],
         ready: false, polling: true, actions: ["wait"] };
     case "first_sync_queued":
+      if (l.syncStalled) {
+        return { headline: "The first sync is taking much longer than usual", tone: "warn",
+          steps: [added, read("waiting", STALLED_QUEUED), build("todo")],
+          ready: false, polling: true, actions: ["refresh"] };
+      }
       if (l.syncIssue) {
         return { headline: "Retrying the first sync", tone: "warn",
           steps: [added, read("waiting", `${issueSentence(l.syncIssue, name)} It is retried automatically, a little later each time.`), build("todo")],
@@ -266,7 +286,8 @@ export function syncProgress(l: Pick<MyLeague, "provider" | "status" | "syncStat
       const why = l.syncIssue ? `${issueSentence(l.syncIssue, name)} ` : "";
       const access = l.syncIssue === "access" && privateEspn;
       return { headline: "The first sync stopped", tone: "bad",
-        steps: [added, read("failed", `${why}It stopped after repeated tries.`), build("todo")],
+        steps: [added, read("failed", l.syncIssue === "empty" ? `${why}Try again once the league has its teams.`
+          : `${why}It stopped after repeated tries.`), build("todo")],
         ready: false, polling: false,
         actions: access && l.role ? ["cookies", "refresh"] : ["refresh"] };
     }

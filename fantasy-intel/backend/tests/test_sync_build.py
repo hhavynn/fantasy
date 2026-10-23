@@ -8,7 +8,7 @@ import pytest
 from app.db.connection import open_db
 from app.db.league_split import split_database
 from app.espn.sync import fetch_all, run_espn_sync
-from app.sync.build import build_league_file, league_tables_equal
+from app.sync.build import EmptyLeague, build_league_file, league_tables_equal
 from espn_fixture import MY_SWID, SEASON, FakeEspnClient
 from golden.golden import build_e2e_db
 
@@ -120,6 +120,19 @@ def test_a_first_build_needs_no_previous_file(base, tmp_path):
     finally:
         con.close()
     assert sorted(p.name for p in work.iterdir()) == ["league.duckdb"], "only the league file is left"
+
+
+def test_a_league_the_provider_returns_with_no_teams_is_never_built_as_ready(base, tmp_path):
+    """No teams for the season: nothing a league page could show, so the build refuses and nothing is published (the
+    worker records provider_empty, which the league's progress step names; issue #167)."""
+    payloads = fetch_all(FakeEspnClient())
+    payloads.league["teams"] = []
+    work = tmp_path / "job"
+    work.mkdir()
+    with pytest.raises(EmptyLeague):
+        build_league_file(work, global_path=base["global"], previous=None, payloads=payloads, owner_swid=None,
+                          stamp="2026-10-21T12:00:00")
+    assert not (work / "league.duckdb").exists()
 
 
 def test_a_failed_build_raises_and_publishes_nothing(base, tmp_path):
