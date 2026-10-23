@@ -6,7 +6,8 @@ import styles from "./TeamPerspective.module.css";
 import { useLeagueHref } from "./useAppPathname";
 
 /** The team picker: each option's value is the page URL for that team, so a change is a navigation (back works). On a
- *  league page it stays in that league (`/l/<lg>/...`), never following the last-viewed-league cookie to another one. */
+ *  league page it stays in that league (`/l/<lg>/...`) instead of following the last-viewed-league cookie. Exception: a page
+ *  URL that itself carries `?league=clear` is carried into each option, which then leaves the league (follow-up 1i). */
 export function TeamPerspectiveSelect({ options, placeholder }: {
   options: { value: string; label: string; selected: boolean }[];
   placeholder: string | null;

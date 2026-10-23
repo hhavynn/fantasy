@@ -21,6 +21,8 @@ import type { TeamsPayload } from "@/lib/team-perspective";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
+// Per-request rendering is also what keeps league links consistent: LeagueLink, TeamLink, Nav and useTeam read the league
+// from usePathname(), which returns the rewrite destination (no `/l/<lg>`) while a statically prerendered page renders.
 export const dynamic = "force-dynamic";
 
 // Self-hosted (app/fonts, from @fontsource, see app/fonts/README.md) so `next build` never fetches Google Fonts.
