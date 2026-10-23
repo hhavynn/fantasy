@@ -8,6 +8,7 @@ import shutil
 import time
 
 import pytest
+from espn_fixture import SEASON
 from fastapi.testclient import TestClient
 from test_schedule_intelligence import NOW, WEEK, setup
 from test_trade_data import _raw_snapshot
@@ -255,6 +256,47 @@ def test_api_route_provenance_and_league_scope_mount(league, monkeypatch):
     from app.api.routing import iter_routes
     v2 = [x for x in iter_routes(app) if x.path == "/v2/leagues/{league_id}/api/schedule-intelligence/bye-planner"]
     assert len(v2) == 1 and league_scope in v2[0].dependency_calls()
+
+
+def test_reserve_list_provenance_reads_only_the_planned_season(league):
+    """Weekly rosters stored only for another season verify nothing for this one: unavailable with a reason, never
+    claimed (missing is not zero). Coverage counts the lineup players this season's rosters list."""
+    from app.api.schedule_intelligence import bye_planner_provenance
+    from app.api.signal_provenance import status
+    _, con = league
+
+    def reserve_signal():
+        res = build_bye_planner(con, team_id=2, now=NOW)
+        sig = next(s for s in bye_planner_provenance(con, res)["signals"] if s["signal"] == "injuries")
+        return res, sig
+
+    res, sig = reserve_signal()                                        # no weekly-rosters table at all
+    counted = sorted(p["espn_player_id"] for p in res["players"] if p["counts"])
+    assert res["nfl_rosters"] == {"available": False, "season": SEASON, "latest_week": None, "players_found": 0,
+                                  "players_counted": len(counted)}
+    assert sig["reason_unavailable"] and status(sig) == "unavailable"
+
+    con.execute("CREATE TABLE nfl_rosters_weekly (season INT, week INT, game_type VARCHAR, team VARCHAR, "
+                "espn_id VARCHAR, status VARCHAR)")
+    con.executemany("INSERT INTO nfl_rosters_weekly VALUES (?, ?, 'REG', 'BUF', ?, 'ACT')",
+                    [[SEASON - 1, w, str(pid)] for w in range(1, 18) for pid in counted])
+    res, sig = reserve_signal()                                        # the table exists, but only for last season
+    assert res["nfl_rosters"]["available"] is False and res["nfl_rosters"]["players_found"] == 0
+    assert sig["reason_unavailable"] == (f"No {SEASON} NFL weekly rosters are stored, so no reserve-list absence can "
+                                         "be verified.")
+    assert sig["coverage"]["available"] == 0 and status(sig) == "unavailable"
+
+    con.executemany("INSERT INTO nfl_rosters_weekly VALUES (?, ?, 'REG', 'BUF', ?, 'ACT')",
+                    [[SEASON, w, str(pid)] for w in range(1, WEEK) for pid in counted[1:]])
+    res, sig = reserve_signal()                                        # this season, all but one lineup player
+    assert res["nfl_rosters"] == {"available": True, "season": SEASON, "latest_week": WEEK - 1,
+                                  "players_found": len(counted) - 1, "players_counted": len(counted)}
+    assert sig["coverage"]["available"] == len(counted) - 1 and sig["coverage"]["total"] == len(counted)
+    assert sig["reason_unavailable"].startswith(f"1 of {len(counted)} lineup players")
+
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (?, ?, 'REG', 'BUF', ?, 'ACT')", [SEASON, WEEK - 1, str(counted[0])])
+    _, sig = reserve_signal()
+    assert sig["reason_unavailable"] is None and sig["coverage"]["available"] == sig["coverage"]["total"]
 
 
 # ------------------------------------------------------------------ cost and equivalence --

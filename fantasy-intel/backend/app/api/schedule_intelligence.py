@@ -24,7 +24,6 @@ from ..analytics.schedule_intelligence import (
 )
 from ..analytics.sos_heatmap import BadParam as SosBadParam
 from ..analytics.sos_heatmap import build_sos_heatmap
-from ..db.connection import table_exists
 from .deps import db
 from .signal_provenance import Provenance, coverage, payload
 
@@ -160,8 +159,8 @@ def kdst_streaming_provenance(con, d: dict) -> dict:
 
 
 def bye_planner_provenance(con, d: dict) -> dict:
-    """The roster (provider sync), the NFL schedule (coverage: planned weeks with a loaded schedule) and the NFL
-    weekly rosters behind the reserve-list availability."""
+    """The roster (provider sync), the NFL schedule (coverage: planned weeks with a loaded schedule) and the planned
+    season's NFL weekly rosters behind the reserve-list availability (coverage: lineup players they list)."""
     prov = Provenance(con)
     weeks = d["window"]["weeks"]
     loaded = len(d["schedule"]["weeks_loaded"])
@@ -172,8 +171,15 @@ def bye_planner_provenance(con, d: dict) -> dict:
         reason=None if d["schedule"]["available"] and not missing else
         ("No NFL schedule is stored." if not d["schedule"]["available"]
          else f"No NFL schedule is loaded for week {', '.join(map(str, missing))}."))
+    # Only rows for the planned season count (load_availability reads no other): a weekly-rosters table holding another
+    # season verifies nothing here. Coverage: counted players this season's rosters list.
+    nr = d["nfl_rosters"]
+    found, counted = nr["players_found"], nr["players_counted"]
     rosters = prov.nflverse(
         "injuries", "NFL reserve lists (nflverse weekly rosters)",
-        reason=None if table_exists(con, "nfl_rosters_weekly") else
-        "No NFL weekly rosters are stored, so no reserve-list absence can be verified.")
+        cov=coverage(found, counted, "lineup players found in this season's NFL weekly rosters") if counted else None,
+        reason=f"No {nr['season']} NFL weekly rosters are stored, so no reserve-list absence can be verified."
+        if not nr["available"] else
+        f"{counted - found} of {counted} lineup players are not in the {nr['season']} NFL weekly rosters, so their "
+        "reserve-list status is not verified." if counted and found < counted else None)
     return payload(prov.league(), schedule, rosters)

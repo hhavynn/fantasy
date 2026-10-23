@@ -53,6 +53,7 @@ from .player_availability import (
     UNKNOWN,
     complete_schedules,
     load_availability,
+    roster_weeks,
 )
 from .reserve_slots import INACTIVE_ROSTER_SLOTS, is_taxi
 from .schedule_intelligence import NotFound, NotSynced, _json, _phase, league_info
@@ -369,6 +370,7 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
     roster = [replace(p, unavailable_weeks=frozenset((avail.get(p.espn_player_id) or {}).get("unavailable_weeks") or ()))
               for p in roster]
     sched = load_schedule_facts(con, season)
+    loaded_rosters = roster_weeks(con, season)
     active = [p for p in roster if not p.reserved and lineup_relevant(p.position, slots)]
     states = {w: {p.espn_player_id: player_week(p, avail.get(p.espn_player_id), w, sched) for p in active}
               for w in weeks}
@@ -396,6 +398,10 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
         })
 
     horizon_loaded = [w for w in weeks if w in sched["covered"]]
+    # Counted players this season's weekly rosters list (their reserve status is checked); None when nothing is
+    # planned, so no record was read. A player with no row is not verified, never assumed off the reserve list.
+    found = sum(1 for p in active if (avail.get(p.espn_player_id) or {}).get("nfl_latest_roster_week") is not None) \
+        if weeks else None
     return {
         "contract": CONTRACT,
         "league": {k: lg[k] for k in ("league_id", "season", "name", "current_week", "final_scoring_period",
@@ -414,6 +420,9 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
                      "weeks_missing": [w for w in weeks if w not in sched["covered"]],
                      "incomplete_teams": sorted({p.pro_team for p in active if p.pro_team
                                                  and p.pro_team not in sched["complete_teams"]})},
+        "nfl_rosters": {"available": bool(loaded_rosters), "season": season,
+                        "latest_week": loaded_rosters[-1] if loaded_rosters else None,
+                        "players_found": found, "players_counted": len(active) if weeks else None},
         "players": players,
         "weeks": out_weeks,
         "summary": summarize(out_weeks),
