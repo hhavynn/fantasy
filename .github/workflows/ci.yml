@@ -90,7 +90,24 @@ jobs:
         run: uv sync --frozen
 
       - name: Run backend pytest shard
-        run: uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          set -o pipefail
+          uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }} --durations=0 --durations-min=0 \
+            | tee "$RUNNER_TEMP/durations.txt"
+
+      - name: Report per-file durations (TEMPORARY, to rebuild shard weights)
+        if: ${{ !cancelled() }}
+        run: |
+          python3 - "$RUNNER_TEMP/durations.txt" <<'EOF'
+          import json, re, sys
+          from collections import defaultdict
+          tot = defaultdict(float)
+          for line in open(sys.argv[1]):
+              m = re.match(r"^\s*([0-9.]+)s (?:setup|call|teardown)\s+(tests/[^:]+\.py)::", line)
+              if m:
+                  tot[m[2]] += float(m[1])
+          print("::notice title=durations ${{ matrix.shard }}::" + json.dumps({k: round(v, 2) for k, v in sorted(tot.items())}, separators=(",", ":")))
+          EOF
 
   backend:
     # One status for the whole suite: green only when every shard passed, or for a docs-only change (shards not run).
