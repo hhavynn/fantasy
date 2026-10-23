@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  PORTFOLIO_CONTRACT, exposureHref, filterHref, filterPlayers, heaviestByeWeek, injuryWord, leagueHref, leagueStatus, parseFilters,
+  EXCLUDED_TEXT, PORTFOLIO_CONTRACT, exposureHref, filterHref, filterPlayers, heaviestByeWeek, injuryWord, leagueHref, leagueStatus, parseFilters,
   parsePortfolio, portfolioProblem, sortValue,
 } from "./portfolio.ts";
 import { sortRows } from "./sort.ts";
@@ -143,4 +143,13 @@ test("an exposure whose league id is not a league id is dropped, never put into 
   assert.ok(parsed);
   const ids = parsed.players[0].exposures.map((e) => e.leagueId);
   assert.deepEqual(ids, [LG(0)]);
+});
+
+test("a public league the user only follows is listed as not counted, in words", () => {
+  const parsed = parsePortfolio(payload({
+    excluded: { count: 2, leagues: [{ league: league(6), reason: "not_member" }, { league: league(5, { season: 2025 }), reason: "other_season" }] },
+  }));
+  assert.ok(parsed);
+  assert.deepEqual(parsed.excluded.map((x) => x.reason), ["not_member", "other_season"]);
+  assert.match(EXCLUDED_TEXT.not_member, /don't manage a team/);
 });

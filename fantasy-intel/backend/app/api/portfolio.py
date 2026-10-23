@@ -73,6 +73,7 @@ PROVIDER_OFF = "This league's provider is switched off in this deployment."
 UNREADABLE = "This league's data could not be read."
 OTHER_SEASON = "other_season"
 OVER_LIMIT = "over_limit"
+NOT_MEMBER = "not_member"     # a public league the caller only follows (pinned): a viewing perspective, not their team
 
 REASON = {
     "no_map": "This league's data has no NFL id link for this player.",
@@ -488,11 +489,14 @@ def _weeks(ready: list[dict], exposures: list[dict], groups: dict[str, list[dict
 # ---- the whole response -------------------------------------------------------------------------------------------
 
 def split(granted: list, max_leagues: int) -> tuple[list, list[dict]]:
-    """(the leagues to read, the excluded ones with why): only the newest season among the caller's leagues is
-    combined, at most `max_leagues` of it, in GET /v2/leagues order."""
-    season = max((a.season for a in granted), default=None)
-    same = [a for a in granted if a.season == season]
-    excluded = [{"league": a.to_json(), "reason": OTHER_SEASON} for a in granted if a.season != season]
+    """(the leagues to read, the excluded ones with why): only leagues the caller is a member of count as their exposure
+    (a public league they only follow is listed, not counted: the team picked there is a viewing perspective, not one
+    they manage); of those, only the newest season is combined, at most `max_leagues` of it, in GET /v2/leagues order."""
+    excluded = [{"league": a.to_json(), "reason": NOT_MEMBER} for a in granted if not a.is_member]
+    members = [a for a in granted if a.is_member]
+    season = max((a.season for a in members), default=None)
+    same = [a for a in members if a.season == season]
+    excluded += [{"league": a.to_json(), "reason": OTHER_SEASON} for a in members if a.season != season]
     excluded += [{"league": a.to_json(), "reason": OVER_LIMIT} for a in same[max_leagues:]]
     return same[:max_leagues], excluded
 

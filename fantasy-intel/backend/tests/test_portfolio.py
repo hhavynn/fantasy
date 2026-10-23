@@ -237,8 +237,8 @@ def test_one_five_and_twenty_five_leagues_aggregate_exactly_and_quickly(n):
 
 # ---- bounds ---------------------------------------------------------------------------------------------------------------
 
-def _access(i, season=2026):
-    return SimpleNamespace(league_id=LEAGUE_IDS[i], season=season, provider="espn",
+def _access(i, season=2026, member=True):
+    return SimpleNamespace(league_id=LEAGUE_IDS[i], season=season, provider="espn", is_member=member,
                            to_json=lambda i=i, season=season: {"league_id": LEAGUE_IDS[i], "season": season,
                                                                "provider": "espn", "name": f"Invented League {i}"})
 
@@ -251,12 +251,24 @@ def test_only_the_newest_season_is_combined_and_the_cap_is_listed():
         [(LEAGUE_IDS[25], "over_limit"), (LEAGUE_IDS[26], "over_limit"), (LEAGUE_IDS[30], "other_season")])
 
 
+def test_a_public_league_the_caller_only_follows_is_listed_not_counted():
+    """A pinned public league with no membership is a viewing perspective, not a team the caller manages: it is
+    excluded with its reason and never counted, and it never decides which season is combined."""
+    granted = [_access(0), _access(1, member=False), _access(2, season=2027, member=False)]
+    read, excluded = split(granted, 25)
+    assert [a.league_id for a in read] == [LEAGUE_IDS[0]]
+    assert sorted((x["league"]["league_id"], x["reason"]) for x in excluded) == sorted(
+        [(LEAGUE_IDS[1], "not_member"), (LEAGUE_IDS[2], "not_member")])
+    assert split([_access(1, member=False)], 25) == ([], [{"league": _access(1).to_json(), "reason": "not_member"}])
+
+
 @pytest.fixture
 def _fresh_pool(monkeypatch):
     from app.api import action_center
     monkeypatch.setattr(action_center, "_POOLS", {})
     monkeypatch.setattr(action_center, "_FLIGHTS", {})
     monkeypatch.setattr(action_center, "_ADMISSION", {})
+    monkeypatch.setattr(action_center, "_HOLDERS", {})
 
 
 def test_at_most_twenty_five_leagues_are_read_with_bounded_concurrency(monkeypatch, _fresh_pool):
@@ -431,14 +443,17 @@ def test_the_same_roster_in_two_leagues_counts_each_player_twice_with_each_leagu
     from app.api.signal_provenance import iso_utc
     a = publish_local(pg, e2e, served, tmp_path / "a", visibility="private", name="Invented A")
     b = publish_local(pg, e2e, served, tmp_path / "b", visibility="public", name="Invented B", external_id="4242")
+    c = publish_local(pg, e2e, served, tmp_path / "c", visibility="public", name="Invented C", external_id="4343")
     _api_member(pg, U1, a.league_id)
-    _api_pin(pg, U1, b.league_id)
-    for lg in (a, b):
+    _api_member(pg, U1, b.league_id)
+    _api_pin(pg, U1, c.league_id)                               # followed only: listed, never counted
+    for lg in (a, b, c):
         _api_team(pg, U1, lg.league_id, my_team(e2e))
     r = client.get(URL, headers=bearer(U1))
     assert r.status_code == 200, r.text[:300]
     body = r.json()
     assert body["contract"] == "portfolio.v1" and [s["state"] for s in body["leagues"]] == ["ready", "ready"]
+    assert [(x["league"]["league_id"], x["reason"]) for x in body["excluded"]["leagues"]] == [(c.league_id, "not_member")]
     roster = _roster_ids(e2e, my_team(e2e))
     assert body["coverage"]["exposures"] == 2 * len(roster)
     joined = [p for p in body["players"] if p["identity"]["status"] in ("verified", "team_defense", "espn_id")]
@@ -532,7 +547,7 @@ def test_an_espn_and_a_sleeper_league_join_only_on_verified_ids_and_keep_their_o
     s = publish_local(pg, sleeper_db, served, tmp_path / "s", visibility="public", name="Invented Sleeper",
                       provider="sleeper", stamp="2026-10-20T13:00:00")
     for lg, team in ((a, my_team(e2e)), (s, 1)):
-        _api_pin(pg, U1, lg.league_id)
+        _api_member(pg, U1, lg.league_id)
         _api_team(pg, U1, lg.league_id, team)
     r = client.get(URL, headers=bearer(U1))
     assert r.status_code == 200, r.text[:300]

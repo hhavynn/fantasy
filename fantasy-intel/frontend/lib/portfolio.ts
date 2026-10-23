@@ -80,7 +80,7 @@ export type PortfolioWeek = {
   injuries: { exposures: number; players: number; leagues: number; leaguesReporting: number } | null;
 };
 
-export type Excluded = { league: MyLeague; reason: "other_season" | "over_limit" };
+export type Excluded = { league: MyLeague; reason: "not_member" | "other_season" | "over_limit" };
 
 export type Portfolio = {
   generatedAt: number | null;
@@ -180,7 +180,7 @@ export function parsePortfolio(raw: unknown): Portfolio | null {
     leagues: raw.leagues.map(parseLeague).filter((l): l is PortfolioLeague => l !== null),
     excluded: excludedRaw.flatMap((x) => {
       const league = isRecord(x) ? parseMyLeague(x.league) : null;
-      const reason = isRecord(x) && x.reason === "other_season" ? "other_season" : "over_limit";
+      const reason = isRecord(x) && (x.reason === "not_member" || x.reason === "other_season") ? x.reason : "over_limit";
       return league ? [{ league, reason } as Excluded] : [];
     }),
     players: raw.players.map(parsePlayer).filter((p): p is PortfolioPlayer => p !== null),
@@ -204,6 +204,7 @@ export const IDENTITY_TEXT: Record<IdentityStatus, { label: string; tone: string
 };
 
 export const EXCLUDED_TEXT: Record<Excluded["reason"], string> = {
+  not_member: "You follow this league but don't manage a team in it, so it isn't counted as your exposure.",
   other_season: "Another season: only your newest season's leagues are combined.",
   over_limit: "Past the limit of leagues read at once.",
 };

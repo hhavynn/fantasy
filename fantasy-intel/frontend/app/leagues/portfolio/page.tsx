@@ -89,7 +89,7 @@ function Body({ data, sp }: { data: Portfolio; sp: SearchParams }) {
     return (
       <EmptyState title="No leagues to combine yet"
                   action={<Link href="/leagues" prefetch={false}>Add a league</Link>}>
-        Add a league and save your team in it; every league you follow then counts here.
+        Add a league and save your team in it; every league you manage a team in then counts here (leagues you only follow are listed, not counted).
       </EmptyState>
     );
   }
