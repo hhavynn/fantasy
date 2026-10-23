@@ -118,6 +118,16 @@ app.middleware("http")(add_scope_headers)
 from .api.provider_copy import classic_copy  # noqa: E402
 app.middleware("http")(classic_copy)
 app.add_exception_handler(CachedResponse, serve_cached)
+from .analytics.lineup import UNSUPPORTED_LINEUP, LineupTooLargeError  # noqa: E402
+
+
+async def unsupported_lineup(request: Request, exc: LineupTooLargeError):
+    """More flex slots than the exact lineup solver accepts (a provider can store any count): a fixed 422 on every
+    route that does not answer it itself, instead of a 500."""
+    return JSONResponse({"detail": UNSUPPORTED_LINEUP}, status_code=422)
+
+
+app.add_exception_handler(LineupTooLargeError, unsupported_lineup)
 # Outermost: Server-Timing on every response, the sampled perf log off by default (app/monitor/timing.py).
 from .monitor.timing import ServerTimingMiddleware  # noqa: E402
 app.add_middleware(ServerTimingMiddleware)
