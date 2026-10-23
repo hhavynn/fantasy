@@ -4,6 +4,8 @@ import { Suspense } from "react";
 import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
+import { authHref } from "@/lib/auth-flow";
+import { signupGateNow } from "@/lib/email-link.server";
 import { providerName } from "@/lib/labels";
 import { leaguePath } from "@/lib/league-scope";
 import { dataAsOf } from "@/lib/league-switcher";
@@ -29,16 +31,19 @@ export default async function LeaguesPage({ searchParams }: { searchParams: Prom
   const enabled = multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED);
   if (!enabled) return <SwitchedOff />;
   const view = onboardingView(await searchParams);
-  const [user, providers] = await Promise.all([
-    authConfig(process.env) ? currentUser() : Promise.resolve(null),
+  const auth = authConfig(process.env);
+  const [user, providers, signupOpen] = await Promise.all([
+    auth ? currentUser() : Promise.resolve(null),
     // What each host can do here: public, read from the backend's capability registry (null when it cannot answer).
     apiRequest("/v2/providers").then((r) => (r.ok ? parseProviders(r.data) : null)),
+    // Offer "Create an account" only while both launch gates are open (no API call while this app keeps them closed).
+    auth?.signupsOpen ? signupGateNow().then((g) => g.open) : Promise.resolve(false),
   ]);
   return (
     <div className="stack">
       <PageHeader eyebrow="Connections" title="Leagues"
                   meta="Add an ESPN or Sleeper league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
-      {user ? <SignedIn view={view} providers={providers} /> : <Guest view={view} providers={providers} />}
+      {user ? <SignedIn view={view} providers={providers} /> : <Guest view={view} providers={providers} signupOpen={signupOpen} />}
     </div>
   );
 }
@@ -53,13 +58,23 @@ function stepHref(view: OnboardingView): string {
 
 const signIn = (next: string) => `/login?next=${encodeURIComponent(next)}`;
 
-function Guest({ view, providers }: { view: OnboardingView; providers: ProviderInfo[] | null }) {
+function Guest({ view, providers, signupOpen }: { view: OnboardingView; providers: ProviderInfo[] | null; signupOpen: boolean }) {
+  const next = stepHref(view);
   return (
     <>
-      <Notice tone="info" title="Sign in to add leagues">
-        Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
-        league, <Link href={signIn(stepHref(view))} prefetch={false}>sign in</Link>.
-      </Notice>
+      {signupOpen ? (
+        <Notice tone="info" title="Sign in or create an account to add leagues">
+          Viewing a public league or the demo needs no account: open its link. To add a league, save your team or
+          connect a private league, <Link href={signIn(next)} prefetch={false}>sign in</Link> or{" "}
+          <Link href={authHref("/signup", next)} prefetch={false}>create an account</Link>. Both use an emailed link, no
+          password.
+        </Notice>
+      ) : (
+        <Notice tone="info" title="Sign in to add leagues">
+          Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
+          league, <Link href={signIn(next)} prefetch={false}>sign in</Link>. Sign-ups for new accounts are not open yet.
+        </Notice>
+      )}
       <Section title="See it before you connect" subtitle="Everything in the demo is invented, so you can look around freely.">
         <DemoEntry />
       </Section>

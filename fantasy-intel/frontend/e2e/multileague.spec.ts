@@ -122,7 +122,7 @@ test("a link across the league boundary re-renders the header, both ways", async
 // page, assets) and the switcher's ?league=clear stay bare. The last-viewed-league cookie names another league only to
 // show that the rendered hrefs do not depend on it; nothing is clicked here. Waiver files edited by #264 keep next/link
 // until it merges, but /waivers' own links are query-relative (?pos=...), so the page is listed.
-const UNSCOPED_HREF = /^\/(leagues|login|auth|invite|account|admin|terms|privacy|api|_next)(\/|\?|#|$)/;
+const UNSCOPED_HREF = /^\/(leagues|login|signup|auth|invite|account|admin|terms|privacy|api|_next)(\/|\?|#|$)/;
 test("with JavaScript off, a league page renders its links and forms in that league", async ({ browser }) => {
   const { espn_public: lg, sleeper: other } = manifest().leagues;
   const context = await browser.newContext({ javaScriptEnabled: false });

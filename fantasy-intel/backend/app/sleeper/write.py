@@ -11,7 +11,8 @@ The tables keep their ESPN-derived names and id spaces, so no engine changes:
     (app/analytics/reserve_slots.py): owned and ONTEAM, never an active starter, outside the active roster.
     Played weeks come from the matchups payload, which does not say who was on the taxi squad, so they stay bench;
   * actual weekly points are Sleeper's own (`players_points`) for rostered player-weeks, else the player's
-    nflverse box score scored with the league's rules (skill players only); there are no provider projections
+    nflverse box score scored with the league's rules (skill players only), each row naming its source in
+    `actual_source` (#254 S3); there are no provider projections
     (`projected_points` stays NULL: consumers read Fantasy Intel's own projections, app/analytics/projection_source);
   * injury statuses are mapped to ESPN's vocabulary; ownership percentages stay NULL (Sleeper has none).
 
@@ -35,6 +36,8 @@ from .normalize import internal_position, league_row, member_rows, starting_slot
 from .scoring import to_scoring_items
 
 PROVIDER = "sleeper"
+# espn_player_weekly_points.actual_source (#254 S3): which source supplied a row's actual points
+ACTUAL_PROVIDER, ACTUAL_BOX_SCORE = "provider", "box_score"
 SYNTHETIC_BASE = 10_000_000
 # TAXI shares the bench id on purpose: the taxi identity is the lineup_slot label (see the module docstring)
 SLOT_IDS = {"QB": 0, "RB": 2, "RB/WR": 3, "WR": 4, "WR/TE": 5, "TE": 6, "OP": 7, "D/ST": 16, "K": 17,
@@ -228,7 +231,8 @@ def _write(con, p: SleeperPayloads, now: datetime) -> dict:
         # Every sync fetches every week: the season's points are rewritten, so a stat correction reaches them
         con.execute("DELETE FROM espn_player_weekly_points WHERE season = ?", [season])
         weekly = [{"season": season, "espn_player_id": e, "scoring_period": w, "actual_points": v,
-                   "projected_points": None, "synced_at": now} for (e, w), v in points.items()]
+                   "projected_points": None, "actual_source": ACTUAL_PROVIDER, "synced_at": now}
+                  for (e, w), v in points.items()]
         stats["weekly_points"] = upsert_rows(con, "espn_player_weekly_points", weekly,
                                              ["season", "espn_player_id", "scoring_period"])
         stats["box_score_points"] = _box_score_points(con, items, season, now)
@@ -364,7 +368,8 @@ def _players(players, pid, on_team, rostered, points, now, stats) -> list[dict]:
 
 def _box_score_points(con, items, season, now) -> int:
     """Actual points for player-weeks Sleeper did not score (free agents): the nflverse box score scored with the
-    league's skill rules. Skipped when those rules are not supported (unknown is never zero)."""
+    league's skill rules, marked ACTUAL_BOX_SCORE (a row whose box score lacks a scored component stays NULL with no
+    source). Skipped when those rules are not supported (unknown is never zero)."""
     from ..analytics.league_scoring import points_sql, resolve_skill_scoring
 
     scoring = resolve_skill_scoring(items)
@@ -374,8 +379,9 @@ def _box_score_points(con, items, season, now) -> int:
     before = con.execute("SELECT count(*) FROM espn_player_weekly_points").fetchone()[0]
     con.execute(f"""
         INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points,
-                                               synced_at)
-        SELECT s.season, f.espn_player_id, s.week, round({expr}, 2), NULL, ?
+                                               actual_source, synced_at)
+        SELECT s.season, f.espn_player_id, s.week, round({expr}, 2), NULL,
+               CASE WHEN ({expr}) IS NOT NULL THEN '{ACTUAL_BOX_SCORE}' END, ?
         FROM nfl_weekly_stats s
         JOIN (SELECT DISTINCT p.espn_player_id, m.gsis_id
               FROM fantasy_players p JOIN nfl_ff_playerids m ON m.espn_id = p.espn_player_id

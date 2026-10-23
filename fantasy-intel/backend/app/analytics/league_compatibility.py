@@ -288,10 +288,13 @@ class _League:
                                        missing_input=f"{FAMILY_TEXT[code]} projections made in this league's scoring",
                                        provider_boundary=boundary, value={"follow_up": "#254"}))
                 else:
+                    # the rule ids come from the league rules row (league_rules._abstains_on), never re-derived here
+                    rules = row.get("unsupported_rules")
                     out.append(finding(code, UNSUPPORTED, row["detail"],
                                        missing_input=f"{FAMILY_TEXT[code]} projections in this league's scoring",
                                        provider_boundary=boundary,
-                                       action="See League rules for the scoring rules the models do not implement."))
+                                       action="See League rules for the scoring rules the models do not implement.",
+                                       value={"unsupported_rules": rules} if rules else None))
             # The missing run is reported for the families the models could project (an unsupported family already
             # says why it has none). With nothing shown at all it is as unsupported as an ESPN week without numbers.
             ready = [c for c in families if (self.support.get(c) or {}).get("status") in (HANDLED, PARTIAL)]

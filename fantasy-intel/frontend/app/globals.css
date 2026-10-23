@@ -232,6 +232,16 @@ p { margin: 0 0 8px; }
 .league-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--ink-muted); }
 /* Account (sign-in) menu: shown only when sign-in is configured (components/AccountMenu.tsx). */
 .account-link { font-size: 13px; color: var(--ink-muted); white-space: nowrap; cursor: pointer; list-style: none; }
+/* Signed out: "Sign in" as a link and "Sign up" as a small outlined button beside it (only while SIGNUPS_OPEN=1). */
+.account-entry { display: flex; align-items: center; gap: 4px; }
+.account-entry a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 8px; border-radius: var(--radius-sm); font-size: 13px; white-space: nowrap; }
+.account-entry .account-link:hover { color: var(--ink); }
+.account-entry .account-signup { color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
+.account-entry .account-signup:hover { background: var(--accent-soft); text-decoration: none; }
+@media (max-width: 720px) { .account-entry a { min-height: var(--tap); } }
+@media (max-width: 360px) { .account-entry { gap: 0; } .account-entry a { padding: 0 6px; } }
+/* Phones: with both account links in the bar the mark alone stands for the brand (as beside the league switcher). */
+@media (max-width: 520px) { .topbar:has(.account-signup) .brand-word { display: none; } }
 .account-link::-webkit-details-marker { display: none; }
 .account-menu { position: relative; }
 .account-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 6px; min-width: 200px;
@@ -624,7 +634,7 @@ details.filter-box[open] > summary::after { transform: translateY(2px) rotate(-1
 }
 
 form { margin: 0; }
-input[type="search"], input[type="text"], input[type="number"], select {
+input[type="search"], input[type="text"], input[type="email"], input[type="number"], select {
   height: 34px; background: var(--surface-raised); border: 1px solid var(--line-control); color: var(--ink);
   padding: 0 10px; border-radius: var(--radius-sm); font: inherit; font-size: 13px;
 }
@@ -644,8 +654,8 @@ label { color: var(--ink-muted); }
 @media (max-width: 720px) {
   :root { --title-size: 30px; --title-line: 33px; --section-gap: 16px; }
   .chip { display: inline-flex; align-items: center; min-height: var(--tap); padding-top: 0; padding-bottom: 0; }
-  :where(main) :is(input[type="search"], input[type="text"], input[type="number"], select, button) { height: var(--tap); }
-  input[type="search"], input[type="text"], input[type="number"], select, textarea { font-size: 16px; }
+  :where(main) :is(input[type="search"], input[type="text"], input[type="email"], input[type="number"], select, button) { height: var(--tap); }
+  input[type="search"], input[type="text"], input[type="email"], input[type="number"], select, textarea { font-size: 16px; }
   input[type="search"], input[type="text"] { min-width: 0; }
   /* Disclosures are tap targets too. */
   main summary { min-height: var(--tap); padding-block: 11px; }

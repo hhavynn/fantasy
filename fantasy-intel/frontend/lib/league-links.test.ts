@@ -77,7 +77,7 @@ test("external, relative, anchor, unscoped and already-scoped hrefs pass through
   const untouched = [
     "https://fantasy.espn.com/football/team", "//evil.example/x", "mailto:a@b.c",   // external
     "?sort=rank&dir=asc", "?id=201&tab=usage", "#evidence", "",                     // relative: already in the page's league
-    "/leagues", "/leagues/demo", "/login?next=/leagues", "/account", "/terms", "/privacy",   // belong to no league
+    "/leagues", "/leagues/demo", "/login?next=/leagues", "/signup?next=%2Fleagues", "/account", "/terms", "/privacy",   // belong to no league
     "/?league=clear",                                                               // the way back to the classic site
     `/l/${OTHER}/players?id=1`, `/l/${LG}/data`,                                    // already scoped (switcher, Nav)
     "/api/search?q=a", "/_next/static/chunk.js", "/icon.png",                       // route handlers and assets

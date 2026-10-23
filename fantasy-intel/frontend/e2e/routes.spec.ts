@@ -14,6 +14,9 @@ const ROUTES = [
   // Multi-league prototype: with MULTILEAGUE_UI_ENABLED unset (as here) it renders a "not enabled" notice
   // and disabled provider cards without calling the backend, whose /v2 routes are off in this setup.
   "/leagues",
+  // Sign in and Create account: with sign-in off here they say so (e2e/signup.spec.ts covers them switched on).
+  "/login",
+  "/signup",
   // Research lab (synthetic pool from backend/tests/synthetic_research.py): each position and chart view,
   // a selected player with a comparison, and a filter that empties the pool.
   "/research/wr",

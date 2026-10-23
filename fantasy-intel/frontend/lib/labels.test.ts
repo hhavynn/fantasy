@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  normalizeProvider, ownershipAvailable, projectionName, providerName, unnamedLeague, unnamedPlayer,
+  normalizeProvider, ownershipAvailable, projectionName, projectionsPhrase, providerName, unnamedLeague, unnamedPlayer,
 } from "./labels.ts";
 
 test("providerName keeps ESPN wording and names Sleeper", () => {
@@ -31,4 +31,12 @@ test("ownership and fallbacks", () => {
   assert.equal(unnamedLeague("espn", "4242"), "ESPN league 4242");
   assert.equal(unnamedLeague("sleeper", "1234567890"), "Sleeper league 1234567890");
   assert.equal(unnamedPlayer(15847), "Player #15847");
+});
+
+test("projectionsPhrase never names a source over a response without projections", () => {
+  assert.equal(projectionsPhrase("ESPN"), "ESPN projections");
+  assert.equal(projectionsPhrase("Ours"), "Ours projections");
+  assert.equal(projectionsPhrase("Unavailable"), "no projections");
+  assert.equal(projectionsPhrase(null), "no projections");
+  assert.equal(projectionsPhrase(undefined), "no projections");
 });

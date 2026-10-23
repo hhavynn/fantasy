@@ -142,10 +142,12 @@ def kdst_streaming_provenance(con, d: dict) -> dict:
     with_game = sum(w["candidates_with_game"] for p in pos for w in p["weeks"])
     projected = sum(w["projected_candidates"] for p in pos for w in p["weeks"])
     cov = coverage(projected, with_game, "free-agent weeks not on a bye that have a projection") if with_game else None
-    source = "independent" if d["projection_source"] == "Ours" else "espn"
+    # The plan reads the league's default projections (trade_data.load_league_state). Decide which from the league,
+    # never from the display label: "Unavailable" (an Ours state without numbers, #254 L2) is still Ours, unavailable.
+    ours = prov.provider != "espn"
     detail = {"available": projected > 0, "run": None,
-              "reason": None if projected else "No projections are stored for the planned weeks."} \
-        if source == "independent" else None
+              "reason": None if projected else "No projections are stored for the planned weeks."} if ours else None
+    source = "independent" if ours else "espn"
     weeks = d["window"]["weeks"]
     missing = d["schedule"]["weeks_missing"]
     schedule = prov.nflverse(

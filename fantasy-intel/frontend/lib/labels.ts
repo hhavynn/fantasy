@@ -2,6 +2,8 @@
 // (ESPN's or Fantasy Intel's own, "Ours"). Pure functions so node --test covers them. For provider "espn" every
 // helper returns the wording the site always used, so the classic ESPN site reads exactly as before.
 
+import { NO_PROJECTIONS } from "./start-sit-helpers.ts";
+
 export type Provider = "espn" | "sleeper";
 
 /** Anything the backend may call a provider, as one of ours; unknown values are ESPN (the classic site). */
@@ -42,4 +44,13 @@ export function unnamedLeague(provider: Provider | string | null | undefined, ex
 /** A player without a stored name. */
 export function unnamedPlayer(id: number | string): string {
   return `Player #${id}`;
+}
+
+/**
+ * "<label> projections" for a response's projection-source label, or "no projections" when the backend names none
+ * ("Unavailable": the response holds no projected number, e.g. a Sleeper league without a Fantasy Intel run). A
+ * source is never named over numbers it did not supply.
+ */
+export function projectionsPhrase(label: string | null | undefined): string {
+  return !label || label === NO_PROJECTIONS ? "no projections" : `${label} projections`;
 }

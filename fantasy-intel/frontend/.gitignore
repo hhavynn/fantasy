@@ -49,4 +49,6 @@ next-env.d.ts
 /playwright-report-multileague/
 /test-results-visual/
 /playwright-report-visual/
+/test-results-signup/
+/playwright-report-signup/
 /blob-report/

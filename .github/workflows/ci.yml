@@ -362,6 +362,12 @@ jobs:
         if: matrix.suite == 'sleeper-visual'
         run: npm run e2e:sleeper
 
+      # Sign in and Sign up (e2e/signup.spec.ts, issue #270): both launch gates, the email link and its failures against a
+      # synthetic Supabase Auth and API (e2e/signup-fake-server.mjs), at 1440 and 375px. No real email or accounts.
+      - name: Run sign-in and sign-up flows
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
+        run: npm run e2e:signup
+
       # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
       # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
       # Runs even when the Sleeper smoke failed, so one red job reports both.
@@ -383,6 +389,8 @@ jobs:
             fantasy-intel/frontend/playwright-report-sleeper/
             fantasy-intel/frontend/test-results-multileague/
             fantasy-intel/frontend/playwright-report-multileague/
+            fantasy-intel/frontend/test-results-signup/
+            fantasy-intel/frontend/playwright-report-signup/
           retention-days: 14
 
   e2e:
