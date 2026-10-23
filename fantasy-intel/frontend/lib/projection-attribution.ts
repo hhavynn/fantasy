@@ -1,8 +1,10 @@
-// Types and wording for "Why it changed" on the Projection movers page (contract "projection-attribution/v1", one block
-// per mover, from app/analytics/projection_attribution.py). Every number comes from the backend: these helpers only
+// Types and wording for "Why it changed" on the Projection movers page (contract "projection-attribution/v1", or v2 when
+// the change was split with the full stored inputs; one block per mover, from app/analytics/projection_attribution.py). Every number comes from the backend: these helpers only
 // order, format and phrase it. They never compute a contribution, never fill a missing value and never name a cause.
 
 export const ATTRIBUTION_CONTRACT = "projection-attribution/v1";
+/** v1 plus `full_inputs` and measured model parts: additive, every v1 field keeps its meaning. */
+export const ATTRIBUTION_CONTRACT_V2 = "projection-attribution/v2";
 
 export type AttributionStatus = "explained" | "partial" | "model_changed" | "not_decomposed" | "unavailable";
 export type AttributionKind = "status" | "availability" | "input" | "model";
@@ -23,6 +25,11 @@ export type AttributionPart = {
   after_missing?: string | null;
   varies?: boolean;
   events?: { forecast: "earlier" | "latest"; text: string; source: string }[];
+  /** v2: a model part that is measured (a retrain's own change, a league re-score factor), not an unsplit change. */
+  measured?: boolean;
+  /** v2: the inputs folded into one line ("N other inputs, each under 0.05 points"). */
+  features?: string[];
+  feature_labels?: string[];
 };
 
 export type AttributionInput = {
@@ -50,7 +57,7 @@ export type Attribution = {
   contract: string;
   status: AttributionStatus;
   source_label: string;
-  method: "exact_linear" | "approximate" | "model_changed" | null;
+  method: "exact_linear" | "exact_midpoint" | "approximate" | "model_changed" | null;
   method_note: string | null;
   approximation_note: string | null;
   total: number | null;
@@ -63,6 +70,8 @@ export type Attribution = {
   model: { changed: boolean; reasons: { text: string; weeks: number[] }[] };
   as_of: { before: AttributionSide; after: AttributionSide; refused: { week: number; forecast: string; reason: string }[] } | null;
   reason: string | null;
+  /** v2: the weeks split with both forecasts' full stored inputs and the convention used. */
+  full_inputs?: { weeks: number[]; convention: string };
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -92,12 +101,12 @@ export function inputValue(v: number | null | undefined, unit: AttributionUnit |
 }
 
 /** The words for a part's kind: shown beside its number so status is never colour alone. */
-export function kindText(kind: AttributionKind, exact = true): string {
+export function kindText(kind: AttributionKind, exact = true, measured = false): string {
   switch (kind) {
     case "input": return exact ? "Measured input" : "Input (approximate)";
     case "availability": return "Measured";
     case "status": return "Stored status";
-    case "model": return "Model changed";
+    case "model": return measured ? "Measured model change" : "Model changed";
     default: return "Measured";
   }
 }
@@ -150,6 +159,15 @@ export function sideText(s: AttributionSide | null | undefined): string {
   const made = day(s.created_at);
   const through = s.data_through ? `games through ${s.data_through.season} week ${s.data_through.week}` : "data cutoff not recorded";
   return `${made ? `made ${made}` : "creation time unknown"}, ${through}`;
+}
+
+/** The line naming how a v2 block split the change, or null for a v1 block. */
+export function fullInputsText(a: Attribution): string | null {
+  const f = a.full_inputs;
+  if (!f || f.weeks.length === 0) return null;
+  return `Split with both forecasts' full stored inputs (${weeksText(f.weeks)}) by the ${f.convention} convention: `
+    + "each input's change is weighted by the average of the two models' weights for it, and the model's own change "
+    + "is taken at the average of the two forecasts' inputs.";
 }
 
 /** The part rows in the backend's order (largest first). A measured zero stays a row: it is a result, not a gap. */

@@ -69,12 +69,13 @@ import polars as pl
 from ..db.connection import fetch_dicts, insert_rows, table_exists, utcnow
 from ..espn.constants import IR_SLOT
 from .forecast_features import POSITIONS, Sources, features_for_week, key
-from .independent_projections import Artifact, flags_for, missing_inputs, predict_frame
+from .independent_projections import Artifact, RidgeModel, design_matrix, flags_for, missing_inputs, predict_frame
 from .league_scoring import resolve_skill_scoring
 from . import availability_news as an
 from .player_availability import RESTRICTED, derive
-from .production_forecasts import (HORIZON_NOTE, NEXT_GAME_ONLY, ROWS, RUNS, ImmutableRunError, annotate, content_sha256,
-                                   horizon_of, team_kickoffs)
+from .production_forecasts import (HORIZON_NOTE, INPUTS_VERSION, NEXT_GAME_ONLY, ROWS, RUNS, ImmutableRunError, annotate,
+                                   content_sha256, cycle_bases, horizon_of, row_fingerprint, team_kickoffs, write_inputs,
+                                   write_models)
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 LONG_TERM_ESPN = {"INJURY_RESERVE", "SUSPENSION"}   # withheld for every remaining week; OUT is the next game only
@@ -213,7 +214,7 @@ def check_horizon(sources: Sources, season: int, cutoff_week: int) -> None:
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
                participation=None, artifact_sha256: str | None = None, *,
                projected_from_week: int | None = None, context_inputs=None,
-               news: list | None = None) -> tuple[dict, list[dict]]:
+               news: list | None = None, inputs_out: dict | None = None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
     ideally the previous season from the history DB). `participation`: optional
     ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
@@ -222,7 +223,9 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     `projected_from_week`: W, the first unplayed week, when `week` is a later target week T (rest-of-season
     projection, horizon T - W; see the module docstring). None (or == week) is the normal horizon-0 run.
     `context_inputs`: app.analytics.context_model.Inputs, required for an ifp-2.2.0 artifact (context_model.load_inputs).
-    `news`: availability_news entries (module docstring, "Availability news"); None or [] changes nothing."""
+    `news`: availability_news entries (module docstring, "Availability news"); None or [] changes nothing.
+    `inputs_out`: a dict to receive the projected rows' full point-model inputs (`capture_inputs`), for
+    `write_run(..., inputs=)`; None (the default) captures nothing."""
     fw = week if projected_from_week is None else projected_from_week
     context = _context_model(artifact)
     if context is not None and context_inputs is None:
@@ -343,6 +346,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         targets.append({"gsis_id": c["gsis_id"], "position": c["position"], "team": team,
                         "opponent": game["opponent"], "is_home": bool(game["is_home"])})
     preds: dict[str, dict] = {}
+    feats = None
     injury = _injury_model(artifact)
     hsources = codes = None
     if injury is not None:   # cutoff-week designations as P(plays) sees them (nflverse, else the ESPN status fallback)
@@ -424,7 +428,58 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
             "created_at": utcnow()}
     for rec in rows:
         rec["run_id"] = meta["run_id"]
+    if inputs_out is not None:
+        inputs_out.clear()
+        inputs_out.update(capture_inputs(artifact, feats, rows, context, meta["artifact_id"]))
     return meta, rows
+
+
+def capture_inputs(artifact: Artifact, feats: pl.DataFrame | None, rows: list[dict], context, artifact_id: str) -> dict:
+    """The full point-model inputs of every projected row (production_forecasts "forecast inputs"): {models, rows}.
+    Each row is the raw design row its point went through, exactly as predict_frame applied it: an ifp-2.2.0 QB with a
+    start candidate is the start/no-start mixture (the start-share column holds the share), one without goes through
+    the artifact's fallback model; every other row through its position's model. `rows[i]["row"]` fingerprints the
+    finished forecast row, so `write_run` stores inputs only beside the very row they were captured for."""
+    out: dict = {"models": [], "rows": []}
+    if feats is None or feats.height == 0:
+        return out
+    mixture, fallback = False, {}
+    if context is not None:
+        cfgk = artifact.config.get(context.CONFIG_KEY) or {}
+        comps = tuple((cfgk.get("components") or {}).get("QB") or ())
+        mixture = artifact.models.get("QB") is not None and context.uses_scenarios("QB", comps)
+        fallback = {p: RidgeModel.from_dict(d) for p, d in (cfgk.get("fallback_models") or {}).items()}
+    projected = {r["gsis_id"]: r for r in rows if r.get("coverage_status") == "projected" and r.get("gsis_id")}
+    groups: dict[tuple[str, str], list[str]] = {}
+    for g, r in projected.items():
+        kind = "main"
+        if mixture and r["position"] == "QB":
+            pi = feats.filter(pl.col("gsis_id") == g)["pi_start"] if "pi_start" in feats.columns else None
+            if pi is None or pi.len() != 1 or pi[0] is None:
+                if fallback.get("QB") is None:
+                    continue             # no start candidate and no fallback: the point is not a model output
+                kind = "fallback"
+        groups.setdefault((r["position"], kind), []).append(g)
+    for (pos, kind), ids in sorted(groups.items()):
+        model = fallback.get(pos) if kind == "fallback" else artifact.models.get(pos)
+        if model is None:
+            continue
+        frame = feats.filter(pl.col("gsis_id").is_in(ids))
+        mix_col = "s_start" if mixture and pos == "QB" and kind == "main" and "s_start" in model.columns else None
+        if mix_col is not None:          # the mixture is linear in the start share: store the share as its value
+            frame = frame.with_columns(pl.col("pi_start").cast(pl.Float64).alias("s_start"))
+        values, imputed = design_matrix(model.columns, model.means, frame)
+        out["models"].append({"artifact_id": artifact_id, "position": pos, "model_kind": kind,
+                              "model_version": artifact.version, "columns": list(model.columns),
+                              "means": [float(v) for v in model.means], "stds": [float(v) for v in model.stds],
+                              "coef": [float(v) for v in model.coef], "intercept": float(model.intercept)})
+        for i, g in enumerate(frame["gsis_id"].to_list()):
+            r = projected[g]
+            out["rows"].append({"espn_player_id": int(r["espn_player_id"]), "artifact_id": artifact_id, "position": pos,
+                                "model_kind": kind, "input_values": [float(v) for v in values[i]],
+                                "imputed": [bool(v) for v in imputed[i]], "mixture_column": mix_col,
+                                "inputs_version": INPUTS_VERSION, "row": row_fingerprint(r)})
+    return out
 
 
 def _week_report(sources: Sources, season: int, week: int) -> dict | None:
@@ -503,7 +558,7 @@ def _roster_codes(con, season: int):
     return load_roster_codes(con, [season])
 
 
-def write_run(con, meta: dict, rows: list[dict]) -> dict:
+def write_run(con, meta: dict, rows: list[dict], inputs: dict | None = None) -> dict:
     """Store one run, append-only. Returns {run_id, created, row_count, content_sha256}.
 
     * `meta["run_id"]` already stored with the same content -> that run, nothing written;
@@ -512,10 +567,13 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
       content_sha256 -> that run's id, nothing written (an idempotent retry; a revert to an older run's
       content after a change is a new run);
     * anything else (including a source correction that changes the forecasts) -> a NEW run.
-    Stored rows are re-read inside the transaction and must reproduce the digest, else nothing is committed."""
+    Stored rows are re-read inside the transaction and must reproduce the digest, else nothing is committed.
+    `inputs` (from `build_live(..., inputs_out=)`) are stored with a NEW run only, beside the rows they were captured
+    for; they never change the run's digest, and a retry that returns an existing run writes none."""
     if not rows:
         raise ValueError("refusing to store a run with no rows")
     run_id, digest = meta["run_id"], content_sha256(meta, rows)
+    prepared, inputs_error = _prepare_inputs(inputs, rows) if inputs else (None, None)
     con.execute("BEGIN TRANSACTION")
     try:
         same = fetch_dicts(con, f"SELECT run_id, content_sha256, row_count FROM {RUNS} WHERE run_id = ?", [run_id])
@@ -548,12 +606,49 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
                 back = fetch_dicts(con, f"SELECT * FROM {ROWS} WHERE run_id = ?", [run_id])
                 if len(back) != len(rows) or content_sha256(meta, back) != digest:
                     raise RuntimeError(f"run {run_id}: stored rows do not reproduce the content digest")
+                if prepared is not None:
+                    _store_inputs(con, meta, prepared)
                 result = {"run_id": run_id, "created": True}
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
         raise
-    return {**result, "row_count": len(rows), "content_sha256": digest}
+    out = {**result, "row_count": len(rows), "content_sha256": digest}
+    if inputs:
+        out["inputs_stored"] = len(prepared["rows"]) if prepared is not None and result["created"] else 0
+        if inputs_error:
+            out["inputs_error"] = inputs_error
+    return out
+
+
+def _prepare_inputs(captured: dict, rows: list[dict]) -> tuple[dict | None, str | None]:
+    """The captured inputs to store, before the run's transaction: only those of rows whose content is still the
+    captured row's (a row a caller replaced after `build_live`, e.g. a re-projection's frozen row, keeps none), with
+    the models they use. A malformed capture is dropped with its reason, so it can never block the forecasts."""
+    try:
+        fp = {int(r["espn_player_id"]): row_fingerprint(r) for r in rows}
+        keep = [{k: v for k, v in r.items() if k != "row"} for r in captured.get("rows") or []
+                if fp.get(int(r["espn_player_id"])) == r.get("row")]
+        for r in keep:
+            if len(r["input_values"]) != len(r["imputed"]):
+                raise ValueError(f"player {r['espn_player_id']}: values and imputed flags differ in length")
+        used = {(r["artifact_id"], r["position"], r["model_kind"]) for r in keep}
+        models = [m for m in captured.get("models") or [] if (m["artifact_id"], m["position"], m["model_kind"]) in used]
+        if {(m["artifact_id"], m["position"], m["model_kind"]) for m in models} != used:
+            raise ValueError("an input row names a model the capture does not hold")
+        return {"rows": keep, "models": models}, None
+    except (KeyError, TypeError, ValueError) as err:
+        return None, f"{type(err).__name__}: {err}"
+
+
+def _store_inputs(con, meta: dict, prepared: dict) -> None:
+    """A newly stored run's prepared inputs (inside write_run's transaction); a later target week of a cycle is stored
+    as its changes against the cycle's earlier whole row."""
+    if not prepared["rows"]:
+        return
+    write_models(con, prepared["models"])
+    write_inputs(con, meta["run_id"], prepared["rows"],
+                 cycle_bases(con, meta, [int(r["espn_player_id"]) for r in prepared["rows"]]))
 
 
 APPROVED_SOURCES = ("learning_cycle", "manual_pin", "learning_cycle_backfill")

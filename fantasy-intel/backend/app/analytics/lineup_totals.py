@@ -55,12 +55,19 @@ class LineupTotals:
                      if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
         self.negative = any(v < 0 for row in self.val for _, v in row.values())
         # Weeks left to assign_lineup: a week with a negative value, where the exhaustive flex search may keep no leaf
-        # at all (a slot only a value <= -1 can fill stays empty), which the fills here do not reproduce. Always for
-        # nested flex types (assign_lineup is what they used before); for every lineup with `exact_negative` (the
-        # evaluator's forced-drop search, trades.resolve_roster, which must match project_team bit for bit). The
-        # single-flex fill keeps its long-standing treatment of such weeks for discovery and trade-vs-free-agency.
-        self.exact_week = [(exact_negative or self.nested is not None) and not self.general
-                           and any(v < 0 for _, v in row.values()) for row in self.val]
+        # at all (a flex fill worth -1 or less stays empty, lineup._best_flex), which the fills here do not reproduce.
+        # Always for nested flex types (assign_lineup is what they used before); for every lineup with
+        # `exact_negative` (the evaluator's forced-drop search, trades.resolve_roster, which must match project_team bit
+        # for bit). The single-flex fill otherwise equals assign_lineup, so for discovery and trade-vs-free-agency a
+        # week goes to assign_lineup only when some roster could reach that case (STATUS 1r): its up-to-m most negative
+        # flex-eligible values sum to -1 or less, and every flex fill sums to at least that. Standard leagues keep the
+        # fill. The tolerance is wider than _best_flex's, so a week near -1 is solved exactly, never guessed.
+        def flex_floor(row) -> bool:
+            low = sorted(v for q, v in row.values() if q in self.elig and v < 0)[:self.m]
+            return bool(low) and sum(low) <= -1.0 + 1e-9
+        self.exact_week = [not self.general and (
+            ((exact_negative or self.nested is not None) and any(v < 0 for _, v in row.values()))
+            or (self.m > 0 and flex_floor(row))) for row in self.val]
         # The K/D/ST waiver streamer (team_lineups.project_week): a player every roster always has, worth the
         # week's streaming baseline. Adding one fixed element to every set keeps the lineup total monotone and
         # submodular, so every stage-A bound below stays valid.

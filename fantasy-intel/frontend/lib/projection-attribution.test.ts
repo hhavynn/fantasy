@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  attributionHeadline, attributionRows, inputValue, kindText, reconcileText, sideText, signedText, unattributedInputs, weeksText,
-  type Attribution,
+  ATTRIBUTION_CONTRACT_V2, attributionHeadline, attributionRows, fullInputsText, inputValue, kindText, reconcileText, sideText,
+  signedText, unattributedInputs, weeksText, type Attribution,
 } from "./projection-attribution.ts";
 import { moversApiQuery, parseMoversState, requestedMissingText } from "./projection-movers.ts";
 
@@ -104,4 +104,14 @@ test("a requested player who cannot be shown is explained in words", () => {
   assert.match(requestedMissingText({ requested_player: { espn_player_id: 7, status: "not_comparable",
     reason: "no independent estimate for week 8 in the latest run" } }) ?? "", /could not be compared: no independent estimate for week 8/);
   assert.match(requestedMissingText({ requested_player: { espn_player_id: 7, status: "not_found", reason: null } }) ?? "", /no forecast/);
+});
+
+test("a v2 block names the full-input convention; a v1 block says nothing about it", () => {
+  assert.equal(fullInputsText(base), null);
+  const v2: Attribution = { ...base, contract: ATTRIBUTION_CONTRACT_V2, method: "exact_midpoint",
+    full_inputs: { weeks: [7, 8], convention: "two-factor midpoint (Shapley)" } };
+  assert.match(fullInputsText(v2) ?? "", /^Split with both forecasts' full stored inputs \(weeks 7–8\) by the two-factor midpoint \(Shapley\) convention/);
+  assert.equal(fullInputsText({ ...v2, full_inputs: { weeks: [], convention: "x" } }), null);
+  assert.equal(kindText("model", true, true), "Measured model change");
+  assert.equal(kindText("model", true, false), "Model changed");
 });
