@@ -1,0 +1,3952 @@
+// /api/playoff-race?override=5%3Ahome&override=6%3Anone
+{
+ "body": {
+  "focus_team_id": 2,
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "divisions": 1,
+   "final_scoring_period": 17,
+   "last_regular_season_week": 14,
+   "league_id": 999,
+   "matchup_periods": {
+    "1": [
+     1
+    ],
+    "10": [
+     10
+    ],
+    "11": [
+     11
+    ],
+    "12": [
+     12
+    ],
+    "13": [
+     13
+    ],
+    "14": [
+     14
+    ],
+    "2": [
+     2
+    ],
+    "3": [
+     3
+    ],
+    "4": [
+     4
+    ],
+    "5": [
+     5
+    ],
+    "6": [
+     6
+    ],
+    "7": [
+     7
+    ],
+    "8": [
+     8
+    ],
+    "9": [
+     9
+    ]
+   },
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reg_season_matchups": 14,
+   "season": 2026
+  },
+  "matchups": {
+   "playoff_known": [],
+   "regular": [
+    {
+     "away_name": "Team 4",
+     "away_points": 99.0,
+     "away_team_id": 4,
+     "detail": "final in ESPN",
+     "espn_winner": "HOME",
+     "home_name": "Team 1",
+     "home_points": 112.0,
+     "home_team_id": 1,
+     "matchup_id": 1,
+     "matchup_period": 1,
+     "playoff_tier": "NONE",
+     "result": "home",
+     "scenario_result": "home",
+     "status": "final",
+     "weeks": [
+      1
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_points": 97.0,
+     "away_team_id": 2,
+     "detail": "final in ESPN",
+     "espn_winner": "HOME",
+     "home_name": "Team 3",
+     "home_points": 114.0,
+     "home_team_id": 3,
+     "matchup_id": 2,
+     "matchup_period": 1,
+     "playoff_tier": "NONE",
+     "result": "home",
+     "scenario_result": "home",
+     "status": "final",
+     "weeks": [
+      1
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_points": 96.0,
+     "away_team_id": 1,
+     "detail": "final in ESPN",
+     "espn_winner": "HOME",
+     "home_name": "Team 3",
+     "home_points": 115.0,
+     "home_team_id": 3,
+     "matchup_id": 3,
+     "matchup_period": 2,
+     "playoff_tier": "NONE",
+     "result": "home",
+     "scenario_result": "home",
+     "status": "final",
+     "weeks": [
+      2
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_points": 97.0,
+     "away_team_id": 2,
+     "detail": "final in ESPN",
+     "espn_winner": "HOME",
+     "home_name": "Team 4",
+     "home_points": 116.0,
+     "home_team_id": 4,
+     "matchup_id": 4,
+     "matchup_period": 2,
+     "playoff_tier": "NONE",
+     "result": "home",
+     "scenario_result": "home",
+     "status": "final",
+     "weeks": [
+      2
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 79.7,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 79.7,
+      "weekly": [
+       {
+        "known_lineup_points": 79.7,
+        "projected_lineup_points": 79.7,
+        "projection_complete": true,
+        "week": 3
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 73.7,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 73.7,
+      "weekly": [
+       {
+        "known_lineup_points": 73.7,
+        "projected_lineup_points": 73.7,
+        "projection_complete": true,
+        "week": 3
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 5,
+     "matchup_period": 3,
+     "override": "home",
+     "playoff_tier": "NONE",
+     "projected_margin": -6.0,
+     "projected_winner": "away",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -6.0,
+       "week": 3
+      }
+     ],
+     "weeks": [
+      3
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 35.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 35.2,
+      "weekly": [
+       {
+        "known_lineup_points": 35.2,
+        "projected_lineup_points": 35.2,
+        "projection_complete": true,
+        "week": 3
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 21.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 21.6,
+      "weekly": [
+       {
+        "known_lineup_points": 21.6,
+        "projected_lineup_points": 21.6,
+        "projection_complete": true,
+        "week": 3
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 6,
+     "matchup_period": 3,
+     "override": "none",
+     "playoff_tier": "NONE",
+     "projected_margin": -13.6,
+     "projected_winner": "away",
+     "scenario_result": null,
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -13.6,
+       "week": 3
+      }
+     ],
+     "weeks": [
+      3
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 74.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 74.6,
+      "weekly": [
+       {
+        "known_lineup_points": 74.6,
+        "projected_lineup_points": 74.6,
+        "projection_complete": true,
+        "week": 4
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 21.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 21.8,
+      "weekly": [
+       {
+        "known_lineup_points": 21.8,
+        "projected_lineup_points": 21.8,
+        "projection_complete": true,
+        "week": 4
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 7,
+     "matchup_period": 4,
+     "playoff_tier": "NONE",
+     "projected_margin": -52.8,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -52.8,
+       "week": 4
+      }
+     ],
+     "weeks": [
+      4
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 35.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 35.6,
+      "weekly": [
+       {
+        "known_lineup_points": 35.6,
+        "projected_lineup_points": 35.6,
+        "projection_complete": true,
+        "week": 4
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 80.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 80.6,
+      "weekly": [
+       {
+        "known_lineup_points": 80.6,
+        "projected_lineup_points": 80.6,
+        "projection_complete": true,
+        "week": 4
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 8,
+     "matchup_period": 4,
+     "playoff_tier": "NONE",
+     "projected_margin": 45.0,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 45.0,
+       "week": 4
+      }
+     ],
+     "weeks": [
+      4
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 36.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 36.0,
+      "weekly": [
+       {
+        "known_lineup_points": 36.0,
+        "projected_lineup_points": 36.0,
+        "projection_complete": true,
+        "week": 5
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 75.5,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 75.5,
+      "weekly": [
+       {
+        "known_lineup_points": 75.5,
+        "projected_lineup_points": 75.5,
+        "projection_complete": true,
+        "week": 5
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 9,
+     "matchup_period": 5,
+     "playoff_tier": "NONE",
+     "projected_margin": 39.5,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 39.5,
+       "week": 5
+      }
+     ],
+     "weeks": [
+      5
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 22.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 22.0,
+      "weekly": [
+       {
+        "known_lineup_points": 22.0,
+        "projected_lineup_points": 22.0,
+        "projection_complete": true,
+        "week": 5
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 81.5,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 81.5,
+      "weekly": [
+       {
+        "known_lineup_points": 81.5,
+        "projected_lineup_points": 81.5,
+        "projection_complete": true,
+        "week": 5
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 10,
+     "matchup_period": 5,
+     "playoff_tier": "NONE",
+     "projected_margin": 59.5,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 59.5,
+       "week": 5
+      }
+     ],
+     "weeks": [
+      5
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 76.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 76.4,
+      "weekly": [
+       {
+        "known_lineup_points": 76.4,
+        "projected_lineup_points": 76.4,
+        "projection_complete": true,
+        "week": 6
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 82.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 82.4,
+      "weekly": [
+       {
+        "known_lineup_points": 82.4,
+        "projected_lineup_points": 82.4,
+        "projection_complete": true,
+        "week": 6
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 11,
+     "matchup_period": 6,
+     "playoff_tier": "NONE",
+     "projected_margin": 6.0,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 6.0,
+       "week": 6
+      }
+     ],
+     "weeks": [
+      6
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 22.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 22.2,
+      "weekly": [
+       {
+        "known_lineup_points": 22.2,
+        "projected_lineup_points": 22.2,
+        "projection_complete": true,
+        "week": 6
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 36.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 36.4,
+      "weekly": [
+       {
+        "known_lineup_points": 36.4,
+        "projected_lineup_points": 36.4,
+        "projection_complete": true,
+        "week": 6
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 12,
+     "matchup_period": 6,
+     "playoff_tier": "NONE",
+     "projected_margin": 14.2,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 14.2,
+       "week": 6
+      }
+     ],
+     "weeks": [
+      6
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 22.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 22.4,
+      "weekly": [
+       {
+        "known_lineup_points": 22.4,
+        "projected_lineup_points": 22.4,
+        "projection_complete": true,
+        "week": 7
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 77.3,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 77.3,
+      "weekly": [
+       {
+        "known_lineup_points": 77.3,
+        "projected_lineup_points": 77.3,
+        "projection_complete": true,
+        "week": 7
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 13,
+     "matchup_period": 7,
+     "playoff_tier": "NONE",
+     "projected_margin": 54.9,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 54.9,
+       "week": 7
+      }
+     ],
+     "weeks": [
+      7
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 83.3,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 83.3,
+      "weekly": [
+       {
+        "known_lineup_points": 83.3,
+        "projected_lineup_points": 83.3,
+        "projection_complete": true,
+        "week": 7
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 36.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 36.8,
+      "weekly": [
+       {
+        "known_lineup_points": 36.8,
+        "projected_lineup_points": 36.8,
+        "projection_complete": true,
+        "week": 7
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 14,
+     "matchup_period": 7,
+     "playoff_tier": "NONE",
+     "projected_margin": -46.5,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -46.5,
+       "week": 7
+      }
+     ],
+     "weeks": [
+      7
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 78.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 78.2,
+      "weekly": [
+       {
+        "known_lineup_points": 78.2,
+        "projected_lineup_points": 78.2,
+        "projection_complete": true,
+        "week": 8
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 37.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 37.2,
+      "weekly": [
+       {
+        "known_lineup_points": 37.2,
+        "projected_lineup_points": 37.2,
+        "projection_complete": true,
+        "week": 8
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 15,
+     "matchup_period": 8,
+     "playoff_tier": "NONE",
+     "projected_margin": -41.0,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -41.0,
+       "week": 8
+      }
+     ],
+     "weeks": [
+      8
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 84.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 84.2,
+      "weekly": [
+       {
+        "known_lineup_points": 84.2,
+        "projected_lineup_points": 84.2,
+        "projection_complete": true,
+        "week": 8
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 22.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 22.6,
+      "weekly": [
+       {
+        "known_lineup_points": 22.6,
+        "projected_lineup_points": 22.6,
+        "projection_complete": true,
+        "week": 8
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 16,
+     "matchup_period": 8,
+     "playoff_tier": "NONE",
+     "projected_margin": -61.6,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -61.6,
+       "week": 8
+      }
+     ],
+     "weeks": [
+      8
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 85.1,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 85.1,
+      "weekly": [
+       {
+        "known_lineup_points": 85.1,
+        "projected_lineup_points": 85.1,
+        "projection_complete": true,
+        "week": 9
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 79.1,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 79.1,
+      "weekly": [
+       {
+        "known_lineup_points": 79.1,
+        "projected_lineup_points": 79.1,
+        "projection_complete": true,
+        "week": 9
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 17,
+     "matchup_period": 9,
+     "playoff_tier": "NONE",
+     "projected_margin": -6.0,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -6.0,
+       "week": 9
+      }
+     ],
+     "weeks": [
+      9
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 37.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 37.6,
+      "weekly": [
+       {
+        "known_lineup_points": 37.6,
+        "projected_lineup_points": 37.6,
+        "projection_complete": true,
+        "week": 9
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 22.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 22.8,
+      "weekly": [
+       {
+        "known_lineup_points": 22.8,
+        "projected_lineup_points": 22.8,
+        "projection_complete": true,
+        "week": 9
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 18,
+     "matchup_period": 9,
+     "playoff_tier": "NONE",
+     "projected_margin": -14.8,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -14.8,
+       "week": 9
+      }
+     ],
+     "weeks": [
+      9
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 80.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 80.0,
+      "weekly": [
+       {
+        "known_lineup_points": 80.0,
+        "projected_lineup_points": 80.0,
+        "projection_complete": true,
+        "week": 10
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 23.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 23.0,
+      "weekly": [
+       {
+        "known_lineup_points": 23.0,
+        "projected_lineup_points": 23.0,
+        "projection_complete": true,
+        "week": 10
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 19,
+     "matchup_period": 10,
+     "playoff_tier": "NONE",
+     "projected_margin": -57.0,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -57.0,
+       "week": 10
+      }
+     ],
+     "weeks": [
+      10
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 38.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 38.0,
+      "weekly": [
+       {
+        "known_lineup_points": 38.0,
+        "projected_lineup_points": 38.0,
+        "projection_complete": true,
+        "week": 10
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 86.0,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 86.0,
+      "weekly": [
+       {
+        "known_lineup_points": 86.0,
+        "projected_lineup_points": 86.0,
+        "projection_complete": true,
+        "week": 10
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 20,
+     "matchup_period": 10,
+     "playoff_tier": "NONE",
+     "projected_margin": 48.0,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 48.0,
+       "week": 10
+      }
+     ],
+     "weeks": [
+      10
+     ]
+    },
+    {
+     "away_name": "Team 3",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 38.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 38.4,
+      "weekly": [
+       {
+        "known_lineup_points": 38.4,
+        "projected_lineup_points": 38.4,
+        "projection_complete": true,
+        "week": 11
+       }
+      ]
+     },
+     "away_team_id": 3,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 80.9,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 80.9,
+      "weekly": [
+       {
+        "known_lineup_points": 80.9,
+        "projected_lineup_points": 80.9,
+        "projection_complete": true,
+        "week": 11
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 21,
+     "matchup_period": 11,
+     "playoff_tier": "NONE",
+     "projected_margin": 42.5,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 42.5,
+       "week": 11
+      }
+     ],
+     "weeks": [
+      11
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 23.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 23.2,
+      "weekly": [
+       {
+        "known_lineup_points": 23.2,
+        "projected_lineup_points": 23.2,
+        "projection_complete": true,
+        "week": 11
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 86.9,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 86.9,
+      "weekly": [
+       {
+        "known_lineup_points": 86.9,
+        "projected_lineup_points": 86.9,
+        "projection_complete": true,
+        "week": 11
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 22,
+     "matchup_period": 11,
+     "playoff_tier": "NONE",
+     "projected_margin": 63.7,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 63.7,
+       "week": 11
+      }
+     ],
+     "weeks": [
+      11
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 81.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 81.8,
+      "weekly": [
+       {
+        "known_lineup_points": 81.8,
+        "projected_lineup_points": 81.8,
+        "projection_complete": true,
+        "week": 12
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 2",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 87.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 87.8,
+      "weekly": [
+       {
+        "known_lineup_points": 87.8,
+        "projected_lineup_points": 87.8,
+        "projection_complete": true,
+        "week": 12
+       }
+      ]
+     },
+     "home_team_id": 2,
+     "matchup_id": 23,
+     "matchup_period": 12,
+     "playoff_tier": "NONE",
+     "projected_margin": 6.0,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 6.0,
+       "week": 12
+      }
+     ],
+     "weeks": [
+      12
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 23.4,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 23.4,
+      "weekly": [
+       {
+        "known_lineup_points": 23.4,
+        "projected_lineup_points": 23.4,
+        "projection_complete": true,
+        "week": 12
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 38.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 38.8,
+      "weekly": [
+       {
+        "known_lineup_points": 38.8,
+        "projected_lineup_points": 38.8,
+        "projection_complete": true,
+        "week": 12
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 24,
+     "matchup_period": 12,
+     "playoff_tier": "NONE",
+     "projected_margin": 15.4,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 15.4,
+       "week": 12
+      }
+     ],
+     "weeks": [
+      12
+     ]
+    },
+    {
+     "away_name": "Team 4",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 23.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 23.6,
+      "weekly": [
+       {
+        "known_lineup_points": 23.6,
+        "projected_lineup_points": 23.6,
+        "projection_complete": true,
+        "week": 13
+       }
+      ]
+     },
+     "away_team_id": 4,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 1",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 82.7,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 82.7,
+      "weekly": [
+       {
+        "known_lineup_points": 82.7,
+        "projected_lineup_points": 82.7,
+        "projection_complete": true,
+        "week": 13
+       }
+      ]
+     },
+     "home_team_id": 1,
+     "matchup_id": 25,
+     "matchup_period": 13,
+     "playoff_tier": "NONE",
+     "projected_margin": 59.1,
+     "projected_winner": "home",
+     "scenario_result": "home",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": 59.1,
+       "week": 13
+      }
+     ],
+     "weeks": [
+      13
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 88.7,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 88.7,
+      "weekly": [
+       {
+        "known_lineup_points": 88.7,
+        "projected_lineup_points": 88.7,
+        "projection_complete": true,
+        "week": 13
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 39.2,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 39.2,
+      "weekly": [
+       {
+        "known_lineup_points": 39.2,
+        "projected_lineup_points": 39.2,
+        "projection_complete": true,
+        "week": 13
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 26,
+     "matchup_period": 13,
+     "playoff_tier": "NONE",
+     "projected_margin": -49.5,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -49.5,
+       "week": 13
+      }
+     ],
+     "weeks": [
+      13
+     ]
+    },
+    {
+     "away_name": "Team 1",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 83.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 83.6,
+      "weekly": [
+       {
+        "known_lineup_points": 83.6,
+        "projected_lineup_points": 83.6,
+        "projection_complete": true,
+        "week": 14
+       }
+      ]
+     },
+     "away_team_id": 1,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 3",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 39.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 39.6,
+      "weekly": [
+       {
+        "known_lineup_points": 39.6,
+        "projected_lineup_points": 39.6,
+        "projection_complete": true,
+        "week": 14
+       }
+      ]
+     },
+     "home_team_id": 3,
+     "matchup_id": 27,
+     "matchup_period": 14,
+     "playoff_tier": "NONE",
+     "projected_margin": -44.0,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -44.0,
+       "week": 14
+      }
+     ],
+     "weeks": [
+      14
+     ]
+    },
+    {
+     "away_name": "Team 2",
+     "away_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 89.6,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 89.6,
+      "weekly": [
+       {
+        "known_lineup_points": 89.6,
+        "projected_lineup_points": 89.6,
+        "projection_complete": true,
+        "week": 14
+       }
+      ]
+     },
+     "away_team_id": 2,
+     "close": false,
+     "detail": "projected from ESPN weekly lineups",
+     "espn_winner": "UNDECIDED",
+     "home_name": "Team 4",
+     "home_projection": {
+      "complete": true,
+      "gap": null,
+      "known_points": 23.8,
+      "missing_players": [],
+      "missing_projection_ids": [],
+      "projected_points": 23.8,
+      "weekly": [
+       {
+        "known_lineup_points": 23.8,
+        "projected_lineup_points": 23.8,
+        "projection_complete": true,
+        "week": 14
+       }
+      ]
+     },
+     "home_team_id": 4,
+     "matchup_id": 28,
+     "matchup_period": 14,
+     "playoff_tier": "NONE",
+     "projected_margin": -65.8,
+     "projected_winner": "away",
+     "scenario_result": "away",
+     "status": "upcoming",
+     "weekly_margins": [
+      {
+       "margin": -65.8,
+       "week": 14
+      }
+     ],
+     "weeks": [
+      14
+     ]
+    }
+   ]
+  },
+  "notes": [
+   "Actual records are ESPN's. Projected records add hypothetical results to them; nothing here is a probability, a guarantee or a prediction.",
+   "Points for and against are actual ESPN totals; projected games do not add points.",
+   "Playoff matchups are shown as ESPN lists them; future playoff opponents are not modeled."
+  ],
+  "record_check": [
+   "Team 1: ESPN record 3-0-0 differs from the final matchups stored 1-1-0; ESPN's record is used",
+   "Team 2: ESPN record 2-1-0 differs from the final matchups stored 0-2-0; ESPN's record is used",
+   "Team 3: ESPN record 1-2-0 differs from the final matchups stored 2-0-0; ESPN's record is used",
+   "Team 4: ESPN record 0-3-0 differs from the final matchups stored 1-1-0; ESPN's record is used"
+  ],
+  "rules": {
+   "clinch": "No team is described as clinched or eliminated: that needs the league's full seeding and tiebreak rules (and division rules), which are not verifiably available.",
+   "close": "A projected matchup is marked close (a potential swing game) when the projected margin is at most 5% of the two sides' mean projected total. A display threshold, not a probability.",
+   "espn_rules_note": "ESPN sent no seeding or tie rule settings.",
+   "espn_rules_reported": {},
+   "ordering": "Standings are ordered by winning percentage: (wins + half of ties) / games. This is the usual ESPN head-to-head order but it is not read from a league setting; ESPN's own current playoff seeds are shown next to it. No tiebreak rule is applied: teams with the same winning percentage share a rank.",
+   "projection": "Projected winner of a remaining matchup = the side with the higher ESPN-projected optimal starting lineup total (each scoring period optimized separately with the league's lineup slots; current IR players inactive). Only matchups whose scoring periods have not kicked off are projected, and only when both sides' projections are complete. This is a deterministic scenario, not a probability."
+  },
+  "scenario": {
+   "base": "projected",
+   "current_standings": [
+    {
+     "pct": 1.0,
+     "rank": 1,
+     "record": {
+      "losses": 0,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 3
+     },
+     "status": "inside",
+     "team_id": 1,
+     "tied": false
+    },
+    {
+     "pct": 0.6667,
+     "rank": 2,
+     "record": {
+      "losses": 1,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 2
+     },
+     "status": "inside",
+     "team_id": 2,
+     "tied": false
+    },
+    {
+     "pct": 0.3333,
+     "rank": 3,
+     "record": {
+      "losses": 2,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 1
+     },
+     "status": "outside",
+     "team_id": 3,
+     "tied": false
+    },
+    {
+     "pct": 0.0,
+     "rank": 4,
+     "record": {
+      "losses": 3,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 0
+     },
+     "status": "outside",
+     "team_id": 4,
+     "tied": false
+    }
+   ],
+   "cutline": {
+    "bubble": [],
+    "cutline_tie": null,
+    "first_outside": [
+     {
+      "pct": 0.2857,
+      "rank": 3,
+      "record": {
+       "losses": 10,
+       "ties": 0,
+       "unresolved": 1,
+       "wins": 4
+      },
+      "status": "outside",
+      "team_id": 3,
+      "tied": false
+     }
+    ],
+    "last_inside": [
+     {
+      "pct": 0.8,
+      "rank": 2,
+      "record": {
+       "losses": 3,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 12
+      },
+      "status": "inside",
+      "team_id": 1,
+      "tied": false
+     }
+    ],
+    "playoff_spots": 2
+   },
+   "decided_open_games": 23,
+   "focus": {
+    "fewest_wins_to_get_inside": {
+     "games": [
+      8,
+      11,
+      14,
+      20
+     ],
+     "method": "exhaustive",
+     "of_games": 12,
+     "wins_needed": 4
+    },
+    "helpful_other_results": [],
+    "lose_out": {
+     "rank": 4,
+     "record": {
+      "losses": 13,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 2
+     },
+     "status": "outside"
+    },
+    "open_games": 12,
+    "scenario": {
+     "rank": 1,
+     "record": {
+      "losses": 2,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 13
+     },
+     "status": "inside"
+    },
+    "win_out": {
+     "rank": 1,
+     "record": {
+      "losses": 1,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 14
+     },
+     "status": "inside"
+    }
+   },
+   "leverage": {
+    "1": [
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 5,
+      "matchup_period": 3,
+      "opponent_id": 2,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 7,
+      "matchup_period": 4,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 9,
+      "matchup_period": 5,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 11,
+      "matchup_period": 6,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 13,
+      "matchup_period": 7,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 15,
+      "matchup_period": 8,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 17,
+      "matchup_period": 9,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 19,
+      "matchup_period": 10,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 21,
+      "matchup_period": 11,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 23,
+      "matchup_period": 12,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 25,
+      "matchup_period": 13,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "matchup_id": 27,
+      "matchup_period": 14,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "2": [
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 5,
+      "matchup_period": 3,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 8,
+      "matchup_period": 4,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 10,
+      "matchup_period": 5,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 11,
+      "matchup_period": 6,
+      "opponent_id": 1,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 14,
+      "matchup_period": 7,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 16,
+      "matchup_period": 8,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 17,
+      "matchup_period": 9,
+      "opponent_id": 1,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 20,
+      "matchup_period": 10,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 22,
+      "matchup_period": 11,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 2,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 23,
+      "matchup_period": 12,
+      "opponent_id": 1,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 26,
+      "matchup_period": 13,
+      "opponent_id": 3,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "if_win": {
+       "rank": 1,
+       "status": "inside"
+      },
+      "matchup_id": 28,
+      "matchup_period": 14,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "3": [
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "opponent_id": 4,
+      "scenario_result": null,
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 8,
+      "matchup_period": 4,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 9,
+      "matchup_period": 5,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 12,
+      "matchup_period": 6,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 14,
+      "matchup_period": 7,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 15,
+      "matchup_period": 8,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 18,
+      "matchup_period": 9,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 20,
+      "matchup_period": 10,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 21,
+      "matchup_period": 11,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 24,
+      "matchup_period": 12,
+      "opponent_id": 4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 26,
+      "matchup_period": 13,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 3,
+       "status": "outside"
+      },
+      "matchup_id": 27,
+      "matchup_period": 14,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "4": [
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "opponent_id": 3,
+      "scenario_result": null,
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 7,
+      "matchup_period": 4,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 10,
+      "matchup_period": 5,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 12,
+      "matchup_period": 6,
+      "opponent_id": 3,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 13,
+      "matchup_period": 7,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 16,
+      "matchup_period": 8,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 18,
+      "matchup_period": 9,
+      "opponent_id": 3,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 19,
+      "matchup_period": 10,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 22,
+      "matchup_period": 11,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 24,
+      "matchup_period": 12,
+      "opponent_id": 3,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 25,
+      "matchup_period": 13,
+      "opponent_id": 1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "high_leverage": false,
+      "if_loss": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "if_win": {
+       "rank": 4,
+       "status": "outside"
+      },
+      "matchup_id": 28,
+      "matchup_period": 14,
+      "opponent_id": 2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ]
+   },
+   "overrides": [
+    {
+     "matchup_id": 5,
+     "outcome": "home"
+    },
+    {
+     "matchup_id": 6,
+     "outcome": "none"
+    }
+   ],
+   "projected_standings": [
+    {
+     "pct": 0.8667,
+     "rank": 1,
+     "record": {
+      "losses": 2,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 13
+     },
+     "status": "inside",
+     "team_id": 2,
+     "tied": false
+    },
+    {
+     "pct": 0.8,
+     "rank": 2,
+     "record": {
+      "losses": 3,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 12
+     },
+     "status": "inside",
+     "team_id": 1,
+     "tied": false
+    },
+    {
+     "pct": 0.2857,
+     "rank": 3,
+     "record": {
+      "losses": 10,
+      "ties": 0,
+      "unresolved": 1,
+      "wins": 4
+     },
+     "status": "outside",
+     "team_id": 3,
+     "tied": false
+    },
+    {
+     "pct": 0.0,
+     "rank": 4,
+     "record": {
+      "losses": 14,
+      "ties": 0,
+      "unresolved": 1,
+      "wins": 0
+     },
+     "status": "outside",
+     "team_id": 4,
+     "tied": false
+    }
+   ],
+   "unresolved_open_games": 1
+  },
+  "schedule_coverage": {
+   "checked": true,
+   "complete": true,
+   "missing": [],
+   "regular_season_periods": 14,
+   "unmapped_periods": []
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "all_play": {
+     "losses": 4,
+     "pct": 0.3333,
+     "periods": [
+      1,
+      2
+     ],
+     "ties": 0,
+     "wins": 2
+    },
+    "current": {
+     "pct": 1.0,
+     "rank": 1,
+     "record": {
+      "losses": 0,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 3
+     },
+     "status": "inside",
+     "team_id": 1,
+     "tied": false
+    },
+    "division_id": 0,
+    "espn_seed": 1,
+    "high_leverage_games": [],
+    "is_mine": false,
+    "name": "Team 1",
+    "points_against": 90.0,
+    "points_for": 400.0,
+    "projected": {
+     "pct": 0.8,
+     "rank": 2,
+     "record": {
+      "losses": 3,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 12
+     },
+     "status": "inside",
+     "team_id": 1,
+     "tied": false
+    },
+    "projection_gap": null,
+    "projection_weeks_incomplete": [],
+    "record": {
+     "losses": 0,
+     "ties": 0,
+     "wins": 3
+    },
+    "regular_season_known_points": 943.8,
+    "regular_season_projected_points": 943.8,
+    "remaining": [
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 5,
+      "matchup_period": 3,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -6.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 7,
+      "matchup_period": 4,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 52.8,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 9,
+      "matchup_period": 5,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 39.5,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 11,
+      "matchup_period": 6,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -6.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 13,
+      "matchup_period": 7,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 54.9,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 15,
+      "matchup_period": 8,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 41.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 17,
+      "matchup_period": 9,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -6.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 19,
+      "matchup_period": 10,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 57.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 21,
+      "matchup_period": 11,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 42.5,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 23,
+      "matchup_period": 12,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -6.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 25,
+      "matchup_period": 13,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 59.1,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 27,
+      "matchup_period": 14,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 44.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "all_play": {
+     "losses": 5,
+     "pct": 0.1667,
+     "periods": [
+      1,
+      2
+     ],
+     "ties": 0,
+     "wins": 1
+    },
+    "current": {
+     "pct": 0.6667,
+     "rank": 2,
+     "record": {
+      "losses": 1,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 2
+     },
+     "status": "inside",
+     "team_id": 2,
+     "tied": false
+    },
+    "division_id": 0,
+    "espn_seed": 2,
+    "high_leverage_games": [],
+    "is_mine": true,
+    "name": "Team 2",
+    "points_against": 90.0,
+    "points_for": 300.0,
+    "projected": {
+     "pct": 0.8667,
+     "rank": 1,
+     "record": {
+      "losses": 2,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 13
+     },
+     "status": "inside",
+     "team_id": 2,
+     "tied": false
+    },
+    "projection_gap": null,
+    "projection_weeks_incomplete": [],
+    "record": {
+     "losses": 1,
+     "ties": 0,
+     "wins": 2
+    },
+    "regular_season_known_points": 1015.8,
+    "regular_season_projected_points": 1015.8,
+    "remaining": [
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 5,
+      "matchup_period": 3,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": 6.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 8,
+      "matchup_period": 4,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 45.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 10,
+      "matchup_period": 5,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 59.5,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 11,
+      "matchup_period": 6,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": 6.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 14,
+      "matchup_period": 7,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 46.5,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 16,
+      "matchup_period": 8,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 61.6,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 17,
+      "matchup_period": 9,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": 6.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 20,
+      "matchup_period": 10,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 48.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 22,
+      "matchup_period": 11,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 63.7,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 23,
+      "matchup_period": 12,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": 6.0,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 26,
+      "matchup_period": 13,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": 49.5,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 28,
+      "matchup_period": 14,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 65.8,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "all_play": {
+     "losses": 1,
+     "pct": 0.8333,
+     "periods": [
+      1,
+      2
+     ],
+     "ties": 0,
+     "wins": 5
+    },
+    "current": {
+     "pct": 0.3333,
+     "rank": 3,
+     "record": {
+      "losses": 2,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 1
+     },
+     "status": "outside",
+     "team_id": 3,
+     "tied": false
+    },
+    "division_id": 0,
+    "espn_seed": 3,
+    "high_leverage_games": [],
+    "is_mine": false,
+    "name": "Team 3",
+    "points_against": 90.0,
+    "points_for": 200.0,
+    "projected": {
+     "pct": 0.2857,
+     "rank": 3,
+     "record": {
+      "losses": 10,
+      "ties": 0,
+      "unresolved": 1,
+      "wins": 4
+     },
+     "status": "outside",
+     "team_id": 3,
+     "tied": false
+    },
+    "projection_gap": null,
+    "projection_weeks_incomplete": [],
+    "record": {
+     "losses": 2,
+     "ties": 0,
+     "wins": 1
+    },
+    "regular_season_known_points": 448.8,
+    "regular_season_projected_points": 448.8,
+    "remaining": [
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 13.6,
+      "scenario_result": null,
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 8,
+      "matchup_period": 4,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -45.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 9,
+      "matchup_period": 5,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -39.5,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 12,
+      "matchup_period": 6,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 14.2,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 14,
+      "matchup_period": 7,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -46.5,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 15,
+      "matchup_period": 8,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -41.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 18,
+      "matchup_period": 9,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 14.8,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 20,
+      "matchup_period": 10,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -48.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 21,
+      "matchup_period": 11,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -42.5,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 24,
+      "matchup_period": 12,
+      "opponent_id": 4,
+      "opponent_name": "Team 4",
+      "projected_margin": 15.4,
+      "scenario_result": "win",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 26,
+      "matchup_period": 13,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -49.5,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 27,
+      "matchup_period": 14,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -44.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "all_play": {
+     "losses": 2,
+     "pct": 0.6667,
+     "periods": [
+      1,
+      2
+     ],
+     "ties": 0,
+     "wins": 4
+    },
+    "current": {
+     "pct": 0.0,
+     "rank": 4,
+     "record": {
+      "losses": 3,
+      "ties": 0,
+      "unresolved": 12,
+      "wins": 0
+     },
+     "status": "outside",
+     "team_id": 4,
+     "tied": false
+    },
+    "division_id": 0,
+    "espn_seed": 4,
+    "high_leverage_games": [],
+    "is_mine": false,
+    "name": "Team 4",
+    "points_against": 90.0,
+    "points_for": 100.0,
+    "projected": {
+     "pct": 0.0,
+     "rank": 4,
+     "record": {
+      "losses": 14,
+      "ties": 0,
+      "unresolved": 1,
+      "wins": 0
+     },
+     "status": "outside",
+     "team_id": 4,
+     "tied": false
+    },
+    "projection_gap": null,
+    "projection_weeks_incomplete": [],
+    "record": {
+     "losses": 3,
+     "ties": 0,
+     "wins": 0
+    },
+    "regular_season_known_points": 272.4,
+    "regular_season_projected_points": 272.4,
+    "remaining": [
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": -13.6,
+      "scenario_result": null,
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 7,
+      "matchup_period": 4,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -52.8,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       4
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 10,
+      "matchup_period": 5,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -59.5,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       5
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 12,
+      "matchup_period": 6,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": -14.2,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       6
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 13,
+      "matchup_period": 7,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -54.9,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       7
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 16,
+      "matchup_period": 8,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -61.6,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       8
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 18,
+      "matchup_period": 9,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": -14.8,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       9
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 19,
+      "matchup_period": 10,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -57.0,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       10
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 22,
+      "matchup_period": 11,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -63.7,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       11
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 24,
+      "matchup_period": 12,
+      "opponent_id": 3,
+      "opponent_name": "Team 3",
+      "projected_margin": -15.4,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       12
+      ]
+     },
+     {
+      "close": false,
+      "home": false,
+      "matchup_id": 25,
+      "matchup_period": 13,
+      "opponent_id": 1,
+      "opponent_name": "Team 1",
+      "projected_margin": -59.1,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       13
+      ]
+     },
+     {
+      "close": false,
+      "home": true,
+      "matchup_id": 28,
+      "matchup_period": 14,
+      "opponent_id": 2,
+      "opponent_name": "Team 2",
+      "projected_margin": -65.8,
+      "scenario_result": "loss",
+      "status": "upcoming",
+      "weeks": [
+       14
+      ]
+     }
+    ],
+    "team_id": 4
+   }
+  ],
+  "warnings": [
+   "1 remaining regular-season game(s) are unresolved in this scenario (under way, projection incomplete, equal projections, or unmapped). Standings count decided games only; override them to see their effect."
+  ],
+  "whatif": {
+   "assumptions": [
+    "Results you set are hypothetical. Actual records, points for and against, and the provider's seeds are unchanged.",
+    "Every other eligible upcoming game uses the higher projected lineup total as a hypothetical winner (the baseline). A game whose projection is incomplete is never decided by projection: missing is not zero.",
+    "Unresolved games count for nobody: they are left out of the records, never scored as a loss or as 0 points.",
+    "Rosters are the current snapshot for every remaining week; no waiver, trade or lineup change is modeled.",
+    "Standings are ordered by winning percentage: (wins + half of ties) / games. This is the usual ESPN head-to-head order but it is not read from a league setting; ESPN's own current playoff seeds are shown next to it. No tiebreak rule is applied: teams with the same winning percentage share a rank."
+   ],
+   "baseline_standings": [
+    {
+     "pct": 0.9333,
+     "rank": 1,
+     "record": {
+      "losses": 1,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 14
+     },
+     "status": "inside",
+     "team_id": 2,
+     "tied": false
+    },
+    {
+     "pct": 0.7333,
+     "rank": 2,
+     "record": {
+      "losses": 4,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 11
+     },
+     "status": "inside",
+     "team_id": 1,
+     "tied": false
+    },
+    {
+     "pct": 0.3333,
+     "rank": 3,
+     "record": {
+      "losses": 10,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 5
+     },
+     "status": "outside",
+     "team_id": 3,
+     "tied": false
+    },
+    {
+     "pct": 0.0,
+     "rank": 4,
+     "record": {
+      "losses": 15,
+      "ties": 0,
+      "unresolved": 0,
+      "wins": 0
+     },
+     "status": "outside",
+     "team_id": 4,
+     "tied": false
+    }
+   ],
+   "changes": [
+    {
+     "baseline": {
+      "rank": 1,
+      "record": {
+       "losses": 1,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 14
+      },
+      "status": "inside",
+      "tied": false
+     },
+     "rank_change": 0,
+     "status_changed": false,
+     "team_id": 2,
+     "whatif": {
+      "rank": 1,
+      "record": {
+       "losses": 2,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 13
+      },
+      "status": "inside",
+      "tied": false
+     }
+    },
+    {
+     "baseline": {
+      "rank": 2,
+      "record": {
+       "losses": 4,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 11
+      },
+      "status": "inside",
+      "tied": false
+     },
+     "rank_change": 0,
+     "status_changed": false,
+     "team_id": 1,
+     "whatif": {
+      "rank": 2,
+      "record": {
+       "losses": 3,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 12
+      },
+      "status": "inside",
+      "tied": false
+     }
+    },
+    {
+     "baseline": {
+      "rank": 3,
+      "record": {
+       "losses": 10,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 5
+      },
+      "status": "outside",
+      "tied": false
+     },
+     "rank_change": 0,
+     "status_changed": false,
+     "team_id": 3,
+     "whatif": {
+      "rank": 3,
+      "record": {
+       "losses": 10,
+       "ties": 0,
+       "unresolved": 1,
+       "wins": 4
+      },
+      "status": "outside",
+      "tied": false
+     }
+    },
+    {
+     "baseline": {
+      "rank": 4,
+      "record": {
+       "losses": 15,
+       "ties": 0,
+       "unresolved": 0,
+       "wins": 0
+      },
+      "status": "outside",
+      "tied": false
+     },
+     "rank_change": 0,
+     "status_changed": false,
+     "team_id": 4,
+     "whatif": {
+      "rank": 4,
+      "record": {
+       "losses": 14,
+       "ties": 0,
+       "unresolved": 1,
+       "wins": 0
+      },
+      "status": "outside",
+      "tied": false
+     }
+    }
+   ],
+   "completeness": {
+    "by_reason": {
+     "set_unresolved": 1
+    },
+    "status": "partial",
+    "unresolved_games": 1
+   },
+   "conclusions": {
+    "blocked_by": [
+     {
+      "detail": "The league's tiebreak and seeding settings are not mapped to a verified rule (none were reported).",
+      "reported": {},
+      "rule": "tiebreak",
+      "state": "unmapped"
+     },
+     {
+      "detail": "Standings order by winning percentage is assumed, not read from a league setting.",
+      "reported": {},
+      "rule": "standings_order",
+      "state": "assumed"
+     }
+    ],
+    "claims": [],
+    "record_bounds": {
+     "abstain": [],
+     "fixed_results": 1,
+     "open_games": 23,
+     "rule": "Record bounds: each team's record if it wins, and if it loses, every open game, with your set results fixed and every other remaining game open (projections are not used). They are exact under the record order above and are never turned into a clinch or elimination claim.",
+     "teams": [
+      {
+       "best": {
+        "losses": 0,
+        "ties": 0,
+        "wins": 15
+       },
+       "claim": null,
+       "open_games": 11,
+       "record_order": "open",
+       "team_id": 1,
+       "teams_able_to_match_worst": 3,
+       "teams_certain_ahead_of_best": 0,
+       "worst": {
+        "losses": 11,
+        "ties": 0,
+        "wins": 4
+       }
+      },
+      {
+       "best": {
+        "losses": 2,
+        "ties": 0,
+        "wins": 13
+       },
+       "claim": null,
+       "open_games": 11,
+       "record_order": "open",
+       "team_id": 2,
+       "teams_able_to_match_worst": 3,
+       "teams_certain_ahead_of_best": 0,
+       "worst": {
+        "losses": 13,
+        "ties": 0,
+        "wins": 2
+       }
+      },
+      {
+       "best": {
+        "losses": 2,
+        "ties": 0,
+        "wins": 13
+       },
+       "claim": null,
+       "open_games": 12,
+       "record_order": "open",
+       "team_id": 3,
+       "teams_able_to_match_worst": 3,
+       "teams_certain_ahead_of_best": 0,
+       "worst": {
+        "losses": 14,
+        "ties": 0,
+        "wins": 1
+       }
+      },
+      {
+       "best": {
+        "losses": 3,
+        "ties": 0,
+        "wins": 12
+       },
+       "claim": null,
+       "open_games": 12,
+       "record_order": "open",
+       "team_id": 4,
+       "teams_able_to_match_worst": 3,
+       "teams_certain_ahead_of_best": 0,
+       "worst": {
+        "losses": 15,
+        "ties": 0,
+        "wins": 0
+       }
+      }
+     ]
+    },
+    "status": "blocked"
+   },
+   "inputs": {
+    "base": "projected",
+    "first_actionable_week": 3,
+    "set_results": [
+     {
+      "away_team_id": 2,
+      "baseline_result": "away",
+      "changes_baseline": true,
+      "home_team_id": 1,
+      "matchup_id": 5,
+      "matchup_period": 3,
+      "outcome": "home",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     },
+     {
+      "away_team_id": 3,
+      "baseline_result": "away",
+      "changes_baseline": true,
+      "home_team_id": 4,
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "outcome": "none",
+      "status": "upcoming",
+      "weeks": [
+       3
+      ]
+     }
+    ]
+   },
+   "label": "hypothetical",
+   "labels": {
+    "baseline_standings": "hypothetical baseline (no results set)",
+    "current_standings": "actual",
+    "projected_standings": "hypothetical"
+   },
+   "method": "Deterministic: one exact scenario computed from the results listed in its inputs. No random sampling, so there is no seed, no sample of simulated seasons and no probability.",
+   "sampling": {
+    "method": "deterministic",
+    "probabilities": null,
+    "random_samples": 0,
+    "scenarios": 1,
+    "seed": null
+   }
+  },
+  "window": {
+   "current_week_status": "not_started",
+   "first_actionable_week": 3,
+   "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+   "uncertain": false
+  }
+ },
+ "status": 200
+}

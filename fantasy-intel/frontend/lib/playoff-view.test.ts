@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { backendQuery, cutlineIndex, parseRaceQuery, raceHref, weeksText, withCutline, withOverride } from "./playoff-view.ts";
+import {
+  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, unresolvedText, weeksText, whatifChanged, withCutline,
+  withOverride,
+} from "./playoff-view.ts";
 
 test("parseRaceQuery reads team, base and overrides; ignores malformed entries", () => {
   const q = parseRaceQuery({ team: "6", base: "actual", o: ["9:home", "bad", "10:tie", ":x"] });
@@ -58,4 +61,31 @@ test("weeksText handles single, multi-week and missing weeks", () => {
   assert.equal(weeksText([7], 7), "wk 7");
   assert.equal(weeksText([14, 15], 14), "wk 14–15");
   assert.equal(weeksText(null, 3), "period 3");
+});
+
+// ------------------------------------------------------------------ what-if (issue #192) --
+
+test("whatifChanged compares status, rank and every record field", () => {
+  const rec = { wins: 3, losses: 2, ties: 0, unresolved: 1 };
+  const same = { rank: 2, status: "inside" as const, record: rec };
+  assert.equal(whatifChanged({ baseline: same, whatif: { ...same, record: { ...rec } } }), false);
+  assert.equal(whatifChanged({ baseline: same, whatif: { ...same, status: "cutline_tie" } }), true);
+  assert.equal(whatifChanged({ baseline: same, whatif: { ...same, rank: 3 } }), true);
+  assert.equal(whatifChanged({ baseline: same, whatif: { ...same, record: { ...rec, unresolved: 0 } } }), true);
+  assert.equal(whatifChanged({ baseline: same, whatif: { ...same, record: { ...rec, wins: 4, losses: 1 } } }), true);
+  assert.equal(whatifChanged({ baseline: { ...same, record: null }, whatif: { ...same, record: null } }), false);
+});
+
+test("unresolvedText names each reason with its count, largest first", () => {
+  assert.equal(unresolvedText({ in_progress: 1, projection_incomplete: 2 }), "2 projection incomplete, 1 under way");
+  assert.equal(unresolvedText({ set_unresolved: 1, brand_new: 1, equal_projection: 0 }), "1 brand new, 1 set unresolved by you");
+  assert.equal(unresolvedText({}), "");
+});
+
+test("matchupAnalysisHref opens the game's first week from the spotlight side when it plays, else home", () => {
+  const m = { weeks: [7, 8], home_team_id: 3, away_team_id: 5 };
+  assert.equal(matchupAnalysisHref(m, 5), "/matchup?week=7&team=5");
+  assert.equal(matchupAnalysisHref(m, 9), "/matchup?week=7&team=3");
+  assert.equal(matchupAnalysisHref(m, null), "/matchup?week=7&team=3");
+  assert.equal(matchupAnalysisHref({ ...m, weeks: null }, 3), "/matchup?team=3");
 });

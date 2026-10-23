@@ -80,3 +80,48 @@ export function withCutline<T>(rows: readonly T[], after: number | null): WithCu
 export function weeksText(weeks: number[] | null | undefined, period: number): string {
   return weeks && weeks.length ? (weeks.length > 1 ? `wk ${weeks[0]}–${weeks[weeks.length - 1]}` : `wk ${weeks[0]}`) : `period ${period}`;
 }
+
+// ------------------------------------------------------------------ what-if (issue #192) --
+
+type PlaceLike = { rank: number | null; status: PrStatus; record: { wins: number; losses: number; ties: number; unresolved?: number } | null };
+
+/** A team's what-if row differs from the baseline: its cutline status, its rank or its record (unresolved count included). */
+export function whatifChanged(c: { baseline: PlaceLike; whatif: PlaceLike }): boolean {
+  const a = c.baseline, b = c.whatif;
+  if (a.status !== b.status || a.rank !== b.rank) return true;
+  if (!a.record || !b.record) return a.record !== b.record;
+  return a.record.wins !== b.record.wins || a.record.losses !== b.record.losses || a.record.ties !== b.record.ties
+    || (a.record.unresolved ?? 0) !== (b.record.unresolved ?? 0);
+}
+
+/** Why remaining games are still unresolved in a what-if, in words. */
+export const UNRESOLVED_REASON: Record<string, string> = {
+  set_unresolved: "set unresolved by you",
+  in_progress: "under way",
+  unmapped: "weeks unknown",
+  actual_baseline: "no result yet (actual-results baseline)",
+  projection_incomplete: "projection incomplete",
+  equal_projection: "equal projections",
+};
+
+/** "2 projection incomplete, 1 under way": counts per reason, largest first, unknown reasons kept as given. */
+export function unresolvedText(byReason: Record<string, number>): string {
+  return Object.entries(byReason)
+    .filter(([, n]) => n > 0)
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([k, n]) => `${n} ${UNRESOLVED_REASON[k] ?? k.replace(/_/g, " ")}`)
+    .join(", ");
+}
+
+/**
+ * The Matchup page for a game whose result was set: the game's first scoring week, from the spotlight team's side
+ * when it plays in the game, else the home side. No week when the game's weeks are unknown.
+ */
+export function matchupAnalysisHref(
+  m: { weeks: number[] | null; home_team_id: number; away_team_id: number }, focus: number | null,
+): string {
+  const p = new URLSearchParams();
+  if (m.weeks && m.weeks.length) p.set("week", String(m.weeks[0]));
+  p.set("team", String(focus !== null && (focus === m.home_team_id || focus === m.away_team_id) ? focus : m.home_team_id));
+  return `/matchup?${p}`;
+}

@@ -94,6 +94,39 @@ Schedule Intelligence.
     games the scenario already gives it, then the closest projected margins;
   * results elsewhere whose flip improves its rank or status, each with an "apply" link.
 
+## What-if (issue #192)
+
+A what-if is the scenario with at least one result set by you (`override=`). With no result set the answer is
+exactly the scenario-off answer (the default goldens are unchanged); with one, it adds a `whatif` block:
+
+* `inputs`: the baseline (`projected` or `actual`), the first projectable week and every set result with the
+  baseline result it replaced (`changes_baseline` false when you set what the baseline already had).
+* `assumptions` and `method`, and `sampling`: `deterministic`, 1 exact scenario, 0 random samples, no seed and no
+  probability. Probabilistic season simulation is separate, calibration-gated work and is not done here.
+* `completeness`: `partial` when any remaining game is unresolved, with counts per reason (`projection_incomplete`,
+  `equal_projection`, `in_progress`, `unmapped`, `actual_baseline`, `set_unresolved`). Unresolved games count for
+  nobody; a missing projection never decides a game and is never scored as 0.
+* `baseline_standings` (the same baseline without your results) and `changes` (each team's baseline and what-if
+  rank, record and status, the rank change and whether the status changed). Both are labelled hypothetical; the
+  actual standings are `scenario.current_standings`.
+* `conclusions`: a gate. `blocked_by` names every rule a clinch or elimination conclusion would need that is not
+  mapped: the tiebreak and seeding settings (`MAPPED_TIEBREAK_RULES` is empty, so any reported value stays
+  unmapped and is listed raw), the standings order (assumed), divisions (more than one: not modeled), seeds that
+  disagree with record order, and unknown playoff spots. `claims` is always empty.
+* `conclusions.record_bounds`: each team's record if it wins, and if it loses, every open game, with your set results
+  fixed and every other remaining game open (projections are not used). `record_order` is `above_line` when, even
+  losing out, fewer other teams than there are spots can match its winning percentage; `below_line` when, even winning
+  out, at least that many finish strictly ahead in every outcome; otherwise `open`. This is exact under the assumed
+  record order (tests check it against every outcome), and it is never turned into a claim (`claim` is always null).
+  The bounds abstain (`record_order` null, reasons in `abstain`) when a record is unknown, the regular-season length
+  is unknown, the stored schedule misses regular-season matchups, or an undecided matchup has no period.
+
+The page shows the what-if section only when a result is set: the method line with the sample count, the set
+results (each with a link to the Matchup page for its week and a remove link), a partial notice, the baseline vs
+what-if standings table, the blocked conclusions, the record bounds ("Not claimed"), the assumptions, a "Copy
+scenario link" button (the league-scoped URL with every set result) and "Reset to the baseline". Every standing on
+the page is labelled actual or hypothetical.
+
 ## Page
 
 `/playoff-race` (nav "Playoff race") has these sections:
@@ -134,7 +167,8 @@ Latency on synthetic leagues:
   games are flagged rather than weighted.
 * Rosters are ESPN's current snapshot for every remaining week. No waiver, trade or lineup change is modeled, and
   injured players follow ESPN's projections and the IR rule.
-* No tiebreaks, division rules, clinching or elimination. A tie across the cutline stays unresolved.
+* No tiebreaks, division rules, clinching or elimination. A tie across the cutline stays unresolved. The what-if's
+  record bounds are reported as counts behind a gate that keeps every clinch or elimination claim blocked.
 * Standings ordering by winning percentage is assumed, not read from a setting. If ESPN's current seeds disagree
   with it, a warning is shown.
 * Live points of a matchup in progress are ESPN's totals as of the last sync and never count as a result.
