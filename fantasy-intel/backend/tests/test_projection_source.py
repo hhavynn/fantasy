@@ -77,6 +77,17 @@ def test_independent_values_and_origins(stored):
     assert w["values"][5] == espn[5] and w["origin"][5] == "espn"               # K: no independent model
     assert w["values"][7] == espn[7] and w["origin"][7] == "espn"               # rookie: abstains
     assert sum(w["counts"].values()) == len(w["origin"])
+    assert "unavailable" not in w["counts"]                                      # every shown player has a number
+
+
+def test_an_espn_origin_player_without_a_number_is_counted_unavailable_not_espn(stored):
+    """#254 phase 3 (item 6): counts.espn counts ESPN numbers shown, never an ESPN-origin player with none."""
+    before = ps.weekly(stored, 2026, 6, "independent")["counts"]
+    stored.execute("UPDATE espn_player_weekly_points SET projected_points = NULL WHERE espn_player_id = 5")   # K
+    w = ps.weekly(stored, 2026, 6, "independent")
+    assert w["origin"][5] == "espn" and w["values"][5] is None
+    assert w["counts"]["espn"] == before["espn"] - 1 and w["counts"]["unavailable"] == 1
+    assert sum(w["counts"].values()) == len(w["origin"])
 
 
 @pytest.mark.parametrize("column,value", [("model_version", "ifp-0.0.0"), ("scoring_fingerprint", "other")])

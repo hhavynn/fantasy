@@ -1,6 +1,6 @@
 import { Badge, Notice } from "@/components/ui";
 import { getLeagueProfile } from "@/lib/league-profile.server";
-import { horizonCaution, modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
+import { horizonCaution, modelStatusLine, noProjection, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
 
 /**
  * What the page's projections are when the switch is on "Ours"; nothing for the ESPN default. A league whose provider
@@ -24,10 +24,10 @@ export async function ProjectionNotice({ detail, className }: { detail: Projecti
       {providerProjections ? (
         <>
           {" "}Players marked <OriginTag origin="espn" ours /> keep ESPN&apos;s number: anyone our models can&apos;t project this week.
-          {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
+          {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN{noProjection(c)}.</>}
         </>
       ) : (
-        c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable).</>
+        c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable){noProjection(c)}.</>
       )}
       {detail.reason && <> {detail.reason}</>}
       {horizonCaution(detail) && <> {horizonCaution(detail)}</>}

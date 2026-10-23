@@ -202,7 +202,10 @@ def test_team_lineup_tools_never_name_ours_over_a_state_without_numbers(league):
     assert source_label("independent", {}) == "Unavailable"
     assert source_label("independent", {7: {}}) == "Unavailable"
     assert source_label("independent", {7: {3: 0.0}}) == "Ours"          # a projected 0 is a number
-    assert source_label("espn", {}) == "ESPN" and source_label("independent") == "Ours"
+    # an ESPN state with no stored ESPN number names no source either (#254 phase 3, item 7)
+    assert source_label("espn", {}) == "Unavailable" and source_label("espn", {7: {3: None}}) == "Unavailable"
+    assert source_label("espn", {7: {3: 0.0}}) == "ESPN" and source_label("espn") == "ESPN"
+    assert source_label("independent") == "Ours"
     con = league("M3")                    # Sleeper: no provider projections and no Ours run stored
     state = load_league_state(con)
     assert state.projection_source == "independent" and source_label(state.projection_source, state.projections) \
