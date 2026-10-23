@@ -1,4 +1,4 @@
-// /api/waivers/faab?claims=209%3A-16002%2C405%3A-16002%2C309
+// /api/waivers/faab?claims=309%3A207%2C209%3A207
 {
  "body": {
   "assumptions": [
@@ -111,8 +111,8 @@
     {
      "display": "#2",
      "field": "waiver_priority",
-     "label": "Your waiver priority (FAAB tie-break)",
-     "reason": "The synced settings do not say how tied bids are broken.",
+     "label": "Your waiver priority",
+     "reason": "Whether it breaks tied FAAB bids is not in the synced settings.",
      "source": "teams[].waiverRank",
      "status": "supplied",
      "value": 2
@@ -135,54 +135,6 @@
   "claims": [
    {
     "add": {
-     "espn_player_id": 209,
-     "name": "Waiver RB",
-     "position": "RB"
-    },
-    "basis": {
-     "gain_per_week": -2.0,
-     "known_ros_gain": -30.0,
-     "ros_gain": -30.0,
-     "share_pct": 25,
-     "weeks": 15
-    },
-    "claim_kind": "free_agent",
-    "drop": -16002,
-    "notes": [],
-    "observed": null,
-    "range": null,
-    "rank": 1,
-    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
-    "status": "blocked",
-    "urgency": null,
-    "validation": "invalid"
-   },
-   {
-    "add": {
-     "espn_player_id": 405,
-     "name": "Waiver TE",
-     "position": "TE"
-    },
-    "basis": {
-     "gain_per_week": -3.0,
-     "known_ros_gain": -45.0,
-     "ros_gain": -45.0,
-     "share_pct": 25,
-     "weeks": 15
-    },
-    "claim_kind": "free_agent",
-    "drop": -16002,
-    "notes": [],
-    "observed": null,
-    "range": null,
-    "rank": 2,
-    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
-    "status": "blocked",
-    "urgency": null,
-    "validation": "invalid"
-   },
-   {
-    "add": {
      "espn_player_id": 309,
      "name": "Waiver WR",
      "position": "WR"
@@ -195,26 +147,53 @@
      "weeks": 15
     },
     "claim_kind": "waiver_claim",
-    "drop": null,
+    "drop": 207,
     "notes": [],
     "observed": null,
     "range": null,
-    "rank": 3,
-    "reason": "Kilo RB is in an IR slot with status ACTIVE, which is not IR-eligible: ESPN blocks adds until he is moved off IR. No bid is suggested.",
-    "status": "blocked",
+    "rank": 1,
+    "reason": "The simulation shows no lineup gain over the remaining weeks, so no bid is suggested.",
+    "status": "no_gain",
+    "urgency": "none",
+    "validation": "unverified"
+   },
+   {
+    "add": {
+     "espn_player_id": 209,
+     "name": "Waiver RB",
+     "position": "RB"
+    },
+    "basis": {
+     "gain_per_week": 4.0,
+     "known_ros_gain": 60.0,
+     "ros_gain": 60.0,
+     "share_pct": 25,
+     "weeks": 15
+    },
+    "claim_kind": "free_agent",
+    "drop": 207,
+    "notes": [],
+    "observed": null,
+    "range": null,
+    "rank": 2,
+    "reason": "A free agent is added in ESPN without a claim or a bid.",
+    "status": "no_bid_needed",
     "urgency": null,
-    "validation": "invalid"
+    "validation": "unverified"
    }
   ],
   "combined": {
    "complete": true,
    "exclusive_groups": [],
    "fits": null,
+   "fundable_at_minimum": null,
    "high_total": null,
    "max_spend_if_won": null,
+   "max_winners": 0,
    "ranged_claims": 0,
    "remaining": 80.0,
    "scaled": false,
+   "unfundable_ranks": [],
    "unranged_ranks": []
   },
   "contract": "waiver-faab/v1",
