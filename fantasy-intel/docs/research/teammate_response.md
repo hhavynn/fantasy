@@ -62,6 +62,83 @@ Committed with the code before any result was computed: `DECISION_RULE` in the m
 A product would use exactly this. It is built here, with no API, so that the no-op guarantee exists before anyone asks
 for a page.
 
-## Results
+## Data
 
-To be filled in from `scripts/teammate_response_research.py` after the pre-registration commit.
+- nflverse through `nflreadpy` 0.1.5, synced 2026-10-23:
+  - finished seasons 2020–2025 in a research history file (`sync_nfl_history.py`);
+  - the 2026 season so far in a research "live" file, which holds only nflverse data plus the production league's
+    scoring settings and no league data. 2026 is in the training store but never evaluated.
+- PBP exits 2020–2025 (`weekly_learning.py sync-exits`) and depth charts 2025–2026 (`sync-depth`; depth-tier coverage
+  99.7%).
+- Store: 43,101 player-weeks over 113 weeks (`ifp22_backtest.build`). Shipped components for RB and WR:
+  `qb_context`, `teammates`, `depth_tier`, `decline_role` (ifp-2.2.0).
+
+## Timeline (pre-registration evidence)
+
+| Time (UTC, 2026-10-23) | What |
+|---|---|
+| 23:02:56 | `teammate_response.py`, including `DECISION_RULE`, last modified before the run |
+| about 23:06 | the run starts |
+| 23:08:08 | pre-registration commit 883224c |
+| 23:08:46 | first results written; read about 23:10 |
+| after | the diagnostic below added, run again; the deciding numbers are identical |
+
+## Results (evaluation 2023 week 1 – 2025 week 18; MAE in points per game)
+
+| Position | Event rows / all rows | Players | Weeks | MAE model | MAE zero | MAE split | Model − zero (95% CI by week / by player-season) | Model − split | **Pre-registered decision** |
+|---|---|---|---|---|---|---|---|---|---|
+| RB | 4,187 / 5,103 (82%) | 430 | 51 | 4.056 | 4.082 | 4.821 | -0.026 (-0.037, -0.016) / (-0.036, -0.017) | -0.765 (-0.879, -0.654) / (-0.915, -0.626) | **pass** |
+| WR | 6,542 / 8,120 (81%) | 665 | 51 | 4.050 | 4.086 | 4.791 | -0.036 (-0.045, -0.027) / (-0.044, -0.028) | -0.742 (-0.827, -0.652) / (-0.845, -0.645) | **pass** |
+
+Both positions **pass the pre-registered rule**. The split baseline is weak: raw, unshrunk splits on few games add noise.
+Beating it says little, and the zero comparison carries the decision.
+
+### Diagnostic, added after the first results (not deciding): against a model retrained without the teammate group
+
+Setting the teammate inputs to 0 inside a model trained with them can move the inputs off its training distribution.
+That would make the zero baseline worse than a real "no teammate adjustment" forecast. The ifp-2.2.0 promotion compared
+against the model **retrained without the group**, so the same comparison is repeated here on the event rows:
+
+| Position | MAE retrained without the teammate group | Model − retrained (95% CI by week / by player-season) |
+|---|---|---|
+| RB | 4.059 | -0.003 (-0.013, +0.006) / (-0.012, +0.004) |
+| WR | 4.064 | -0.014 (-0.023, -0.005) / (-0.021, -0.007) |
+
+### Size of the response
+
+| Position | Mean response | Mean absolute | 90th percentile absolute | Calibration slope | Sign agreement | Split available |
+|---|---|---|---|---|---|---|
+| RB | -0.063 | 0.209 | 0.510 | 1.10 | 58.4% | 2,503 of 4,187 |
+| WR | -0.068 | 0.223 | 0.518 | 1.39 | 57.3% | 3,779 of 6,542 |
+
+
+## Reading
+
+- **RB: no evidence of a useful teammate response.** RB passes the pre-registered rule against zero (−0.026), but the
+  retrained comparison is −0.003 (CI −0.013 to +0.006). So RB's pass comes from the zero counterfactual being
+  off-distribution, not from the teammate inputs. This matches the promotion's neutral RB result (+0.001).
+- **WR: a real but very small gain.**
+  - Against the retrained model, −0.014 points per game (CI −0.023 to −0.005 by week, −0.021 to −0.007 by
+    player-season). That is about 0.35% of a 4.06 MAE, close to the promotion's −0.012.
+  - The response's direction is right a little more often than not (sign agreement 57%).
+  - Its size runs larger in the results than the model says (calibration slope 1.39).
+- **The responses are small.** The mean absolute response is about 0.2 points (90th percentile about 0.5), on about
+  81% of player-weeks: some teammate input is non-zero most weeks. A what-if page would mostly show changes of a few
+  tenths of a point.
+- **Recommendation.**
+  - No product what-if for RB.
+  - For WR, the model's teammate response is evidence-backed but tiny. A page showing "if X is out, +0.3" would be
+    faithful to the model and of little decision value. It would also have to say that it is the model's response,
+    not a causal effect, and that it moves forecasts by a few tenths of a point on average.
+  - The merge captain decides. The scenario core (`scenario_point`, no-op exact) is ready if a WR page is wanted.
+
+## Limitations
+
+- **The event definition is broad.** It is any non-zero teammate input, not "a named teammate's status flipped this
+  week". A per-teammate what-if (one named player in or out) is a narrower change, not evaluated here.
+- **The diagnostic was added after the first results.** It makes RB's pass weaker, not stronger. The deciding numbers
+  did not change.
+- **The split baseline is weak**: raw, unshrunk, earlier games of the season only. A shrunk split would be a fairer
+  observational comparator. It is not run here, because it was not pre-registered.
+- **The label is points per game played.** Participation (P(plays)) is not part of the teammate response.
+- **Scoring and seasons.** One scoring (the production league's), 2023–2025. QB and TE are not evaluated.

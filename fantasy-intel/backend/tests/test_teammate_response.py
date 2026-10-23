@@ -184,3 +184,12 @@ def test_the_module_writes_nothing():
     text = pathlib.Path(tr.__file__).read_text()
     for word in ("INSERT", "UPDATE ", "write_parquet", "open(", "connect("):
         assert word not in text, word
+
+
+def test_the_retrained_diagnostic_is_reported_but_never_changes_the_decision():
+    p = _preds()
+    with_diag = p.with_columns(pl.col("pred_model").alias("pred_retrained"))      # retrained == model: gap 0
+    a, b = tr.evaluate(p)["positions"]["WR"], tr.evaluate(with_diag)["positions"]["WR"]
+    assert a["diagnostics"] == {}
+    assert b["diagnostics"]["model_minus_retrained"]["difference"] == 0
+    assert (a["decision"], a["gaps"]) == (b["decision"], b["gaps"])

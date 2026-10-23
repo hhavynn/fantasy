@@ -159,6 +159,11 @@ def evaluate(preds: pl.DataFrame) -> dict:
         slope = float(np.dot(resp, surprise) / np.dot(resp, resp)) if np.dot(resp, resp) > 0 else None
         gaps = {"model_minus_zero": _mae_gap(rows, "pred_model", "pred_zero"),
                 "model_minus_split": _mae_gap(rows, "pred_model", "pred_split")}
+        diagnostics = {}
+        if "pred_retrained" in ev.columns and all(r["pred_retrained"] is not None for r in rows):
+            # Not deciding (added after the first results): the model retrained without the teammate group.
+            diagnostics["model_minus_retrained"] = _mae_gap(rows, "pred_model", "pred_retrained")
+            diagnostics["mae_retrained"] = float(np.mean([abs(r["pred_retrained"] - r["label"]) for r in rows]))
         out["positions"][pos] = {
             "rows": valid.height, "event_rows": len(rows), "event_share": len(rows) / valid.height,
             "players": len({(r["season"], r["gsis_id"]) for r in rows}),
@@ -175,6 +180,7 @@ def evaluate(preds: pl.DataFrame) -> dict:
                 valid.filter(~pl.col("is_event"))["pred_model"].to_numpy(),
                 valid.filter(~pl.col("is_event"))["pred_zero"].to_numpy())),
             "decision": "pass" if all(_passes(g) for g in gaps.values()) else "fail",
+            "diagnostics": diagnostics,
         }
     return out
 

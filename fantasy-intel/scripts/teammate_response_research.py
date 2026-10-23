@@ -57,9 +57,16 @@ def walk(store: pl.DataFrame, weeks: list[tuple[int, int]], cfg) -> pl.DataFrame
             ok = rows["games_recent"].fill_null(0).to_numpy() > 0
             pm = np.where(ok, cm.predict_points(models, fb, rows, pos), np.nan)
             pz = np.where(ok, cm.predict_points(models, fb, tr.neutral(rows, pos), pos), np.nan)
+            # Diagnostic (not deciding; added after the first results): the shipped model retrained WITHOUT the
+            # teammate group, as the ifp-2.2.0 promotion's leave-one-out did. Setting the inputs to 0 inside a
+            # model trained with them can sit off its training distribution; this baseline cannot.
+            drop = tuple(c for c in cm.SHIPPED[pos] if c != cm.TEAMMATES)
+            md, _, fbd = cm.fit(store, season, week, cfg, {pos: drop}, positions=(pos,))
+            pd_ = np.where(ok, cm.predict_points(md, fbd, rows, pos, drop), np.nan)
             out.append(rows.select("season", "week", "gsis_id", "position", "label").with_columns(
                 pl.Series("is_event", tr.event_mask(rows, pos)),
-                pl.Series("pred_model", pm).fill_nan(None), pl.Series("pred_zero", pz).fill_nan(None)))
+                pl.Series("pred_model", pm).fill_nan(None), pl.Series("pred_zero", pz).fill_nan(None),
+                pl.Series("pred_retrained", pd_).fill_nan(None)))
         print(f"  {season} w{week:02d}", file=sys.stderr, flush=True)
     return pl.concat(out, how="diagonal_relaxed")
 
