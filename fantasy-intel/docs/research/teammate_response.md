@@ -1,5 +1,10 @@
 # Teammate response: does the model's what-if hold up? (issue #213 v1, research only)
 
+**Outcome, both halves:** both RB and WR **pass the pre-registered rule**, but a diagnostic added after the first
+results (a model retrained without the teammate group) **overturns RB**: RB's teammate inputs add nothing measurable
+(−0.003, CI includes 0). WR keeps a very small gain (−0.014). No product what-if is built (merge captain's decision);
+`scenario_point` stays in the module with no route.
+
 **Status:** research only. Nothing in the app imports `app/analytics/teammate_response.py`
 (`tests/test_teammate_response.py::test_research_module_is_never_imported_by_the_app`). No API, UI, table, forecast or
 artifact changes. QB scenarios are deferred: no QB scenario challenger was adopted.
@@ -19,7 +24,8 @@ manager could use instead?**
 
 ## Pre-registration (fixed before the first run)
 
-Committed with the code before any result was computed: `DECISION_RULE` in the module.
+`DECISION_RULE` in the module, written before the first run (see the timeline for exactly what that rests on). Reports
+now carry its SHA-256 (`decision_rule_sha256`, `d4024b44…`) and the checked-out commit (`git_sha`).
 
 - **The model's teammate response.** The model's point with the row's actual teammate inputs, minus its point with
   them neutral. Neutral is 0: no teammate out or returning. Same fitted model, every other input unchanged.
@@ -78,10 +84,16 @@ for a page.
 | Time (UTC, 2026-10-23) | What |
 |---|---|
 | 23:02:56 | `teammate_response.py`, including `DECISION_RULE`, last modified before the run |
-| about 23:06 | the run starts |
-| 23:08:08 | pre-registration commit 883224c |
+| about 23:06 | the run starts, from **uncommitted** files |
+| 23:08:08 | pre-registration commit 883224c, while the run was still going |
 | 23:08:46 | first results written; read about 23:10 |
-| after | the diagnostic below added, run again; the deciding numbers are identical |
+| 23:11:29 | first report copied aside (`tr_report_run1.json`); the 23:08:46 file itself was later overwritten |
+| after | the retrained diagnostic added, run again; the deciding numbers are identical |
+| after review | level-shift, demeaned sign and slope-interval diagnostics added, re-evaluated from the stored predictions (`--from-preds`); the deciding numbers are identical |
+
+What this rests on: the file timestamps above and the author's log, not a commit made before the run (the commit landed
+38 seconds before the first results, after the run had started). What independently holds: the run-1 report embeds
+the rule text byte-identical to 883224c's `DECISION_RULE`, and has no diagnostics.
 
 ## Results (evaluation 2023 week 1 – 2025 week 18; MAE in points per game)
 
@@ -104,40 +116,60 @@ against the model **retrained without the group**, so the same comparison is rep
 | RB | 4.059 | -0.003 (-0.013, +0.006) / (-0.012, +0.004) |
 | WR | 4.064 | -0.014 (-0.023, -0.005) / (-0.021, -0.007) |
 
+### Diagnostics added after review (not deciding): how much of the zero gap is a constant
+
+The response's mean on the event rows is negative (−0.063 RB, −0.068 WR). Adding that constant to the zero forecast
+(in-sample, so this favours the constant) recovers about half of the zero gap:
+
+| Position | MAE zero | MAE zero + constant | Model − (zero + constant) (95% CI by week / by player-season) | Sign agreement → demeaned |
+|---|---|---|---|---|
+| RB | 4.082 | 4.069 | -0.014 (-0.024, -0.002) / (-0.023, -0.005) | 58.4% → 53.9% |
+| WR | 4.086 | 4.070 | -0.021 (-0.029, -0.012) / (-0.028, -0.013) | 57.3% → 54.4% |
+
+So zeroing the inputs removes the group's average contribution as well as its row-to-row variation. Zero occurs on
+about 19% of rows, so "0 is off the training distribution" is not the mechanism. The retrained comparison is the
+fairer "no teammate adjustment" forecast.
+
 ### Size of the response
 
 | Position | Mean response | Mean absolute | 90th percentile absolute | Calibration slope | Sign agreement | Split available |
 |---|---|---|---|---|---|---|
-| RB | -0.063 | 0.209 | 0.510 | 1.10 | 58.4% | 2,503 of 4,187 |
-| WR | -0.068 | 0.223 | 0.518 | 1.39 | 57.3% | 3,779 of 6,542 |
+| RB | -0.063 | 0.209 | 0.510 | 1.10 (0.57, 1.67) | 58.4% | 2,503 of 4,187 |
+| WR | -0.068 | 0.223 | 0.518 | 1.39 (0.97, 1.81) | 57.3% | 3,779 of 6,542 |
+
+The slope intervals are 95% bootstrap by week (post-hoc). Both include 1, so neither says the response is too small.
 
 
 ## Reading
 
 - **RB: no evidence of a useful teammate response.** RB passes the pre-registered rule against zero (−0.026), but the
-  retrained comparison is −0.003 (CI −0.013 to +0.006). So RB's pass comes from the zero counterfactual being
-  off-distribution, not from the teammate inputs. This matches the promotion's neutral RB result (+0.001).
-- **WR: a real but very small gain.**
+  model retrained without the group is as accurate (−0.003, CI −0.013 to +0.006). This matches the promotion's neutral
+  RB result (+0.001). The pass comes from the zero counterfactual removing the group's average contribution, which a
+  model fitted without the group absorbs elsewhere.
+- **WR: a very small gain, shown only by post-hoc diagnostics.**
   - Against the retrained model, −0.014 points per game (CI −0.023 to −0.005 by week, −0.021 to −0.007 by
-    player-season). That is about 0.35% of a 4.06 MAE, close to the promotion's −0.012.
-  - The response's direction is right a little more often than not (sign agreement 57%).
-  - Its size runs larger in the results than the model says (calibration slope 1.39).
+    player-season): about 0.35% of a 4.06 MAE, close to the promotion's −0.012.
+  - This measures the teammate group's predictive value on event weeks. It does not show that a what-if ("if X is
+    out") is accurate: no named teammate's status was flipped and checked.
+  - Once the level shift is removed, the response's direction is right 54% of the time.
 - **The responses are small.** The mean absolute response is about 0.2 points (90th percentile about 0.5), on about
   81% of player-weeks: some teammate input is non-zero most weeks. A what-if page would mostly show changes of a few
   tenths of a point.
-- **Recommendation.**
-  - No product what-if for RB.
-  - For WR, the model's teammate response is evidence-backed but tiny. A page showing "if X is out, +0.3" would be
-    faithful to the model and of little decision value. It would also have to say that it is the model's response,
-    not a causal effect, and that it moves forecasts by a few tenths of a point on average.
-  - The merge captain decides. The scenario core (`scenario_point`, no-op exact) is ready if a WR page is wanted.
+- **Decision (merge captain): no product what-if.** `scenario_point` (no-op exact; refuses unknown inputs, null
+  indicators, the QB mixture column and non-finite values) stays in the module with no route.
 
 ## Limitations
 
 - **The event definition is broad.** It is any non-zero teammate input, not "a named teammate's status flipped this
   week". A per-teammate what-if (one named player in or out) is a narrower change, not evaluated here.
-- **The diagnostic was added after the first results.** It makes RB's pass weaker, not stronger. The deciding numbers
-  did not change.
+- **The diagnostics were added after the first results** (the retrained comparison, then the level-shift, demeaned-sign
+  and slope-interval checks after review). They make the passes weaker, not stronger. The deciding numbers did not
+  change.
+- **The evaluated counterfactual is wider than the product's.** `neutral` zeroes the known teammate inputs and keeps
+  unknown ones unknown. `teammate_neutral` (the product path) refuses the whole scenario when any teammate input was
+  imputed. Rows with some teammate input unknown are evaluated here but would be refused in a product.
+- **51 of 54 weeks have event rows.** The three without are week 1 of 2023, 2024 and 2025: the teammate inputs come
+  from the player's earlier games of the season, so week 1 has none.
 - **The split baseline is weak**: raw, unshrunk, earlier games of the season only. A shrunk split would be a fairer
   observational comparator. It is not run here, because it was not pre-registered.
 - **The label is points per game played.** Participation (P(plays)) is not part of the teammate response.

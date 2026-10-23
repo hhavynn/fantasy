@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import subprocess
 import sys
 import time
 from types import SimpleNamespace
@@ -81,6 +82,17 @@ def history(store: pl.DataFrame, seasons: list[int]) -> pl.DataFrame:
     return pl.concat(parts)
 
 
+def git_sha() -> str | None:
+    """The checked-out commit, plus "-dirty" when tracked files differ from it (pre-registration evidence)."""
+    try:
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True,
+                               text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return sha + ("-dirty" if dirty else "")
+
+
 def main() -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -90,10 +102,20 @@ def main() -> int:
     ap.add_argument("--history-db", type=Path, required=True)
     ap.add_argument("--season", type=int, default=settings.nfl_season)
     ap.add_argument("--rebuild", action="store_true")
+    ap.add_argument("--from-preds", action="store_true",
+                    help="re-evaluate the stored preds.parquet (no walk-forward); the report says so")
     args = ap.parse_args()
     if args.live_db.resolve() == Path(settings.db_path).resolve():
         raise SystemExit("pass a research live file (league scoring only), not the production database")
     t = time.time()
+    out = args.ifp_dir / "research" / "teammate_response"
+    if args.from_preds:
+        preds = pl.read_parquet(out / "preds.parquet")
+        report = {"evaluation": EVALUATION, "re_evaluated_from": str(out / "preds.parquet"), "git_sha": git_sha(),
+                  "model_version": cm.MODEL_VERSION, **tr.evaluate(preds), "seconds": round(time.time() - t, 1)}
+        (out / "report_reevaluated.json").write_text(json.dumps(report, indent=1, default=str))
+        print(json.dumps(report, indent=1, default=str))
+        return 0
     store, _, prov = ib.build(SimpleNamespace(**vars(args), reuse=False))
     cfg = ch.ChallengerConfig.load()
     weeks = ib._weeks(store, EVALUATION)
@@ -103,7 +125,6 @@ def main() -> int:
                                                                   pl.col("week").cast(pl.Int64)))
     preds = preds.with_columns(pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64)).join(
         splits, on=["season", "gsis_id", "week"], how="left")
-    out = args.ifp_dir / "research" / "teammate_response"
     out.mkdir(parents=True, exist_ok=True)
     preds.write_parquet(out / "preds.parquet")
     report = {"evaluation": EVALUATION, "weeks": len(weeks), "store": {k: prov.get(k) for k in ("rows", "weeks",

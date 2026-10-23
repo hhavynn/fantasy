@@ -62,6 +62,19 @@ def test_a_change_to_an_unknown_input_is_refused_never_filled_in():
     assert tr.scenario_point(WR, _inp([14.0, 0.0]), {})["reason"] == "inputs_do_not_fit_the_model"
 
 
+def test_a_change_to_a_null_indicator_or_the_mixture_column_or_to_a_non_finite_value_is_refused():
+    cols = ["xfpl", "tm_tgt_vacated", "tm_tgt_vacated__missing", "qb_start_share"]
+    m = _model(cols, [10.0, 0.05, 0.1, 0.8], [5.0, 0.1, 0.3, 0.2], [2.5, 0.4, -0.2, 1.0], 12.0)
+    inp = {**_inp([14.0, 0.05, 1.0, 0.9], imputed=[False, True, False, False]), "mixture_column": "qb_start_share"}
+    # the indicator says "unknown"; flipping it would turn the unknown into the training mean
+    assert tr.scenario_point(m, inp, {"tm_tgt_vacated__missing": 0.0}) == {
+        "available": False, "reason": "not_a_scenario_input", "column": "tm_tgt_vacated__missing"}
+    assert tr.scenario_point(m, inp, {"qb_start_share": 1.0})["reason"] == "not_a_scenario_input"
+    for bad in (float("nan"), float("inf"), None, "x"):
+        assert tr.scenario_point(WR, _inp([14.0, 0.2, 1.5]), {"tm_tgt_vacated": bad}) == {
+            "available": False, "reason": "value_not_finite", "column": "tm_tgt_vacated"}
+
+
 def test_a_floored_point_is_flagged():
     low = _model(["xfpl", "tm_tgt_vacated"], [10.0, 0.0], [5.0, 0.1], [2.5, -1.0], 1.0)
     s = tr.teammate_neutral(low, _inp([0.0, 0.3]), "WR")
@@ -85,6 +98,18 @@ def test_neutral_sets_known_teammate_inputs_to_zero_and_keeps_unknowns_unknown()
 def test_an_event_is_any_known_non_zero_teammate_input():
     assert tr.event_mask(_rows(), "WR").tolist() == [False, True, False, True]
     assert tr.event_mask(_rows().drop("tm_tgt_gain_pg", "tm_tgt_vacated", "tm_tgt_returning"), "WR").tolist() == [False] * 4
+
+
+def test_neutral_leaves_rows_without_an_event_forecast_identically_when_nulls_are_present():
+    from app.analytics.independent_projections import RidgeModel
+    cols = ["xfpl", "tm_tgt_gain_pg", "tm_tgt_vacated", "tm_tgt_returning", "tm_tgt_vacated__missing"]
+    m = RidgeModel("WR", "C", cols[:4], cols, [9.0, 0.3, 0.04, 0.01, 0.2], [3.0, 1.0, 0.1, 0.05, 0.4],
+                   [2.0, 0.5, 0.7, -0.3, 0.4], 11.0, 1.0, 100)
+    rows = _rows()
+    a, b = m.predict(rows), m.predict(tr.neutral(rows, "WR"))
+    ev = tr.event_mask(rows, "WR")
+    assert np.array_equal(a[~ev], b[~ev])                # the null row and the all-zero row are untouched
+    assert not np.allclose(a[ev], b[ev])
 
 
 def test_the_rb_and_wr_groups_are_the_shipped_ones():
@@ -162,6 +187,21 @@ def test_the_decision_rule_is_reported_with_the_result():
     assert out["status"] == "research_only" and "BOTH clusterings" in out["decision_rule"]
 
 
+def test_a_gap_passes_only_when_both_clusterings_lie_below_zero():
+    ok, no = {"ci95": [-0.3, -0.1]}, {"ci95": [-0.3, 0.01]}
+    assert tr._passes({"by_week": ok, "by_player_season": ok})
+    assert not tr._passes({"by_week": ok, "by_player_season": no})
+    assert not tr._passes({"by_week": no, "by_player_season": ok})
+    assert not tr._passes({"by_week": ok, "by_player_season": {"ci95": None}})
+
+
+def test_percentiles_interpolate_linearly():
+    d = [0.0, 1.0, 2.0, 3.0, 4.0]
+    assert tr._percentile(d, 0.0) == 0.0 and tr._percentile(d, 1.0) == 4.0
+    assert tr._percentile(d, 0.5) == 2.0 and tr._percentile(d, 0.125) == pytest.approx(0.5)
+    assert tr._percentile([7.0], 0.975) == 7.0
+
+
 def test_intervals_are_clustered_two_ways_and_seeded():
     g = tr.evaluate(_preds())["positions"]["WR"]["gaps"]["model_minus_zero"]
     assert g["by_week"]["clusters"] == 30 and g["by_player_season"]["clusters"] == 8
@@ -190,6 +230,21 @@ def test_the_retrained_diagnostic_is_reported_but_never_changes_the_decision():
     p = _preds()
     with_diag = p.with_columns(pl.col("pred_model").alias("pred_retrained"))      # retrained == model: gap 0
     a, b = tr.evaluate(p)["positions"]["WR"], tr.evaluate(with_diag)["positions"]["WR"]
-    assert a["diagnostics"] == {}
+    assert "model_minus_retrained" not in a["diagnostics"]
     assert b["diagnostics"]["model_minus_retrained"]["difference"] == 0
     assert (a["decision"], a["gaps"]) == (b["decision"], b["gaps"])
+
+
+def test_a_constant_response_is_all_level_shift():
+    # the model only adds a constant on event rows: a constant recovers the whole zero gap and no direction is left
+    d = tr.evaluate(_preds(effect=2.0, response=2.0))["positions"]["WR"]["diagnostics"]
+    assert d["level_shift"]["shift"] == pytest.approx(2.0)
+    assert d["level_shift"]["model_minus_shifted"]["difference"] == pytest.approx(0.0, abs=1e-12)
+    assert d["sign_agreement_demeaned"] is None
+    lo, hi = d["calibration_slope_ci95_by_week"]
+    assert lo <= 1.0 <= hi
+
+
+def test_the_report_carries_a_hash_of_the_decision_rule():
+    import hashlib
+    assert tr.evaluate(_preds())["decision_rule_sha256"] == hashlib.sha256(tr.DECISION_RULE.encode()).hexdigest()

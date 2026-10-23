@@ -7,7 +7,7 @@ does. It changes no forecast, table or artifact.
 ifp-2.2.0 ships ifp-ctx-p1's teammate group for RB and WR (docs/research/ifp22_promotion.md): features that say how
 much of the team's targets and carries in the player's recent games went to teammates unavailable this week
 (`tm_*_vacated`), how much returning teammates reclaim (`tm_*_returning`) and the per-game volume he would gain from
-it (`tm_*_gain_pg`). With every teammate available as before, all of them are 0 (roster_context._teammates).
+it (`tm_*_gain_pg`). With every teammate available as before, all of them are 0 (the teammate context builder).
 
 The model's teammate response for a player-week is the model's point with his actual teammate inputs minus its point
 with those inputs neutral (0), same fitted model, every other input unchanged. A what-if product would show exactly
@@ -31,6 +31,7 @@ is refused with a reason, never computed.
 from __future__ import annotations
 
 from collections import defaultdict
+import hashlib
 import math
 import random
 
@@ -134,6 +135,28 @@ def _mae_gap(rows: list[dict], a: str, b: str) -> dict:
     return out
 
 
+def _slope_ci(rows: list[dict]) -> list[float] | None:
+    """95% bootstrap interval of the calibration slope through the origin, clustered by (season, week)."""
+    cs: dict[tuple, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for r in rows:
+        resp, surprise = r["pred_model"] - r["pred_zero"], r["label"] - r["pred_zero"]
+        c = cs[(r["season"], r["week"])]
+        c[0] += resp * surprise
+        c[1] += resp * resp
+    cs_list = [cs[k] for k in sorted(cs)]
+    rng = random.Random(BOOTSTRAP_SEED)
+    draws = []
+    for _ in range(BOOTSTRAP_RESAMPLES):
+        pick = [cs_list[rng.randrange(len(cs_list))] for _ in cs_list]
+        den = sum(c[1] for c in pick)
+        if den > 0:
+            draws.append(sum(c[0] for c in pick) / den)
+    if not draws:
+        return None
+    draws.sort()
+    return [_percentile(draws, 0.025), _percentile(draws, 0.975)]
+
+
 def _passes(gap: dict) -> bool:
     return all(gap[k]["ci95"] is not None and gap[k]["ci95"][1] < 0 for k in ("by_week", "by_player_season"))
 
@@ -142,6 +165,7 @@ def evaluate(preds: pl.DataFrame) -> dict:
     """`preds`: season, week, gsis_id, position, label, is_event, pred_model, pred_zero, split_delta. Event rows with a
     label and both forecasts are compared; the split forecast is pred_zero + split_delta (pred_zero where null)."""
     out: dict = {"version": TR_VERSION, "status": TR_STATUS, "decision_rule": DECISION_RULE,
+                 "decision_rule_sha256": hashlib.sha256(DECISION_RULE.encode()).hexdigest(),
                  "min_split_games": MIN_SPLIT_GAMES, "positions": {}}
     for pos in POSITIONS:
         p = preds.filter(pl.col("position") == pos)
@@ -159,7 +183,20 @@ def evaluate(preds: pl.DataFrame) -> dict:
         slope = float(np.dot(resp, surprise) / np.dot(resp, resp)) if np.dot(resp, resp) > 0 else None
         gaps = {"model_minus_zero": _mae_gap(rows, "pred_model", "pred_zero"),
                 "model_minus_split": _mae_gap(rows, "pred_model", "pred_split")}
-        diagnostics = {}
+        # Not deciding, all added after the first results. Level shift: how much of the zero gap a constant (the
+        # response's in-sample mean on these rows) recovers; the demeaned sign agreement is the direction signal
+        # left once that constant is removed.
+        shift = float(resp.mean())
+        for r in rows:
+            r["pred_shifted"] = r["pred_zero"] + shift
+        dm = resp - shift
+        dnz = np.abs(dm) > EPS
+        diagnostics = {
+            "level_shift": {"shift": shift, "mae_shifted": float(np.mean([abs(r["pred_shifted"] - r["label"]) for r in rows])),
+                            "model_minus_shifted": _mae_gap(rows, "pred_model", "pred_shifted")},
+            "sign_agreement_demeaned": float(np.mean(np.sign(dm[dnz]) == np.sign((surprise - shift)[dnz]))) if dnz.any() else None,
+            "calibration_slope_ci95_by_week": _slope_ci(rows),
+        }
         if "pred_retrained" in ev.columns and all(r["pred_retrained"] is not None for r in rows):
             # Not deciding (added after the first results): the model retrained without the teammate group.
             diagnostics["model_minus_retrained"] = _mae_gap(rows, "pred_model", "pred_retrained")
@@ -191,7 +228,9 @@ def evaluate(preds: pl.DataFrame) -> dict:
 def scenario_point(model: dict, inp: dict, changes: dict[str, float]) -> dict:
     """A stored row's point with some inputs changed, from its verified full inputs (production_forecasts) and model.
     No change reproduces the stored point exactly. Refused (`available: false` with a reason) when a changed column
-    is not a model input or was unknown (imputed) in the forecast: an unknown is never filled in to make a scenario."""
+    is not a model input, was unknown (imputed) in the forecast, is a null indicator (`<f>__missing`; changing it
+    would turn an unknown into the training mean) or the QB start-share mixture column, or the new value is not
+    finite: an unknown is never filled in to make a scenario."""
     cols = list(model["columns"])
     base = reproduce(model, inp)
     if base is None:
@@ -200,10 +239,18 @@ def scenario_point(model: dict, inp: dict, changes: dict[str, float]) -> dict:
     for col, v in changes.items():
         if col not in cols:
             return {"available": False, "reason": "not_a_model_input", "column": col}
+        if col.endswith("__missing") or col == inp.get("mixture_column"):
+            return {"available": False, "reason": "not_a_scenario_input", "column": col}
         i = cols.index(col)
         if inp["imputed"][i]:
             return {"available": False, "reason": "input_unknown", "column": col}
-        values[i] = float(v)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            v = math.nan
+        if not math.isfinite(v):
+            return {"available": False, "reason": "value_not_finite", "column": col}
+        values[i] = v
     out = reproduce(model, {**inp, "input_values": values})
     return {"available": True, "baseline": base["points"], "points": out["points"],
             "delta": out["points"] - base["points"], "floored": bool(base["floored"] or out["floored"])}
