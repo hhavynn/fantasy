@@ -42,6 +42,19 @@ def roster_constraints(league: dict) -> dict:
             "warnings": ([] if rs else ["Raw roster restrictions were not supplied; verify positional caps."])}
 
 
+def unknown_value_players(players: list[dict], slots: list[str]) -> list[dict]:
+    """Available players who could fill one of `slots` but have no historical value (raw_value None). The lineup
+    solver orders such a player as 0, so while any exists a lineup value total or difference is unknown, not a sum
+    that counts him as 0 (frontend/PRODUCT.md: missing is never zero)."""
+    return [p for p in players if p.get("available") and p.get("raw_value") is None
+            and any(eligible(s, p.get("position")) for s in slots)]
+
+
+def player_names(players: list[dict], limit: int = 3) -> str:
+    names = [p.get("full_name") or f"player {p['espn_player_id']}" for p in players]
+    return ", ".join(names[:limit]) + (f" and {len(names) - limit} more" if len(names) > limit else "")
+
+
 def _holes(players, slots):
     return sum(a["player_id"] is None for a in assign_lineup(players, slots))
 
@@ -120,7 +133,10 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         result.update(status="INCOMPATIBLE", summary="This position is not permitted by the known roster limits.")
         return result
     base_holes = _holes(players, slots)
-    base_total = lineup_total(state["lineup"])
+    # Lineup value arithmetic needs every possible starter's value (the candidate's too); otherwise the net gain and
+    # removal cost are unknown, never sums that count a missing value as 0.
+    unknown = unknown_value_players(players + [candidate], slots)
+    base_total = lineup_total(state["lineup"]) if not unknown else None
     weeks = state.get("weeks", [])
     possible = 0
     for p in players:
@@ -146,7 +162,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         if candidate["position"] in ("K", "D/ST") and p["position"] == candidate["position"] and weeks:
             stream_forward = forward_effect(players, after, [s for s in slots if s == candidate["position"]], weeks[:1])
             short_term = stream_forward["total_gain"] is not None and stream_forward["total_gain"] >= 1
-        net = lineup_total(assign_lineup(after, slots)) - base_total
+        net = lineup_total(assign_lineup(after, slots)) - base_total if base_total is not None else None
         raw = p.get("raw_value")
         cand_raw = candidate.get("raw_value")
         if _holes(after, slots) > base_holes:
@@ -155,16 +171,17 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
             reason = "Would create a necessary future starting-slot hole, including bye coverage"
         elif raw is None:
             reason = "Drop value is unknown; cannot defend the sacrifice"
-        elif ((net < -1e-6 and not projected_improvement) or (forward["total_gain"] is not None and forward["total_gain"] < -1e-6)) and not short_term:
+        elif (((net is not None and net < -1e-6) and not projected_improvement) or (forward["total_gain"] is not None and forward["total_gain"] < -1e-6)) and not short_term:
             reason = "Transaction reduces known current or future starting lineup value"
-        elif ((cand_raw is None and not projected_improvement) or (cand_raw is not None and cand_raw < raw and net <= 0 and not projected_improvement)) and not short_term:
+        elif ((cand_raw is None and not projected_improvement) or (cand_raw is not None and cand_raw < raw and (net is None or net <= 0) and not projected_improvement)) and not short_term:
             reason = "No evidence the acquisition justifies giving up this player"
         elif constraints.get("undroppable_membership_unknown") and p.get("undroppable") is not False:
             reason = "Undroppable list enabled but membership is unavailable"
         if reason:
             result["excluded"].append({"espn_player_id": pid, "reason": reason})
             continue
-        removal_loss = max(0, base_total - lineup_total(assign_lineup(remaining, slots)))
+        removal_loss = (max(0, base_total - lineup_total(assign_lineup(remaining, slots)))
+                        if base_total is not None else None)
         # Coverage is observed eligibility, not an arbitrary positional value penalty.
         coverage = sorted({s for s in slots if eligible(s, p["position"])})
         same = [q for q in remaining if q.get("position") == p["position"] and q.get("available")]
@@ -178,15 +195,20 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         value_text = f"{raw100:.1f}/100" if raw100 is not None else f"{raw:.1f}/10"
         sacrifice = [f"Give up {p.get('full_name') or pid}: historical value {value_text}.",
                      f"Coverage: {', '.join(coverage) or 'no configured starting slot'}; {len(same)} other available {p['position']}s remain.",
-                     f"Removal alone costs {removal_loss:.1f} current lineup value."]
+                     f"Removal alone costs {removal_loss:.1f} current lineup value." if removal_loss is not None else
+                     f"Removal cost to the current lineup is unknown: no historical value for {player_names(unknown)} "
+                     "(unknown is not zero)."]
         if weeks:
             sacrifice.append(f"Starts in {future_starts} of {len(comparable_weeks)} comparable future lineups; incomplete weeks are not treated as zero.")
         if short_term and forward["total_gain"] is not None and forward["total_gain"] < 0:
             sacrifice.append(f"Short-term swap sacrifices {-forward['total_gain']:.1f} projected points over the complete future horizon; reconsider next week.")
         result["alternatives"].append({"espn_player_id": pid, "name": p.get("full_name"), "position": p["position"],
                                        "value": raw, "value_known": True, "sacrifice": sacrifice,
-                                       "net_lineup_gain": round(net, 3), "forward": forward,
-                                       "sort": (0 if short_term else 1, -(forward["total_gain"] or 0), -net, removal_loss, future_starts,
+                                       "net_lineup_gain": round(net, 3) if net is not None else None, "forward": forward,
+                                       # An unknown net / removal cost is unknown for every alternative alike (it
+                                       # depends on the roster and candidate, not the drop), so 0 only ties them here.
+                                       "sort": (0 if short_term else 1, -(forward["total_gain"] or 0), -(net or 0),
+                                                removal_loss or 0, future_starts,
                                                 0 if redundant_streamer else 1, raw, pid)})
     result["alternatives"].sort(key=lambda d: d.pop("sort"))
     if result["alternatives"]:

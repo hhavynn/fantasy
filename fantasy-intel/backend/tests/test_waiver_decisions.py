@@ -248,3 +248,33 @@ def test_total_projection_gain_cannot_hide_a_future_positional_hole():
     move = plan_roster_move(st, player(99, "RB", 9, projections={7: 30, 8: 30}))
     assert move["drop"]["espn_player_id"] == 1
     assert any(d["espn_player_id"] == 3 and "future" in d["reason"] for d in move["excluded"])
+
+
+# ---- #253 G5: an unknown value never enters lineup arithmetic as 0.0 ----
+
+def test_drop_sacrifice_with_an_unknown_starter_is_unknown_not_computed_from_zero():
+    # Full roster (RB, WR, BE): the RB starter has no value. Dropping the bench WR is defensible on raw values, but the
+    # lineup cost and net gain cannot be computed: the old code counted the unknown RB as 0.0.
+    slots = {"RB": 1, "WR": 1, "BE": 1}
+    st = state([player(1, "RB", None), player(2, "WR", 6), player(3, "WR", 2)], slots)
+    move = plan_roster_move(st, player(99, "WR", 7))
+    assert move["status"] == "ADD_WITH_DROP" and move["drop"]["espn_player_id"] == 3
+    assert move["drop"]["net_lineup_gain"] is None
+    assert any("unknown" in s and "not zero" in s for s in move["drop"]["sacrifice"])
+    assert not any(s.startswith("Removal alone costs") for s in move["drop"]["sacrifice"])
+
+
+def test_unknown_values_never_fabricate_depth_or_lineup_gain():
+    st = state([player(1, "RB", 5), player(2, "RB", 3)], {"RB": 1, "BE": 2})
+    cand = player(99, "RB", None)
+    u = acquisition_utility(st, cand, plan_roster_move(st, cand), need=0.0, opportunity=None)
+    assert u["starter_gain"] is None and u["depth_gain"] is None          # old depth_gain: 0 - 3 = -3
+    assert "P99" in u["summary"] and "not zero" in u["summary"]
+    assert u["unknown_value_ids"] == [99]
+
+
+def test_known_lineup_gain_is_labelled_as_percentile_value_not_points():
+    st = state([player(1, "RB", 2)], {"RB": 1, "BE": 1})
+    cand = player(99, "RB", 7)
+    u = acquisition_utility(st, cand, plan_roster_move(st, cand), need=0.0, opportunity=None)
+    assert u["starter_gain"] == 5 and "position-percentile" in u["summary"] and "not fantasy points" in u["summary"]

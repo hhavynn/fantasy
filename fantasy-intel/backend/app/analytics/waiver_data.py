@@ -1,12 +1,14 @@
 """Batched waiver-only adapter over stored ESPN/NFL data. Never fetches remotely."""
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import FANTASY_POSITIONS
+from .league_scoring import DIRECT, DST_SLOT, EXTRA_DIRECT, RETURN_TD_COLUMN, resolve_skill_scoring
 from .lineup import assign_lineup, lineup_slots
 from .availability import ESPN_STATUS, availability
 from .projections import load_schedule
@@ -19,6 +21,16 @@ from .team_lineups import STREAM_POSITIONS, STREAM_RANK
 LANE_SIZE = 15
 FRESHNESS_HOURS = 72  # cautious snapshot threshold, not an injury forecast
 
+# The basis of the historical player values and xFP (player_scores): nflverse `fantasy_points_ppr`, per unit of each
+# box-score column. Columns the basis does not score (first downs, attempts, ...) are 0. A fumble-recovery TD is left
+# out of the comparison: whether the basis counts it is not verified here.
+PPR_BASIS = {"passing_yards": 0.04, "passing_tds": 4.0, "passing_interceptions": -2.0, "passing_2pt_conversions": 2.0,
+             "rushing_yards": 0.1, "rushing_tds": 6.0, "rushing_2pt_conversions": 2.0,
+             "receptions": 1.0, "receiving_yards": 0.1, "receiving_tds": 6.0, "receiving_2pt_conversions": 2.0,
+             "fumbles_lost_total": -2.0, RETURN_TD_COLUMN: 6.0}
+_COMPARED = set(PPR_BASIS) | {col for col, _ in EXTRA_DIRECT.values()}
+_LABELS = {**{col: label for col, label in (*DIRECT.values(), *EXTRA_DIRECT.values())}, RETURN_TD_COLUMN: "return TD"}
+
 
 def stale_snapshot(stamp, now: datetime) -> bool:
     if stamp is None:
@@ -26,6 +38,32 @@ def stale_snapshot(stamp, now: datetime) -> bool:
     if isinstance(stamp, str):
         stamp = datetime.fromisoformat(stamp)
     return (now - stamp.replace(tzinfo=stamp.tzinfo or timezone.utc)).total_seconds() > FRESHNESS_HOURS * 3600
+
+
+def ppr_basis_differences(scoring_items) -> list[str]:
+    """Known ways a league's offensive scoring differs from PPR_BASIS (#253 S2), as short phrases. Only rules the league
+    states are compared: an absent rule is unknown, not 0. Kicker and D/ST-only rules do not apply to the values."""
+    items = json.loads(scoring_items) if isinstance(scoring_items, str) else scoring_items
+    if not items:
+        return []
+    skill = resolve_skill_scoring(items)
+    direct = {**DIRECT, **EXTRA_DIRECT}
+    out = [f"{pts:g} per {_LABELS[col]} (basis {PPR_BASIS.get(col, 0.0):g})"
+           for col, pts in skill.weights.items() if col in _COMPARED and abs(pts - PPR_BASIS.get(col, 0.0)) > 1e-9]
+    out += [f"+{pts:g} per {_LABELS.get(col, col)} for {pos}"
+            for pos, cols in sorted(skill.position_weights.items()) for col, pts in sorted(cols.items()) if pts]
+    by_slot = set()
+    for item in items:
+        sid = item.get("statId")
+        overrides = {str(k): v for k, v in (item.get("pointsOverrides") or {}).items() if str(k) != DST_SLOT}
+        if overrides and sid not in by_slot:
+            by_slot.add(sid)
+            name = _LABELS[direct[sid][0]] if sid in direct else f"stat {sid}"
+            out.append(f"{name} scored differently by lineup slot (such as a TE premium)")
+    other = sum(1 for u in skill.unsupported if u.get("stat_id") not in by_slot)
+    if other:
+        out.append(f"{other} other offensive scoring {'rule' if other == 1 else 'rules'} the basis does not model")
+    return out
 
 
 def comparable_free_agents(candidate: dict, values: dict, pool: list[dict], ctx: dict, reports: dict | None = None) -> list[dict]:
@@ -167,8 +205,11 @@ def load_waiver_context(con, league: dict, now: datetime | None = None, source: 
     offenses = {r["team"]: r for r in fetch_dicts(con, "SELECT * FROM team_context WHERE season=? AND through_week < ?", [league["season"], start])}
     defenses = {r["defteam"]: r for r in fetch_dicts(con, "SELECT * FROM defense_context WHERE season=? AND through_week < ?", [league["season"], start])}
     rules = waiver_rules(league)
-    if league.get("reception_points") != 1:
-        warnings.append("Historical player value and xFP use PPR-based usage; they are not recalibrated to this league. ESPN projections use league scoring.")
+    differences = ppr_basis_differences(league.get("scoring_items"))
+    if league.get("reception_points") != 1 or differences:
+        warnings.append("Historical player value and xFP use PPR-based usage; they are not recalibrated to this league"
+                        + (f" (this league scores {'; '.join(differences)})" if differences else "")
+                        + ". ESPN projections use league scoring.")
     constraints = roster_constraints(league)
     return {"weeks": weeks, "actionable": actionable, "projections": dict(projections), "projection_synced": synced,
             "projection_stamps": dict(projection_stamps), "stale_projection_count": stale_count,

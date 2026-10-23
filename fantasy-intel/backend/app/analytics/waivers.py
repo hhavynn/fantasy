@@ -14,11 +14,12 @@ from statistics import mean
 from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
-from .lineup import FIXED_SLOTS, assign_lineup, lineup_gain, lineup_slots
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_gain, lineup_slots, lineup_total
 from .player_scores import percentile_scores, percentile_scores_100
 from .reserve_slots import is_reserved, is_taxi
-from .waiver_roster import plan_roster_move
-from .waiver_decisions import acquisition_utility, classify_action, evaluate_streaming, resource_diagnostics
+from .waiver_roster import plan_roster_move, player_names, unknown_value_players
+from .waiver_decisions import (VALUE_SCALE, VALUE_SCALE_TEXT, acquisition_utility, classify_action, evaluate_streaming,
+                               resource_diagnostics)
 from .waiver_data import (attach_roster_evidence, comparable_free_agents, load_waiver_context, select_candidates,
                           stale_snapshot, streaming_evidence, streaming_floor)
 
@@ -86,23 +87,65 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
             "espn_player_id": p["espn_player_id"], "position": p.get("position"), "full_name": p.get("full_name"),
             "injury_status": p.get("injury_status"), "nfl_report_status": p.get("nfl_report_status"),
             "lineup_slot_id": p.get("lineup_slot_id"), "raw_value": raw,
-            "value": round((raw or 0.0) * av["weight"], 3), "available": av["weight"] > 0, "availability": av,
+            # No value is unknown, never 0.0 (#253 G5): the solver still places him, ordered as 0.
+            "value": round(raw * av["weight"], 3) if raw is not None else None,
+            "available": av["weight"] > 0, "availability": av,
             "raw_value_100": v.value_100 if v is not None else None,   # display text only
             **({"on_taxi": True} if taxi else {}),
         })
     slots = lineup_slots(roster_slots)
-    return {"players": players, "slots": slots, "roster_slots": roster_slots, "lineup": assign_lineup(players, slots)}
+    lineup = assign_lineup(players, slots)
+    unknown_ids = {p["espn_player_id"] for p in players if p["raw_value"] is None}
+    for a in lineup:
+        a["value_known"] = a["player_id"] not in unknown_ids      # an empty slot is a measured hole, not unknown
+        if not a["value_known"]:
+            a["value"] = None
+    unknown = unknown_value_players(players, slots)
+    return {"players": players, "slots": slots, "roster_slots": roster_slots, "lineup": lineup,
+            # None while any possible starter has no value: the total would otherwise count him as 0.
+            "lineup_value": round(lineup_total(lineup), 3) if not unknown else None,
+            "value_unknown": [_ref(p) for p in unknown]}
+
+
+def _ref(p: dict) -> dict:
+    return {"espn_player_id": p["espn_player_id"], "name": p.get("full_name")}
+
+
+def _competing_positions(slots: list[str], pos: str) -> set[str]:
+    """Positions whose lineup placement can change who starts at `pos`: every position sharing a slot with it,
+    transitively (an OP slot links QB with RB/WR/TE; K and D/ST stand alone). Empty when no slot takes `pos`."""
+    comp, frontier = set(), [pos]
+    while frontier:
+        cur = frontier.pop()
+        for s in set(slots):
+            if eligible(s, cur):
+                for q in FLEX_ELIGIBILITY.get(s, (s,)):
+                    if q not in comp:
+                        comp.add(q)
+                        frontier.append(q)
+    return comp
+
+
+def unknown_competitors(state: dict, pos: str) -> list[dict]:
+    """Available players without a value who compete for the slots `pos` can fill."""
+    comp = _competing_positions(state["slots"], pos)
+    return [p for p in state["players"] if p["available"] and p["raw_value"] is None and p["position"] in comp]
 
 
 def _empty_slots(state: dict, pos: str) -> int:
-    """Dedicated slots for `pos` that no eligible player could fill (holes count as 0 value)."""
+    """Dedicated slots for `pos` that no available player could fill. A hole is measured (nobody can start there),
+    so it counts at the scale floor 0; it is not a missing value."""
     return sum(1 for a in state["lineup"] if a["slot"] == pos and a["player_id"] is None)
 
 
-def position_starter_values(state: dict, pos: str) -> list[float]:
+def position_starter_values(state: dict, pos: str) -> list[float] | None:
     """Values of every lineup starter whose *player* position is `pos`, whatever slot he
     occupies (fixed, FLEX, RB/WR, WR/TE, OP), plus 0 for each unfilled dedicated `pos` slot.
-    Each assigned player sits in exactly one slot, so nothing is counted twice."""
+    Each assigned player sits in exactly one slot, so nothing is counted twice.
+    None (unknown) while an available player competing for those slots has no value: who starts, and at what value,
+    is then unknown, and his value is never taken as 0."""
+    if unknown_competitors(state, pos):
+        return None
     vals = [a["value"] for a in state["lineup"] if a["player_id"] is not None and a["position"] == pos]
     return vals + [0.0] * _empty_slots(state, pos)
 
@@ -113,7 +156,8 @@ def _has_value_data(state: dict, pos: str) -> bool:
 
 def league_starter_averages(states: dict[int, dict], roster_slots: dict[str, int]) -> dict[str, float]:
     """Mean value of each team's starters at a position (fixed and flex-assigned), averaged
-    across teams that have value data at that position and start someone there."""
+    across teams that have value data at that position and start someone there. A team whose starters there are
+    unknown (position_starter_values None) is left out, never averaged in at 0."""
     out = {}
     for pos in FIXED_SLOTS:
         per_team = [mean(v) for st in states.values() if _has_value_data(st, pos)
@@ -135,12 +179,14 @@ def team_needs(state: dict, roster_slots: dict[str, int], league_starter_avg: di
         eff = round(sum(weights), 2)
         target = (starters + DEPTH_EXTRA.get(pos, 0)) if starters else 0
         starter_vals = position_starter_values(state, pos)
+        unknown = unknown_competitors(state, pos) if starters or fixed else []
         has_data = _has_value_data(state, pos)
         starter_value = mean(starter_vals) if starter_vals and has_data else None
         weakest = min(starter_vals) if starter_vals and has_data else None
         shortage = clamp((target - eff) / target) if target else 0.0
-        gap = 0.0
-        if starter_value is not None and league_starter_avg.get(pos) is not None:
+        gap = 0.0          # contributes nothing unless measured; quality_gap_known says which
+        gap_known = starter_value is not None and league_starter_avg.get(pos) is not None
+        if gap_known:
             gap = clamp((league_starter_avg[pos] - starter_value) / 4.0)
         need = round(clamp(0.55 * clamp(shortage * 2) + 0.45 * gap), 3) if starters or fixed else 0.0
         out[pos] = {
@@ -152,14 +198,19 @@ def team_needs(state: dict, roster_slots: dict[str, int], league_starter_avg: di
             "details": {
                 "fixed_slots": fixed, "flex_slots_filled": flex_filled, "depth_target": target,
                 "weakest_starter_value": round(weakest, 2) if weakest is not None else None,
-                "shortage": round(shortage, 3), "quality_gap": round(gap, 3),
+                "shortage": round(shortage, 3), "quality_gap": round(gap, 3), "quality_gap_known": gap_known,
+                "value_status": "partial" if unknown else "complete",
+                "value_unknown": [_ref(p) for p in unknown],
+                "value_note": (f"Starter quality not computed: no historical value for {player_names(unknown)} "
+                               "(unknown is not zero); this need uses roster shortage only." if unknown else None),
                 "league_avg_starter_value": league_starter_avg.get(pos),
                 "availability": [{"espn_player_id": p["espn_player_id"], "name": p["full_name"],
                                   "status": p["availability"]["status"], "weight": p["availability"]["weight"]}
                                  for p in players],
-                "starter_values": [round(v, 2) for v in starter_vals],
+                "starter_values": [round(v, 2) for v in starter_vals] if starter_vals is not None else None,
                 "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup "
-                           "starter at the position (fixed + flex); shortage uses availability weights "
+                           "starter at the position (fixed + flex) and is left out when unknown (quality_gap_known "
+                           "false); shortage uses availability weights "
                            "(AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
             },
         }
@@ -178,14 +229,15 @@ def suggest_drop(state: dict, candidate: dict | None = None) -> dict | None:
     starters = {a["player_id"] for a in state["lineup"] if a["player_id"] is not None}
     base = state["players"] + ([candidate] if candidate else [])
     holes_before = _empty_fixed(base, state["slots"])
+    # An unknown value cannot defend the sacrifice (as in plan_roster_move), and is never ranked as the worst (0).
     bench = [p for p in state["players"]
-             if p["espn_player_id"] not in starters and not is_reserved(p)]
-    for p in sorted(bench, key=lambda p: (p["raw_value"] if p["raw_value"] is not None else 0.0, p["espn_player_id"])):
+             if p["espn_player_id"] not in starters and not is_reserved(p) and p["raw_value"] is not None]
+    for p in sorted(bench, key=lambda p: (p["raw_value"], p["espn_player_id"])):
         remaining = [q for q in base if q["espn_player_id"] != p["espn_player_id"]]
         if _empty_fixed(remaining, state["slots"]) > holes_before:
             continue  # would leave a fixed slot unfillable
         return {"espn_player_id": p["espn_player_id"], "name": p["full_name"], "position": p["position"],
-                "value": round(p["raw_value"] or 0.0, 2), "value_known": p["raw_value"] is not None,
+                "value": round(p["raw_value"], 2), "value_known": True,
                 "availability": p["availability"]["status"]}
     return None
 
@@ -259,12 +311,23 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     # My roster side: does he actually enter my optimal lineup?
     my_need = needs.get(my_team_id, {}).get(pos, {})
     need = my_need.get("need_score", 0.0)
-    cand_value = cv.value or 0.0
+    cand_value = cv.value
     cand = {"espn_player_id": c["espn_player_id"], "position": pos, "full_name": c.get("full_name"),
-            "lineup_slot_id": None, "raw_value": cv.value, "value": round(cand_value * av["weight"], 3),
+            "lineup_slot_id": None, "raw_value": cv.value,
+            "value": round(cand_value * av["weight"], 3) if cand_value is not None else None,
             "available": av["weight"] > 0, "availability": av}
-    lg = lineup_gain(my_state["players"], my_state["slots"], cand)
-    upgrade = clamp(lg["gain"] / 3.0)
+    # A lineup gain needs the candidate's value and every possible starter's (the same rule as acquisition_utility's
+    # starter_gain); otherwise it is unknown, never a difference that counts a missing value as 0 (#253 G5).
+    unknown = ([cand] if cand_value is None else []) + unknown_value_players(my_state["players"], my_state["slots"])
+    if unknown:
+        lg = {"gain": None, "enters_lineup": None, "slot": None, "displaced_id": None}
+        reasons.append(f"Lineup gain unknown: no historical value for {player_names(unknown)} (unknown is not zero)")
+    else:
+        lg = lineup_gain(my_state["players"], my_state["slots"], cand)
+    upgrade = clamp(lg["gain"] / 3.0) if lg["gain"] is not None else None
+    # The value scale is a within-position percentile: where a FLEX or OP slot takes this position, the lineup choice
+    # compares percentiles across positions, not points. Stated, not corrected (a points basis is #254's).
+    cross_position = any(s in FLEX_ELIGIBILITY and eligible(s, pos) for s in my_state["slots"])
     ctx = decision_context or {}
     cand.update(projections=ctx.get("projections", {}).get(c["espn_player_id"], {}),
                 bye_weeks=ctx.get("candidate_byes", []), rising=cv.trend_label == "UP")
@@ -279,10 +342,12 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
 
     move = roster_move(cand)
     drop = move["drop"]
-    margin = cand_value - drop["value"] if drop else None
+    margin = cand_value - drop["value"] if drop and cand_value is not None else None
     bench_upgrade = clamp(margin / 4.0) if margin is not None else 0.0
     depth_utility = DEPTH_UTILITY.get(pos, 0.5)
-    fit = 10.0 * (0.35 * need + 0.35 * upgrade + 0.30 * bench_upgrade * depth_utility)
+    # Legacy heuristic: an unknown lineup gain or margin adds nothing here (roster.fit_status "partial" says so); the
+    # V3 decision below never reads fit.
+    fit = 10.0 * (0.35 * need + 0.35 * (upgrade or 0.0) + 0.30 * bench_upgrade * depth_utility)
     if drop is not None and margin is not None and margin <= 0:
         fit *= 0.5
         reasons.append(f"Not clearly better than your weakest bench option ({drop['name']}, value {drop['value']:.1f})")
@@ -290,7 +355,8 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     if need >= 0.5:
         reasons.append(f"Fills a real need at {pos} (need {need:.2f})")
     if lg["enters_lineup"]:
-        reasons.append(f"Would enter your lineup at {lg['slot']} (+{lg['gain']:.1f} lineup value)")
+        scale = f"; {VALUE_SCALE_TEXT}, so FLEX/OP choices compare percentiles across positions" if cross_position else ""
+        reasons.append(f"Would enter your lineup at {lg['slot']} (+{lg['gain']:.1f} lineup value{scale})")
     elif depth_utility < 0.5 and need < 0.5:
         reasons.append(f"Wouldn't start for you and a backup {pos} rarely plays")
     scarcity_count = scarcity.get(pos, 0)
@@ -409,7 +475,11 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
                        "my_weakest_starter_value": (my_need.get("details") or {}).get("weakest_starter_value"),
                        "lineup_gain": lg["gain"], "enters_lineup": lg["enters_lineup"], "lineup_slot": lg["slot"],
                        "displaced_id": lg["displaced_id"],
-                       "upgrade": round(upgrade, 3), "bench_upgrade": round(bench_upgrade, 3),
+                       "value_scale": VALUE_SCALE, "value_status": "partial" if unknown else "complete",
+                       "value_unknown": [_ref(p) for p in unknown],
+                       "fit_status": "partial" if upgrade is None or (drop and margin is None) else "complete",
+                       "upgrade": round(upgrade, 3) if upgrade is not None else None,
+                       "bench_upgrade": round(bench_upgrade, 3),
                        "depth_utility": depth_utility,
                        "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
                        "suggested_drop": drop, "value_margin_vs_drop": round(margin, 2) if margin is not None else None},
