@@ -2,21 +2,36 @@
 {
  "body": {
   "contingencies": {
+   "abstained_by_code": {},
    "available": true,
+   "generated_at": "<masked>",
    "items": [],
-   "note": "If-then evidence only: what changed for these players when the named starter was out or came back, with its sample. Not a prediction that it happens, and no lineup value is attached.",
+   "note": "If-then evidence only: what changed for these players when the named starter was out or came back, with its sample and as-of. Not a prediction that it happens, and no lineup value is attached. It is this week's evidence: re-check it after the team's game.",
+   "notices": [
+    {
+     "code": "no_depth_charts",
+     "text": "No depth charts are synced: groups are ordered by recent snap share, and no depth-chart hypothesis is made."
+    }
+   ],
    "scenarios_abstained": 0,
+   "sources": {
+    "depth_chart_as_of": null,
+    "route_providers": [],
+    "schedule_synced": true,
+    "usage_through_week": 3,
+    "weekly_rosters_synced": false
+   },
    "week": 3
   },
   "contract": "stash-plan/v1",
   "counts": {
    "considered": 4,
-   "dominated": 0,
-   "evaluated": 4,
+   "evaluated": 2,
    "excluded_position_limit": 0,
    "excluded_unprojected": 0,
    "free_agents": 4,
    "no_gain": 2,
+   "no_possible_gain": 2,
    "not_evaluated_cap": 0,
    "pick_up_now": 2,
    "stashes": 0,
@@ -24,6 +39,7 @@
   },
   "drop": null,
   "drop_basis": "open_spot",
+  "drop_notes": [],
   "horizon": 4,
   "later_weeks": [
    4,
@@ -33,8 +49,9 @@
   ],
   "notes": [
    "Projected lineup points, not a forecast that anything happens: no injury or role-change probability is used.",
-   "Waiver availability is not guaranteed; a player on waivers needs a claim.",
-   "K and D/ST are streamed week by week, not stashed."
+   "Waiver availability is not guaranteed; a player on waivers needs a claim, and bids are not planned here.",
+   "K and D/ST are streamed week by week, not stashed.",
+   "One drop candidate is used for every addition, so a position at its roster limit stays closed unless that drop plays it."
   ],
   "now_week": 3,
   "pick_up_now": [
@@ -57,7 +74,7 @@
     "this_week_delta": 3.0
    }
   ],
-  "policy": "Stashes are ranked by the starting-lineup points they add in the later weeks (exact lineup difference with the drop candidate removed), then by the earliest week they start, then by player id.",
+  "policy": "Listed only when the net starting-lineup points over the horizon are positive (exact lineup difference with the drop candidate removed). Stashes are ranked by that net gain, then by the earliest later week they start, then by player id.",
   "projection_source": "ESPN",
   "provenance": {
    "contract": "signal-provenance.v1",
@@ -101,7 +118,7 @@
     }
    ]
   },
-  "reason": "No free agent adds starting points only in later weeks.",
+  "reason": "No free agent adds net starting points over the horizon without adding them this week.",
   "stashes": [],
   "status": "evaluated",
   "team": {

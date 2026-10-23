@@ -83,7 +83,10 @@ def scenario(players: list[RosterPlayer], slots: list[str], window: Window, proj
             "regular_season_delta": c["regular_season_delta"], "playoff_delta": c["playoff_delta"],
             "weeks_incomplete": c["weeks_incomplete"], "projection_complete": c["projection_complete"],
             **({"unsupported_slots": c["unsupported_slots"]} if c.get("unsupported_slots") else {}),
-            "weeks": weeks, "_ros_exact": exact if c["projection_complete"] else None}
+            "weeks": weeks, "_ros_exact": exact if c["projection_complete"] else None,
+            # unrounded per-week differences (None for a week that is not exact), for callers that sum part of a window
+            "_weeks_exact": [a["_total"] - b["_total"] if row["delta"] is not None else None
+                             for b, a, row in zip(base["weeks"], after["weeks"], c["weeks"])]}
 
 
 def _public(s: dict) -> dict:

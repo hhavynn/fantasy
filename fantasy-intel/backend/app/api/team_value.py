@@ -11,7 +11,7 @@ from ..analytics.stash_planner import HORIZONS, StashPlanError, contingencies, p
 from ..analytics.playoff_race import NotSynced, load_race_data
 from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, replacement_positions, source_label, without
 from ..analytics.team_value import NotFound, _position_legal, build_team_value, load_team_value_inputs
-from ..analytics.trades import with_streaming
+from ..analytics.trades import roster_legality, with_streaming
 from .deps import db
 from .signal_provenance import trade_provenance
 
@@ -129,7 +129,9 @@ def my_team_stash(team_id: int | None = None, horizon: int = 4, kdst_streaming: 
                                 free_agents=state.free_agents, free_agent_status=state.free_agent_status,
                                 active_capacity=state.active_capacity, position_limits=state.position_limits,
                                 horizon=horizon,
-                                projection_source=source_label(state.projection_source, state.projections))
+                                projection_source=source_label(state.projection_source, state.projections),
+                                roster_count_unverified=(roster_legality(state, tid) or {}).get("reason"),
+                                undroppable_list_in_use=state.undroppable_list_in_use)
         except StashPlanError as err:
             raise HTTPException(422, str(err))
         try:                        # tid is already in this league, so only "not available yet" is expected here

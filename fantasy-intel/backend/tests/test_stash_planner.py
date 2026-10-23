@@ -56,7 +56,7 @@ def test_a_stash_adds_only_later_and_a_current_week_add_is_kept_apart():
     s31 = next(x for x in res["stashes"] if x["espn_player_id"] == 31)
     assert s31["this_week_delta"] <= 0 and s31["later_delta"] > 0 and s31["first_start_week"] == 3
     # RB 3's bye pushes WR 7 (3 points) into FLEX in week 3; he is the drop, so RB 31 (11) starts there: +8
-    assert s31["why"].startswith("week 3: starts in place of P7 (the drop) (+8.0)")
+    assert s31["why"].startswith("week 3: starts in place of P7 (the drop) (+8)")
     drop = res["drop"]
     hw = Window((1, 2, 3, 4, 5), 5)
     direct = scenario(roster(), STD, hw, pr, remove=[drop["espn_player_id"]], add=[FAS[0]])
@@ -134,6 +134,7 @@ def test_a_three_flex_superflex_league_is_exact_and_deterministic():
     b = sp.plan_stashes(players, slots, WIN, pr, free_agents=fas, free_agent_status=status,
                         active_capacity=len(players), projection_source="ESPN")
     assert a == b and a["status"] == "evaluated"
+    assert a["stashes"] and all(x["first_start_week"] in (2, 3) for x in a["stashes"])    # they cover the bye stack
     hw = Window((1, 2, 3, 4, 5), 5)
     for x in a["stashes"]:
         fa = next(f for f in fas if f.espn_player_id == x["espn_player_id"])
@@ -141,27 +142,139 @@ def test_a_three_flex_superflex_league_is_exact_and_deterministic():
                                               add=[fa])["ros_delta"]
 
 
-def test_dominated_free_agents_are_pruned_and_counted():
-    res, _ = plan(projections=proj({31: weekly(5.0, w3=11.0), 32: weekly(18.0), 33: weekly(2.0), 34: weekly(4.0, w3=10.0),
-                                      36: weekly(9.0)}))
-    assert res["counts"]["dominated"] >= 1                       # RB 34 is below RB 31 in every week
-    assert all(x["espn_player_id"] != 34 for x in res["stashes"])
+def run(players, pr, fas, status=None, **kw):
+    args = dict(free_agents=fas, free_agent_status=status or {f.espn_player_id: "FREEAGENT" for f in fas},
+                active_capacity=len([p for p in players if not p.reserved]), horizon=4, projection_source="ESPN")
+    args.update(kw)
+    return sp.plan_stashes(players, STD, WIN, pr, **args)
+
+
+def test_a_net_loss_over_the_horizon_is_never_listed_and_stashes_rank_by_net_gain():
+    # WR 6 is on bye in week 1, so WR 7 (9 then nothing) starts only then: he is the cheapest drop at -9
+    pr = proj({6: weekly(11.0, w1=0.0), 7: weekly(0.0, w1=9.0), 32: weekly(0.0, w5=10.0),
+               33: weekly(0.0, w1=9.0, w5=10.0), 34: weekly(9.0, w3=11.0)})
+    fas = [P(32, "WR"), P(33, "WR"), P(34, "RB")]
+    res = run(roster(), pr, fas)
+    assert res["drop"]["espn_player_id"] == 7 and res["drop"]["horizon_cost"] == -9.0
+    listed = {x["espn_player_id"]: x for x in res["stashes"] + res["pick_up_now"]}
+    assert 32 not in listed                         # -9 this week, +1 in week 5: a net loss, counted as no gain
+    # RB 34 costs the drop's week (-9, stated) and more than makes it up in RB 3's bye (+11): net +2, ranked first
+    assert [(x["espn_player_id"], x["this_week_delta"], x["horizon_delta"]) for x in res["stashes"]] == \
+        [(34, -9.0, 2.0), (33, 0.0, 1.0)]
+    assert res["stashes"][0]["why"].startswith("this week: -9, P7 (the drop) leaves the lineup; week 3: starts")
+    assert res["counts"]["no_gain"] >= 1
+
+
+def test_an_unverified_roster_count_never_assumes_an_open_spot():
+    players = roster()
+    res, _ = plan(players, active_capacity=len(players) + 1)
+    assert res["drop_basis"] == "open_spot"
+    res, _ = plan(players, active_capacity=len(players) + 1, roster_count_unverified="2 players are not synced.",
+                  undroppable_list_in_use=True)
+    assert res["drop"]["espn_player_id"] == 7 and res["drop_basis"] == "roster_count_unverified"
+    assert res["drop_notes"][0].startswith("2 players are not synced.") and "undroppable" in res["drop_notes"][1]
+
+
+def test_free_agents_who_can_never_start_do_not_crowd_out_a_real_stash():
+    # 45 free-agent QBs at 15 a week never beat the rostered QB (20) in a one-QB league: no lineup can gain from them
+    qbs = [P(500 + i, "QB") for i in range(45)]
+    pr = proj({31: weekly(5.0, w3=11.0), **{q.espn_player_id: weekly(15.0 - i / 100) for i, q in enumerate(qbs)}})
+    res = run(roster(), pr, [*qbs, P(31, "RB")])
+    assert [x["espn_player_id"] for x in res["stashes"]] == [31]
+    assert res["counts"]["no_possible_gain"] == 45 and res["counts"]["evaluated"] == 1
+
+
+def test_the_evaluation_cap_is_per_position_and_counted():
+    rbs = [P(600 + i, "RB") for i in range(sp.MAX_PER_POSITION + 3)]
+    pr = proj({p.espn_player_id: weekly(1.0, w3=11.0 + i / 10) for i, p in enumerate(rbs)} | {32: weekly(0.0, w4=16.0)})
+    res = run(roster(), pr, [*rbs, P(32, "WR")])
+    assert res["counts"]["not_evaluated_cap"] == 3 and res["counts"]["evaluated"] == sp.MAX_PER_POSITION + 1
+    assert res["counts"]["stashes"] == sp.MAX_PER_POSITION + 1          # the WR is evaluated past the RB cap
+
+
+def test_an_nfl_ineligible_free_agent_counts_as_zero_and_hides_nobody():
+    pr = proj({31: weekly(5.0, w3=11.0), 40: weekly(6.0, w3=12.0)})
+    res = run(roster(), pr, [P(31, "RB"), P(40, "RB", unavailable_weeks=frozenset(WIN.weeks))])
+    assert [x["espn_player_id"] for x in res["stashes"]] == [31]
+
+
+def test_a_current_week_add_does_not_hide_a_stash_at_his_position():
+    pr = proj({31: weekly(2.0, w3=11.0), 32: weekly(9.5, w3=12.0)})
+    res = run(roster(), pr, [P(31, "RB"), P(32, "RB")])
+    assert [x["espn_player_id"] for x in res["pick_up_now"]] == [32]
+    assert [x["espn_player_id"] for x in res["stashes"]] == [31]
+
+
+@pytest.mark.parametrize("league", ["std", "fx17"])
+def test_the_gain_bound_never_skips_a_real_gain(league):
+    import random
+    rng = random.Random(218)
+    slots = STD if league == "std" else lineup_slots(cf.FX17)
+    shape = ["QB", "RB", "RB", "RB", "WR", "WR", "WR", "TE"] if league == "std" else \
+        ["QB"] * 3 + ["RB"] * 6 + ["WR"] * 7 + ["TE"] * 3
+    for trial in range(25):
+        players = [P(100 + i, pos) for i, pos in enumerate(shape)]
+        fas = [P(300 + i, rng.choice(sp.STASH_POSITIONS),
+                 unavailable_weeks=frozenset(w for w in WIN.weeks if rng.random() < 0.1)) for i in range(12)]
+        pr = {p.espn_player_id: {w: round(rng.uniform(-2, 25), 1) * (rng.random() > 0.15) for w in WIN.weeks}
+              for p in players + fas}
+        hw = Window((1, 2, 3, 4, 5), 5)
+        base = sp.project_team(players, slots, hw, pr)
+        floors = sp._floors(base, list(hw.weeks))
+        for fa in fas:
+            gain = scenario(players, slots, hw, pr, add=[fa], base=base)["_ros_exact"]
+            assert gain <= sp._bound(fa, floors, list(hw.weeks), pr) + 1e-9, (trial, fa)
+
+
+def test_starter_injuries_follow_projections_and_verified_unavailability_only():
+    res, _ = plan()
+    questionable = [P(2, "RB", injury_status="QUESTIONABLE") if p.espn_player_id == 2 else p for p in roster()]
+    assert plan(questionable)[0] == res                       # a designation alone changes nothing: no probability
+    hurt = [P(2, "RB", unavailable_weeks=frozenset({2, 3})) if p.espn_player_id == 2 else p for p in roster()]
+    pr = proj({31: weekly(5.0, w3=11.0), 32: weekly(1.0), 33: weekly(2.0), 34: weekly(7.0, w1=0.0),
+               36: weekly(9.0)})
+    out = run(hurt, pr, [P(31, "RB"), P(34, "RB")])
+    s34 = next(x for x in out["stashes"] if x["espn_player_id"] == 34)
+    assert s34["first_start_week"] == 2 and s34["this_week_delta"] <= 0
+
+
+def test_only_known_availability_is_planned_and_no_claim_is_promised():
+    fas = [P(31, "RB"), P(37, "RB"), P(38, "RB"), P(39, "RB")]
+    pr = proj({f.espn_player_id: weekly(5.0, w3=11.0 + i) for i, f in enumerate(fas)})
+    res = run(roster(), pr, fas, status={31: "WAIVERS", 37: "ONTEAM", 38: None})
+    assert [(x["espn_player_id"], x["availability"]) for x in res["stashes"]] == [(31, "WAIVERS")]
+    assert res["counts"]["considered"] == 1 and "bid" not in repr(res).lower().replace("bids are not planned", "")
+
+
+def test_unknown_values_say_so():
+    pr = proj({2: {w: 15.0 for w in WIN.weeks if w != 2}, 31: weekly(5.0, w3=11.0)})
+    res = run(roster(), pr, [P(31, "RB")], active_capacity=9)
+    assert res["drop_basis"] == "open_spot" and res["counts"]["unknown"] == 1 and "unknown" in res["reason"]
 
 
 def test_contingencies_are_if_then_evidence_for_claimable_players_only():
     effect = lambda pid, claim, basis: {"espn_player_id": pid, "full_name": f"N{pid}", "position": "RB",    # noqa: E731
                                         "ownership": {"claim": claim}, "basis": basis,
                                         "observed": {"with": 4.0, "without": 11.0}, "reasons": ["depth chart"]}
-    tree = {"teams": [{"team": "KC", "scenarios": [
+    game = {"week": 1, "started": False, "on_bye": False, "kickoff": "2026-09-13T17:00:00Z"}
+    tree = {"generated_at": "2026-09-10T12:00:00Z", "sources": {"depth_chart_as_of": "2026-09-09"},
+            "notices": [{"tone": "info", "code": "waiver_status_unknown", "text": "unknown"}],
+            "teams": [{"team": "KC", "game": game, "injury_freshness": {"status": "fresh", "reason": None},
+                       "depth_chart": {"known": False, "as_of": None}, "coverage": {"status": "complete"},
+                       "scenarios": [
         {"kind": "teammate_unavailable", "subject": {"full_name": "Star RB", "position": "RB"},
          "certainty": "if_he_sits", "unit_label": "touches", "sample": {"team_games_without": 3}, "outcome": "supported",
          "effects": [effect(41, "free_agent", "observed"), effect(42, "opponent", "observed"),
                      effect(43, "waivers", "hypothesis")]},
         {"kind": "teammate_returning", "subject": {"full_name": "Back RB", "position": "RB"}, "outcome": "abstain",
-         "effects": []}]}]}
+         "abstain": {"code": "depth_unknown", "text": "no depth chart"}, "effects": []}]}]}
     c = sp.contingencies(tree)
     assert [x["espn_player_id"] for x in c["items"]] == [41, 43]           # observed first; the opponent's never
     assert c["items"][0]["if"]["starter"] == "Star RB" and c["scenarios_abstained"] == 1
+    assert c["abstained_by_code"] == {"depth_unknown": 1}
+    assert c["items"][0]["game"] == game and c["items"][0]["depth_chart"] == {"known": False, "as_of": None}
+    assert c["generated_at"] == tree["generated_at"] and c["sources"] == tree["sources"]
+    assert [n["code"] for n in c["notices"]] == ["waiver_status_unknown"]
     text = repr(c).lower()
     assert "probab" not in text.replace("not a prediction", "") and "if-then" in c["note"].lower()
 
