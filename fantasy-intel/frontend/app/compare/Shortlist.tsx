@@ -12,7 +12,7 @@ import {
   type ShortlistResponse, MAX_SHORTLIST, MIN_SHORTLIST, bestHeadline, byeText, compareHref, injuryCell,
   isBestProjected, isShortlistResponse, metricCell, nextOpponentText, nextWeekCell, pairFromShortlistHref,
   parseShortlistParams, playerName, projectionSourceLine, rosCell, rosterShort, rosterText, shortlistFromPair,
-  shortlistHref, shortlistPairs, startPickNote, trendCell, unknownShortlistId, withoutPlayer, DASH,
+  shortlistHref, shortlistPairs, shortlistSourceHint, startPickNote, trendCell, unknownShortlistId, withoutPlayer, DASH,
 } from "@/lib/compare";
 import { cx } from "@/lib/cx";
 import { getLeagueProfile } from "@/lib/league-profile.server";
@@ -24,8 +24,6 @@ import styles from "./compare.module.css";
 
 const TITLE = "Compare players";
 const META = `Up to ${MAX_SHORTLIST} players for one lineup slot, from the projections, usage and injury reports the app already stores. Best projected is the highest stored projection, not a start/sit verdict.`;
-/** Picking another team keeps the shortlist and slot; the start pick was made for the previous team. */
-const TEAM_RESET = ["start"] as const;
 
 /** "Two players" | "Shortlist": the pair view (unchanged URLs) and the shortlist, one page. */
 export function CompareModes({ mode, a, b, ids }: { mode: "pair" | "shortlist"; a?: IdLike; b?: IdLike; ids?: readonly number[] }) {
@@ -96,7 +94,9 @@ export async function ShortlistView({ sp }: { sp: SearchParamsLike }) {
   const path = `/api/compare/shortlist?ids=${ids.join(",")}${slot ? `&slot=${encodeURIComponent(slot)}` : ""}`;
   const res = await api<ShortlistResponse>(withTeamId(withSource(path, source), sel));
   const teamPicker = (current: number | null) => (
-    <TeamPerspective path="/compare" sp={sp} current={current} reset={TEAM_RESET} />
+    // The default reset (TEAM_SPECIFIC_PARAMS): the same URL the rail picker builds, keeping the shortlist and slot
+    // and dropping the start pick, which was made for the previous team.
+    <TeamPerspective path="/compare" sp={sp} current={current} />
   );
 
   if (!res.ok) {
@@ -265,7 +265,7 @@ function opponent(card: CompareCard): string | null {
 /** Measures down, players across: four narrow columns fit a phone, and the table scrolls inside itself if not. */
 function ShortlistGrid({ r, start, espnProjections }: { r: ShortlistResponse; start: number | null; espnProjections: boolean }) {
   const field = r.best_projected.source;
-  const src = r.best_projected.source_label === "Unavailable" ? "Unavailable" : field === "ours" ? "Ours" : "ESPN";
+  const src = shortlistSourceHint(r, "next");
   const week = r.as_of_week;
   const rows: GridRow[] = [];
   if (r.slot) {
@@ -285,12 +285,13 @@ function ShortlistGrid({ r, start, espnProjections }: { r: ShortlistResponse; st
       </>
     ),
   });
-  if (field === "ours" && espnProjections) {
+  // ESPN's week as a reference beside Ours, only when some player has an ESPN number (never an empty source's name)
+  if (field === "ours" && espnProjections && r.players.some((p) => nextWeekCell(p.card, "espn").kind === "value")) {
     rows.push({ key: "next_espn", label: `Week ${week} proj`, hint: "ESPN, reference", cell: (p) => <Cell c={nextWeekCell(p.card, "espn")} /> });
   }
   rows.push(
     { key: "opp", label: "Opponent", hint: `Week ${week}`, cell: (p) => <Cell c={text(opponent(p.card), "The league's projection window is unknown.")} /> },
-    { key: "ros", label: "Rest of season", hint: src, cell: (p) => <Cell c={rosCell(p.card, field)} /> },
+    { key: "ros", label: "Rest of season", hint: shortlistSourceHint(r, "ros"), cell: (p) => <Cell c={rosCell(p.card, field)} /> },
     {
       key: "games", label: "Games left",
       cell: (p) => {
@@ -315,7 +316,9 @@ function ShortlistGrid({ r, start, espnProjections }: { r: ShortlistResponse; st
   );
   return (
     <div className="table-wrap">
-      <table className={styles.shortTable}>
+      {/* data-team-id: the team the backend computed roster status for (its perspective), for checks that the
+          rail, the page picker, the URL and the API agree */}
+      <table className={styles.shortTable} data-team-id={r.team?.team_id ?? ""}>
         <caption className={styles.caption}>Shortlist of {r.players.length} players, measures down and players across</caption>
         <thead>
           <tr>

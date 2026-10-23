@@ -86,3 +86,40 @@ test("add a player from search and remove one", async ({ page }) => {
   await expect(page).toHaveURL(/\/compare\?ids=201$/);
   await noSidewaysScroll(page);
 });
+
+// Review of #282 (Codex P2): the shortlist is team-scoped, so the rail's team, the page's "Analyzing" picker, the URL's
+// `team=` and the team the API computed roster status for (the grid's data-team-id) always agree, in both directions
+// and on first load. Team 2 is the owner default; Echo RB (201) is on team 1.
+test("the rail, the page picker, the URL and the API agree on the shortlist's team", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop-1440", "the rail is the wide-desktop layout");
+  await page.goto(FOUR);
+  const table = grid(page);
+  const rail = page.getByRole("complementary", { name: "Workspace" }).getByRole("combobox", { name: "Team" });
+  const picker = page.getByRole("main").getByRole("combobox", { name: "Analyzing" });
+  const echoRoster = table.getByRole("row", { name: /^Roster/ }).getByRole("cell").first();
+
+  // first load, no team=: the default team in the rail is the team the API used
+  await expect(table).toHaveAttribute("data-team-id", "2", { timeout: 20_000 });
+  await expect(rail).toHaveValue("2");
+  await expect(picker).not.toHaveValue(/team=/);
+  await expect(echoRoster).toHaveText("Rostered");
+
+  // rail → URL, page picker and API
+  await rail.selectOption("1");
+  await expect(page).toHaveURL(/\/compare\?ids=201%2C401%2C301%2C101&slot=FLEX&team=1$/);
+  await expect(table).toHaveAttribute("data-team-id", "1", { timeout: 20_000 });
+  await expect(picker).toHaveValue(/team=1/);
+  await expect(rail).toHaveValue("1");
+  await expect(echoRoster).toHaveText("Yours");
+
+  // page picker → rail, URL and API (back to the default: no team= in the URL)
+  await picker.selectOption({ label: "Team 2 (default)" });
+  await expect(page).not.toHaveURL(/team=/);
+  await expect(table).toHaveAttribute("data-team-id", "2", { timeout: 20_000 });
+  await expect(rail).toHaveValue("2");
+  await expect(echoRoster).toHaveText("Rostered");
+  await picker.selectOption({ label: "Team 1" });
+  await expect(page).toHaveURL(/team=1$/);
+  await expect(rail).toHaveValue("1");
+  await expect(table).toHaveAttribute("data-team-id", "1", { timeout: 20_000 });
+});

@@ -16,6 +16,7 @@ Which player to start is the viewer's call; the API never names one.
 from __future__ import annotations
 
 import json
+import re
 
 from ..db.connection import utcnow
 from . import forward_ours
@@ -35,6 +36,13 @@ SLEEPER_WAIVERS = ("Sleeper does not publish waiver status, so an unrostered pla
                    "when he may still be on waivers.")
 
 
+# An ESPN / Sleeper player id: ASCII digits only (int() would also take "2_01" or other scripts' digits, each its own
+# cache entry), at most 10 of them (a 40-digit id overflows the database's BIGINT), negative for team defenses.
+_ID = re.compile(r"-?[0-9]{1,10}")
+NO_COMMON_SLOT = ("These players never share a lineup slot in this league, so ranking them against each other says "
+                  "nothing about a start decision. Pick a slot to compare the players who can fill it.")
+
+
 class ShortlistError(ValueError):
     """A request the API answers with 422: bad ids, too few or too many players, or a slot the league does not have."""
 
@@ -44,10 +52,10 @@ def parse_ids(raw: str | None) -> list[int]:
     parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
     ids: list[int] = []
     for p in parts:
-        try:
-            pid = int(p)
-        except ValueError:
-            raise ShortlistError(f"'{p[:24]}' is not a player id. Ids are whole numbers (team defenses are negative).")
+        if not (p.isascii() and _ID.fullmatch(p)):
+            raise ShortlistError(f"'{p[:24]}' is not a player id. Ids are whole numbers of up to 10 digits "
+                                 "(team defenses are negative).")
+        pid = int(p)
         if pid in ids:
             raise ShortlistError(f"Player {pid} is on the shortlist twice. Each player can be listed once.")
         ids.append(pid)
@@ -91,6 +99,19 @@ def _source_name(field: str) -> str:
     return "Fantasy Intel" if field == "ours" else "ESPN"
 
 
+def _a(src: str) -> str:
+    """The source with its article: "an ESPN", "a Fantasy Intel"."""
+    return f"{'an' if src[:1] in 'AEIOU' else 'a'} {src}"
+
+
+def share_a_slot(positions: list[str | None], labels: list[str]) -> bool:
+    """Whether one starting slot of the league takes every position listed. Without synced slots only players of
+    the same position are known to compete for one."""
+    if not labels:
+        return len(set(positions)) == 1 and positions[0] is not None
+    return any(all(eligible(s, p) for p in positions) for s in labels)
+
+
 def source_label(entries: list[dict], field: str) -> str:
     """The source the block names: ESPN or Fantasy Intel only when at least one player on the list has a number from it
     for the week (D-14: a source with no values is never named), else NO_PROJECTIONS ("Unavailable")."""
@@ -98,8 +119,9 @@ def source_label(entries: list[dict], field: str) -> str:
     return _source_name(field) if has else NO_PROJECTIONS
 
 
-def best_projected(entries: list[dict], field: str, week: int, slot: str | None) -> dict:
-    """The best-projected block from each player's {espn_player_id, name, position, slot_eligible, next_week}."""
+def best_projected(entries: list[dict], field: str, week: int, slot: str | None, *, common_slot: bool = True) -> dict:
+    """The best-projected block from each player's {espn_player_id, name, position, slot_eligible, next_week}.
+    `common_slot` False (no slot chosen and no league slot takes every player, e.g. QB and K): no player is named."""
     src = _source_name(field)
     label = source_label(entries, field)
     considered: list[tuple[float, dict]] = []
@@ -123,9 +145,15 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None)
     out = {"source": field, "source_label": label, "week": week, "slot": slot, "leaders": [], "value": None, "gap": None,
            "considered": [e["espn_player_id"] for _, e in considered], "excluded": excluded,
            "complete": not missing, "status": "none", "text": ""}
+    if not common_slot:
+        out.update(considered=[], text=NO_COMMON_SLOT)
+        return out
     if not considered:
-        out["text"] = (f"No player who can fill {'the slot' if slot is None else slot} has a projection for week "
-                       f"{week}, so none is best projected.")
+        if slot is not None and all(e["slot_eligible"] is False for e in entries):
+            out["text"] = f"No player here can fill {slot}, so none is best projected."
+        else:
+            out["text"] = (f"No player who can fill {'the slot' if slot is None else slot} has a projection for "
+                           f"week {week}, so none is best projected.")
         return out
     considered.sort(key=lambda t: (-t[0], t[1]["espn_player_id"]))
     top = considered[0][0]
@@ -136,7 +164,7 @@ def best_projected(entries: list[dict], field: str, week: int, slot: str | None)
     names = " and ".join(e["name"] for e in leaders)
     if len(considered) == 1:
         out["status"] = "only" if not missing else "incomplete"
-        out["text"] = f"{names} is the only player here with a {src} projection for week {week} ({top:.1f})."
+        out["text"] = f"{names} is the only player here with {_a(src)} projection for week {week} ({top:.1f})."
     elif len(leaders) > 1:
         out["status"] = "close"
         out["text"] = (f"{names} are within {CLOSE_GAP} points of each other at the top ({src}, week {week}); "
@@ -229,6 +257,8 @@ def shortlist(con, ids: list[int], *, slot: str | None = None, team: dict | None
         "team": None if team is None else {"team_id": team["team_id"], "name": team["name"],
                                            "is_owner_default": bool(team.get("is_owner_default"))},
         "players": players,
-        "best_projected": best_projected(entries, field, as_of, slot),
+        "best_projected": best_projected(
+            entries, field, as_of, slot,
+            common_slot=slot is not None or share_a_slot([e["position"] for e in entries], labels)),
         "limitations": limitations, "disclaimer": DISCLAIMER, "freshness": pc._freshness(con),
     }

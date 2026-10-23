@@ -47,6 +47,10 @@ def ids(out):
 @pytest.mark.parametrize("raw, message", [
     ("1", "2 to 4 players; got 1"), ("", "got 0"), ("1,2,3,4,5", "got 5"), ("1,x", "'x' is not a player id"),
     ("1,1.5", "'1.5' is not a player id"), ("3,3", "on the shortlist twice"),
+    # review L1: an id past BIGINT, int()'s underscores and other scripts' digits are 422s, never a 500 or a new
+    # cache entry for the same player
+    ("1," + "9" * 40, "is not a player id"), ("1,12345678901", "is not a player id"), ("1,2_01", "'2_01' is not"),
+    ("1,\u0661\u0662", "is not a player id"), ("1,+5", "is not a player id"),
 ])
 def test_parse_ids_rejects_bad_input(raw, message):
     with pytest.raises(sl.ShortlistError, match=message):
@@ -104,10 +108,30 @@ def test_projections_within_the_edge_are_a_tie(w):
     assert best["status"] == "close" and best["leaders"] == [WALLY, ZED] and best["gap"] == 4.0   # to Ace, the first non-leader
 
 
-def test_no_slot_means_no_eligibility_filter(w):
-    out = sl.shortlist(w, [ACE, QUINN])
+def test_no_slot_ranks_players_who_share_a_slot(w):
+    out = sl.shortlist(w, [ACE, ZED])                    # WR and RB: both FLEX
     assert [p["slot_eligible"] for p in out["players"]] == [None, None]
-    assert out["best_projected"]["leaders"] == [QUINN]
+    assert out["best_projected"]["leaders"] == [ZED] and out["best_projected"]["status"] == "leader"
+
+
+def test_no_slot_and_no_shared_slot_names_no_one(w):
+    """Review L3: a QB and a WR (no OP in this league) or a QB and a K never compete for one slot, so with "Any"
+    nobody is best projected and the page asks for a slot."""
+    for ids in ([ACE, QUINN], [QUINN, KICKER]):
+        best = sl.shortlist(w, ids)["best_projected"]
+        assert (best["status"], best["leaders"], best["value"], best["considered"]) == ("none", [], None, [])
+        assert best["text"] == sl.NO_COMMON_SLOT
+    # with the slot chosen the eligible player is still ranked
+    assert sl.shortlist(w, [ACE, QUINN], slot="QB")["best_projected"]["leaders"] == [QUINN]
+    # a league that starts OP: a QB and a WR do share a slot
+    w.execute("UPDATE leagues SET roster_slots = '{\"QB\": 1, \"WR\": 2, \"OP\": 1}'")
+    assert sl.shortlist(w, [ACE, QUINN])["best_projected"]["leaders"] == [QUINN]
+
+
+def test_share_a_slot_without_synced_slots_needs_one_position():
+    assert sl.share_a_slot(["WR", "WR"], []) and not sl.share_a_slot(["WR", "RB"], [])
+    assert not sl.share_a_slot([None, None], [])
+    assert sl.share_a_slot(["WR", "RB", "TE"], ["QB", "FLEX"]) and not sl.share_a_slot(["QB", "K"], ["QB", "K", "OP"])
 
 
 def test_independent_source_ranks_on_the_model_and_names_it(w):
@@ -127,6 +151,7 @@ def test_bye_is_left_out_with_its_reason():
     ], "espn", 9, "WR")
     assert best["excluded"] == [{"espn_player_id": 1, "reason": "bye", "text": "A is on bye in week 9."}]
     assert best["status"] == "only" and best["leaders"] == [2] and best["value"] == 0.0 and best["complete"]
+    assert "with an ESPN projection" in best["text"]                                     # review L4
 
 
 def test_nobody_with_a_projection_names_no_leader():
@@ -135,6 +160,7 @@ def test_nobody_with_a_projection_names_no_leader():
         {"espn_player_id": 2, "name": "B", "position": "QB", "slot_eligible": False, "next_week": None},
     ], "espn", 6, "WR")
     assert best["status"] == "none" and best["leaders"] == [] and best["value"] is None and not best["complete"]
+    assert best["text"].startswith("No player who can fill WR has a projection")
     # a source with no value for anyone is never named (D-14): "Unavailable", and the text names none
     assert best["source_label"] == "Unavailable" and "ESPN" not in best["text"]
 
@@ -206,7 +232,8 @@ def test_api_answers_and_validates(api):
     team = api.get("/api/compare/shortlist", params={"ids": f"{ACE},{ZED}", "team_id": OTHER}).json()
     assert [p["roster"] for p in team["players"]] == ["other_team", "this_team"]
     for params in ({"ids": str(ACE)}, {"ids": f"{ACE},x"}, {"ids": f"{ACE},{ACE}"}, {"ids": "1,2,3,4,5"},
-                   {"ids": f"{ACE},{ZED}", "slot": "OP"}, {"ids": f"{ACE},{ZED}", "source": "vegas"}, {}):
+                   {"ids": f"{ACE},{ZED}", "slot": "OP"}, {"ids": f"{ACE},{ZED}", "source": "vegas"}, {},
+                   {"ids": f"{ACE}," + "9" * 40}, {"ids": f"{ACE},2_01"}):
         assert api.get("/api/compare/shortlist", params=params).status_code == 422, params
     unknown = api.get("/api/compare/shortlist", params={"ids": f"{ACE},{ZED},999"})
     assert unknown.status_code == 404 and unknown.json()["detail"] == "Unknown ESPN player id 999 (player 3)"
@@ -223,3 +250,12 @@ def test_api_without_a_league_is_503(tmp_path, monkeypatch):
     monkeypatch.setenv("FANTASY_DB_PATH", str(path))
     from app.main import app
     assert TestClient(app).get("/api/compare/shortlist", params={"ids": "1,2"}).status_code == 503
+
+
+def test_a_slot_nobody_can_fill_says_so():
+    """Review L4: "No player here can fill D/ST", not "no player who can fill D/ST has a projection"."""
+    entries = [{"espn_player_id": i, "name": n, "position": "WR", "slot_eligible": False,
+                "next_week": {"on_bye": False, "espn": 9.0, "ours": None}} for i, n in ((1, "A"), (2, "B"))]
+    best = sl.best_projected(entries, "espn", 6, "D/ST")
+    assert best["text"] == "No player here can fill D/ST, so none is best projected." and best["status"] == "none"
+    assert sl._a("Fantasy Intel") == "a Fantasy Intel" and sl._a("ESPN") == "an ESPN"

@@ -6,7 +6,7 @@ import {
   DASH, MAX_SHORTLIST, bestHeadline, compareHref, injuryCell, isBestProjected, isShortlistResponse, isShortlistView,
   metricCell, nextWeekCell, pairFromShortlistHref, parseCompareParams, parseShortlistParams, rosCell, rosterShort,
   rosterText, shortlistBackHref, shortlistFromPair, shortlistHref, shortlistPairs, startPickNote, trendCell,
-  unknownShortlistId, withPlayer, withoutPlayer,
+  shortlistSourceHint, unknownShortlistId, withPlayer, withoutPlayer,
   type CompareCard, type CompareResponse, type ShortlistResponse,
 } from "./compare.ts";
 
@@ -193,4 +193,22 @@ test("the start pick is the viewer's, compared with best projected from the back
   r.best_projected.source_label = "Unavailable";            // no player has a number: no source is named
   r.best_projected.value = null;
   assert.equal(startPickNote(r, 14), "Your pick, Delta TE, has no projection to compare with.");
+});
+
+test("row source hints name a source only when the row has its numbers (#175 review L2)", () => {
+  const r = shortlist();
+  assert.equal(shortlistSourceHint(r, "next"), "ESPN");
+  assert.equal(shortlistSourceHint(r, "ros"), r.players.some((p) => p.card.projection?.ros?.espn != null) ? "ESPN" : "Unavailable");
+  // everyone on bye or unprojected this week: the week row is Unavailable, the ROS row still names ESPN for its totals
+  r.best_projected.source_label = "Unavailable";
+  for (const p of r.players) p.card.projection!.ros!.espn = 120.5;
+  assert.equal(shortlistSourceHint(r, "next"), "Unavailable");
+  assert.equal(shortlistSourceHint(r, "ros"), "ESPN");
+  for (const p of r.players) p.card.projection!.ros!.espn = null;
+  assert.equal(shortlistSourceHint(r, "ros"), "Unavailable");
+  r.best_projected.source = "ours";
+  r.best_projected.source_label = "Fantasy Intel";
+  r.players[1].card.projection!.ros!.ours = 98.2;
+  assert.equal(shortlistSourceHint(r, "next"), "Ours");
+  assert.equal(shortlistSourceHint(r, "ros"), "Ours");
 });

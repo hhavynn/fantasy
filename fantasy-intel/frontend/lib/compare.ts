@@ -985,6 +985,19 @@ export function trendCell(label: string | null | undefined, what: string): Short
   return { text: words[label] ?? label.charAt(0) + label.slice(1).toLowerCase(), kind: "value", why: null };
 }
 
+/**
+ * A shortlist row's source hint: "ESPN" or "Ours" only when some player has a number from it for that row, else
+ * "Unavailable" (D-14: a source with no values is never named). The next-week row follows the backend's
+ * `source_label`; the rest-of-season row is read from the ROS totals themselves, since everyone can be on bye or
+ * unprojected this week while their remaining-season totals exist.
+ */
+export function shortlistSourceHint(r: Pick<ShortlistResponse, "best_projected" | "players">, row: "next" | "ros"): string {
+  const field = r.best_projected.source;
+  const name = field === "ours" ? "Ours" : "ESPN";
+  if (row === "next") return r.best_projected.source_label === "Unavailable" ? "Unavailable" : name;
+  return r.players.some((p) => finite(p.card.projection?.ros?.[field])) ? name : "Unavailable";
+}
+
 /** Whether the player is (one of) the best projected. */
 export function isBestProjected(r: Pick<ShortlistResponse, "best_projected">, id: number): boolean {
   return r.best_projected.leaders.includes(id);
