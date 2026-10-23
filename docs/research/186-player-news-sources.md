@@ -60,7 +60,6 @@ Purpose: tell a manager what the structured data says changed, not what happened
 - Primary injury listed or changed, from the report field.
 - Reserve placement or activation, from the `nfl_rosters_weekly` status and the existing `RULE_CODES` mapping (that mapping still "needs confirming against real synced rosters", per `player_availability.py`; confirm before display).
 - Team change, from `nfl_rosters_weekly`.
-- ESPN injury status changed, from our own snapshots, with only our clock.
 
 **Wording.** App-written templates, sentence case, for example "Injury report status changed from Questionable to Out (week 8 report, retrieved Oct 22, 07:12 UTC)". No cause, no timeline, no "confirmed", no role or depth claim. The empty state says "No availability changes recorded in synced data" and never "healthy". Unmapped players show no events rather than a guess.
 
@@ -78,6 +77,7 @@ Purpose: tell a manager what the structured data says changed, not what happened
 - Raw headlines or summaries from any source in the table above.
 - Sleeper trending adds and drops (a market signal, not news, with unreconciled terms).
 - Depth-chart changes (upstream unverified).
+- ESPN injury-status changes. `fantasy_players` is league-owned ESPN data (`app/db/league_split.py`), so events derived from it may not enter the global events table: that would show one user's ESPN sync to every tenant. If ever wanted, they belong in league-scoped state, served only behind that league's authorization.
 - Scraping NFL.com injury pages (explicitly prohibited).
 
 **Optional, low risk, not verified.** A plain outbound link from the profile to a player page on a source site (no fetch, no stored text) avoids the licensing question. Whether any source's terms restrict deep links is **UNVERIFIED**; check before adding.
