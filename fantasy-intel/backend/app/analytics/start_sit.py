@@ -60,13 +60,22 @@ TEAMLESS_ABBRS = frozenset({None, "", "FA"})
 NO_PROJECTIONS = "Unavailable"
 
 
-def projection_source_label(source: str, independent_available: bool, projections: dict) -> str:
+def projection_source_label(source: str, independent_available: bool, projections: dict,
+                            origin: dict | None = None) -> str:
     """What the response names as its projection source: NO_PROJECTIONS whenever the week has no number at all (also
     when a verified independent run exists but every one of its rows abstains), else the independent model when it is
-    shown, else ESPN."""
+    shown, else ESPN. With `origin` (the switch's per-player origins), a week where the models supplied none of the
+    shown numbers (every row abstains and ESPN's fallback fills them) is named ESPN, never the model (#254 L2); the rows
+    still carry their own `projection_origin`."""
     if not any(v is not None for v in projections.values()):
         return NO_PROJECTIONS
-    return "Independent model" if source == "independent" and independent_available else "ESPN"
+    if source == "independent" and independent_available:
+        from .projection_source import MODEL_ORIGINS     # lazy, as the switch itself (module stays ESPN-first)
+        if origin is not None and not any(origin.get(pid) in MODEL_ORIGINS
+                                          for pid, v in projections.items() if v is not None):
+            return "ESPN"
+        return "Independent model"
+    return "ESPN"
 
 
 @dataclass(frozen=True)
@@ -1204,7 +1213,7 @@ def load_start_sit_evaluation(
         ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
-        "projection_source": projection_source_label(source, src["available"], projections),
+        "projection_source": projection_source_label(source, src["available"], projections, origin),
         "projection_source_detail": describe(src),
         "summary": {
             # With slots no engine fills, a total covers the other slots only: partial (None), the known sum kept (G3).

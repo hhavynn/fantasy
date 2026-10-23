@@ -32,7 +32,7 @@ def dst_stored(live):  # noqa: F811
     con, src, _ = live
     con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, on_team_id) "
                 "VALUES (?, 'AAA D/ST', 'D/ST', 'AAA', 1)", [DST_ID])
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, 5.0, '2026-10-13 12:00:00')", [DST_ID])
+    con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, 6, NULL, 5.0, '2026-10-13 12:00:00')", [DST_ID])
     meta, rows = build_live(con, src, _fallback(src), 2026, 6, artifact_sha256=FALLBACK_SHA)
     write_live(con, meta, rows)
     if not con.execute("SELECT count(*) FROM nfl_schedules WHERE season = 2026 AND week = 7 "

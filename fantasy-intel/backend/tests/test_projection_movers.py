@@ -547,7 +547,7 @@ def snapshot_of(con):
 def test_outcomes_of_the_window_weeks_are_never_read(con):
     two_cycles(con)
     espn(con)
-    con.executemany("INSERT INTO espn_player_weekly_points VALUES (?, ?, ?, NULL, 5.0, '2026-10-14 00:00:00')",
+    con.executemany("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?, ?, ?, NULL, 5.0, '2026-10-14 00:00:00')",
                     [(SEASON, pid, w) for pid in PLAYERS for w in range(6, 18)])
     before = snapshot_of(con)
     con.execute("UPDATE espn_player_weekly_points SET actual_points = 77.0, projected_points = 99.0")
