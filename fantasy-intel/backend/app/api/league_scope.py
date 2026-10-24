@@ -9,8 +9,9 @@ the handler and before any cache lookup:
   4. pick the perspective ("my team"): the signed-in viewer's saved team, else `?team_id=`, else none;
   5. set the LEAGUE_SCOPE ContextVar, which `deps.db()` turns into a layered read-only cursor.
 
-The owner-only research routers (projection performance, Ours promotion, research) are mounted with
-`require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404).
+The owner-only routers (projection performance and the Ours promotion tracker, app/main.py) are mounted with
+`require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404). The
+research lab, game splits and pace lab are league-member tools, authorized like every other router.
 
 The handlers are unchanged. Responses carry `Cache-Control: private, no-store` and the versions actually read.
 

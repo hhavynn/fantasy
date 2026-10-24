@@ -9,7 +9,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from cp_seed import U1, U2, seed_membership, seed_user
+from cp_seed import U1, U2, U3, seed_membership, seed_user
 from golden.golden import E2E_DIR, E2E_SEASON, Case, build_e2e_db, read_golden, response_text
 from league_fixtures import publish_local
 from test_leagues_api import bearer, env  # noqa: F401  (fixture)
@@ -391,12 +391,14 @@ def test_a_time_independent_answer_still_hits_until_the_cap(pg, served, client, 
     assert client.get(url).headers["x-fi-cache"] == "hit"
 
 
-OWNER_ONLY = ("/api/projections/performance", "/api/projections/independent/promotion",
-              "/api/research/opportunity?position=WR")
+OWNER_ONLY = ("/api/projections/performance", "/api/projections/independent/promotion")
+# The research tools are league-member tools (#289 research-tools rulings): authorize_league alone.
+RESEARCH = ("/api/research/opportunity?position=WR", "/api/research/game-splits/players", "/api/pace-lab")
 
 
-def test_owner_only_research_pages_need_a_platform_admin(pg, served, client, e2e, tmp_path):
-    """Spec §6: projection performance, research and Ours promotion stay platform-admin only, even on a public league."""
+def test_projection_accuracy_and_the_promotion_tracker_stay_platform_admin_only(pg, served, client, e2e, tmp_path):
+    """Spec §6 (and the #289 audit): projection performance and Ours promotion stay platform-admin only, even on a
+    public league and even for a league admin."""
     pub = publish_local(pg, e2e, served, tmp_path / "w")
     with pg.connect() as con:
         seed_user(con, U1)
@@ -409,6 +411,37 @@ def test_owner_only_research_pages_need_a_platform_admin(pg, served, client, e2e
         assert client.get(url, headers=bearer(U1)).status_code == 404, path      # a league admin is not enough
         assert client.get(url, headers=bearer(U2)).status_code == 200, path
     assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").status_code == 200
+
+
+def test_research_tools_follow_the_league_visibility_rules(pg, served, client, e2e, e2e_b, tmp_path):
+    """Anonymous viewers of a public league, members and platform admins get the research tools; on a private league
+    an outsider, signed in or not, gets the 404 an unknown league gets, and a member of one private league who swaps
+    in another's id gets the same 404."""
+    pub = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    priv = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="private", name="B",
+                         stamp="2026-10-20T13:00:00", external_id="1999")
+    other = publish_local(pg, e2e, served, tmp_path / "c", visibility="private", name="C",
+                          stamp="2026-10-20T14:00:00", external_id="1998")
+    with pg.connect() as con:
+        seed_user(con, U1)                                  # member of B only
+        seed_membership(con, U1, priv.league_id, "viewer")
+        seed_user(con, U2, admin=True)                      # platform admin, member of nothing
+        seed_user(con, U3)                                  # a real account, member of nothing
+        seed_membership(con, U3, other.league_id, "viewer")  # ... but of C
+        con.commit()
+    for path in RESEARCH:
+        public = f"/v2/leagues/{pub.league_id}{path}"
+        assert client.get(public).status_code == 200, path                       # anonymous, public league
+        assert client.get(public, headers=bearer(U1)).status_code == 200, path
+        assert client.get(public, headers=bearer(U2)).status_code == 200, path
+        private = f"/v2/leagues/{priv.league_id}{path}"
+        unknown = client.get(f"/v2/leagues/lg_{'z' * 24}{path}", headers=bearer(U3))
+        assert unknown.status_code == 404, path
+        for headers in ({}, bearer(U3)):                                          # anonymous; C's member swaps in B
+            r = client.get(private, headers=headers)
+            assert r.status_code == 404 and r.text == unknown.text, path         # indistinguishable from unknown
+        assert client.get(private, headers=bearer(U1)).status_code == 200, path  # B's member
+        assert client.get(private, headers=bearer(U2)).status_code == 200, path  # a platform admin sees every league
 
 
 def test_the_saved_team_stays_my_team_while_another_team_is_analysed(pg, served, client, e2e, tmp_path):
