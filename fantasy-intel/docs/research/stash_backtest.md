@@ -113,9 +113,15 @@ order, so who played which weeks later in the season could reorder the draws and
 pre-registration drafts on preseason value only. 9bba4f8 numbers each season's players from the previous season alone,
 and a test checks that removing one later-season game leaves every roster the same.
 
+Codex then found that positions had the same problem: a returning player took his position from his evaluated-season
+games, so a later game listed at another position could change the draft's caps and his lineup eligibility. e9a85eb
+takes a returning player's position from his last previous-season game, and a newcomer's from his first game, which
+precedes any week he is projected at. On the real data this changed nothing: the e9a85eb run's rows are byte-identical
+to the 9bba4f8 run's.
+
 Each run uses the same rule, data and seeds. The outcome is "no evidence" in all three.
 
-| | First run, f29592b (team leak) | Second run, 06eb923 (draft-order leak) | **Final run, 9bba4f8** |
+| | First run, f29592b (team leak) | Second run, 06eb923 (draft-order leak) | **Final run, 9bba4f8 = e9a85eb** |
 |---|---:|---:|---:|
 | Team-weeks | 3,960 | 3,960 | 3,960 |
 | With a stash (compared) | 2,014 | 3,689 | **3,658** |
@@ -125,7 +131,7 @@ Each run uses the same rule, data and seeds. The outcome is "no evidence" in all
 | `D1` | +0.7 | -0.2 | **-0.9** |
 | Outcome | no evidence | no evidence | **no evidence** |
 
-### Final run (9bba4f8, 2026-10-24)
+### Final run (9bba4f8, re-run at e9a85eb with identical rows, 2026-10-24)
 
 | | Mean, realized points over the 4 later weeks | 95% CI, (season, week) clusters (33) | 95% CI, (season, league, team) clusters (360) |
 |---|---:|---|---|
