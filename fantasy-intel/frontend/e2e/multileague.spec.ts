@@ -142,10 +142,11 @@ test("with JavaScript off, a league page renders its links and forms in that lea
   const bare = async () => (await page.locator("a[href^='/'], form[action^='/'], [formaction^='/']").evaluateAll((els) =>
     els.map((e) => e.getAttribute("href") ?? e.getAttribute("action") ?? e.getAttribute("formaction") ?? "")))
     .filter((u) => !u.startsWith("//") && !u.startsWith(`/l/${lg}`) && !UNSCOPED_HREF.test(u) && !/[?&]league=clear\b/.test(u));
-  const pages = ["/rankings", "/managers", "/", "/players?id=201", "/start-sit", "/transactions", "/trades/discover",
-    "/luck-lab", "/movers", "/waivers"];
+  // The Overview twice: with no team (no hub, #165) and from a team's perspective, so the weekly hub's links are checked
+  const pages = ["/rankings", "/managers", "/", "/?team=1", "/players?id=201", "/start-sit", "/transactions",
+    "/trades/discover", "/luck-lab", "/movers", "/waivers"];
   for (const p of pages) {
-    const res = await page.goto(`/l/${lg}${p === "/" ? "" : p}`, { waitUntil: "load" });
+    const res = await page.goto(`/l/${lg}${p === "/" ? "" : p.startsWith("/?") ? p.slice(1) : p}`, { waitUntil: "load" });
     expect(res?.status(), `${p} HTTP status`).toBe(200);
     expect(await bare(), `${p}: in-app links and form actions outside /l/<lg>/`).toEqual([]);
   }
