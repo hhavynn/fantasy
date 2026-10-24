@@ -334,7 +334,8 @@ class TeamMemo:
         self.proj, self.scope, self.entries = proj, scope, {}
 
     def key(self, players, slots, window: Window) -> tuple:
-        return (self.scope, tuple(players), tuple(slots), window)
+        # the slot list's unsupported labels too (LineupSlots metadata): project_week reads them (Codex #352)
+        return (self.scope, tuple(players), tuple(slots), unsupported_of(slots), window)
 
 
 _TEAM_MEMO: ContextVar[TeamMemo | None] = ContextVar("project_team_memo", default=None)

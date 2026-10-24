@@ -106,3 +106,18 @@ def test_only_the_scans_own_projections_are_memoized():
         assert tl.project_team(list(reversed(players + [tl.RosterPlayer(2, "QB")])), ["QB"], window, proj) is not a
         assert len(memo.entries) == 2
     assert memo.entries == {} and tl.project_team(players, ["QB"], window, proj) is not a   # off after the block
+
+
+def test_slot_lists_with_other_unsupported_slots_never_share_a_result():
+    """Codex #352: lineup_slots({'QB': 1}) and lineup_slots({'QB': 1, 'LB': 1}) are both ['QB'], but the second carries
+    LB as unsupported, so its totals are partial: the memo must keep them apart."""
+    from app.analytics.lineup import lineup_slots
+    players = [tl.RosterPlayer(1, "QB", pro_team="KC")]
+    window = tl.Window((5, 6), 14)
+    proj = {1: {5: 20.0, 6: 18.0}}
+    plain, with_idp = lineup_slots({"QB": 1}), lineup_slots({"QB": 1, "LB": 1})
+    assert list(plain) == list(with_idp)
+    with tl.project_team_memo(proj, ("v1", True)):
+        a = tl.project_team(players, plain, window, proj)
+        b = tl.project_team(players, with_idp, window, proj)
+    assert b is not a and b == tl.project_team(players, with_idp, window, proj)    # the uncached answer
