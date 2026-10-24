@@ -171,6 +171,32 @@ What it says:
   instance's file cache. This is remaining risk 2 below (gate cold loads with a small per-event-loop semaphore so
   waiting loads hold no thread), tracked in **#331**.
 
+## Cold loads wait on the event loop (#331 risk 2, 2026-10-24)
+
+`league_scope` used to run authorization and the whole file load (download, or waiting up to 8 s for room in a full
+cache) in one thread-pool slot. Now authorization and a cached-pair pin share one thread hop. A cache miss waits on the
+event loop: per (league, data, global) pair one leader takes one of `LEAGUE_COLD_LOADS` (default 4) permits per loop
+and loads in the pool; the others wait for it, then pin from the cache, read the same previous files when the leader
+was served those, or answer 503 when it failed. Waiting for a permit or a leader ends after 20 s with a 503.
+
+Same script, machine and fixture, main 26f7326 (A) then the gate (B), back to back. Load average 1.06-1.36 during A
+and 1.36-1.19 during B. Each row is one run; single pages are medians of 3 fresh instances.
+
+| Leagues at once | Overview cold p50 / p95, A → B | Overview warm p50 / p95 | Cached p50 / p95 | R2 GETs | Failed calls |
+|---:|---|---|---|---:|---:|
+| 1 | 1177 / 1177 → 1086 / 1086 | 154 / 154 → 163 / 163 | 41 / 41 → 36 / 36 | 2 → 2 | 0 → 0 |
+| 10 | 3056 / 3136 → **2525 / 2935** | 1669 / 1758 → 1617 / 1756 | 406 / 472 → 393 / 469 | 11 → 11 | 0 → 0 |
+| 25 | 6190 / 7666 → **4543 / 6105** | 4230 / 5656 → 4067 / 4873 | 2042 / 2763 → **1115 / 2328** | 121 → **50** | 4 → 4 |
+
+Single-page cold, warm and cached times are within noise of each other on every page (all within budget). The Discover
+scan at 25 leagues: p50 47616 → 41960 ms, p95 51746 → 51719 ms.
+
+- **Fewer re-downloads.** At 25 leagues R2 GETs drop from 121 to 50 (2.0 GB to 0.8 GB). Loads no longer evict each
+  other's files while they queue in the pool, so the 25-league cold burst is 27% faster at the median and 20% at p95.
+- **The 503s are unchanged, and they are not the Overview burst.** In both runs the Overview cold, warm and cached
+  bursts have 0 failed calls. All 4 failures are `CacheFull` 503s on `/api/trades/discover/summary` in the trade-scan
+  burst. That is capacity, not thread starvation (remaining risk 2, updated).
+
 ## Remaining risks
 
 1. **The Discover scan under concurrency** (about 26 s for 10 leagues and 57 s for 25 on one instance) is CPU-bound and
@@ -178,11 +204,13 @@ What it says:
    beyond this issue's scope. `app/api/trade_discovery.py` keeps a 4-entry module `OrderedDict` memo, keyed with the
    scope cache key (so per league); since #311 its lookup, insert and trim run under a lock (a concurrent eviction no
    longer raises), but there is still no single flight across threads, so two requests can build the same search.
-2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance)
-   thrash R2 and can still return 503 after the 8 s wait, because requests waiting for room occupy thread-pool
-   slots that pinned requests need. Raising `LEAGUE_CACHE_MAX_BYTES` is limited by Vercel's 500 MB `/tmp`. The
-   recommended follow-up is to split `_resolve` into authorization and file loading, and to gate cold loads with a
-   small per-event-loop `asyncio.Semaphore` before entering the thread pool. Waiting loads would then hold no thread.
+2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance).
+   The thread-pool part is fixed (#331 risk 2, below): cold loads wait on the event loop, so waiting loads hold no
+   thread and the cache thrashes far less. What remains is capacity: the 3-4 `CacheFull` 503s are all
+   `/api/trades/discover/summary` calls in the 25-league trade-scan burst. 25 Discover scans pin about 413 MB, over
+   the 350 MB bound, for about 45 s each (they are CPU-bound), so the last leagues find no room within the 8 s wait.
+   Gating cannot remove those. The options are a larger `LEAGUE_CACHE_MAX_BYTES` (Vercel's `/tmp` is 500 MB), a
+   Discover scan that does not hold its files for the whole search, or a shorter scan (remaining risk 1).
 3. The `stale: true` flag reaches `ApiResult` but is not displayed yet. The sync pill already shows the older file's
    own sync times, because `/api/status` is read from the file that was served. Showing a "data may be older" line
    is a one-line change in `app/layout.tsx` (pass `status?.stale` to `SyncPill`), which is outside this change's
