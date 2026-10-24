@@ -22,6 +22,7 @@ from .screener import METRIC_BY_KEY, PRESETS
 
 CONTRACT = "ask/v1"
 MAX_CHARS = 200
+MAX_WORDS = 40
 MAX_NAME_CHARS = 40
 
 # -------------------------------------------------------------------------------------------------- outcomes --

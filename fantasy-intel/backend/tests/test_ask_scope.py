@@ -79,3 +79,43 @@ def test_answers_read_only_the_authorized_leagues_file(pg, served, client, e2e, 
     # B stays private to everyone else, whatever is asked
     r = client.get(f"/v2/leagues/{b.league_id}/api/ask", params={"q": "who owns Echo RB"})
     assert (r.status_code, r.json()) == NOT_FOUND
+
+
+def test_another_leagues_team_or_player_id_is_the_same_as_an_unknown_one(pg, served, client, e2e, tmp_path):
+    """#219 gate 2: a team id or player id that exists only in another league reads exactly like one that exists
+    nowhere: the same 404 for a team (resolve_team, as on every page), the same abstention for a player."""
+    import shutil
+
+    import duckdb
+    other = tmp_path / "other.duckdb"
+    shutil.copyfile(e2e, other)
+    con = duckdb.connect(str(other))
+    con.execute("UPDATE fantasy_teams SET team_id = team_id + 10")
+    con.execute("UPDATE fantasy_players SET espn_player_id = 9304 WHERE espn_player_id = 304")
+    con.close()
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, other, served, tmp_path / "b", visibility="public", name="B", stamp="2026-10-20T13:00:00",
+                      external_id="1999")
+    url_a, url_b = f"/v2/leagues/{a.league_id}/api/ask", f"/v2/leagues/{b.league_id}/api/ask"
+    assert client.get(url_b, params={"q": "who should i start", "team_id": 11}).json()["status"] == "answered"
+    only_b = client.get(url_a, params={"q": "who should i start", "team_id": 11})
+    nowhere = client.get(url_a, params={"q": "who should i start", "team_id": 99})
+    assert only_b.status_code == nowhere.status_code == 404
+    assert only_b.json()["detail"].replace("11", "N") == nowhere.json()["detail"].replace("99", "N")
+    assert client.get(url_b, params={"q": "how is Papa WR (id 9304) doing"}).json()["status"] == "answered"
+    in_a = client.get(url_a, params={"q": "how is Papa WR (id 9304) doing"}).json()
+    unknown = client.get(url_a, params={"q": "how is Papa WR (id 123456) doing"}).json()
+    assert in_a["status"] == unknown["status"] == "abstain"
+    assert in_a["abstain"]["code"] == unknown["abstain"]["code"] == "no_player"
+
+
+def test_the_response_cache_never_answers_one_question_with_another(pg, served, client, e2e, tmp_path):
+    """The /v2 response cache keys on the full query string, the question included: distinct questions get their own
+    answers, and a repeated question gets the identical one."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    url = f"/v2/leagues/{pub.league_id}/api/ask"
+    first = client.get(url, params={"q": "how is Papa WR doing"}).json()
+    second = client.get(url, params={"q": "is Waiver RB available"}).json()
+    again = client.get(url, params={"q": "how is Papa WR doing"}).json()
+    assert (first["intent"]["id"], second["intent"]["id"]) == ("player", "ownership")
+    assert again == first

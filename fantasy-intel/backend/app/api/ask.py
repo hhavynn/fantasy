@@ -24,7 +24,15 @@ from ..analytics import ask as grammar
 from ..analytics.legacy_league import latest_league
 from ..analytics.screener import METRIC_BY_KEY, UNKNOWN_OWNERSHIP
 from . import matchup as matchup_api
-from . import player_compare, playoff_race, routes, schedule_intelligence, screener, start_sit, trade_values
+from . import (
+    player_compare,
+    playoff_race,
+    routes,
+    schedule_intelligence,
+    screener,
+    start_sit,
+    trade_values,
+)
 from .deps import db, rows
 from .perspective import resolve_team
 from .signal_provenance import league_provider
@@ -37,13 +45,15 @@ NEEDS_TEAM = frozenset({"waivers_best", "start_sit", "replacement", "start_choic
 
 @router.get("/ask")
 def ask(
-    q: str | None = Query(None, description=f"The question (at most {grammar.MAX_CHARS} characters)"),
+    q: str | None = Query(None, description=f"The question (at most {grammar.MAX_CHARS} characters and "
+                                            f"{grammar.MAX_WORDS} words)"),
     team_id: int | None = Query(None, description="Fantasy team ID (defaults to the team in view)"),
 ):
     """Answer one supported question about this league from an existing analysis, ask a specific clarifying question,
     or abstain. 422 for a question longer than the limit; the league is authorized before the question is read."""
-    if q is not None and len(q) > grammar.MAX_CHARS:
-        raise HTTPException(422, f"A question is at most {grammar.MAX_CHARS} characters.")
+    if q is not None and (len(q) > grammar.MAX_CHARS or len(q.split()) > grammar.MAX_WORDS):
+        raise HTTPException(422, f"A question is at most {grammar.MAX_CHARS} characters and {grammar.MAX_WORDS} "
+                                 "words.")
     question = grammar.normalize(q or "")
     parsed = grammar.parse(q or "")
     if isinstance(parsed, grammar.Unsupported):
@@ -415,8 +425,8 @@ def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
         return _card("answered", question, parsed, interpretation=interp, link=link,
                      answer={"headline": headline, "facts": [_fact("Slot", alt["label"])], "columns": columns,
                              "rows": shown, "truncated": len(opts) > TOP},
-                     notes=["A change is the projected lineup total with that player in the slot instead; a player "
-                            "without a projection adds nothing known."],
+                     notes=[("A change is the projected lineup total with that player in the slot instead; a player "
+                             "without a projection adds nothing known.")],
                      provenance=out.get("provenance"), freshness=out.get("freshness"))
     move = next((d for d in out["decisions"] if any(b.get("id") == pid for b in d.get("bench_players") or [])), None)
     if move is not None:
@@ -613,7 +623,10 @@ def run_byes(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     if row is None:
         return _card("abstain", question, parsed, code="no_week",
                      reason=f"The bye planner has no week {want} (it covers the remaining weeks).", link=link)
-    names = lambda xs: [x.get("name") if isinstance(x, dict) else x for x in xs or []]  # noqa: E731
+
+    def names(xs):
+        return [x.get("name") if isinstance(x, dict) else x for x in xs or []]
+
     facts = [_fact("Week", row["week"]), _fact("Status", row.get("status_text") or row.get("status")),
              _fact("Starting slots covered", row.get("covered")), _fact("Starting slots required", row.get("required")),
              _fact("Starters on bye", ", ".join(n for n in names(row.get("starters_on_bye")) if n) or None),
@@ -646,7 +659,8 @@ def run_playoffs(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
              _fact("Current status", cur.get("status")), _fact("Projected record", rec(proj.get("record"))),
              _fact("Projected place", proj.get("rank")), _fact("Projected status", proj.get("status")),
              _fact("Playoff spots", spots)]
-    notes = list(out.get("notes") or [])[:2]
+    notes = [("Fantasy Intel computes no playoff odds or probability: these are the deterministic race's places "
+              "and statuses, current and in the projected scenario."), *list(out.get("notes") or [])[:2]]
     clinch = (out.get("rules") or {}).get("clinch")
     if clinch:
         notes.append(clinch)

@@ -11,7 +11,9 @@ from the question, nothing written or logged.
 1. **Authorize.** Under `/v2` the router is mounted by `mount_legacy_routers`, so `league_scope` authorizes the
    caller before the handler runs: unknown, private-to-others and anonymous-on-private leagues are the same
    `404 {"detail": "League not found."}` whatever `q` holds, and no league file is downloaded for them.
-2. **Bound.** `q` is at most 200 characters (422 above that, after authorization).
+2. **Bound.** `q` is at most 200 characters and 40 words (422 above that, after authorization). It is never logged.
+   The `/v2` response cache keys on the full query string, so the question is part of the key: two questions never
+   share an entry.
 3. **Parse.** NFKC, casefold, unified dashes/quotes/≥/≤, collapsed whitespace, polite lead-ins and trailing
    punctuation dropped. Then an ordered allowlist of **anchored** templates: a template must match the whole
    question and every slot must validate, or the next one is tried. Leftover words are never ignored, so an added
@@ -61,18 +63,20 @@ unit}], columns, rows[{cells, player_id?}], truncated}`, `notes` (the handler's 
 page that shows the same view, `clarify {code, question, reason, options[{name, position, pro_team, fantasy_team,
 ask}]}`, `abstain {code, reason}`, `examples` (supported question shapes, on abstain and clarify).
 
-Wording rules: the playoff card says "deterministic scenario, not a probability" (the playoff race computes no
-probability); Start/Sit, matchup and trade cards report projections as projections; nothing explains why a player
+Wording rules: the playoff card says "deterministic scenario, not a probability" and that Fantasy Intel computes no
+playoff odds (the playoff race computes none, and #174's calibration gate blocks any percentage); "what are my
+playoff odds" is answered with the race's current and projected places and statuses only; Start/Sit, matchup and trade cards report projections as projections; nothing explains why a player
 scored what he did, and no observational difference is described as a cause (such questions abstain).
 
 ## Evaluation (tests/test_ask.py)
 
-92 synthetic phrasings with their expected outcome; the test asserts each one exactly.
+96 synthetic phrasings with their expected outcome; the test asserts each one exactly. Abstain or clarify rate:
+29 of 96 (30%), all of them deliberate (the set includes adversarial, compound and ambiguous phrasings).
 
 | | Phrasings | Correct | Answered as another intent |
 |---|---|---|---|
 | Supported (14 intents) | 67 | 67 | 0 |
-| Abstain (unsupported, unknown metric, out of bounds, unit mismatch, metric/position, other league, other team, other season, same player, empty) | 23 | 23 | 0 (no answer) |
+| Abstain (unsupported, unknown metric, out of bounds, unit mismatch, metric/position, other league, other team, other season, same player, empty, compound or ambiguous requests) | 27 | 27 | 0 (no answer) |
 | Clarify (vague metric, fraction for a percentage) | 2 | 2 | 0 |
 
 Per intent: screen 12, screen_preset 3, waivers_best 7, start_sit 7, replacement 4, start_choice 2, matchup 5,
