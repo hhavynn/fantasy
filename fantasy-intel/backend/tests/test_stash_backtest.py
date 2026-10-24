@@ -122,9 +122,11 @@ def test_the_app_never_imports_the_backtest():
             assert "stash_backtest" not in path.read_text(), path
 
 
-def test_the_draft_does_not_depend_on_who_plays_later_this_season():
-    """Codex #347: player ids, and so the draft's seeded noise draws, come from preseason information only. Removing
-    one player's week-10 game this season, with last season unchanged, leaves every drafted roster the same."""
+@pytest.mark.parametrize("late_position", ["same", "TE"])
+def test_the_draft_does_not_depend_on_who_plays_later_this_season(late_position):
+    """Codex #347: player ids (so the draft's seeded noise draws) and positions (so its caps) come from preseason
+    information only. One player's week-10 game this season, even listed at another position, with last season
+    unchanged, leaves every drafted roster the same."""
     import importlib.util
     scripts = pathlib.Path(__file__).resolve().parents[2] / "scripts"
     sys.path.insert(0, str(scripts))
@@ -138,9 +140,10 @@ def test_the_draft_does_not_depend_on_who_plays_later_this_season():
         return {"season": season, "season_type": "REG", "week": week, "player_id": gsis, "position": p, "team": "KC",
                 "fantasy_points_ppr": pts, "player_display_name": gsis}
     prior = [row(2023, w, g, p, 5.0 + (i * 7) % 13) for i, (g, p) in enumerate(players) for w in (1, 2)]
-    late = row(2024, 10, players[150][0], players[150][1], 12.0)
+    late = row(2024, 10, players[11][0], "QB" if late_position == "same" else "TE", 12.0)   # the top prior QB
     current = [late] + [row(2024, w, g, p, 8.0) for g, p in players[::3] for w in (1, 2, 3)]
-    sched = [{"season": 2024, "game_type": "REG", "week": w, "home_team": "KC", "away_team": "BUF"} for w in range(1, 18)]
+    sched = [{"season": 2024, "game_type": "REG", "week": w, "home_team": "KC", "away_team": "BUF"}
+             for w in range(1, 18)]
 
     def drafts(stats):
         s = research.build([2024], stats, sched)[0]

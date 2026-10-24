@@ -34,7 +34,8 @@ def load(seasons: list[int]) -> list[sb.Season]:
 def build(seasons: list[int], stats: list[dict], sched: list[dict]) -> list[sb.Season]:
     """One Season per evaluated year. Player ids are assigned per season from preseason information only: last
     season's players first, in nflverse id order, then this season's newcomers (never drafted). So who plays which
-    weeks this season cannot reorder the draft's noise draws (Codex #347)."""
+    weeks this season cannot reorder the draft's noise draws (Codex #347). Positions are preseason too: last season's
+    for a returning player, else a newcomer's first game, which he must have played before any w he is projected at."""
     by_year: dict[int, list[dict]] = {}
     for r in stats:
         if r.get("season_type") == "REG" and r.get("position") in POSITIONS and r.get("player_id"):
@@ -45,18 +46,19 @@ def build(seasons: list[int], stats: list[dict], sched: list[dict]) -> list[sb.S
         new_ids = sorted({r["player_id"] for r in by_year.get(s, [])} - set(prior_ids))
         ids = {g: i + 1 for i, g in enumerate(prior_ids + new_ids)}
         games, position, name = {}, {}, {}
-        for r in by_year.get(s, []):
-            p = ids[r["player_id"]]
-            games.setdefault(p, []).append((int(r["week"]), r["team"], float(r.get("fantasy_points_ppr") or 0.0)))
-            position[p], name[p] = r["position"], r.get("player_display_name") or r["player_id"]
         prior_games: dict[int, list[float]] = {}
-        prior_last: dict[int, tuple[int, str]] = {}
+        prior_last: dict[int, tuple[int, str, str]] = {}
         for r in by_year.get(s - 1, []):
             p = ids[r["player_id"]]
             prior_games.setdefault(p, []).append(float(r.get("fantasy_points_ppr") or 0.0))
-            prior_last[p] = max(prior_last.get(p, (0, "")), (int(r["week"]), r["team"]))
-            if p not in position:                      # drafted on last season's value even if he never plays now
-                position[p], name[p] = r["position"], r.get("player_display_name") or r["player_id"]
+            prior_last[p] = max(prior_last.get(p, (0, "", "")), (int(r["week"]), r["team"], r["position"]))
+            name[p] = r.get("player_display_name") or r["player_id"]
+        position = {p: pos for p, (_, _, pos) in prior_last.items()}   # preseason: last season's position
+        for r in sorted(by_year.get(s, []), key=lambda r: int(r["week"])):
+            p = ids[r["player_id"]]
+            games.setdefault(p, []).append((int(r["week"]), r["team"], float(r.get("fantasy_points_ppr") or 0.0)))
+            position.setdefault(p, r["position"])      # a newcomer: his first game, before any w he is projected at
+            name[p] = r.get("player_display_name") or r["player_id"]
         prior_ppg = {p: sum(v) / len(v) for p, v in prior_games.items() if v}
         prior_total = {p: sum(v) for p, v in prior_games.items() if v}
         reg = [g for g in sched if g["season"] == s and g.get("game_type") == "REG"]
@@ -65,7 +67,7 @@ def build(seasons: list[int], stats: list[dict], sched: list[dict]) -> list[sb.S
         played = {(g["home_team"], int(g["week"])) for g in reg} | {(g["away_team"], int(g["week"])) for g in reg}
         byes = {t: frozenset(w for w in weeks if (t, w) not in played) for t in teams}
         out.append(sb.Season(s, {p: sorted(v) for p, v in games.items()}, prior_ppg, prior_total, byes, position, name,
-                             prior_team={p: t for p, (_, t) in prior_last.items()}))
+                             prior_team={p: t for p, (_, t, _) in prior_last.items()}))
     return out
 
 
