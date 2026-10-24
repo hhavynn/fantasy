@@ -11,11 +11,11 @@
    "gain": "gain(x) = sum over the horizon of [best lineup of (roster - drop + x) - best lineup of roster], on the league's actual points, rounded to 0.01. It assumes the claim succeeded and lineups were set optimally both ways: claim order and FAAB are not modelled. A known bye scores 0; any other missing outcome is unknown and the claim is excluded.",
    "horizon": "Scoring weeks W to W+2 (at most the league's final scoring period).",
    "regret_lower_bound": "max(0, max over the capture's other archived candidates c of gain(c) - gain(x)), each c with its own archived drop. Only archived candidates are compared, so it is a lower bound.",
-   "roster": "Your team's roster snapshot with the latest sync time strictly before the cutoff (IR slots stay IR).",
+   "roster": "The roster the capture was evaluated from, archived with it (IR slots stay IR).",
    "verdict": "helped if gain > 0, did not help if gain < 0, push if gain = 0."
   },
   "exclusion_reasons": {
-   "drop_not_on_roster": "The archived drop was not on the roster snapshot.",
+   "drop_not_on_roster": "The archived drop was not on the roster archived with the capture.",
    "not_eligible": "The archived availability was not free agent or waivers.",
    "taken_by_other_team": "Another team added the player in that waiver window: whether the claim could have succeeded is unknown.",
    "unknown_outcome": "A horizon week's outcome is unknown for a player the lineups need (not a known bye)."
@@ -60,7 +60,7 @@
    "no_archive": "No waiver recommendations of your team were archived before this week's waiver cutoff.",
    "no_claims": "The archived recommendations before the cutoff contain no CLAIM.",
    "no_prior_week": "Week 1 has no waiver run between weeks: nothing to grade.",
-   "no_roster": "No roster snapshot of your team was archived before this week's waiver cutoff.",
+   "no_roster": "No roster was archived with the capture taken before this week's waiver cutoff.",
    "schedule_unknown": "The league's waiver processing days are unknown, so no recommendation can be shown to be archived before the waiver run."
   },
   "weeks": [

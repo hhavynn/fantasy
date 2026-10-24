@@ -9,7 +9,9 @@ As-of-time. Nothing is rebuilt from current data:
              (the earliest moment D exists anywhere: ESPN stores processing days, not the hour), or W's first kickoff
              if that is earlier. Unknown processing days (Sleeper) or unknown kickoffs: no cutoff, the week is ungraded.
   capture    the team's latest capture of week W taken strictly before the cutoff; its CLAIM rows are the decisions.
-  roster     the team's roster_history snapshot with the latest synced_at strictly before the cutoff.
+  roster     the roster that capture was evaluated from, archived with it (waiver_roster_snapshots). Never
+             roster_history: a later sync the same day replaces its snapshot of the day, so a roster seen before the
+             cutoff could be gone after it (Codex #353).
 
 A claim's value is its hindsight lineup gain: the exact optimal-lineup difference (marginal_utility.scenario) of
 roster - archived drop + claimed player over the HORIZON_WEEKS weeks W..W+2, on the provider's league-scored actual
@@ -40,7 +42,7 @@ from .lineup import lineup_slots
 from .marginal_utility import scenario
 from .playoff_race import period_weeks
 from .team_lineups import RosterPlayer, Window
-from .waiver_archive import HORIZON_WEEKS, TABLE
+from .waiver_archive import HORIZON_WEEKS, ROSTER_TABLE, TABLE
 from .weekly_recap import NotSynced, completed_periods, resolve_week
 
 __all__ = ["NotSynced", "WaiverData", "build_waiver_feedback", "cutoff", "load_waiver_data", "week_feedback"]
@@ -59,7 +61,7 @@ WEEK_STATUS_TEXT = MappingProxyType({
     "schedule_unknown": "The league's waiver processing days are unknown, so no recommendation can be shown to be "
                         "archived before the waiver run.",
     "no_archive": "No waiver recommendations of your team were archived before this week's waiver cutoff.",
-    "no_roster": "No roster snapshot of your team was archived before this week's waiver cutoff.",
+    "no_roster": "No roster was archived with the capture taken before this week's waiver cutoff.",
     "no_claims": "The archived recommendations before the cutoff contain no CLAIM.",
     "horizon_incomplete": "Not every week of the grading horizon is complete yet.",
 })
@@ -67,7 +69,7 @@ EXCLUSION_TEXT = MappingProxyType({
     "taken_by_other_team": "Another team added the player in that waiver window: whether the claim could have "
                            "succeeded is unknown.",
     "not_eligible": "The archived availability was not free agent or waivers.",
-    "drop_not_on_roster": "The archived drop was not on the roster snapshot.",
+    "drop_not_on_roster": "The archived drop was not on the roster archived with the capture.",
     "unknown_outcome": "A horizon week's outcome is unknown for a player the lineups need (not a known bye).",
 })
 GRADE_DEFINITIONS = MappingProxyType({
@@ -76,7 +78,7 @@ GRADE_DEFINITIONS = MappingProxyType({
                "days or kickoffs: no cutoff, the week is ungraded. Rule " + RULE_VERSION + "."),
     "decision_set": ("The CLAIM rows of your team's latest capture of week W archived strictly before the cutoff, each "
                      "with its archived suggested drop."),
-    "roster": "Your team's roster snapshot with the latest sync time strictly before the cutoff (IR slots stay IR).",
+    "roster": "The roster the capture was evaluated from, archived with it (IR slots stay IR).",
     "horizon": f"Scoring weeks W to W+{HORIZON_WEEKS - 1} (at most the league's final scoring period).",
     "gain": ("gain(x) = sum over the horizon of [best lineup of (roster - drop + x) - best lineup of roster], on the "
              "league's actual points, rounded to 0.01. It assumes the claim succeeded and lineups were set optimally "
@@ -106,7 +108,7 @@ class WaiverData:
     games: set = field(default_factory=set)          # (week, nfl team) with a scheduled REG game, kickoff known or not
     weekly_team: dict = field(default_factory=dict)  # (week, espn id) -> nflverse team that week
     players: dict = field(default_factory=dict)      # espn id -> {full_name, position, pro_team}
-    rosters: list[dict] = field(default_factory=list)    # roster_history rows of the team
+    rosters: list[dict] = field(default_factory=list)    # the team's waiver_roster_snapshots rows (every capture)
     captures: list[dict] = field(default_factory=list)   # the team's waiver_recommendation_snapshots rows
     outcomes: dict = field(default_factory=dict)     # (week, espn id) -> actual points (None = unknown)
     adds: list[dict] = field(default_factory=list)   # executed ADDs {espn_player_id, team_id, at}
@@ -165,18 +167,13 @@ def eligible_capture(data: WaiverData, week: int, cut: datetime) -> list[dict]:
     return sorted((r for r in rows if _aware(r["captured_at"]) == latest), key=lambda r: r["rank"])
 
 
-def roster_before(data: WaiverData, cut: datetime) -> tuple[dict | None, list[dict]]:
-    stamps = {}
-    for r in data.rosters:
-        t = _aware(r.get("synced_at"))
-        if t is not None and t < cut:
-            key = (t, str(r["snapshot_date"]))
-            stamps[key] = r["snapshot_date"]
-    if not stamps:
+def capture_roster(data: WaiverData, capture: list[dict]) -> tuple[dict | None, list[dict]]:
+    """The roster archived with `capture` (the rows sharing its snapshot_id), or (None, []) when none was."""
+    sid = capture[0]["snapshot_id"]
+    rows = [r for r in data.rosters if r["snapshot_id"] == sid]
+    if not rows:
         return None, []
-    t, day = max(stamps)
-    rows = [r for r in data.rosters if str(r["snapshot_date"]) == day and _aware(r.get("synced_at")) == t]
-    return {"snapshot_id": f"roster_history:{day}", "captured_at": t.isoformat()}, rows
+    return {"snapshot_id": f"{ROSTER_TABLE}:{sid}", "captured_at": _aware(capture[0]["captured_at"]).isoformat()}, rows
 
 
 def _rp(data: WaiverData, pid: int, on_ir: bool = False) -> RosterPlayer:
@@ -247,7 +244,7 @@ def week_feedback(data: WaiverData, week: int) -> dict:
     claims = [r for r in capture if r["recommendation"] == "CLAIM"]
     if not claims:
         return {**base, "status": "no_claims", "message": WEEK_STATUS_TEXT["no_claims"]}
-    roster_meta, roster_rows = roster_before(data, cut["cutoff"])
+    roster_meta, roster_rows = capture_roster(data, capture)
     if roster_meta is None:
         return {**base, "status": "no_roster", "message": WEEK_STATUS_TEXT["no_roster"]}
     base["roster"] = roster_meta
@@ -363,9 +360,9 @@ def load_waiver_data(con, week: int | None = None) -> WaiverData:
         return data
     data.captures = fetch_dicts(con, f"""SELECT * FROM {TABLE} WHERE league_id = ? AND season = ? AND team_id = ?
                                         ORDER BY week, captured_at, rank""", [lid, season, tid])
-    if table_exists(con, "roster_history"):
-        data.rosters = fetch_dicts(con, """SELECT snapshot_date, espn_player_id, lineup_slot_id, synced_at FROM roster_history
-                                           WHERE league_id = ? AND season = ? AND team_id = ?""", [lid, season, tid])
+    if table_exists(con, ROSTER_TABLE):
+        data.rosters = fetch_dicts(con, f"""SELECT snapshot_id, espn_player_id, lineup_slot_id FROM {ROSTER_TABLE}
+                                            WHERE league_id = ? AND season = ? AND team_id = ?""", [lid, season, tid])
     pids = sorted({int(r["espn_player_id"]) for r in data.rosters} | {int(r["espn_player_id"]) for r in data.captures}
                   | {int(r["suggested_drop_id"]) for r in data.captures if r.get("suggested_drop_id") is not None})
     if not pids:

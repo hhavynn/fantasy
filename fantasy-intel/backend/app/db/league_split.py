@@ -37,7 +37,7 @@ LEAGUE_TABLES = frozenset({
     "player_id_map", "player_scores", "injury_retrievals",
     # analytics computed for the league
     "waiver_recommendations", "team_waiver_recommendations", "team_position_needs", "team_week_lineup_projections",
-    "waiver_recommendation_snapshots",       # append-only archive (#346): carried forward, never derived
+    "waiver_recommendation_snapshots", "waiver_roster_snapshots",  # append-only archive (#346): carried, never derived
     "team_ros_lineup_projections", "manager_metrics", "manager_classifications",
     # Ours, kicker and D/ST runs carry a scoring fingerprint: league scoring
     "independent_projection_runs", "independent_projection_rows", "independent_player_projections",

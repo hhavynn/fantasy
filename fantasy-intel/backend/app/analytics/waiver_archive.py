@@ -3,12 +3,15 @@
 `build_waivers` rewrites team_waiver_recommendations on every analytics run, so nothing it says survives the next run.
 After each run this module appends a capture of every team's top ARCHIVE_K recommendations to
 waiver_recommendation_snapshots, with the run's inputs (projection source and version, scoring fingerprint, the roster
-snapshot it read) and a content hash:
+snapshot it read) and a content hash, and appends the roster each team's capture was evaluated from to
+waiver_roster_snapshots (ROSTER_TABLE):
 
   * append-only: rows are only ever inserted (insert_rows); nothing here updates or deletes;
-  * deduplicated: a team's capture is appended only when its content hash differs from that team's latest capture for
-    the same week, so a rebuild with unchanged data adds nothing;
-  * carried forward: the table is a league table (league_split.LEAGUE_TABLES) and not derived, so a league build copies
+  * deduplicated: a team's capture (recommendations and roster) is appended only when its content hash differs from that
+    team's latest capture for the same week, so a rebuild with unchanged data adds nothing;
+  * as of its own roster: the grading reads the capture's archived roster, never roster_history, whose snapshot of a
+    day a later sync that day replaces, so a roster seen before a waiver cutoff could be gone after it (Codex #353);
+  * carried forward: both tables are league tables (league_split.LEAGUE_TABLES) and not derived, so a league build copies
     the previous file's captures of the same season before appending (app/sync/build.py `_carry_forward`).
 
 Every team is archived (any member may later view their own team's feedback), each from its own rows only.
@@ -28,6 +31,7 @@ from ..db.connection import fetch_dicts, insert_rows, table_exists
 from .legacy_league import latest_league
 
 TABLE = "waiver_recommendation_snapshots"
+ROSTER_TABLE = "waiver_roster_snapshots"
 RULE_VERSION = "waiver-archive.v1"
 ARCHIVE_K = 25           # candidates kept per team and capture (signed off on #346)
 HORIZON_WEEKS = 3        # the grading horizon a capture is archived for (waiver_feedback.HORIZON_WEEKS)
@@ -50,9 +54,11 @@ def _canonical(v):
     return v
 
 
-def content_sha256(rows: list[dict]) -> str:
-    """The hash of a team's capture: its rows' CONTENT_FIELDS in rank order, as canonical JSON (no time or stamp)."""
-    body = [{k: _canonical(r.get(k)) for k in CONTENT_FIELDS} for r in sorted(rows, key=lambda r: r["rank"])]
+def content_sha256(rows: list[dict], roster: list[dict] = ()) -> str:
+    """The hash of a team's capture: its rows' CONTENT_FIELDS in rank order and its roster's (player, slot) pairs, as
+    canonical JSON (no time or stamp). A roster-only change is a new capture: the grading reads the capture's roster."""
+    body = {"rows": [{k: _canonical(r.get(k)) for k in CONTENT_FIELDS} for r in sorted(rows, key=lambda r: r["rank"])],
+            "roster": sorted([int(r["espn_player_id"]), r.get("lineup_slot_id")] for r in roster)}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
@@ -71,7 +77,8 @@ def _utc_naive(dt):
 
 def archive_waiver_recommendations(con, provenance: dict | None) -> dict:
     """Append this run's captures (see the module docstring). `provenance` is build_waivers' "provenance"."""
-    if not provenance or not table_exists(con, TABLE) or not table_exists(con, "team_waiver_recommendations"):
+    if not provenance or not all(table_exists(con, t) for t in (TABLE, ROSTER_TABLE, "team_waiver_recommendations",
+                                                                 "lineup_snapshots")):
         return {"skipped": "no waiver run to archive"}
     league_id, season = provenance["league_id"], provenance["season"]     # the partition build_waivers just wrote
     lg = latest_league(con, ["league_id", "season", "scoring_items"])
@@ -91,6 +98,13 @@ def archive_waiver_recommendations(con, provenance: dict | None) -> dict:
     by_team: dict[int, list[dict]] = {}
     for r in current:
         by_team.setdefault(r["team_id"], []).append(r)
+    rosters: dict[int, list[dict]] = {}
+    for r in fetch_dicts(con, """
+        SELECT team_id, espn_player_id, lineup_slot_id FROM lineup_snapshots
+        WHERE league_id = ? AND season = ? AND scoring_period = ? AND espn_player_id IS NOT NULL
+        ORDER BY team_id, espn_player_id
+    """, [league_id, season, week]):                  # the rows build_waivers evaluated each team from
+        rosters.setdefault(r["team_id"], []).append(r)
     latest = {r["team_id"]: r["content_sha256"] for r in fetch_dicts(con, f"""
         SELECT team_id, content_sha256 FROM (
             SELECT team_id, content_sha256,
@@ -98,17 +112,23 @@ def archive_waiver_recommendations(con, provenance: dict | None) -> dict:
             FROM {TABLE} WHERE league_id = ? AND season = ? AND week = ?) WHERE rn = 1
     """, [league_id, season, week])}
     rostered_at = provenance.get("roster_synced_at") or {}
-    out_rows, appended, unchanged = [], 0, 0
+    out_rows, roster_rows, appended, unchanged = [], [], 0, 0
     for tid in sorted(by_team):
         rows = [{**r, **common, "rank": i + 1, "roster_synced_at": _utc_naive(rostered_at.get(tid))}
                 for i, r in enumerate(by_team[tid][:ARCHIVE_K])]
-        digest = content_sha256(rows)
+        roster = rosters.get(tid, [])
+        digest = content_sha256(rows, roster)
         if latest.get(tid) == digest:
             unchanged += 1
             continue
         snapshot_id = f"{league_id}:{season}:{week}:{tid}:{captured_at.isoformat()}"
-        out_rows += [{**r, "league_id": league_id, "season": season, "week": week, "team_id": tid,
-                      "captured_at": captured_at, "snapshot_id": snapshot_id, "content_sha256": digest} for r in rows]
+        key = {"league_id": league_id, "season": season, "week": week, "team_id": tid, "captured_at": captured_at,
+               "snapshot_id": snapshot_id}
+        out_rows += [{**r, **key, "content_sha256": digest} for r in rows]
+        roster_rows += [{**key, "espn_player_id": r["espn_player_id"], "lineup_slot_id": r["lineup_slot_id"]}
+                        for r in roster]
         appended += 1
     insert_rows(con, TABLE, out_rows)
-    return {"week": week, "teams_appended": appended, "teams_unchanged": unchanged, "rows": len(out_rows)}
+    insert_rows(con, ROSTER_TABLE, roster_rows)
+    return {"week": week, "teams_appended": appended, "teams_unchanged": unchanged, "rows": len(out_rows),
+            "roster_rows": len(roster_rows)}

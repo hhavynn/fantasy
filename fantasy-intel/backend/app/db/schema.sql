@@ -770,6 +770,21 @@ CREATE TABLE IF NOT EXISTS waiver_recommendation_snapshots (
     PRIMARY KEY (league_id, season, week, team_id, captured_at, espn_player_id)
 );
 
+-- The roster each capture above was evaluated from (lineup_snapshots of its week), appended with that capture only and
+-- covered by its content hash: graded against this, never against roster_history, whose day's snapshot a later sync
+-- that day replaces (Codex #353). Create-only.
+CREATE TABLE IF NOT EXISTS waiver_roster_snapshots (
+    league_id              BIGINT,
+    season                 INTEGER,
+    week                   INTEGER,
+    team_id                INTEGER,
+    captured_at            TIMESTAMP, -- the capture's captured_at
+    espn_player_id         BIGINT,
+    lineup_slot_id         INTEGER,
+    snapshot_id            VARCHAR,   -- the capture's snapshot_id
+    PRIMARY KEY (league_id, season, week, team_id, captured_at, espn_player_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
     gsis_id         VARCHAR,

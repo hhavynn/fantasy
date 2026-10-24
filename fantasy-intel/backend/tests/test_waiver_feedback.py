@@ -31,12 +31,16 @@ def data(**kw):
                  11: {"full_name": "RB11", "position": "RB", "pro_team": "BUF"}}
     pts = {1: 20.0, 2: 5.0, 3: 1.0, 10: 12.0, 11: 20.0}
     d.outcomes = {(w, p): v for w in range(1, 18) for p, v in pts.items()}
-    d.rosters = [{"snapshot_date": "2026-09-14", "espn_player_id": p, "lineup_slot_id": 0,
-                  "synced_at": datetime(2026, 9, 14, 12, tzinfo=UTC)} for p in (1, 2, 3)]
-    d.captures = [capture(2, datetime(2026, 9, 21, 13, tzinfo=UTC))]
+    d.captures = capture(2, datetime(2026, 9, 21, 13, tzinfo=UTC))
     for k, v in kw.items():
         setattr(d, k, v)
+    if "rosters" not in kw:                                   # each capture archived with the roster QB 1, RB 2, RB 3
+        d.rosters = roster(*{r["snapshot_id"] for r in d.captures})
     return d
+
+
+def roster(*snapshot_ids, players=(1, 2, 3)):
+    return [{"snapshot_id": s, "espn_player_id": p, "lineup_slot_id": 0} for s in snapshot_ids for p in players]
 
 
 def capture(week, at, claim=10, wait=11, drop=3, status="FREEAGENT"):
@@ -95,24 +99,30 @@ def test_the_gain_is_the_hindsight_lineup_difference_and_regret_is_bounded_by_th
     assert claim["player"]["espn_player_id"] == 10 and claim["drop"]["espn_player_id"] == 3
     assert claim["gain"] == 21.0 and claim["verdict"] == "helped"              # (12 - 5) a week, for 3 weeks
     assert claim["regret_lower_bound"] == 24.0                                 # RB 11: (20 - 5) x 3 - 21
-    assert out["capture"]["snapshot_id"].startswith("s:2:") and out["roster"]["snapshot_id"] == "roster_history:2026-09-14"
+    assert out["capture"]["snapshot_id"].startswith("s:2:")
+    assert out["roster"]["snapshot_id"] == f"waiver_roster_snapshots:{out['capture']['snapshot_id']}"
 
 
 def test_only_a_capture_taken_before_the_cutoff_counts_and_the_latest_one_wins():
     cut = datetime(2026, 9, 15, 10, tzinfo=UTC)
     early, later = capture(2, cut - timedelta(hours=5)), capture(2, cut - timedelta(hours=1), claim=11, wait=10)
     at_cut = capture(2, cut, claim=3, wait=2)                                  # taken at the cutoff: never used
-    roster = [{**r, "synced_at": cut - timedelta(days=1)} for r in data().rosters]
-    out = wf.week_feedback(data(captures=flat(early, later, at_cut), rosters=roster), 2)
+    out = wf.week_feedback(data(captures=flat(early, later, at_cut)), 2)
     assert [c["player"]["espn_player_id"] for c in out["claims"]] == [11]       # the latest capture before the cutoff
-    out = wf.week_feedback(data(captures=flat(at_cut, capture(2, cut + timedelta(minutes=1))), rosters=roster), 2)
+    out = wf.week_feedback(data(captures=flat(at_cut, capture(2, cut + timedelta(minutes=1)))), 2)
     assert out["status"] == "no_archive" and out["claims"] == []
 
 
-def test_a_roster_synced_after_the_cutoff_is_never_used():
-    d = data(captures=flat(capture(2, datetime(2026, 9, 14, 13, tzinfo=UTC))))
-    d.rosters = [{**r, "synced_at": datetime(2026, 9, 15, 10, tzinfo=UTC)} for r in d.rosters]    # at the cutoff
-    assert wf.week_feedback(d, 2)["status"] == "no_roster"
+def test_the_roster_is_the_one_archived_with_the_capture():
+    """Codex #353: roster_history keeps one snapshot a day, which a later sync that day replaces, so the grade reads the
+    roster archived with the capture: never another capture's, and none archived is no_roster."""
+    cut = datetime(2026, 9, 15, 10, tzinfo=UTC)
+    early, later = capture(2, cut - timedelta(hours=5)), capture(2, cut - timedelta(hours=1))
+    rosters = roster(early[0]["snapshot_id"]) + roster(later[0]["snapshot_id"], players=(1, 2))   # RB 3 since dropped
+    out = wf.week_feedback(data(captures=flat(early, later), rosters=rosters), 2)
+    assert out["excluded"] == {"drop_not_on_roster": 1} and out["roster"]["snapshot_id"].endswith(later[0]["snapshot_id"])
+    out = wf.week_feedback(data(captures=flat(early, later), rosters=roster(early[0]["snapshot_id"])), 2)
+    assert out["status"] == "no_roster"
 
 
 def test_a_missing_outcome_is_unknown_but_a_known_bye_scores_zero():
