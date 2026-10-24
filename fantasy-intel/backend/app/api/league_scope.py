@@ -465,9 +465,11 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
     try:
         yield scope
     finally:
-        LEAGUE_FILES.reset(files_token)
-        LEAGUE_SCOPE.reset(token)
-        held.release()
+        try:
+            LEAGUE_FILES.reset(files_token)
+            LEAGUE_SCOPE.reset(token)
+        finally:
+            held.release()                         # even if a reset raised: a leaked pin fills the file cache
 
 
 LEAGUE_PREFIX = "/v2/leagues/{league_id}"

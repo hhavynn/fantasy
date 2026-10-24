@@ -113,11 +113,10 @@ class HeldFiles:
         self._release, self._lock, self.released = release, threading.Lock(), False
 
     def release(self) -> None:
-        with self._lock:
-            if self.released:
-                return
-            self.released = True
-        self._release()
+        with self._lock:                            # the cache never takes this lock: no ordering to invert
+            if not self.released:
+                self._release()
+                self.released = True                # only once it worked: a failed release is retried at the end
 
 
 LEAGUE_FILES: ContextVar[HeldFiles | None] = ContextVar("league_files", default=None)

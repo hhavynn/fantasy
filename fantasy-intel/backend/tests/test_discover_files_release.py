@@ -85,6 +85,22 @@ def test_files_are_released_once_whoever_releases_first():
     assert calls == [1] and held.released
 
 
+def test_a_failed_release_is_retried_not_forgotten():
+    calls = []
+
+    def release():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("cache unavailable")
+    held = deps.HeldFiles(release)
+    with pytest.raises(OSError):
+        held.release()                                  # the handler's early release fails
+    assert not held.released
+    held.release()                                      # the end of the request tries again
+    held.release()
+    assert calls == [1, 1] and held.released
+
+
 def test_db_refuses_released_files_before_opening_them(monkeypatch):
     opened = []
     monkeypatch.setattr(deps, "layered_databases", lambda: opened.append(1))
