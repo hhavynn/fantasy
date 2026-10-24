@@ -299,6 +299,14 @@ class LeagueFileCache:
         threading.Thread(target=run, name="league-file-prefetch", daemon=True).start()
         return fut
 
+    def pin_pair_if_cached(self, league_id: str, data_version: str, global_version: str) -> PinnedPair | None:
+        """The pointer's pair pinned when both files are already cached here (no download, no wait), else None."""
+        cached = self._pin_pair_cached(league_id, data_version, global_version)
+        if cached is None:
+            return None
+        self._remember(league_id, data_version, global_version)
+        return PinnedPair(*cached, data_version, global_version)
+
     def pin_pair(self, league_id: str, data_version: str, global_version: str, *,
                  budget_s: float = DEFAULT_COLD_BUDGET_S, blocking: bool = True) -> PinnedPair | None:
         """Pin the league's files for the pointer (data_version, global_version).
@@ -311,10 +319,9 @@ class LeagueFileCache:
         past the budget. Without one (none, evicted, or the pointer was rolled back to before it): the new pair is
         fetched in this request, as before (errors propagate). With `blocking=False` (the all-leagues action center)
         that last case never downloads in the caller: the pair is fetched in the background and None is returned."""
-        cached = self._pin_pair_cached(league_id, data_version, global_version)
+        cached = self.pin_pair_if_cached(league_id, data_version, global_version)
         if cached is not None:
-            self._remember(league_id, data_version, global_version)
-            return PinnedPair(*cached, data_version, global_version)
+            return cached
         last = self.last_good(league_id)
         if last is not None and not _older(last, (data_version, global_version)):
             self._forget_last_good(league_id, last)          # rolled back past it (or the same pair): never a fallback
