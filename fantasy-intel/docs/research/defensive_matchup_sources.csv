@@ -61,7 +61,7 @@ participation,was_pressure,2023,dropback,20693,20693,0.0,""
 participation,defenders_in_box,2023,scrimmage,33836,33836,0.0,""
 participation,defense_personnel,2023,scrimmage,33836,33836,0.0,""
 participation,CB roster labels on field,2023,pass_attempt,18248,,,mean 2.75; share with 3+ CB 0.706; plus 0 generic DB labels
-participation,defense_positions in sorted order,2023,pass_attempt,18248,18248,0.0,sorted lists encode no alignment
+participation,defense_positions in sorted order,2023,pass_attempt,18248,18248,0.0,sorted by position label; not documented as alignment
 ftn,games,2023,regular season,272,,,""
 ftn,assignment-like columns,2023,column names,29,,,none
 ftn,n_defense_box,2023,scrimmage,33836,33836,0.0,""
@@ -103,7 +103,7 @@ participation,was_pressure,2024,dropback,20116,20116,0.0,""
 participation,defenders_in_box,2024,scrimmage,33335,33335,0.0,""
 participation,defense_personnel,2024,scrimmage,33335,33335,0.0,""
 participation,CB roster labels on field,2024,pass_attempt,17740,,,mean 2.71; share with 3+ CB 0.659; plus 232 generic DB labels
-participation,defense_positions in sorted order,2024,pass_attempt,17740,17740,0.0,sorted lists encode no alignment
+participation,defense_positions in sorted order,2024,pass_attempt,17740,17740,0.0,sorted by position label; not documented as alignment
 ftn,games,2024,regular season,272,,,""
 ftn,assignment-like columns,2024,column names,29,,,none
 ftn,n_defense_box,2024,scrimmage,33335,33335,0.0,""
@@ -145,7 +145,7 @@ participation,was_pressure,2025,dropback,19734,19734,0.0,""
 participation,defenders_in_box,2025,scrimmage,32813,32813,0.0,""
 participation,defense_personnel,2025,scrimmage,32813,32813,0.0,""
 participation,CB roster labels on field,2025,pass_attempt,17358,,,mean 2.63; share with 3+ CB 0.597; plus 0 generic DB labels
-participation,defense_positions in sorted order,2025,pass_attempt,17358,17358,0.0,sorted lists encode no alignment
+participation,defense_positions in sorted order,2025,pass_attempt,17358,17358,0.0,sorted by position label; not documented as alignment
 ftn,games,2025,regular season,272,,,""
 ftn,assignment-like columns,2025,column names,29,,,none
 ftn,n_defense_box,2025,scrimmage,32813,32813,0.0,""

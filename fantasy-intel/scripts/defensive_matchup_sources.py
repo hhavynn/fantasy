@@ -157,7 +157,7 @@ def participation_rows(season: int, plays: pl.DataFrame) -> list[dict]:
                          f"mean {n_cb.mean():.2f}; share with 3+ CB {float((n_cb >= 3).mean()):.3f}; "
                          f"plus {int(n_db.sum())} generic DB labels"))
         rows.append(_row("participation", "defense_positions in sorted order", season, "pass_attempt", pa.height,
-                         int(is_sorted.sum()), "sorted lists encode no alignment"))
+                         int(is_sorted.sum()), "sorted by position label; not documented as alignment"))
     return rows
 
 

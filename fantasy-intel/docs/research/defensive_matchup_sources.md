@@ -12,6 +12,12 @@ Code and data:
 
 To reproduce: `cd backend && uv run python ../scripts/defensive_matchup_sources.py --seasons 2022-2026`.
 
+CSV legend: `plays_in_scope` is the denominator, `present` the rows with a value and `missing_rate` = 1 − present /
+plays_in_scope. Two kinds of row reuse these columns:
+* **`assignment-like columns`:** `plays_in_scope` is the number of columns checked, and `note` lists any matches.
+* **`defense_positions in sorted order`:** `present` is the number of sorted lists, so `missing_rate` is the unsorted
+  share.
+
 ## 1. Verdict
 
 * **No free source pairs a defender with a receiver on a play.** The script checked five sources:
@@ -25,10 +31,11 @@ To reproduce: `cd backend && uv run python ../scripts/defensive_matchup_sources.
   `coverage_player`, `alignment`, `matchup_defender`, `defender_id`, `covered_by`, `receiver_defender`), and none was
   found (CSV rows `assignment-like columns`). That a name is absent does not prove the data is absent, so the reasons
   this holds are given below:
-  * **Participation** lists the defenders on the field (`defense_players`, `defense_positions`), but every
-    `defense_positions` list is in **sorted order** (100% of pass attempts, 2023-2025, e.g.
-    `CB;CB;CB;DE;DE;DT;DT;FS;ILB;ILB;SS`). The order encodes no alignment and no pairing. `route` describes only the
-    targeted receiver.
+  * **Participation** lists the defenders on the field (`defense_players`, `defense_positions`). Every
+    `defense_positions` list is **sorted by position label** (100% of pass attempts, 2023-2025, e.g.
+    `CB;CB;CB;DE;DE;DT;DT;FS;ILB;ILB;SS`). Within one label (say the three CBs), players are ordered by gsis id in
+    about 91-95% of groups (2024-2025, from the reviewer's check), and the rest are unexplained. Nothing documents
+    the order as alignment or pairing, so none is read into it. `route` describes only the targeted receiver.
   * **NGS receiving** is per receiver per week (cushion, separation). It has no defender field.
   * **PFR advanced defense** is per defender per week: targets, completions, yards and touchdowns allowed, passer
     rating allowed and aDOT. It has no receiver field and no play-level rows.
