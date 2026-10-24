@@ -687,7 +687,7 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     out = {"candidates": len(cands), "teams": len(teams),
            "claims": sum(1 for r in owner if r["recommendation"] == "CLAIM"), "coverage": coverage,
            # what the archive (#346, waiver_archive.py) records as this run's inputs
-           "provenance": {"computed_at": now, "week": week, "projection_source": base_ctx.get("projection_source"),
+           "provenance": {"league_id": league_id, "season": season, "computed_at": now, "week": week, "projection_source": base_ctx.get("projection_source"),
                           "projection_version": max((str(s) for s in base_ctx.get("projection_synced", {}).values()
                                                      if s is not None), default=None),
                           "roster_synced_at": {tid: max((r["roster_synced_at"] for r in rosters.get(tid, [])

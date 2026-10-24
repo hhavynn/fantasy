@@ -16,10 +16,10 @@ from golden.golden import build_e2e_db
 VOLATILE = frozenset({"synced_at", "detail_synced_at", "projection_synced_at", "run_id", "sync_run_id", "created_at", "computed_at", "started_at", "finished_at",
                       "retrieved_at", "fetch_started_at", "generated_at", "updated_at", "snapshot_date", "as_of", "retrieval_id", "recorded_at"})
 IGNORE = frozenset({"sync_runs", "schema_meta"})
-# The waiver archive (#346) is compared on its own: its capture time, ids and input stamps are per run, and its
-# content hash covers those stamps, while content_sha256 elsewhere (sealed Ours runs) must stay compared.
+# The waiver archive (#346) is compared on its own: its capture time, id and input stamps are per run (its content hash
+# is not, and stays compared), while those column names elsewhere must stay compared.
 ARCHIVE = "waiver_recommendation_snapshots"
-ARCHIVE_VOLATILE = ("captured_at", "snapshot_id", "content_sha256", "projection_version", "roster_synced_at")
+ARCHIVE_VOLATILE = ("captured_at", "snapshot_id", "projection_version", "roster_synced_at")
 
 
 def archive_rows(path):

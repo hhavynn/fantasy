@@ -338,10 +338,12 @@ def load_waiver_data(con, week: int | None = None) -> WaiverData:
                                 [lid, season]) if table_exists(con, "matchups") else []
     data.week = resolve_week(data.matchups, week)
     data.team = _own_team(con, lid, season)
-    if data.week is None or data.team is None or not table_exists(con, TABLE):
+    if data.week is None or data.team is None:
         return data
     tid = data.team["team_id"]
     data.kickoffs = pf.team_kickoffs(con, season)
+    if not table_exists(con, TABLE):           # a league file built before the archive: every week says no_archive
+        return data
     data.captures = fetch_dicts(con, f"""SELECT * FROM {TABLE} WHERE league_id = ? AND season = ? AND team_id = ?
                                         ORDER BY week, captured_at, rank""", [lid, season, tid])
     if table_exists(con, "roster_history"):

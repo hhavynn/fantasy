@@ -5,7 +5,7 @@ by a new season, filtered to its league when split, and served under /v2 for the
 import json
 import re
 import shutil
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -20,7 +20,12 @@ from test_sync_build import base  # noqa: F401  (fixture)
 
 from app.analytics.rescore import DERIVED_TABLES
 from app.analytics.waiver_archive import TABLE
-from app.db.league_split import BOTH_TABLES, GLOBAL_TABLES, LEAGUE_TABLES, split_database
+from app.db.league_split import (
+    BOTH_TABLES,
+    GLOBAL_TABLES,
+    LEAGUE_TABLES,
+    split_database,
+)
 from app.espn.sync import fetch_all
 from app.sync.build import build_league_file
 
@@ -41,9 +46,14 @@ def test_the_archive_is_a_league_table_and_never_derived():
     assert TABLE not in DERIVED_TABLES, "derived tables are rebuilt, not carried forward: the archive would be lost"
 
 
+def test_a_schema_upgrade_never_drops_the_archive():
+    from app.db.connection import _REBUILD
+    assert all(TABLE not in tables for tables in _REBUILD.values())
+
+
 def test_no_code_path_updates_or_deletes_archived_rows():
     sql = re.compile(rf"(UPDATE|DELETE\s+FROM|TRUNCATE|DROP\s+TABLE|INSERT\s+OR\s+REPLACE\s+INTO)\s+(main\.)?{TABLE}\b",
-                     re.I)
+                     re.IGNORECASE)
     rewrite = re.compile(rf"replace_where\(\s*con\s*,\s*(\"{TABLE}\"|TABLE\b)")    # the module constant or the name
     hits = [f"{p.relative_to(APP)}" for p in [*APP.rglob("*.py"), *APP.rglob("*.sql")]
             if sql.search(p.read_text()) or rewrite.search(p.read_text())]
@@ -94,6 +104,21 @@ def test_a_build_carries_the_previous_captures_forward_and_a_new_season_starts_e
     assert len(stamps) == 1 and not set(prior) & set(rows(fresh.league_path))
 
 
+def test_rebuilding_from_unchanged_payloads_appends_nothing(base, tmp_path):  # noqa: F811
+    """Review #346: each sync has new input stamps (roster and projection sync times); they are provenance, not
+    content, so a rebuild whose recommendations are unchanged appends no capture."""
+    previous, kept = base["prev"], None
+    for i in range(3):
+        work = tmp_path / f"job{i}"
+        work.mkdir()
+        built = build_league_file(work, global_path=base["global"], previous=previous,
+                                  payloads=fetch_all(FakeEspnClient()), owner_swid=None, stamp=f"2026-10-21T1{i}:00:00")
+        now = rows(built.league_path)
+        if kept is not None:
+            assert now == kept                         # byte-identical: the earlier rows, and nothing appended
+        kept, previous = now, built.league_path
+
+
 def test_a_league_file_never_carries_another_leagues_captures(e2e, tmp_path):
     db = tmp_path / "two.duckdb"
     shutil.copy(e2e, db)
@@ -113,7 +138,7 @@ def _league_with_capture(src, path, marker):
     con.execute("""UPDATE leagues SET waiver_process_days = '["WEDNESDAY"]'""")
     con.execute(f"INSERT INTO {TABLE} (league_id, season, week, team_id, captured_at, espn_player_id, rank, "
                 f"recommendation, availability_status, snapshot_id, content_sha256) VALUES (?, ?, 2, 2, ?, 201, 1, "
-                f"'CLAIM', 'FREEAGENT', ?, 'h')", [lid, int(E2E_SEASON), datetime(2026, 8, 20), marker])
+                f"'CLAIM', 'FREEAGENT', ?, 'h')", [lid, int(E2E_SEASON), datetime(2026, 8, 20, tzinfo=UTC).replace(tzinfo=None), marker])
     con.close()
     return path
 
