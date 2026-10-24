@@ -7,7 +7,7 @@
     uv run make-episode --week 6 --flame-praise           # the latest game's flame and praise Shorts
     uv run make-episode --week 6 --flame-praise --player bo-nix
     uv run make-episode --week 6 --flame-praise --player bo-nix --treatment courtroom --storyboard
-    uv run make-episode --week 6 --format short --style premium   # also render a graphic style (pixel, broadcast, auto)
+    uv run make-episode --week 6 --format short --style premium   # also render a graphic style (pixel, broadcast, paper, auto)
     uv run make-episode --week 7 --trend episodes/2026-w07-trends/<idea>.json   # a social trend's lead player
 
 Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run

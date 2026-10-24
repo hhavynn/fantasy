@@ -1,4 +1,4 @@
-"""Graphic styles for Shorts: premium analytics, retro pixel art and modern broadcast.
+"""Graphic styles for Shorts: premium analytics, retro pixel art, modern broadcast and paper.
 
 The original renderer (stages/render_motion.py) stays the default and keeps writing final.mp4. A style renders
 the same story, narration, timing, audio and captions into styles/<style>/final.mp4 with its own QC, so styles
@@ -7,7 +7,7 @@ can be compared and adopted without touching published videos. Design tokens liv
 
 from __future__ import annotations
 
-STYLES = ("premium", "pixel", "broadcast")
+STYLES = ("premium", "pixel", "broadcast", "paper")
 CHOICES = ("original", "auto") + STYLES
 
 # Preferences live in config.toml: [graphics] auto_default for every angle, [graphics.auto] per-angle overrides.

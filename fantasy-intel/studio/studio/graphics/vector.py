@@ -1,9 +1,10 @@
-"""Styles A (premium analytics) and C (broadcast): one component library, two looks.
+"""Styles A (premium analytics), C (broadcast) and D (paper): one component library, three looks.
 
 Components (player header, column chart, slope chart, before/after meter, comparison track, lineup strip,
 option buttons, source line, captions) take a Look, which carries a style's design tokens and the few things
 that differ structurally: panel shape (rounded card vs. slanted slab), type case and italics, and the
-persistent chrome (a quiet header for premium; a score bug and lower third for broadcast).
+persistent chrome (a quiet header for premium; a score bug and lower third for broadcast). Paper is premium on a
+dark sheet plus a pen (studio/graphics/paper.py): scenes circle or underline what is being said `if L.paper`.
 
 Scenes are compositions of components keyed to the narration (Ctx.at), and every number comes from a claim
 (c.d) or a snapshot value through numbers.render; each is logged with its source for the visual QA.
@@ -24,6 +25,7 @@ from ..scenes import ball_games
 from ..numbers import TEAM_NAMES, render
 from ..stages.story import last as last_name
 from . import kit as K
+from . import paper as P
 from .kit import H, SAFE, W, Frame, clamp, mix, pal
 
 
@@ -42,6 +44,8 @@ class Look:
         self.mr_width = W - self.mx - self.mr
         self.top, self.bottom = tk.space.content_top, tk.space.content_bottom
         self.broadcast = name == "broadcast"
+        self.paper = name == "paper"
+        self.marker = pal(tk, "marker") if self.paper else self.hi
         self.shear = getattr(tk.type, "italic", 0.0)
         self.skew = getattr(tk.radius, "skew", 0.0)
 
@@ -55,6 +59,20 @@ class Look:
 
     def e(self, t, start, dur=None, kind="enter"):
         return K.ease(self.tk, kind, t, start, dur)
+
+    def pen(self, t, at) -> float:
+        """Progress of a pen stroke that starts at `at` (0 outside the paper style)."""
+        return self.e(t, at, self.tk.motion.marker_dur, "move") if self.paper else 0.0
+
+    def circle(self, F, box, t, at):
+        """Loop the pen round a number's box (cap top to baseline: figures have no descenders to enclose)."""
+        if self.paper and box:
+            x0, y0, x1, y1 = box
+            P.circle(F, (x0, y0, x1, y1 - 0.27 * (y1 - y0)), self.pen(t, at), self.marker, self.tk.paper.marker_width)
+
+    def underline(self, F, box, t, at, gap: int = 10):
+        if self.paper and box:
+            P.underline(F, box[0], box[2], box[3] + gap, self.pen(t, at), self.marker, self.tk.paper.marker_width - 1)
 
     def data(self, c):
         """The data colour of the story: down for a faller, up otherwise."""
@@ -101,7 +119,7 @@ def readable(col) -> tuple:
     return out
 
 
-STYLES = {"premium": None, "broadcast": None}
+STYLES = {"premium": None, "broadcast": None, "paper": None}
 
 
 def look(name: str) -> Look:
@@ -162,6 +180,8 @@ def backdrop(name: str, team: str) -> Image.Image:
         d = ImageDraw.Draw(img, "RGBA")
         for y in range(380, H, 210):              # yard-line hints, very faint
             d.line((0, y, W, y), fill=(255, 255, 255, 10), width=3)
+    if L.paper:
+        img = P.grain(img, L.tk)
     return img
 
 
@@ -297,6 +317,7 @@ def column_chart(F: Frame, L: Look, c, t: float, cols: list[dict], box, top: flo
             F.line((x0, y, x1, y), L.grid, 2, alpha=a_dim)
             v += step
     F.line((x0, y1, x1, y1), L.line if not L.broadcast else L.ink, 3, alpha=a_dim)
+    boxes = [None] * n
     for i, col in enumerate(cols):
         k = L.e(t, col["at"], 0.42)
         if k <= 0:
@@ -313,10 +334,11 @@ def column_chart(F: Frame, L: Look, c, t: float, cols: list[dict], box, top: flo
             L.bar(F, (cx - bw / 2, y1 - h, cx + bw / 2, y1), color, alpha=a_dim)
         key = "number_m" if col.get("lit") else "number_s"
         vy = y1 - h - int(L.ty(key)[1] * 0.73) - 26
-        L.text(F, col["display"], cx, vy, key, col.get("text", L.ink), anchor="c", alpha=K.clamp(k * 1.6) * a_dim,
-               src=col["src"], role="number", tabular=True)
+        boxes[i] = L.text(F, col["display"], cx, vy, key, col.get("text", L.ink), anchor="c",
+                          alpha=K.clamp(k * 1.6) * a_dim, src=col["src"], role="number", tabular=True)
         L.text(F, col["label"], cx, y1 + 22, "label", L.muted, anchor="c",
                alpha=K.clamp(k * 2) * a_dim, src=col.get("label_src", "week"), role="axis")
+    return boxes
 
 
 def track(F: Frame, L: Look, x0, x1, y, top: float, marks: list[dict], t: float, h: int = 18):
@@ -357,12 +379,15 @@ def scene_player_card(F, L, c, t, dur, spec):
     if L.broadcast:
         F.poly([(470, 330), (1080, 330), (1080, 930), (330, 930)], prim, alpha=0.95)
         F.poly([(450, 330), (480, 330), (340, 930), (310, 930)], sec, alpha=0.9)
-    else:
+    elif not L.paper:
         plate = mix(prim, L.bg, 0.55) if K.rel_lum(prim) > 0.02 else mix((60, 70, 86), L.bg, 0.4)
         F.rect((560, 380, W - L.mr + 40, 900), plate, radius=L.tk.radius.panel)
-    img = portrait(c, 560 if L.broadcast else 500)
-    lift = L.e(t, _turn(c, dur) - 0.1, 0.5, "move")
-    F.layer(img, (W - img.width + 40 if L.broadcast else 515), 930 - img.height + 10 * (1 - k0), alpha=K.clamp(k0 * 1.5))
+    if L.paper:
+        _sticker_card(F, L, c, t, prim)
+    else:
+        img = portrait(c, 560 if L.broadcast else 500)
+        F.layer(img, (W - img.width + 40 if L.broadcast else 515), 930 - img.height + 10 * (1 - k0),
+                alpha=K.clamp(k0 * 1.5))
     # name and identity
     y = 360
     if L.broadcast:
@@ -394,19 +419,41 @@ def scene_player_card(F, L, c, t, dur, spec):
     if ka > 0:
         F.line((xa - 120, y + 120, xa - 50, y + 120), L.muted, 4, alpha=ka)
         F.poly([(xa - 50, y + 108), (xa - 30, y + 120), (xa - 50, y + 132)], L.muted, alpha=ka)
-        L.text(F, c.d(m["recent"]), xa, y + 56 + (1 - ka) * 30, "number_l", L.data(c), alpha=K.clamp(ka * 1.4),
-               src=m["recent"], role="number", tabular=True, display=True,
-               max_width=W - L.mr - xa)
+        nb = L.text(F, c.d(m["recent"]), xa, y + 56 + (1 - ka) * 30, "number_l", L.data(c), alpha=K.clamp(ka * 1.4),
+                    src=m["recent"], role="number", tabular=True, display=True,
+                    max_width=W - L.mr - xa)
+        L.circle(F, nb, t, crash + 0.35)
         L.text(F, K.weeks_label(K.claim_weeks(c, m["recent"])), xa, y + 220, "label",
                L.faint if not L.broadcast else L.muted, alpha=ka, role="axis", src="claim-weeks")
     kc = L.e(t, _turn(c, dur) - 0.05, 0.4)
-    if kc > 0 and m.get("change"):
+    if kc > 0 and m.get("change") and L.paper:
+        # the change as a pen note above the new value, where premium puts its chip
+        F.text(c.d(m["change"]), W - L.mr, y - 40 + (1 - kc) * 12, L.ty("hand"), L.marker, anchor="r", alpha=kc,
+               src=m["change"], role="number")
+    elif kc > 0 and m.get("change"):
         txt = c.d(m["change"])
         wch = K.measure(txt, *L.ty("number_s")[:2]) + 40
         x1 = W - L.mr - (40 if L.broadcast else 0)
         L.panel_box(F, (x1 - wch, y - 14, x1, y + 46), L.data(c), alpha=kc, outline=False)
         L.text(F, txt, x1 - wch / 2, y, "number_s", _on(L.data(c)), anchor="c", alpha=kc, src=m["change"],
                role="number")
+
+
+def _sticker_card(F, L, c, t, prim):
+    """Paper's player card art: the player as a sticker, popping onto a slowly turning team-colour sunburst."""
+    col = prim if K.rel_lum(prim) > 0.03 else M.team_colors(c.team)[1]
+    r = P.rays(tuple(col), 900).rotate(t * 3, resample=Image.BILINEAR)
+    F.layer(r, 760 - r.width / 2, 640 - r.height / 2)
+    pt = L.tk.paper
+    if c.headshot:
+        st = P.sticker(str(c.headshot), 470, pt.sticker_border, pt.sticker_tilt)
+    else:
+        st = P.make_sticker(portrait(c, 470), pt.sticker_border, pt.sticker_tilt)
+    pop = M.back_out(K.clamp((t + 0.12) / 0.42))           # mid-pop on frame 0, settled by 0.3 s
+    s = 0.86 + 0.14 * pop
+    if s < 0.999:
+        st = st.resize((max(1, int(st.width * s)), max(1, int(st.height * s))), Image.BICUBIC)
+    F.layer(st, 760 - st.width / 2, 930 - st.height + 30, alpha=K.clamp(pop * 2))
 
 
 def scene_target_balls(F, L, c, t, dur, spec):
@@ -423,7 +470,9 @@ def scene_target_balls(F, L, c, t, dur, spec):
         at = c.at(g["value"], default=0.2 + i * 0.35) - 0.12
         cols.append({"label": f"Wk {g['week']}", "value": v, "display": c.d(g["value"]), "src": g["value"],
                      "color": data if late else L.neutral, "at": at, "lit": late, "text": data if late else L.ink})
-    column_chart(F, L, c, t, cols, box, top, 2 if top <= 10 else 5)
+    boxes = column_chart(F, L, c, t, cols, box, top, 2 if top <= 10 else 5)
+    if k_split < len(games):
+        L.circle(F, boxes[-1], t, cols[-1]["at"] + 0.5)
     early = vals[:k_split]
     if early and k_split < len(games):
         pace = sum(early) / len(early)
@@ -481,6 +530,8 @@ def scene_split(F, L, c, t, dur, spec):
             F.d.ellipse((xr - 12, yr - 12, xr + 12, yr + 12), fill=color)
             nb = L.text(F, c.d(m["recent"]), xr + 30, yr - 30, "number_m", color, alpha=L.e(t, at + 0.5, 0.3),
                         src=m["recent"], role="number", tabular=True)
+            if m is ts_m:
+                L.circle(F, nb, t, at + 0.8)
             L.text(F, m["label"], xr + 30, nb[3] + 8, "label", L.muted,
                    alpha=L.e(t, at + 0.5, 0.3), role="label", c=c)
     snap_y = None
@@ -526,9 +577,10 @@ def scene_volume(F, L, c, t, dur, spec):
         bx = L.mx + 44 + K.measure(c.d(m["baseline"]), *L.ty("number_l")[:2]) + 40
         F.line((bx, y + 150, bx + 60, y + 150), L.muted, 5, alpha=ks)
         F.poly([(bx + 60, y + 136), (bx + 82, y + 150), (bx + 60, y + 164)], L.muted, alpha=ks)
-        L.text(F, c.d(m["recent"]), bx + 110, y + 92, "number_l", L.data(c), alpha=ks, src=m["recent"],
-               role="number", tabular=True, display=True,
-               max_width=W - L.mr - 44 - bx - 110)
+        nb = L.text(F, c.d(m["recent"]), bx + 110, y + 92, "number_l", L.data(c), alpha=ks, src=m["recent"],
+                    role="number", tabular=True, display=True,
+                    max_width=W - L.mr - 44 - bx - 110)
+        L.circle(F, nb, t, t_share + 0.4)
 
 
 def scene_lineup(F, L, c, t, dur, spec):
@@ -568,9 +620,10 @@ def scene_lineup(F, L, c, t, dur, spec):
     if kw > 0:
         yb = 900
         L.text(F, "What to watch", x0, yb, "kicker", L.muted, alpha=kw, role="kicker")
-        L.text(F, f"{m['label'].capitalize()} back toward {c.d(m['baseline'])}?", x0, yb + 52, "title"
-               if not L.broadcast else "number_m", L.hi, alpha=kw, role="title", src=m["baseline"], c=c,
-               max_width=x1 - x0, display=True)
+        q = L.text(F, f"{m['label'].capitalize()} back toward {c.d(m['baseline'])}?", x0, yb + 52, "title"
+                   if not L.broadcast else "number_m", L.hi, alpha=kw, role="title", src=m["baseline"], c=c,
+                   max_width=x1 - x0, display=True)
+        L.underline(F, q, t, tw + 0.35, gap=2)
         vals = [c.claims[m["recent"]]["value"], c.claims[m["baseline"]]["value"]]
         top = K.nice_max(max(vals), 0.1)
         track(F, L, x0, x1, yb + 250, top, [
@@ -591,8 +644,9 @@ def scene_decision(F, L, c, t, dur, spec):
     lh = L.ty(key)[1] * 1.08
     y = min(y, CAPTION_ZONE - int(len(lines) * lh + 80 + 120 + 24 + 44))    # keep the block clear of the captions
     for i, line in enumerate(lines):
-        L.text(F, line, L.mx, y + i * (L.ty(key)[1] * 1.08), key,
-               L.hi if i == len(lines) - 1 else L.ink, alpha=L.e(t, 0.06 * i), role="title", display=True)
+        lb = L.text(F, line, L.mx, y + i * (L.ty(key)[1] * 1.08), key,
+                    L.hi if i == len(lines) - 1 else L.ink, alpha=L.e(t, 0.06 * i), role="title", display=True)
+    L.underline(F, lb, t, 0.3)
     yo = y + len(lines) * L.ty(key)[1] * 1.08 + 80
     for i, (label, col) in enumerate(zip(spec.get("options", ["START", "SIT"]), (L.up, L.down))):
         ko = L.e(t, 0.3 + i * 0.1)
@@ -614,12 +668,17 @@ def scene_presence(F, L, c, t, dur, spec):
         y = 620 + j * 300
         L.text(F, f"{lab} · {K.weeks_label(K.claim_weeks(c, cid))}", L.mx, y, "label", L.muted, alpha=K.clamp(k * 3),
                role="label", src="claim-weeks", c=c)
-        L.text(F, c.d(cid), W - L.mr, y - 20, "number_m", col, anchor="r", alpha=K.clamp(k * 3), src=cid,
-               role="number", tabular=True)
+        nb = L.text(F, c.d(cid), W - L.mr, y - 20, "number_m", col, anchor="r", alpha=K.clamp(k * 3), src=cid,
+                    role="number", tabular=True)
+        if j == 1:
+            L.circle(F, nb, t, ta + 0.4)
         track(F, L, L.mx, W - L.mr, y + 90, 1.0, [{"value": c.claims[cid]["value"], "color": col, "at": ta - 0.2}], t,
               h=36)
         L.text(F, "0%", L.mx, y + 150, "label", L.faint, alpha=k, role="axis", src="axis")
         L.text(F, "100%", W - L.mr, y + 150, "label", L.faint, anchor="r", alpha=k, role="axis", src="axis")
+
+
+GRID_GAMES = 6          # the teammate grid's most columns: more and the numbers fall below phone size
 
 
 def scene_teammate_out(F, L, c, t, dur, spec):
@@ -627,18 +686,19 @@ def scene_teammate_out(F, L, c, t, dur, spec):
     m = p["metrics"][0]
     tc = t + 5 if spec.get("phase") == 2 else t
     title_block(F, L, c, tc, "Why the role opened up", f"{tm['name']} missed time", )
-    weeks = [s["week"] for s in m["series"]]
+    weeks = [s["week"] for s in m["series"]][-GRID_GAMES:]     # late in the season: the latest games only
     missed = set(tm["missed_values"])
     tm_series = {x["week"]: x["value"] for x in tm["series"]}
     me = {s["week"]: s["value"] for s in m["series"]}
     n = len(weeks)
-    gap = 14
-    x0 = L.mx + 210
+    gap = 14 if n <= 5 else 8                 # six games: tighter cells keep the numbers phone-sized
+    x0 = L.mx + (210 if n <= 5 else 176)
     cw = (W - L.mr - x0 - gap * (n - 1)) / n
+    out_x = [x0 + i * (cw + gap) for i, w in enumerate(weeks) if w in missed]
     for r, (name, series, is_tm) in enumerate(((tm["name"], tm_series, True), (p["name"], me, False))):
         y = 620 + r * 290
         kr = L.e(tc, r * 0.3)
-        L.text(F, last_name(name), L.mx, y + 30, "label", L.ink, alpha=kr, role="label", c=c, max_width=200)
+        L.text(F, last_name(name), L.mx, y + 30, "label", L.ink, alpha=kr, role="label", c=c, max_width=x0 - L.mx - 10)
         L.text(F, (tm["column"] if is_tm else m["column"]).replace("_", " ").replace("offense pct", "snap share"),
                x0, y - 52, "kicker", L.muted, alpha=kr, role="kicker", c=c)
         for i, w in enumerate(weeks):
@@ -657,9 +717,11 @@ def scene_teammate_out(F, L, c, t, dur, spec):
                        L.tk.radius.bar, alpha=k)
                 L.text(F, render("pct", val)[0] if val is not None else "—", x + cw / 2, y + 52, "number_s",
                        _on(L.data(c)) if hot else L.ink, anchor="c", alpha=k, src="snapshot:series", role="number",
-                       max_width=cw - 16)
+                       max_width=cw - (16 if n <= 5 else 8))
             if r == 1:
                 L.text(F, f"Wk {w}", x + cw / 2, y + 176, "label", L.muted, anchor="c", alpha=k, role="axis", src="week")
+    if out_x and spec.get("phase") != 2:
+        L.circle(F, (min(out_x), 620, max(out_x) + cw, 770), tc, 0.15 + 0.08 * n + 0.3)
     kc = L.e(t, 0.6)
     if spec.get("phase") == 2:
         L.text(F, f"His role before: {c.d(tm['role'])}", L.mx, 1170, "label", L.hi, alpha=L.e(t, 0.0), role="label",
@@ -682,13 +744,51 @@ def scene_status_stamp(F, L, c, t, dur, spec):
                 team=col if L.broadcast else None)
     if not L.broadcast:
         F.rect((L.mx, 640, L.mx + 8, 900), col, alpha=k)
-    L.text(F, big, L.mx + 56, 720, "title", col, alpha=k, role="title", display=True, max_width=L.mr_width - 100)
+    sb = L.text(F, big, L.mx + 56, 720, "title", col, alpha=k, role="title", display=True, max_width=L.mr_width - 100)
+    L.underline(F, sb, t, 0.6, gap=2)
     src = "NFL roster status" if code == "ir" else "Official injury report"
     L.text(F, f"{src} · Week {week}", L.mx + 56, 820, "label", L.muted, alpha=k, role="label",
            src=f"{tm['status']}:value", c=c)
 
 
-SCENES = {"player_card": scene_player_card, "target_balls": scene_target_balls, "split": scene_split,
+def scene_big_compare(F, L, c, t, dur, spec):
+    """The story's stat before and now, large, each landing as it is said; the change pinned beside the new
+    value (a chip, or in paper a pen note with the new value circled)."""
+    m = c.p["metrics"][spec.get("metric", 0)]
+    t_b = c.at(m["baseline"], default=0.2)
+    t_a = c.at(m["recent"], default=dur * 0.5)
+    title_block(F, L, c, t, c.p["name"], m["label"].capitalize())
+    rows = (("Before", m["baseline"], L.muted, t_b), ("Now", m["recent"], L.data(c), t_a))
+    nb = None
+    for j, (lab, cid, col, at) in enumerate(rows):
+        k = L.e(t, at - 0.15, 0.45)
+        if k <= 0:
+            continue
+        y = 600 + j * 380
+        L.text(F, f"{lab} · {K.weeks_label(K.claim_weeks(c, cid))}", L.mx, y, "label", L.muted, alpha=K.clamp(k * 2),
+               role="label", src="claim-weeks", c=c)
+        nb = L.text(F, c.d(cid), L.mx, y + 66 + (1 - k) * 30, "number_xl", col, alpha=K.clamp(k * 1.4), src=cid,
+                    role="number", tabular=True, display=True, max_width=L.mr_width - 260)
+        if j == 0:
+            F.line((L.mx, y + 330, W - L.mr, y + 330), L.line, 2, alpha=k)
+    if nb is None:
+        return
+    L.circle(F, nb, t, t_a + 0.35)
+    kc = L.e(t, t_a + 0.3, 0.4)
+    if kc > 0 and m.get("change"):
+        x, yc = nb[2] + 60, (nb[1] + nb[3]) / 2
+        if L.paper:
+            F.text(c.d(m["change"]), x + 10, yc - 36 + (1 - kc) * 12, L.ty("hand"), L.marker, alpha=kc,
+                   src=m["change"], role="number", max_width=W - L.mr - x - 10)
+        else:
+            txt = c.d(m["change"])
+            wch = K.measure(txt, *L.ty("number_s")[:2]) + 40
+            L.panel_box(F, (x, yc - 34, x + wch, yc + 34), L.data(c), alpha=kc, outline=False)
+            L.text(F, txt, x + wch / 2, yc - 18, "number_s", _on(L.data(c)), anchor="c", alpha=kc, src=m["change"],
+                   role="number")
+
+
+SCENES = {"player_card": scene_player_card, "big_compare": scene_big_compare, "target_balls": scene_target_balls, "split": scene_split,
           "volume": scene_volume, "lineup": scene_lineup, "decision": scene_decision, "presence": scene_presence,
           "teammate_out": scene_teammate_out, "status_stamp": scene_status_stamp}
 
@@ -728,6 +828,8 @@ def camera(name: str, img: Image.Image, k: float, punch: float = 0.0) -> Image.I
 
 def transition(name: str, prev: Image.Image, cur: Image.Image, k: float, c) -> Image.Image:
     L = look(name)
+    if L.paper:
+        return P.page(prev, cur, k)
     if not L.broadcast:
         e = K.bezier(*L.tk.motion.enter)(k)
         shifted = Image.new("RGB", cur.size, L.bg)
