@@ -224,11 +224,33 @@ average 0.08-1.99 over all four runs. Single pages are medians of 3 fresh instan
 - Reading every opponent's manager context up front (instead of only the shown ones, after the search) costs nothing
   measurable on one league.
 
+## The Discover scan computes each lineup projection once (#331 risk 1, 2026-10-24)
+
+A deterministic profile of one scan (one league, memo cleared): 1.7 s of wall time, CPU-bound under the GIL, so 25 at
+once cost about 25 x 1.7 s, the 25-league p50. 71% of it is `evaluate_trade` for the detailed rows, and 77% of its
+`project_team` calls repeat an earlier call's inputs exactly (28,575 week lineups, 6,435 distinct): the anchor's and each
+opponent's "before" lineups are re-projected for every row. `team_lineups.project_team_memo` now keeps one scan's
+results (a ContextVar for one `trade_discovery._build` call, emptied after it; only the scan's own projections object;
+key: data version and K/D/ST streaming flag, the players in order, slots, window). The answers are identical with it on
+and off (tests/test_project_team_memo.py, 15 query variants), and a test snapshots every shared result and the
+projections to show no caller changes them.
+
+Same script, machine and fixture, two pairs back to back (A = #351's head 9b10251, B = A + the memo), A→B then B→A,
+load average 0.76-1.66:
+
+| | A run 1 / run 2 | B run 1 / run 2 |
+|---|---|---|
+| **Trade scan (warm) p50 / p95, 25 leagues (ms)** | 41539 / 56962, 33202 / 55250 | **22486 / 31860, 17737 / 29728** |
+| Trade scan, 1 league (ms) | 1818 / 1837 | 1146 / 1053 |
+| Trades-discover page warm, 1 league (ms) | 1640 / 1676 | 1101 / 1103 |
+| Failed calls, 25 leagues | 0 / 0 | 0 / 0 |
+| Overview cold p50, 25 leagues (ms) | 4553 / 4172 | 4110 / 4265 |
+
 ## Remaining risks
 
-1. **The Discover scan under concurrency** (about 26 s for 10 leagues and 57 s for 25 on one instance) is CPU-bound and
-   serial-ish in Python. It needs engine work (shared per-league precomputation or a smaller default search),
-   beyond this issue's scope. `app/api/trade_discovery.py` keeps a 4-entry module `OrderedDict` memo, keyed with the
+1. **The Discover scan under concurrency** is still CPU-bound and serial-ish in Python: about 18-22 s p50 for 25 leagues
+   on one instance after the lineup memo (above), down from about 40 s. What remains is mostly per-row labelling
+   (`trades._usage` / `_slot_labels`) and the league-state load. `app/api/trade_discovery.py` keeps a 4-entry module `OrderedDict` memo, keyed with the
    scope cache key (so per league); since #311 its lookup, insert and trim run under a lock (a concurrent eviction no
    longer raises), but there is still no single flight across threads, so two requests can build the same search.
 2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance).
