@@ -30,7 +30,7 @@ from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, source_label
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
 from ..config import get_settings
-from .deps import data_version, db, one, rows
+from .deps import data_version, db, one, release_league_files, rows
 from .signal_provenance import snapshot_versions, trade_provenance
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
@@ -59,11 +59,11 @@ _NEED_CACHE_SIZE = 16
 _NEED_LOCK = threading.Lock()
 
 
-def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...],
+def _search(version: str, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...],
             focus: tuple[int, ...] | None = None) -> TradeSearch:
     reason = state.start_week_reason or {}
     # League identity and the anchor team are in every key: a search for one team is never served for another.
-    key = (data_version(con), state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
+    key = (version, state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
            streaming_enabled(state), focus)
     # The memo is read, refreshed and trimmed under a lock: unlocked, another request's eviction between the lookup and
     # move_to_end raised KeyError (a 500). The search is built outside it, so leagues never wait on one another; two
@@ -408,11 +408,22 @@ def _kdst_policy(traded: bool, streaming: bool) -> str:
             "agent at the position each week. " + stream)
 
 
-def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
+class _Read:
+    """Everything the discovery build reads from the league's files, read up front (issue #331): the build itself is
+    an in-memory computation, so a request can let its files go (deps.release_league_files) before it starts."""
+
+    def __init__(self, con, r: _Resolved):
+        self.version = data_version(con)
+        # Every possible opponent's manager context: the rows shown are only known after the search.
+        self.manager_context = {t["team_id"]: _manager_context(con, t["team_id"])
+                                for t in r.teams if t["team_id"] != r.team_id}
+
+
+def _build(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
     state, team_id, pos = r.state, r.team_id, r.pos
     board = FreeAgencyBoard(state, state.window())
     try:
-        ts = _search(con, state, team_id, r.shape_list, pos, r.focus)
+        ts = _search(read.version, state, team_id, r.shape_list, pos, r.focus)
         anchor = next(t for t in r.teams if t["team_id"] == team_id)
         anchor_label = "You" if anchor.get("is_mine") else (anchor.get("name") or f"Team {team_id}")
         opponent = p.opponent if p.opponent is not None or not r.target_info["player"] else r.target_info["player"]["team_id"]
@@ -427,7 +438,7 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
                                  "injury_status": pl.injury_status, "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
              for ps in state.rosters.values() for pl in ps}
     shown = [x for items in out["sections"].values() for x in items]
-    ctx = {opp: _manager_context(con, opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
+    ctx = {opp: read.manager_context.get(opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
     for x in shown:
         x["manager_context"] = ctx.get(x["opponent_team_id"])
         x["need_notes"] = _need_notes(x, x["manager_context"], names)
@@ -461,23 +472,35 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
     }
 
 
-def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
-    """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
+def _view_key(version: str, r: _Resolved, p: DiscoverParams) -> tuple:
     reason = r.state.start_week_reason or {}
-    key = (data_version(con), r.lg["league_id"], r.lg["season"], r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
-           reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness, p.sort, p.category, p.opponent,
-           p.limit, p.heuristic, p.kdst_streaming, p.target_player, p.target_position, p.need, p.weeks,
-           None if r.target is None else r.target.key, r.focus)
+    return (version, r.lg["league_id"], r.lg["season"], r.team_id, r.shape_list, r.pos, r.state.start_week,
+            bool(reason.get("uncertain")), reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness,
+            p.sort, p.category, p.opponent, p.limit, p.heuristic, p.kdst_streaming, p.target_player, p.target_position,
+            p.need, p.weeks, None if r.target is None else r.target.key, r.focus)
+
+
+def _view_cached(key: tuple) -> dict | None:
     with _VIEWS_LOCK:
         if key in _VIEWS:
             _VIEWS.move_to_end(key)
             return _VIEWS[key]
-    view = _build(con, r, p)
+    return None
+
+
+def _view_store(key: tuple, view: dict) -> dict:
     with _VIEWS_LOCK:
         _VIEWS[key] = view
         while len(_VIEWS) > _VIEWS_SIZE:
             _VIEWS.popitem(last=False)
     return view
+
+
+def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
+    """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
+    key = _view_key(data_version(con), r, p)
+    view = _view_cached(key)
+    return view if view is not None else _view_store(key, _build(_Read(con, r), r, p))
 
 
 def _dual_value_summary(dv: dict) -> dict:
@@ -536,7 +559,9 @@ def discover(p: DiscoverParams = Depends()):
     simulation for both teams; modes only decide which rows are shown and how they are explained."""
     with db() as con:
         r = _resolve(con, p)
-        return _build(con, r, p)
+        read = _Read(con, r)
+    release_league_files()                     # the build is in memory: the files may be evicted meanwhile (#331)
+    return _build(read, r, p)
 
 
 @router.get("/discover/context")
@@ -558,7 +583,12 @@ def discover_summary(p: DiscoverParams = Depends()):
     same computation; a row's evidence comes from /discover/evidence. `names` covers only the players shown."""
     with db() as con:
         r = _resolve(con, p)
-        view = _view(con, r, p)
+        key = _view_key(data_version(con), r, p)
+        view = _view_cached(key)
+        read = None if view is not None else _Read(con, r)
+    if view is None:
+        release_league_files()                 # the build is in memory: the files may be evicted meanwhile (#331)
+        view = _view_store(key, _build(read, r, p))
     sections = {k: [_summary_row(x) for x in items] for k, items in view["sections"].items()}
     shown = {pid for items in view["sections"].values() for x in items for pid in x["sends"] + x["receives"]}
     shown |= {pid for o in view["opponents"] if o["best"] for pid in o["best"]["sends"] + o["best"]["receives"]}
