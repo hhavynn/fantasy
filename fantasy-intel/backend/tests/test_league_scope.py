@@ -827,3 +827,24 @@ def test_roster_utility_is_served_only_for_the_league_in_the_path(pg, served, cl
     for headers in (bearer(U1), {}):                                        # A's member, then anonymous
         r = client.get(f"/v2/leagues/{b.league_id}{path}", headers=headers)
         assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), headers
+
+
+def test_the_stash_plan_is_served_only_for_the_league_in_the_path(pg, served, client, e2e, e2e_b, tmp_path):
+    """Stash planner (#218, GET /api/my-team/stash on the team value router): league B's member reads B's plan; a
+    member of league A and an anonymous caller get the same 404 as an unknown league."""
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="private", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="private", name="B", stamp="2026-10-20T13:00:00",
+                      external_id="1999")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_user(con, U2)
+        seed_membership(con, U1, a.league_id, "viewer")
+        seed_membership(con, U2, b.league_id, "viewer")
+        con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
+                    [U2, b.league_id])
+        con.commit()
+    own = client.get(f"/v2/leagues/{b.league_id}/api/my-team/stash", headers=bearer(U2))
+    assert own.status_code == 200 and own.json()["contract"] == "stash-plan/v1", own.text[:200]
+    for headers in (bearer(U1), {}):                                        # A's member, then anonymous
+        r = client.get(f"/v2/leagues/{b.league_id}/api/my-team/stash", headers=headers)
+        assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), headers
