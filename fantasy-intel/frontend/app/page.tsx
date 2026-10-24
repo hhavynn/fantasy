@@ -73,7 +73,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
     );
   }
   if (!res.ok) {
-    // Without the overview, the page is only worth showing if the matchup (the week band's anchor) loaded.
+    // Without the overview, the page is only worth showing if the matchup (the week band's anchor) loaded. That also
+    // keeps the hub to a resolved team: Matchup and Start/Sit both answer 404 with no team in view (#348).
     if (!(await matchup).ok) {
       return (
         <div className="stack">

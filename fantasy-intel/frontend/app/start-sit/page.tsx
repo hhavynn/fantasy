@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";
 import { CompareLink } from "@/components/CompareLink";
-import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { ChooseTeam, needsTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
@@ -86,10 +86,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     );
   }
   if (!res.ok) {
+    // No team in view (an anonymous visitor or a member with no saved team, no ?team=): the picker, never another
+    // manager's lineup as a fallback (#348)
     return (
       <div className="stack">
         <PageHeader title="Start/Sit" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {needsTeam(res) ? <ChooseTeam path="/start-sit" sp={sp} what="its lineup against the best projected one" />
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
       </div>
     );
   }
