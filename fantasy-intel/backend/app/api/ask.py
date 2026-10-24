@@ -461,6 +461,17 @@ def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
                              "facts": [_fact("Projected gain of the move", move.get("projected_net_gain"), "pts")],
                              "columns": columns, "rows": shown, "truncated": False},
                      provenance=out.get("provenance"), freshness=out.get("freshness"))
+    kept = next((x for x in out.get("recommended_lineup") or [] if x.get("player_id") == pid), None)
+    if kept is not None:
+        # Start/Sit lists no alternatives for a slot whose starter is kickoff-locked or has no legal replacement.
+        locked = kept.get("lock_status") == "LOCKED"
+        return _card("answered", question, parsed, interpretation=interp, link=link,
+                     answer={"headline": f"{p['full_name']} starts at {kept.get('slot') or 'his slot'} in Start/Sit's "
+                                         f"best projected lineup, and Start/Sit lists no legal replacement for that "
+                                         f"slot" + (" (his game has kicked off)." if locked else "."),
+                             "facts": [_fact("Slot", kept.get("slot")), _fact("Lock", kept.get("lock_status"))],
+                             "columns": [], "rows": [], "truncated": False},
+                     provenance=out.get("provenance"), freshness=out.get("freshness"))
     return _card("answered", question, parsed, interpretation=interp, link=link,
                  answer={"headline": f"{p['full_name']} is not in Start/Sit's best projected lineup this week, so "
                                      f"there is no starting slot to replace.", "facts": [], "columns": [], "rows": [],

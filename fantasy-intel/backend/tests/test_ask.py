@@ -83,7 +83,7 @@ QUESTIONS = [
     ("Compare Papa WR and Quebec WR", "compare"),
     ("Papa WR vs Quebec WR", "compare"),
     ("who is better, Papa WR or Quebec WR", "compare"),
-    ("compare Papa WR and Papa WR", "abstain:same_player"),
+    ("compare Papa WR and Papa WR", "compare"),                   # one player twice: caught after resolution
     # trades
     ("What is Papa WR's trade value?", "trade_value"),
     ("how much is Juliet RB worth", "trade_value"),
@@ -446,8 +446,30 @@ def test_same_name_players_get_a_clarification_whose_options_resolve(e2e_file, t
 
 
 def test_two_names_for_the_same_player_are_not_compared(client):
-    card = ask(client, "compare Papa WR (id 304) and Papa WR")
-    assert card["status"] == "abstain" and card["abstain"]["code"] == "same_player"
+    for q in ("compare Papa WR (id 304) and Papa WR", "compare Papa WR and Papa WR"):
+        card = ask(client, q)
+        assert card["status"] == "abstain" and card["abstain"]["code"] == "same_player", q
+
+
+def test_qualified_same_names_are_two_players(e2e_file, tmp_path, monkeypatch):
+    """Two players sharing a name, told apart by their qualifiers, are compared (Codex P2 on #350)."""
+    c = _client(monkeypatch, _renamed(e2e_file, tmp_path, {305: ("Papa WR", "SF")}))
+    card = ask(c, "compare Papa WR (WR, PHI) and Papa WR (WR, SF)")
+    assert card["status"] == "answered" and card["link"]["query"] == {"a": 304, "b": 305}
+
+
+def test_a_starter_without_listed_alternatives_is_still_a_starter(client, monkeypatch):
+    """Start/Sit omits a slot's alternatives when its starter is locked or has no legal replacement (Codex P2 on
+    #350): the card says he starts and nothing can replace him, never that he is out of the lineup."""
+    from app.api import ask as ask_api
+    out = {"team": {"name": "Team 2"}, "scoring_period": 3, "is_future_preview": False, "decisions": [],
+           "actual_lineup": [{"player_id": 304}], "current_bench": [],
+           "recommended_lineup": [{"player_id": 304, "slot": "WR", "lock_status": "LOCKED"}],
+           "alternatives": [], "provenance": None, "freshness": None}
+    monkeypatch.setattr(ask_api, "_start_sit", lambda ctx: out)
+    card = ask(client, "best replacement for Papa WR")
+    assert "starts at WR" in card["answer"]["headline"] and "kicked off" in card["answer"]["headline"]
+    assert "not in Start/Sit's best projected lineup" not in card["answer"]["headline"]
 
 
 def test_accented_names_match_with_or_without_the_accents(e2e_file, tmp_path, monkeypatch):

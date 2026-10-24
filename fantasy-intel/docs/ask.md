@@ -73,16 +73,16 @@ scored what he did, and no observational difference is described as a cause (suc
 ## Evaluation (tests/test_ask.py)
 
 96 synthetic phrasings with their expected outcome; the test asserts each one exactly. Abstain or clarify rate:
-29 of 96 (30%), all of them deliberate (the set includes adversarial, compound and ambiguous phrasings).
+28 of 96 (29%), all of them deliberate (the set includes adversarial, compound and ambiguous phrasings).
 
 | | Phrasings | Correct | Answered as another intent |
 |---|---|---|---|
-| Supported (14 intents) | 67 | 67 | 0 |
-| Abstain (unsupported, unknown metric, out of bounds, unit mismatch, metric/position, other league, other team, other season, same player, empty, compound or ambiguous requests) | 27 | 27 | 0 (no answer) |
+| Supported (14 intents) | 68 | 68 | 0 |
+| Abstain (unsupported, unknown metric, out of bounds, unit mismatch, metric/position, other league, other team, other season, empty, compound or ambiguous requests; one player named twice abstains after resolution) | 26 | 26 | 0 (no answer) |
 | Clarify (vague metric, fraction for a percentage) | 2 | 2 | 0 |
 
 Per intent: screen 12, screen_preset 3, waivers_best 7, start_sit 7, replacement 4, start_choice 2, matchup 5,
-player 5, ownership 5, compare 3, trade_value 3, trade_values_top 3, byes 4, playoffs 4.
+player 5, ownership 5, compare 4, trade_value 3, trade_values_top 3, byes 4, playoffs 4.
 
 Cards are checked against their endpoints on the E2E fixture (screen rows and metric values, Start/Sit summary,
 alternatives deltas, matchup totals, trade value row, roster status, compare summary, bye week, playoff places,

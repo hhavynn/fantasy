@@ -523,9 +523,8 @@ def parse(question: str) -> Parsed | Unsupported:
                 slots["position"] = pos[0]
             else:
                 slots["position"] = None
-        if t.intent in ("start_choice", "compare") and fold(slots["p"].text) == fold(slots["p2"].text) \
-                and slots["p"].player_id == slots["p2"].player_id:
-            return Unsupported("same_player", "Name two different players.")
+        # Two references to one player are caught after resolution (app/api/ask.py), where qualifiers have narrowed
+        # each name: "Williams (RB, DAL)" and "Williams (WR, DET)" are two players.
         return Parsed(t.intent, MappingProxyType(slots))
     return Unsupported("unsupported", "That question is not one Ask can answer exactly. Ask only answers questions "
                                       "it can compute from this league's data; try one of the examples below.")
