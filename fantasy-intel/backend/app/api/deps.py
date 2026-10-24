@@ -103,6 +103,35 @@ class LeagueScope:
 
 
 LEAGUE_SCOPE: ContextVar[LeagueScope | None] = ContextVar("league_scope", default=None)
+
+
+class HeldFiles:
+    """The pinned files of one /v2 request (app/api/league_scope.py): released once, by whichever comes first, the
+    handler (`release_league_files`) or the end of the request."""
+
+    def __init__(self, release):
+        self._release, self._lock, self.released = release, threading.Lock(), False
+
+    def release(self) -> None:
+        with self._lock:                            # the cache never takes this lock: no ordering to invert
+            if not self.released:
+                self._release()
+                self.released = True                # only once it worked: a failed release is retried at the end
+
+
+LEAGUE_FILES: ContextVar[HeldFiles | None] = ContextVar("league_files", default=None)
+
+
+def release_league_files() -> None:
+    """Let this request's league files be evicted before it ends (issue #331): for a handler that has read everything
+    it needs and then computes in memory for a long time (the trade-discovery scan), so its files do not fill the
+    instance's file cache meanwhile. Call it only after every `db()` block is closed; `db()` refuses to open the files
+    afterwards. Outside a /v2 league request it does nothing."""
+    held = LEAGUE_FILES.get()
+    if held is not None:
+        held.release()
+
+
 _LAYERED: dict[str, Any] = {}
 
 
@@ -120,6 +149,9 @@ def layered_databases():
 def db() -> Iterator[Any]:
     scope = LEAGUE_SCOPE.get()
     if scope is not None:
+        held = LEAGUE_FILES.get()
+        if held is not None and held.released:     # unpinned: the files may already be evicted
+            raise RuntimeError("db() after release_league_files() in the same request")
         # A /v2/leagues/{lg}/... request: this league's file and the global file it was built against, read-only,
         # with the request's perspective as fantasy_teams.is_mine. Immutable files: no transaction needed.
         con = layered_databases().cursor(scope.league_path, scope.global_path, perspective=scope.perspective)
