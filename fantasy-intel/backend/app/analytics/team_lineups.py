@@ -43,6 +43,8 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 
 from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, separable, slot_positions, unsupported_of
@@ -323,9 +325,33 @@ def summarize_team(weeks: list[dict], window: Window) -> dict:
     }
 
 
+_TEAM_MEMO: ContextVar[dict | None] = ContextVar("project_team_memo", default=None)
+
+
+@contextmanager
+def project_team_memo():
+    """Within this block, identical project_team calls (same players in the same order, slots, window and projections
+    object) return the first call's result (issue #331: one trade-discovery scan repeats about 3 in 4 of them). The
+    result is shared: callers must treat it as read-only, as they already do."""
+    token = _TEAM_MEMO.set({})
+    try:
+        yield
+    finally:
+        _TEAM_MEMO.reset(token)
+
+
 def project_team(players: list[RosterPlayer], slots: list[str], window: Window, proj: Projections) -> dict:
+    memo = _TEAM_MEMO.get()
+    if memo is not None:
+        key = (tuple(players), tuple(slots), window, id(proj))
+        hit = memo.get(key)
+        if hit is not None and hit[0] is proj:          # the entry keeps proj alive, so its id is never reused
+            return hit[1]
     weeks = [project_week(players, slots, w, proj, window.phase(w)) for w in window.weeks]
-    return {"weeks": weeks, "summary": summarize_team(weeks, window)}
+    out = {"weeks": weeks, "summary": summarize_team(weeks, window)}
+    if memo is not None:
+        memo[key] = (proj, out)
+    return out
 
 
 def known_total(team: dict) -> float:

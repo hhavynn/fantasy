@@ -26,7 +26,7 @@ from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
                                          TradeSearch, TradeTarget, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
-from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, source_label, stream_summary
+from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, project_team_memo, source_label, stream_summary
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
 from ..config import get_settings
@@ -420,6 +420,11 @@ class _Read:
 
 
 def _build(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
+    with project_team_memo():                  # one scan repeats about 3 in 4 lineup projections (#331)
+        return _build_view(read, r, p)
+
+
+def _build_view(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
     state, team_id, pos = r.state, r.team_id, r.pos
     board = FreeAgencyBoard(state, state.window())
     try:
