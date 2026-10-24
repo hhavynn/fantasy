@@ -43,6 +43,8 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 
 from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, separable, slot_positions, unsupported_of
@@ -323,9 +325,59 @@ def summarize_team(weeks: list[dict], window: Window) -> dict:
     }
 
 
+class TeamMemo:
+    """One scan's project_team results (issue #331): only calls with one of the scan's own projections objects are
+    kept, each object's apart, keyed by the scan's scope (data version, K/D/ST streaming flag) and every other input,
+    the players in their order included. Lives for one `project_team_memo` block, then is emptied."""
+
+    def __init__(self, proj: Projections, scope: tuple):
+        self.projs, self.scope, self.entries = [proj], scope, {}
+
+    def admit(self, proj: Projections) -> None:
+        """Also memoize calls on `proj`: the projections of a trade search cached by an earlier request of the same
+        data version and streaming flag, which the scan works on (review #352). Held here, so it lives as long."""
+        if not any(p is proj for p in self.projs):
+            self.projs.append(proj)
+
+    def slot(self, proj: Projections) -> int | None:
+        """Which admitted object `proj` is (its position, not its identity, goes into the key), or None."""
+        return next((i for i, p in enumerate(self.projs) if p is proj), None)
+
+    def key(self, slot: int, players, slots, window: Window) -> tuple:
+        # the slot list's unsupported labels too (LineupSlots metadata): project_week reads them (Codex #352)
+        return (self.scope, slot, tuple(players), tuple(slots), unsupported_of(slots), window)
+
+
+_TEAM_MEMO: ContextVar[TeamMemo | None] = ContextVar("project_team_memo", default=None)
+
+
+@contextmanager
+def project_team_memo(proj: Projections, scope: tuple = ()):
+    """Within this block, identical project_team calls on `proj` return the first call's result (one trade-discovery
+    scan repeats about 3 in 4 of them). The result is shared, so callers treat it as read-only, as they already do;
+    tests/test_project_team_memo.py checks that neither the results nor `proj` change during a scan."""
+    memo = TeamMemo(proj, tuple(scope))
+    token = _TEAM_MEMO.set(memo)
+    try:
+        yield memo
+    finally:
+        _TEAM_MEMO.reset(token)
+        memo.entries.clear()
+
+
 def project_team(players: list[RosterPlayer], slots: list[str], window: Window, proj: Projections) -> dict:
+    memo = _TEAM_MEMO.get()
+    slot = None if memo is None else memo.slot(proj)    # a projections object the scan did not admit: never memoized
+    if slot is not None:
+        key = memo.key(slot, players, slots, window)
+        hit = memo.entries.get(key)
+        if hit is not None:
+            return hit
     weeks = [project_week(players, slots, w, proj, window.phase(w)) for w in window.weeks]
-    return {"weeks": weeks, "summary": summarize_team(weeks, window)}
+    out = {"weeks": weeks, "summary": summarize_team(weeks, window)}
+    if slot is not None:
+        memo.entries[key] = out
+    return out
 
 
 def known_total(team: dict) -> float:
