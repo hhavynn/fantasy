@@ -53,7 +53,7 @@ from fastapi.responses import Response
 from ..config import get_settings
 from . import provider_copy
 from ..monitor.timing import Timing, request_timing, size_bucket, version_bytes
-from .deps import LEAGUE_SCOPE, LeagueScope, layered_databases
+from .deps import LEAGUE_FILES, LEAGUE_SCOPE, HeldFiles, LeagueScope, layered_databases
 from .leagues_v2 import NOT_FOUND, current_principal, valid_league_id
 
 log = logging.getLogger(__name__)
@@ -459,12 +459,17 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
     except BaseException:                          # a cache hit, or a cancelled wait: unpin before leaving
         league_file_cache().release_pair(pair)
         raise
-    token = LEAGUE_SCOPE.set(scope)
+    # Released at the end of the request, or earlier by a handler done with its files (deps.release_league_files).
+    held = HeldFiles(lambda: league_file_cache().release_pair(pair))
+    token, files_token = LEAGUE_SCOPE.set(scope), LEAGUE_FILES.set(held)
     try:
         yield scope
     finally:
-        LEAGUE_SCOPE.reset(token)
-        league_file_cache().release_pair(pair)
+        try:
+            LEAGUE_FILES.reset(files_token)
+            LEAGUE_SCOPE.reset(token)
+        finally:
+            held.release()                         # even if a reset raised: a leaked pin fills the file cache
 
 
 LEAGUE_PREFIX = "/v2/leagues/{league_id}"

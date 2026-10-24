@@ -197,6 +197,33 @@ scan at 25 leagues: p50 47616 → 41960 ms, p95 51746 → 51719 ms.
   bursts have 0 failed calls. All 4 failures are `CacheFull` 503s on `/api/trades/discover/summary` in the trade-scan
   burst. That is capacity, not thread starvation (remaining risk 2, updated).
 
+## The Discover scan lets its files go before searching (#331, 2026-10-24)
+
+`/api/trades/discover/summary` (and `/api/trades/discover`) used to hold the league's pinned files for the whole
+request, including the CPU-bound search (about 40 s each with 25 at once), so 25 scans pinned about 413 MB against the
+350 MB file cache and the last leagues' loads answered 503 `CacheFull`. Now the handler reads everything the build needs
+from the files first (the data version and every opponent's manager context; the search itself reads only the
+in-memory league state), closes its connection and releases its pin (`deps.release_league_files`), then searches. A
+later `db()` in the same request is refused, and the pair is released exactly once. The answer is unchanged.
+
+Same script, machine and fixture, two pairs back to back (A = main 7c56ceb, B = this change), A→B then B→A. Load
+average 0.08-1.99 over all four runs. Single pages are medians of 3 fresh instances; each burst row is one run.
+
+| | A run 1 / run 2 | B run 1 / run 2 |
+|---|---|---|
+| **Failed calls, 25 leagues (503 `CacheFull`)** | 4 / 3 | **0 / 0** |
+| Trade scan (warm) p50 / p95, 25 leagues (ms) | 38846 / 47735, 39018 / 48604 | 40547 / 54457, 32966 / 54075 |
+| Overview cold p50 / p95, 25 leagues (ms) | 4518 / 6082, 4322 / 5913 | 4097 / 5629, 4071 / 5630 |
+| R2 GETs, 25 leagues | 47 / 46 | 46 / 47 |
+| Trades-discover page warm, 1 league (ms) | 2097 / 1805 | 1751 / 1886 |
+
+- **The 503s are gone** in both B runs: every one of the 25 scans is answered.
+- **The trade-scan p95 is about 6 s higher**, because 25 CPU-bound scans now finish where 21-22 did (the 3-4 that
+  failed used to fail fast and leave the CPU to the rest); the p50 is within run-to-run noise. The scan's CPU cost under
+  concurrency is unchanged: that is remaining risk 1.
+- Reading every opponent's manager context up front (instead of only the shown ones, after the search) costs nothing
+  measurable on one league.
+
 ## Remaining risks
 
 1. **The Discover scan under concurrency** (about 26 s for 10 leagues and 57 s for 25 on one instance) is CPU-bound and
@@ -206,11 +233,10 @@ scan at 25 leagues: p50 47616 → 41960 ms, p95 51746 → 51719 ms.
    longer raises), but there is still no single flight across threads, so two requests can build the same search.
 2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance).
    The thread-pool part is fixed (#331 risk 2, below): cold loads wait on the event loop, so waiting loads hold no
-   thread and the cache thrashes far less. What remains is capacity: the 3-4 `CacheFull` 503s are all
-   `/api/trades/discover/summary` calls in the 25-league trade-scan burst. 25 Discover scans pin about 413 MB, over
-   the 350 MB bound, for about 45 s each (they are CPU-bound), so the last leagues find no room within the 8 s wait.
-   Gating cannot remove those. The options are a larger `LEAGUE_CACHE_MAX_BYTES` (Vercel's `/tmp` is 500 MB), a
-   Discover scan that does not hold its files for the whole search, or a shorter scan (remaining risk 1).
+   thread and the cache thrashes far less. The 3-4 `CacheFull` 503s that remained (25 Discover scans pinning about
+   413 MB for their whole search) are fixed by the Discover scan releasing its files before it searches (#331, above):
+   0 failed calls at 25 leagues. A burst of requests that each hold their files while computing for long (none other
+   is known) would still be bounded by the file cache.
 3. The `stale: true` flag reaches `ApiResult` but is not displayed yet. The sync pill already shows the older file's
    own sync times, because `/api/status` is read from the file that was served. Showing a "data may be older" line
    is a one-line change in `app/layout.tsx` (pass `status?.stale` to `SyncPill`), which is outside this change's
