@@ -46,7 +46,14 @@ export async function useTheme(page: Page, theme: Theme) {
 
 /** Switch the theme in place (the attribute every token block keys on), without a reload. */
 export async function applyTheme(page: Page, theme: Theme) {
-  await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+  // Links, buttons and table cells fade colour over 120ms (globals.css, Motion): wait for the transitions the switch
+  // starts to end, so axe never measures a colour halfway between the two themes.
+  await page.evaluate(async (t) => {
+    document.documentElement.dataset.theme = t;
+    void document.body.offsetHeight;                          // flush styles so the transitions exist now
+    const fades = document.getAnimations().filter((a) => a instanceof CSSTransition);
+    await Promise.all(fades.map((a) => a.finished.catch(() => undefined)));
+  }, theme);
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 }
 
