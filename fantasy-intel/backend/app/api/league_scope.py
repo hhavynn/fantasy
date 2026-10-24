@@ -212,6 +212,10 @@ async def _pin_cold(access, team_param: str | None, timing: Timing):
     gate, flights = _cold_state()
     snap = access.snapshot
     key = (access.league_id, snap.data_version, snap.global_version)
+    if league_file_cache().has_cached_fallback(*key):
+        # The league's previous files are cached: pin_pair serves them within its budget (or the new pair, if it
+        # arrives in time) and never waits for room, so it needs no permit and never queues behind other downloads.
+        return await run_in_threadpool(_pin, access, team_param, timing, since=since)
 
     async def within(aw):
         try:

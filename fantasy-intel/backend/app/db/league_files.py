@@ -307,6 +307,16 @@ class LeagueFileCache:
         self._remember(league_id, data_version, global_version)
         return PinnedPair(*cached, data_version, global_version)
 
+    def has_cached_fallback(self, league_id: str, data_version: str, global_version: str) -> bool:
+        """Whether `pin_pair` would serve this league's previous pair (strictly older than the pointer, both files cached)
+        instead of downloading in the caller: it then returns within its budget. Nothing is pinned."""
+        last = self.last_good(league_id)
+        if last is None or not _older(last, (data_version, global_version)):
+            return False
+        keys = (league_key(league_id, last[0]), global_key(last[1]))
+        with self._lock:
+            return all(k in self._files and k not in self._downloading for k in keys)
+
     def pin_pair(self, league_id: str, data_version: str, global_version: str, *,
                  budget_s: float = DEFAULT_COLD_BUDGET_S, blocking: bool = True) -> PinnedPair | None:
         """Pin the league's files for the pointer (data_version, global_version).

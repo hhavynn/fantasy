@@ -60,7 +60,10 @@ class FakePin:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakePin()
+    f.fallback = set()                                        # leagues whose previous files are cached
     monkeypatch.setattr(ls, "_pin", f)
+    monkeypatch.setattr(ls, "league_file_cache",
+                        lambda: SimpleNamespace(has_cached_fallback=lambda lg, dv, gv: lg in f.fallback))
     monkeypatch.setenv("LEAGUE_COLD_LOADS", "2")
     ls._COLD.clear()
     yield f
@@ -178,6 +181,25 @@ def test_waiting_for_a_permit_or_a_leader_ends_with_a_503(fake, monkeypatch):
     assert isinstance(other, HTTPException) and other.status_code == 503 and fake.loads == ["a"]
 
 
+def test_a_league_with_its_previous_files_cached_never_waits_for_a_permit(fake, monkeypatch):
+    """Codex #343: while every permit is held by slow unrelated downloads, a league whose pointer moved but whose
+    previous files are cached is still served (pin_pair's stale fallback), not a 503 after COLD_WAIT_S."""
+    monkeypatch.setenv("LEAGUE_COLD_LOADS", "1")
+    monkeypatch.setattr(ls, "COLD_WAIT_S", 0.2)
+    fake.load_s = 0.6
+    fake.fallback = {"moved"}
+
+    async def go():
+        slow = asyncio.ensure_future(ls._pin_cold(access("other"), None, Timing()))   # holds the only permit
+        await asyncio.sleep(0.02)
+        t0 = time.perf_counter()
+        moved = await ls._pin_cold(access("moved"), None, Timing())
+        return moved, time.perf_counter() - t0, await slow
+    moved, waited, slow = run(go())
+    assert moved[1].key == "moved" and slow[1].key == "other"
+    assert waited < 0.9 and fake.peak == 2                    # loaded beside the permit holder, not after it
+
+
 # ---- the real _pin over a fake cache: isolation and timing ----------------------------------------------------------
 
 class FakeCache:
@@ -195,6 +217,9 @@ class FakeCache:
 
     def pin_pair_if_cached(self, league, dv, gv):
         return self._pair(league, dv, gv, False) if (league, dv, gv) in self.cached else None
+
+    def has_cached_fallback(self, league, dv, gv):
+        return False
 
     def pin_pair(self, league, dv, gv, *, budget_s):
         time.sleep(self.load_s)
