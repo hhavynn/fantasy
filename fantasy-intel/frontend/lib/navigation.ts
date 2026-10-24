@@ -59,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/compare", label: "Compare", summary: "Players side by side on projection, usage and schedule" },
       { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" },
       { href: "/screener", label: "Screener", section: "Research", summary: "Every WR, RB and TE filtered on several usage and production metrics at once" },
+      { href: "/ask", label: "Ask", section: "Research", summary: "One question about this league, answered exactly from an existing analysis or declined" },
       { href: "/research/splits", label: "Game splits", section: "Research", summary: "A player's games with a teammate on the field against games without him" },
       { href: "/pace-lab", label: "Pace lab", section: "Research", summary: "Team play volume, neutral pass rate and game script from nflverse play-by-play" },
       { href: "/schedule-intelligence", label: "Schedule", section: "Research", summary: "Upcoming opponents for each rostered player" },
