@@ -462,7 +462,6 @@ def test_a_search_evicted_by_a_concurrent_request_never_raises(monkeypatch):
     from collections import OrderedDict
 
     from app.api import trade_discovery as api
-    monkeypatch.setattr(api, "data_version", lambda con: "v1")
     monkeypatch.setattr(api, "streaming_enabled", lambda state: False)
     monkeypatch.setattr(api, "TradeSearch", lambda *a, **k: object())
     state = types.SimpleNamespace(league_id=7, season=2026, start_week=3, start_week_reason=None)
@@ -471,7 +470,7 @@ def test_a_search_evicted_by_a_concurrent_request_never_raises(monkeypatch):
     def others():           # another request: enough new searches to evict every key in the memo
         try:
             for anchor in range(100, 100 + api._CACHE_SIZE + 1):
-                api._search(None, state, anchor, ("1-for-1",), ())
+                api._search("v1", state, anchor, ("1-for-1",), ())
         except Exception as e:      # noqa: BLE001
             errors.append(e)
 
@@ -500,8 +499,8 @@ def test_a_search_evicted_by_a_concurrent_request_never_raises(monkeypatch):
 
     memo = Memo()
     monkeypatch.setattr(api, "_CACHE", memo)
-    first = api._search(None, state, 1, ("1-for-1",), ())
-    assert api._search(None, state, 1, ("1-for-1",), ()) is first        # the hit that the other request races
+    first = api._search("v1", state, 1, ("1-for-1",), ())
+    assert api._search("v1", state, 1, ("1-for-1",), ()) is first        # the hit that the other request races
     memo.thread.join(timeout=5)
     assert not memo.thread.is_alive() and errors == []
     assert len(api._CACHE) == api._CACHE_SIZE
