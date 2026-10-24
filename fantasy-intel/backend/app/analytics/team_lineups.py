@@ -80,6 +80,7 @@ class RosterPlayer:
     injury_status: str | None = None
     unavailable_weeks: frozenset[int] = frozenset()   # verified NFL-ineligible weeks (not a fantasy slot)
     on_taxi: bool = False              # Sleeper taxi squad: rostered, never starts, no active roster spot
+    eligible_slots: tuple[int, ...] | None = None   # provider slot ids (lineup.positions_of); None = primary only
 
     @property
     def reserved(self) -> bool:
@@ -234,7 +235,8 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         elif week in p.unavailable_weeks:
             unavailable.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
         elif v is not None:
-            known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v})
+            known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v,
+                          "eligible_slots": p.eligible_slots})
         elif not lineup_relevant(p.position, slots):
             continue
         elif p.pro_team:

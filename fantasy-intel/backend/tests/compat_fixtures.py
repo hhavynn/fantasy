@@ -18,6 +18,11 @@ Matrix rows (`MATRIX`; docs: fantasy-intel/docs/compatibility/253-gap-inventory.
   M8p punter and head coach slots on ESPN (P, HC): players ESPN stores and projects, but no engine values
   M9  two kickers and two D/ST on ESPN (M1 with K x2, D/ST x2): K and D/ST streaming covers one slot each (G9)
 
+`Row.dual` lists players the provider also lists at a second position (issue #253 G11): (player id, extra position,
+projection or None). ESPN gets the position's slot id in `eligibleSlots`, Sleeper the position in `fantasy_positions`;
+a projection, when given, replaces the formula's for that player (so a test can place him exactly). `dual_row` builds
+the G11 rows tests use: a player who starts only because of his second position.
+
 `Row.sleeper_settings` adds invented Sleeper league settings (e.g. the `reserve_allow_*` IR rules, G7); which of those
 keys real Sleeper leagues carry is UNVERIFIED, so no matrix row carries them and tests build such rows themselves.
 
@@ -104,6 +109,7 @@ class Row:
     tied: bool = False                # every player projects the same: ties break by id
     free_agents: bool = True          # False: a sparse pool, nobody on waivers
     sleeper_settings: dict = field(default_factory=dict)    # extra Sleeper `settings` keys (invented, see above)
+    dual: tuple = ()                  # ((player id, extra position, projection or None), ...): see the module docstring
 
 
 MATRIX = {
@@ -185,7 +191,28 @@ def league_players(row: Row) -> list[Player]:
 
 
 def projection(row: Row, pid: int, week: int) -> float:
+    fixed = next((v for d_pid, _, v in row.dual if d_pid == pid and v is not None), None)
+    if fixed is not None:
+        return fixed
     return 10.0 if row.tied else round(4.0 + abs(pid) % 13 * 0.9 + week / 10, 2)
+
+
+NO_FLEX = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "D/ST": 1, "BE": 6, "IR": 1}
+
+
+def bench_player(row: Row, position: str, team: int = 1) -> Player:
+    """The last bench player at `position` on `team` (deterministic)."""
+    return [p for p in league_players(row) if p.team == team and p.slot == "BE" and p.position == position][-1]
+
+
+def dual_row(row_id: str, provider: str, slots: dict, *, extra: str = "RB", position: str = "WR",
+             value: float | None = 11.3, teams: int = 4) -> Row:
+    """A row whose team 1 bench `position` player is also listed at `extra`, projecting `value` every week. The default
+    (a bench WR also listed at RB, 11.3) sits between team 1's weakest starting RB (at most 11.1, week 17) and weakest
+    starting WR (at least 11.5, week 3) in NO_FLEX and STANDARD: primary-only he never starts, with his RB listing he
+    starts at RB every week."""
+    base = Row(row_id, provider, slots, teams=teams)
+    return Row(row_id, provider, slots, teams=teams, dual=((bench_player(base, position).pid, extra, value),))
 
 
 def _name(p: Player) -> str:
@@ -194,10 +221,12 @@ def _name(p: Player) -> str:
 
 # ---- ESPN ----------------------------------------------------------------------------------------------------------------
 
-def _espn_player(p: Player, stats: list | None = None) -> dict:
+def _espn_player(p: Player, stats: list | None = None, dual: tuple = ()) -> dict:
     injured = p.slot == "IR"
+    extra = [ESPN_SLOT_IDS[x] for d_pid, x, _ in dual if d_pid == p.pid]
     return {"id": p.pid, "fullName": _name(p), "defaultPositionId": ESPN_POSITION_IDS[p.position],
-            "proTeamId": p.pro_team, "eligibleSlots": [20, 21], "injured": injured,
+            "proTeamId": p.pro_team, "eligibleSlots": [ESPN_SLOT_IDS[p.position], *extra, 20, 21] if extra else [20, 21],
+            "injured": injured,
             "injuryStatus": "INJURY_RESERVE" if injured else "ACTIVE",
             "ownership": {"percentOwned": 50.0, "percentStarted": 30.0, "percentChange": 0.0}, "stats": stats or []}
 
@@ -233,7 +262,7 @@ def espn_roster(row: Row, players: list[Player], period: int) -> dict:
             entries.append({"playerId": p.pid, "lineupSlotId": ESPN_SLOT_IDS[p.slot], "acquisitionType": "DRAFT",
                             "acquisitionDate": ef.T0, "injuryStatus": "INJURY_RESERVE" if p.slot == "IR" else "ACTIVE",
                             "playerPoolEntry": {"id": p.pid, "onTeamId": t, "status": "ONTEAM",
-                                                "player": _espn_player(p, stats)}})
+                                                "player": _espn_player(p, stats, row.dual)}})
         teams.append({"id": t, "roster": {"entries": entries}})
     return {"id": ef.LEAGUE_ID, "seasonId": SEASON, "scoringPeriodId": period, "teams": teams}
 
@@ -258,7 +287,7 @@ class EspnCompatClient:
         return {"topics": []}
 
     def player_pool(self, period, limit=500):
-        return {"players": [{"id": p.pid, "onTeamId": 0, "status": "FREEAGENT", "player": _espn_player(p)}
+        return {"players": [{"id": p.pid, "onTeamId": 0, "status": "FREEAGENT", "player": _espn_player(p, dual=self.row.dual)}
                             for p in self.players if p.team is None]}
 
     def player_projections(self, period, limit=3000):
@@ -268,12 +297,12 @@ class EspnCompatClient:
                 {"seasonId": SEASON, "scoringPeriodId": period, "statSourceId": 1, "statSplitTypeId": 1,
                  "appliedTotal": projection(self.row, p.pid, period)}]
             out.append({"id": p.pid, "onTeamId": p.team or 0, "status": "ONTEAM" if p.team else "FREEAGENT",
-                        "player": _espn_player(p, stats)})
+                        "player": _espn_player(p, stats, self.row.dual)})
         return {"players": out, "_response_meta": {"filter_player_count": len(out)}}
 
     def pro_players(self):
-        return [{k: v for k, v in _espn_player(p).items() if k in ("id", "fullName", "defaultPositionId", "proTeamId",
-                                                                   "eligibleSlots")} for p in self.players]
+        return [{k: v for k, v in _espn_player(p, dual=self.row.dual).items()
+                 if k in ("id", "fullName", "defaultPositionId", "proTeamId", "eligibleSlots")} for p in self.players]
 
     def player_cards(self, ids, max_period):
         return {"players": []}
@@ -323,7 +352,8 @@ def sleeper_payloads(row: Row):
     for p in players:
         s = _sleeper_id(p)
         pos = SLEEPER_POSITIONS[p.position]
-        universe[s] = {"player_id": s, "full_name": _name(p), "position": pos, "fantasy_positions": [pos],
+        extra = [SLEEPER_POSITIONS[x] for d_pid, x, _ in row.dual if d_pid == p.pid]
+        universe[s] = {"player_id": s, "full_name": _name(p), "position": pos, "fantasy_positions": [pos, *extra],
                        "team": nflverse_team(p.pro_team), "status": "Active", "active": True,
                        "espn_id": None if p.pid < 0 else p.pid,
                        "injury_status": "IR" if p.slot == "IR" else None}

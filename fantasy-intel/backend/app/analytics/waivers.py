@@ -14,7 +14,8 @@ from statistics import mean
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
-from .lineup import FIXED_SLOTS, assign_lineup, eligible, is_flex, lineup_gain, lineup_slots, lineup_total
+from .lineup import (FIXED_SLOTS, assign_lineup, eligible, is_flex, lineup_gain, lineup_slots, lineup_total,
+                     parse_eligible_slots, positions_of)
 from .player_scores import percentile_scores, percentile_scores_100
 from .reserve_slots import is_reserved, is_taxi
 from .waiver_roster import competing_positions, plan_roster_move, player_names, unknown_value_players
@@ -94,6 +95,7 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
             "value": round(raw * av["weight"], 3) if raw is not None else None,
             "available": av["weight"] > 0, "availability": av,
             "raw_value_100": v.value_100 if v is not None else None,   # display text only
+            "eligible_slots": parse_eligible_slots(p.get("eligible_slots"), p.get("position")),   # positions_of: #253 G11
             **({"on_taxi": True} if taxi else {}),
         })
     slots = lineup_slots(roster_slots)
@@ -116,9 +118,10 @@ def _ref(p: dict) -> dict:
     return {"espn_player_id": p["espn_player_id"], "name": p.get("full_name")}
 
 
-def unknown_competitors(state: dict, pos: str) -> list[dict]:
-    """Available players without a value who compete for the slots `pos` can fill."""
-    return unknown_value_players(state["players"], state["slots"], {pos})
+def unknown_competitors(state: dict, pos) -> list[dict]:
+    """Available players without a value who compete for the slots `pos` (a position, or a player's positions) can
+    fill."""
+    return unknown_value_players(state["players"], state["slots"], {pos} if isinstance(pos, str) else pos)
 
 
 def _empty_slots(state: dict, pos: str) -> int:
@@ -306,10 +309,11 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     cand = {"espn_player_id": c["espn_player_id"], "position": pos, "full_name": c.get("full_name"),
             "lineup_slot_id": None, "raw_value": cv.value,
             "value": round(cand_value * av["weight"], 3) if cand_value is not None else None,
-            "available": av["weight"] > 0, "availability": av}
+            "available": av["weight"] > 0, "availability": av,
+            "eligible_slots": parse_eligible_slots(c.get("eligible_slots"), pos)}
     # A lineup gain needs the candidate's value and the value of every player in his slot group (the same rule as
     # acquisition_utility's starter_gain); otherwise it is unknown, never a difference counting a missing value as 0.
-    unknown = ([cand] if cand_value is None else []) + unknown_competitors(my_state, pos)
+    unknown = ([cand] if cand_value is None else []) + unknown_competitors(my_state, positions_of(cand))
     if unknown:
         lg = {"gain": None, "enters_lineup": None, "slot": None, "displaced_id": None}
         reasons.append(f"Lineup gain unknown: no historical value for {player_names(unknown)} (unknown is not zero)")
@@ -592,7 +596,7 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     roster_rows = fetch_dicts(con, """
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter, fp.position, fp.full_name,
                coalesce(fp.injury_status, l.injury_status) AS injury_status, m.gsis_id, fp.pro_team, fp.detail_synced_at,
-               l.synced_at AS roster_synced_at
+               l.synced_at AS roster_synced_at, fp.eligible_slots
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         LEFT JOIN player_id_map m USING (espn_player_id)
         WHERE l.league_id=? AND l.season=? AND l.scoring_period = ?

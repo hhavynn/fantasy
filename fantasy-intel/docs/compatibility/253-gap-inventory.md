@@ -64,7 +64,7 @@ layer.
 - (c) Slot 22 has the label `""`. `parse_rosters` treats it as a non-starter, and so does the adapter
   (`providers/espn.py:55`). But `league_rules._starters` (`league_rules.py:207-212`) counts any non-zero `""` slot as an
   "unrecognised" starter. Whether ESPN ever sends a non-zero count for id 22 is UNVERIFIED.
-- (d) A dual-eligible player can fill only his `defaultPositionId` slot (G11).
+- (d) A dual-eligible player could fill only his `defaultPositionId` slot (G11; the solver is fixed in section 11).
 - No path rescales or caps the FX-17 counts. The solvers refuse anything above `MAX_FLEX_SLOTS = 30` (`lineup.py:27`), and
   the bye planner evaluates at most `MAX_STARTING_SLOTS = 30` starting slots (`bye_planner.py:63`).
 
@@ -272,7 +272,7 @@ waivers `scoring.partial` (xFP is full PPR).
 | **G7** | P2 | IR eligibility uses ESPN statuses (`IR`, `INJURY_RESERVE`, `OUT`) for Sleeper leagues; Sleeper's `reserve_allow_*` settings are not read. Which settings real leagues carry is UNVERIFIED. **Fixed (section 10):** the settings are read when synced; a status they do not decide is unverified, never ESPN's rule. | `waiver_roster.py:88`; branch `ir_slot_eligible` | M7: an IR occupant who is `DOUBTFUL` in a league allowing doubtful players blocks adds |
 | **G9** | P2 | kdst_streaming plans one slot per position even when the league starts 2 K or 2 D/ST. **Fixed as partial (section 10):** the plan streams the slot the weakest incumbent holds and reports `slot_coverage` partial. | `kdst_streaming.py:23`, `:84`, `:538-551` | M9: `slots` is 2 but the plan is single-slot, so it should report `partial` |
 | **G10** | P2 | One abstaining family (for example unsupported Sleeper kicker scoring) makes every team-week with a teamed K incomplete in team_lineups-based tools. The abstention is correct, but the cause is not named per tool. | `team_lineups.py:225-229`; verified (probe) for one team-week | M6 Sleeper with an unsupported K key: team value and trades are all known-only, and the diagnostic must cite `kicker_projections` |
-| **G11** | P3 | ESPN position = `defaultPositionId`; `eligible_slots` is ignored (Sleeper: `fantasy_positions` ignored). Frequency is UNVERIFIED. | `parse.py:207`, `:211` | a player with `eligibleSlots` [RB, WR] cannot fill WR |
+| **G11** | P3 | ESPN position = `defaultPositionId`; `eligible_slots` is ignored (Sleeper: `fantasy_positions` ignored). Frequency is UNVERIFIED. **Fixed in the engines (section 11):** a listed second position opens its slots; the diagnostic row and labels are PR 3. | `parse.py:207`, `:211` | a player with `eligibleSlots` [RB, WR] cannot fill WR |
 | **G12** | P3 | A blank ESPN slot (id 22) is counted as an unrecognised starter by league_rules but as a non-starter by the parser and adapter. **Fixed (section 10):** a bench slot on the rules page; waiver capacity abstains while its count is non-zero (unverified spot). | `league_rules.py:207-212` vs `constants.py:12` | `lineupSlotCounts {"22": 1}`: rules starters +1 |
 | **G13** | P1 (test debt) | No OP, multi-QB or 3-FLEX coverage in start_sit, what-if, waivers, trade_discovery, add_drop, kdst or action center. | test inventory above | M2 matrix |
 | **G14** | P3 | `engine_support` has no stable code, and what-if keys on the English rule text. **Fixed** (backend in phase 2, section 8.1; the rules page's `EngineRule` type and row keys and a rename test in section 10). | `lineup_what_if.py:360` | rename the rule text and what-if loses the lock rule silently |
@@ -506,5 +506,37 @@ admits PUP and NFI players to IR. Whether ESPN ever sends a non-zero count for s
 undecided status abstains, and slot 22 is a bench slot on the rules page while waiver capacity abstains on it.
 
 **Still open:** G8 (trade replacement level; the trade-discovery PR owns it), G10 (team_lineups, #254 phase 3), G11
-(parser position eligibility; its own PR). The K/D/ST page does not render `slot_coverage` yet (the reason reaches it
+(the engines are fixed in section 11; the diagnostic row and labels are its PR 3). The K/D/ST page does not render `slot_coverage` yet (the reason reaches it
 through the week reasons and notes); a planner for every slot is a later change.
+
+## 11. G11: dual position eligibility in the engines (PR 2 of 3)
+
+A player the provider lists at a second position (ESPN `eligibleSlots` holding that position's own slot id; Sleeper
+`fantasy_positions`) may now start there. Everything else stays keyed to his primary position: ranks, replacement levels,
+trade values, position filters and every response row's `position`.
+
+- **Evidence only.** `lineup.positions_of` reads the pure position ids (QB 0, RB 2, WR 4, TE 6, D/ST 16, K 17); flex,
+  bench and IR ids name slots, not positions. Missing or malformed evidence is the primary position only. The Sleeper
+  writer stores the union of the player's `fantasy_positions` slot lists. Loaders keep the list only when it names a
+  position other than the primary one, so a single-position player carries nothing.
+- **Solver.** `assign_lineup` tries each position of such a player (primary first) under the one-position solver's
+  rules and keeps the best total; a later combination wins only by more than the tie tolerance, so a dual player moves
+  only for a real gain and the everyone-primary lineup is kept on a tie. With no negative value this is the optimum over
+  every legal lineup (checked against an exhaustive search); with negative values it is never below the everyone-primary
+  lineup. Without a dual player the solver is unchanged. More than `MAX_DUAL_CHOICES` (64) position combinations in one
+  pool are refused (`LineupTooLargeError`), never guessed.
+- **Engines.** Start/sit and the what-if, team lineups (trades, add/drop, team value, power rankings), the trade engine's
+  totals-only solver (a league with a dual player solves every week exactly, so discovery stays equal to the evaluator),
+  waiver slot groups (a dual player links his positions' groups) and bye-week coverage. The trade assumptions say so in
+  a league with such a player.
+- **Not changed.** The decision backtests (`start_sit_evaluation`, `decision_feedback`) replay past weeks from snapshots
+  and stay primary-only: today's eligibility is not evidence about a past week.
+
+| Fixture | Result | Test |
+| --- | --- | --- |
+| G11a: no-flex ESPN league, team 1's bench WR also listed at RB (11.3 every week) | starts at RB every week; Start/Sit recommends him; the what-if accepts him at RB and refuses TE | `test_lineup_dual_eligibility.py` (engine tests) |
+| G11f: FX-17 with the same listing | lineups unchanged (a FLEX slot already takes a WR); team 1 takes the exact path, totals equal the evaluator's | `test_the_trade_engine_totals_equal_the_evaluators` |
+| G11s: FX-17 on Sleeper, `fantasy_positions` [WR, RB] | stored and loaded as both positions | `test_a_sleeper_player_listed_at_two_fantasy_positions_keeps_both` |
+| superflex, a QB also listed at TE | the TE slot frees the OP slot for the third QB (53.0 vs 43.0) | `test_in_superflex_a_quarterback_also_listed_at_te_frees_the_op_slot` |
+
+Frequency in real leagues stays UNVERIFIED (no real league data in this environment).

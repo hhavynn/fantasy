@@ -185,7 +185,8 @@ class TradeSearch:
         self.players = {p.espn_player_id: p for t in [anchor, *self.opponents] for p in state.rosters[t]}
         self.T = _Totals(state, self.weeks, set(self.players),
                          {p: x.position for p, x in self.players.items()}, {p: x.pro_team for p, x in self.players.items()},
-                         {p: x.unavailable_weeks for p, x in self.players.items() if x.unavailable_weeks})
+                         {p: x.unavailable_weeks for p, x in self.players.items() if x.unavailable_weeks},
+                         eligibility={p: x.eligible_slots for p, x in self.players.items()})
         # Each team's current lineup values per week, kept once: every roster a trade produces differs from one of them
         # by a few players and is solved incrementally from it (LineupTotals.vec_change, bit-identical to vec).
         self.roster_base = {t: self.T.base(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
