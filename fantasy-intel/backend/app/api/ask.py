@@ -199,22 +199,19 @@ def _resolve_player(con, lg: dict, ref: grammar.PlayerRef, question: str) -> dic
         # rewording (which never touches *_name values, and only ever the site's uppercase wording).
         options.append({"player_id": p["espn_player_id"], "name": p["full_name"], "position": p["position"],
                         "pro_team": p["pro_team"], "fantasy_team_name": p["fantasy_team"],
-                        "ask": _requalify(question, ref.text, f"{ref.text} ({qual})")})
+                        "ask": _requalify(question, ref, f"{ref.text} ({qual})")})
     return {"status": "clarify", "clarify": {
         "code": "ambiguous_player", "question": f"Which \"{ref.text}\"?",
         "reason": f"{len(cands)} players in this league's pool match that name.", "options": options}}
 
 
-def _requalify(question: str, name: str, qualified: str) -> str:
-    """The same question with the name replaced by an unambiguous one (the clarification's re-ask)."""
-    at = question.find(name)
-    if at < 0:
+def _requalify(question: str, ref: grammar.PlayerRef, qualified: str) -> str:
+    """The same question with this slot (its name and any earlier qualifier, at the span the grammar matched) replaced
+    by an unambiguous one: the clarification's re-ask. Any other slot, even with the same name, is left as asked."""
+    if ref.span is None:
         return qualified
-    end = at + len(name)
-    if question[end:].lstrip().startswith("("):           # an earlier qualifier is replaced, not stacked
-        close = question.find(")", end)
-        end = close + 1 if close >= 0 else end
-    return question[:at] + qualified + question[end:]
+    start, end = ref.span
+    return question[:start] + qualified + question[end:]
 
 
 def _roster_status(p: dict, provider: str) -> dict:
@@ -662,7 +659,9 @@ def run_trade_values_top(question: str, parsed: grammar.Parsed, ctx: dict) -> di
 def run_byes(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     out = schedule_intelligence.bye_planner(team_id=ctx["team_id"])
     weeks = out.get("weeks") or []
-    want = ctx["week"] if ctx["week"] is not None else (weeks[0]["week"] if weeks else None)
+    # "this week" is the league's current week; the planner drops a week once its games have kicked off, and then
+    # the card abstains rather than answer for another week
+    want = ctx["week"] if ctx["week"] is not None else ctx["lg"].get("current_week")
     link = {"path": "/schedule-intelligence", "query": {"team": ctx["team_id"]} if ctx["team_id"] is not None
             else {}, "hash": "bye-planner"}
     row = next((w for w in weeks if w.get("week") == want), None)

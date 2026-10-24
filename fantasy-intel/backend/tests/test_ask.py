@@ -472,6 +472,17 @@ def test_a_starter_without_listed_alternatives_is_still_a_starter(client, monkey
     assert "not in Start/Sit's best projected lineup" not in card["answer"]["headline"]
 
 
+def test_a_clarification_requalifies_only_the_ambiguous_slot(e2e_file, tmp_path, monkeypatch):
+    """The re-ask replaces the slot being clarified, not the first occurrence of its name (Codex P2 on #350)."""
+    c = _client(monkeypatch, _renamed(e2e_file, tmp_path, {305: ("Papa WR", "SF")}))
+    card = ask(c, "compare Papa WR (WR, SF) and Papa WR")
+    assert card["status"] == "clarify"
+    again = next(o["ask"] for o in card["clarify"]["options"] if o["player_id"] == 304)
+    assert again == "compare papa wr (wr, sf) and papa wr (WR, PHI)"
+    answered = ask(c, again)
+    assert answered["status"] == "answered" and answered["link"]["query"] == {"a": 305, "b": 304}
+
+
 def test_accented_names_match_with_or_without_the_accents(e2e_file, tmp_path, monkeypatch):
     c = _client(monkeypatch, _renamed(e2e_file, tmp_path, {302: ("José Núñez", "BUF")}))
     for q in ("how is jose nunez doing", "How is JOSÉ NÚÑEZ doing?", "is José Núñez available"):
@@ -521,6 +532,19 @@ def test_bye_players_are_named_from_the_planners_own_players_table(client, monke
     f = facts(ask(client, "who is on bye this week"))
     assert f["Starters on bye"] == "Papa WR"
     assert f["Players on bye"] == "Papa WR, player id 999"
+
+
+def test_this_week_bye_question_never_answers_for_another_week(client, monkeypatch):
+    """Once the current week's games kick off the planner drops that week (Codex P2 on #350): "this week" stays the
+    league's current week, and the card abstains instead of answering for the next one."""
+    from app.api import ask as ask_api
+    fake = {"team": {"name": "Team 2"}, "players": [], "summary": {}, "provenance": None,
+            "weeks": [{"week": 4, "status": "covered", "status_text": "Covered", "covered": 9, "required": 9,
+                       "byes": [], "starters_on_bye": []}]}
+    monkeypatch.setattr(ask_api.schedule_intelligence, "bye_planner", lambda team_id: fake)
+    card = ask(client, "who is on bye this week")                    # the fixture's current week is 3
+    assert card["status"] == "abstain" and card["abstain"]["code"] == "no_week"
+    assert facts(ask(client, "who is on bye next week"))["Week"] == 4
 
 
 def _fake_start_sit(monkeypatch, *, starting, bench, options, preview=False):

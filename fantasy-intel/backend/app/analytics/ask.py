@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from .screener import METRIC_BY_KEY, PRESETS
@@ -36,9 +36,7 @@ class PlayerRef:
     position: str | None = None
     team: str | None = None
     player_id: int | None = None
-
-    def ask_text(self) -> str:
-        return self.text
+    span: tuple[int, int] | None = None     # where the slot (name and any qualifier) sits in the normalized question
 
 
 @dataclass(frozen=True)
@@ -506,6 +504,8 @@ def parse(question: str) -> Parsed | Unsupported:
         ok = True
         for g in t.players:
             ref = player_ref(m.group(g))
+            if ref is not None:
+                ref = replace(ref, span=m.span(g))
             if ref is None:
                 ok = False
                 break
