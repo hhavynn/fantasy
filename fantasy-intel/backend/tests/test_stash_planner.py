@@ -257,6 +257,21 @@ def test_the_flex_solver_leaving_slots_empty_is_never_bounded():
     assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["pick_up_now"]] == [(31, round(direct, 2))]
 
 
+def test_a_replacement_chain_through_the_bench_keeps_the_week_unbounded():
+    # Codex's case: in week 3 the negative TE makes the flex solver leave both flex slots empty, so the chain from an
+    # added RB runs through the benched WR to the TE's slot; that week has no bound and the +5 stash is solved
+    slots = lineup_slots({"QB": 1, "RB/WR": 1, "WR/TE": 1})
+    w = Window((1, 2, 3), 3)
+    players = [P(1, "QB"), P(2, "WR"), P(3, "TE")]
+    pr = {1: {1: 2.0, 2: 2.0, 3: 2.0}, 2: {1: 10.0, 2: 10.0, 3: 10.0}, 3: {1: 20.0, 2: 20.0, 3: -12.0},
+          31: {1: 0.0, 2: 0.0, 3: 1.0}}
+    res = sp.plan_stashes(players, slots, w, pr, free_agents=[P(31, "RB")], free_agent_status={31: "FREEAGENT"},
+                          active_capacity=3, horizon=2, projection_source="ESPN")
+    direct = scenario(players, slots, w, pr, remove=[res["drop"]["espn_player_id"]], add=[P(31, "RB")])
+    assert direct["_ros_exact"] > 0 and res["counts"]["no_possible_gain"] == 0
+    assert [(x["espn_player_id"], x["horizon_delta"]) for x in res["stashes"]] == [(31, direct["ros_delta"])]
+
+
 def test_a_negative_player_out_of_reach_keeps_the_bound():
     # a negative bench D/ST can fill no RB-reachable slot, so 55 RBs who never start are still skipped exactly and the
     # one real stash (RB 3's bye week) is found

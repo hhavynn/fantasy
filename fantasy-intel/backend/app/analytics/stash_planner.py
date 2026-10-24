@@ -82,7 +82,7 @@ def _effective(proj, p: RosterPlayer, week: int) -> float:
 
 def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]:
     """Per week and position: the lowest starter a player at that position could push out of the current lineup (0 for
-    an empty slot it reaches), following the replacement chain through the slots each displaced starter can take. None
+    an empty slot it reaches), following the replacement chain through the slots any rostered player can take. None
     for a week with a missing projection (no bound: the candidate is solved). -inf (no bound) for a position whose
     reachable slots some negative-projected player could fill: a negative player can be forced into a fixed slot and the
     flex solver may leave flex slots empty below a threshold, so the replacement-chain argument does not hold there. A
@@ -105,16 +105,20 @@ def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]
             if DUAL_ELIGIBILITY:                        # eligibility widens per player: every slot may be reached
                 reached = set(range(len(rows)))
             else:
+                # every slot his position reaches through any rostered player who can fill a reached slot, starters and
+                # bench alike (the flex solver can leave flex slots empty, so a chain may run through the bench)
                 reached, seen = set(), {pos}
                 frontier = [pos]
+                positions = {q for q, _ in pool}
                 while frontier:
                     q = frontier.pop()
                     for i, a in enumerate(rows):
                         if i not in reached and eligible(a["slot"], q):
                             reached.add(i)
-                            if slot_filled(a) and a["position"] not in seen:
-                                seen.add(a["position"])
-                                frontier.append(a["position"])
+                            for nxt in positions - seen:
+                                if eligible(a["slot"], nxt):
+                                    seen.add(nxt)
+                                    frontier.append(nxt)
             if (DUAL_ELIGIBILITY and negative) or any(eligible(rows[i]["slot"], q) for i in reached for q in negative):
                 floors[pos] = float("-inf")
                 continue
