@@ -685,7 +685,14 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     owner = [{k: v for k, v in r.items() if k != "team_id"} for r in per_team if mine and r["team_id"] == mine[0]]
     replace_where(con, "waiver_recommendations", owner, "league_id=? AND season=?", [league_id, season])
     out = {"candidates": len(cands), "teams": len(teams),
-           "claims": sum(1 for r in owner if r["recommendation"] == "CLAIM"), "coverage": coverage}
+           "claims": sum(1 for r in owner if r["recommendation"] == "CLAIM"), "coverage": coverage,
+           # what the archive (#346, waiver_archive.py) records as this run's inputs
+           "provenance": {"league_id": league_id, "season": season, "computed_at": now, "week": week, "projection_source": base_ctx.get("projection_source"),
+                          "projection_version": max((str(s) for s in base_ctx.get("projection_synced", {}).values()
+                                                     if s is not None), default=None),
+                          "roster_synced_at": {tid: max((r["roster_synced_at"] for r in rosters.get(tid, [])
+                                                         if r["roster_synced_at"] is not None), default=None)
+                                               for tid in team_names}}}
     if not mine:
         out["warning"] = "your team is not identified (set ESPN_MY_TEAM_ID); only per-team recommendations were written"
     return out

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from ..analytics import decision_feedback as dfb
+from ..analytics import waiver_feedback as wfb
 from ..analytics.weekly_recap import NotFound, NotSynced, build_weekly_recap, load_recap_data
 from .deps import db
 from .leagues_v2 import NOT_FOUND
@@ -44,6 +45,23 @@ def weekly_recap_feedback(request: Request,
     with db() as con:
         try:
             return dfb.build_feedback(dfb.load_feedback_data(con, week, source))
+        except NotSynced as err:
+            raise HTTPException(503, str(err))
+        except NotFound as err:
+            raise HTTPException(404, str(err))
+
+
+@router.get("/weekly-recap/waiver-feedback")
+def weekly_recap_waiver_feedback(request: Request,
+                                 week: int | None = Query(None, ge=1, description="Matchup period; default the latest completed")):
+    """Waiver feedback for the viewer's OWN team (app/analytics/waiver_feedback.py, issue #346): the CLAIMs archived
+    before each week's waiver cutoff, graded by their hindsight lineup gain over the next weeks. The same team rule as
+    /weekly-recap/feedback: no team parameter, and a request naming a team_id gets the same 404 as an unknown league."""
+    if "team_id" in request.query_params:
+        raise HTTPException(404, NOT_FOUND)
+    with db() as con:
+        try:
+            return wfb.build_waiver_feedback(wfb.load_waiver_data(con, week))
         except NotSynced as err:
             raise HTTPException(503, str(err))
         except NotFound as err:

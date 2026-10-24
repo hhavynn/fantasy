@@ -208,7 +208,9 @@ def test_api_serves_the_published_snapshot(fake, synced_db, monkeypatch, tmp_pat
     client = TestClient(app)
     assert client.get("/api/overview").status_code == 200
     assert client.get("/api/managers").status_code == 200
-    assert _gets(fake, m.key) == 1
+    # downloaded once: one GET, or one set of ranged GETs tiling the file (r2.download goes parallel at 16 MiB, which
+    # this fixture's snapshot crosses as the schema grows)
+    assert _gets(fake, m.key) == (len(fake.ranges) or 1) and sum(e - s + 1 for s, e in fake.ranges) in (0, m.bytes)
     with deps.db() as cur:
         assert deps.data_version(cur) == f"snapshot:{m.published_at}"
         with pytest.raises(duckdb.Error):                        # the API's connection is read-only

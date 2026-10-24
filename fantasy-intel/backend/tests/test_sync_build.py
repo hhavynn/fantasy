@@ -16,6 +16,20 @@ from golden.golden import build_e2e_db
 VOLATILE = frozenset({"synced_at", "detail_synced_at", "projection_synced_at", "run_id", "sync_run_id", "created_at", "computed_at", "started_at", "finished_at",
                       "retrieved_at", "fetch_started_at", "generated_at", "updated_at", "snapshot_date", "as_of", "retrieval_id", "recorded_at"})
 IGNORE = frozenset({"sync_runs", "schema_meta"})
+# The waiver archive (#346) is compared on its own: its capture time, id and input stamps are per run (its content hash
+# is not, and stays compared), while those column names elsewhere must stay compared.
+ARCHIVE = "waiver_recommendation_snapshots"
+ARCHIVE_VOLATILE = ("captured_at", "snapshot_id", "projection_version", "roster_synced_at")
+ROSTER_ARCHIVE = "waiver_roster_snapshots"
+ROSTER_VOLATILE = ("captured_at", "snapshot_id")
+
+
+def archive_rows(path, table=ARCHIVE, volatile=ARCHIVE_VOLATILE):
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return sorted(con.execute(f"SELECT * EXCLUDE ({', '.join(volatile)}) FROM {table}").fetchall(), key=repr)
+    finally:
+        con.close()
 
 
 @pytest.fixture(scope="module")
@@ -48,7 +62,11 @@ def test_a_job_build_equals_the_laptop_refresh_table_by_table(base, tmp_path):
     built = build_league_file(work, global_path=base["global"], previous=base["prev"],
                               payloads=fetch_all(FakeEspnClient()), owner_swid=MY_SWID, stamp="2026-10-21T12:00:00")
     assert (built.external_id, built.season) == (999, SEASON)
-    assert league_tables_equal(reference, built.league_path, ignore_columns=VOLATILE, ignore_tables=IGNORE) == []
+    assert league_tables_equal(reference, built.league_path, ignore_columns=VOLATILE,
+                               ignore_tables=IGNORE | {ARCHIVE, ROSTER_ARCHIVE}) == []
+    assert archive_rows(reference) == archive_rows(built.league_path)     # the same captures, carried and appended
+    assert archive_rows(reference, ROSTER_ARCHIVE, ROSTER_VOLATILE) == archive_rows(built.league_path, ROSTER_ARCHIVE,
+                                                                                    ROSTER_VOLATILE)
     con = duckdb.connect(str(built.league_path), read_only=True)
     try:
         assert con.execute("SELECT count(*) FROM fantasy_teams WHERE is_mine").fetchone() == (1,), \
