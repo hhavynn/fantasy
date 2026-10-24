@@ -156,7 +156,7 @@ test("with JavaScript off, a league page renders its links and forms in that lea
     .filter((u) => !u.startsWith("//") && !u.startsWith(`/l/${lg}`) && !UNSCOPED_HREF.test(u) && !/[?&]league=clear\b/.test(u));
   // The Overview twice: with no team (no hub, #165) and from a team's perspective, so the weekly hub's links are checked
   const pages = ["/rankings", "/managers", "/", "/?team=1", "/players?id=201", "/start-sit", "/transactions",
-    "/trades/discover", "/luck-lab", "/movers", "/waivers"];
+    "/trades/discover", "/luck-lab", "/movers", "/waivers", "/ask", "/ask?q=who+should+I+start&team=1"];
   for (const p of pages) {
     const res = await page.goto(`/l/${lg}${p === "/" ? "" : p.startsWith("/?") ? p.slice(1) : p}`, { waitUntil: "load" });
     expect(res?.status(), `${p} HTTP status`).toBe(200);
