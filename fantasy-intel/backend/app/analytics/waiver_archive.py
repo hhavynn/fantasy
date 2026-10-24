@@ -35,8 +35,8 @@ HORIZON_WEEKS = 3        # the grading horizon a capture is archived for (waiver
 # sync, so hashing them would append a full capture per build (hourly on game days) with nothing new in it. A changed
 # roster or projection that changes a recommendation changes these fields, and is appended.
 CONTENT_FIELDS = ("espn_player_id", "position", "rank", "recommendation", "waiver_score", "opportunity_score",
-                  "roster_fit_score", "availability_status", "suggested_drop_id", "components", "reasons",
-                  "projection_source", "scoring_fingerprint", "rule_version", "archive_k", "horizon_weeks")
+                  "roster_fit_score", "availability_status", "suggested_drop_id", "projection_source",
+                  "scoring_fingerprint", "rule_version", "archive_k", "horizon_weeks")
 
 
 def _canonical(v):
@@ -50,20 +50,9 @@ def _canonical(v):
     return v
 
 
-def _unstamped(v):
-    """`v` without sync stamps nested in the evidence (K/D/ST streaming evidence carries `projection_synced_at` and a
-    `synced_at` per week, Codex #353): kept in the archived row, left out of its hash like the top-level stamps."""
-    if isinstance(v, dict):
-        return {k: _unstamped(x) for k, x in v.items() if not (k.endswith("synced_at") or k == "computed_at")}
-    if isinstance(v, list):
-        return [_unstamped(x) for x in v]
-    return v
-
-
 def content_sha256(rows: list[dict]) -> str:
     """The hash of a team's capture: its rows' CONTENT_FIELDS in rank order, as canonical JSON (no time or stamp)."""
-    body = [{k: _unstamped(_canonical(r.get(k))) for k in CONTENT_FIELDS}
-            for r in sorted(rows, key=lambda r: r["rank"])]
+    body = [{k: _canonical(r.get(k)) for k in CONTENT_FIELDS} for r in sorted(rows, key=lambda r: r["rank"])]
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
@@ -95,7 +84,7 @@ def archive_waiver_recommendations(con, provenance: dict | None) -> dict:
               "archive_k": ARCHIVE_K, "horizon_weeks": HORIZON_WEEKS}
     current = fetch_dicts(con, """
         SELECT team_id, espn_player_id, position, recommendation, waiver_score, opportunity_score, roster_fit_score,
-               availability_status, suggested_drop_id, components, reasons
+               availability_status, suggested_drop_id
         FROM team_waiver_recommendations WHERE league_id = ? AND season = ?
         ORDER BY team_id, waiver_score DESC NULLS LAST, espn_player_id
     """, [league_id, season])

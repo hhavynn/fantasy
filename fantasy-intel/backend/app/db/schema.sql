@@ -757,9 +757,7 @@ CREATE TABLE IF NOT EXISTS waiver_recommendation_snapshots (
     opportunity_score      DOUBLE,
     roster_fit_score       DOUBLE,
     availability_status    VARCHAR,
-    suggested_drop_id      BIGINT,
-    components             JSON,
-    reasons                JSON,
+    suggested_drop_id      BIGINT,    -- no components/reasons JSON: about 4.6 KB a row the grading never reads
     snapshot_id            VARCHAR,   -- '<league>:<season>:<week>:<team>:<captured_at iso>'
     projection_source      VARCHAR,   -- the waiver run's projection source (projection_source.normalize)
     projection_version     VARCHAR,   -- the newest projection stamp the run read

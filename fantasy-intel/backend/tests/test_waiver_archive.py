@@ -119,16 +119,21 @@ def test_rebuilding_from_unchanged_payloads_appends_nothing(base, tmp_path):  # 
         kept, previous = now, built.league_path
 
 
-def test_the_hash_ignores_sync_stamps_nested_in_the_evidence():
-    """Codex #353: K/D/ST streaming evidence carries projection_synced_at and a synced_at per week inside components;
-    a capture whose only change is those stamps hashes the same, and a real change does not."""
+def test_the_hash_ignores_sync_stamps_and_the_unarchived_evidence():
+    """Codex #353: K/D/ST streaming evidence carries projection_synced_at and a synced_at per week inside components.
+    The archive keeps no components (the grading never reads them, and they were most of a row's bytes), so a capture
+    whose only change is those stamps, or the input stamps, hashes the same; a changed score does not."""
     from app.analytics.waiver_archive import content_sha256
 
-    def row(stamp, value=3.0):
-        return {"rank": 1, "espn_player_id": 9, "recommendation": "CLAIM", "components": {"decision": {"streaming": {
-            "projection_synced_at": stamp, "weeks": [{"week": 5, "value": value, "synced_at": stamp}]}}}}
+    def row(stamp, score=3.0):
+        return {"rank": 1, "espn_player_id": 9, "recommendation": "CLAIM", "waiver_score": score,
+                "projection_version": stamp, "roster_synced_at": stamp, "components": {"decision": {"streaming": {
+                    "projection_synced_at": stamp, "weeks": [{"week": 5, "value": 1.0, "synced_at": stamp}]}}}}
     assert content_sha256([row("2026-10-01 10:00:00")]) == content_sha256([row("2026-10-02 11:00:00")])
-    assert content_sha256([row("2026-10-01 10:00:00")]) != content_sha256([row("2026-10-01 10:00:00", value=4.0)])
+    assert content_sha256([row("2026-10-01 10:00:00")]) != content_sha256([row("2026-10-01 10:00:00", score=4.0)])
+    cols = {r[0] for r in duckdb.connect().execute(
+        f"{(APP / 'db' / 'schema.sql').read_text()}; DESCRIBE {TABLE}").fetchall()}
+    assert not cols & {"components", "reasons"}
 
 
 def test_a_league_file_never_carries_another_leagues_captures(e2e, tmp_path):
