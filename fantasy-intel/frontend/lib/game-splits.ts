@@ -34,6 +34,11 @@ function validDate(v: string | undefined): string | null {
 
 /** Splits state from the URL. Anything malformed falls back to the default instead of erroring; the backend applies
  *  the window rules (order, at most three seasons) and answers 422 with the reason. */
+/** The splits answer when no NFL usage is stored at all: a 422 asking for a season. That is no data, not a bad window. */
+export function splitsUnavailable(status: number | undefined, error: string | undefined): boolean {
+  return status === 422 && /season must be given/.test(error ?? "");
+}
+
 export function parseSplitsState(sp: Params): SplitsState {
   const player = first(sp.player);
   const teammate = first(sp.teammate);

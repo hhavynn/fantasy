@@ -600,7 +600,7 @@ def build_pace_lab(con, q: PaceQuery) -> dict:
             "definitions": dict(DEFINITIONS), "available_seasons": seasons, "backtest": frozen_backtest()}
     if not seasons:
         return {**base, "status": "no_data", "query": None,
-                "message": "No NFL team-week play-by-play aggregates are stored. Run the NFL sync."}
+                "message": "Team play-by-play data is not available yet."}
     season = q.season if q.season is not None else seasons[-1]
     if season not in seasons:
         raise PaceLabError(f"No play-by-play aggregates are stored for {season}; stored seasons: "

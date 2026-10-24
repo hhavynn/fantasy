@@ -501,26 +501,29 @@ def test_api_contract_and_validation(api):
 # ----------------------------------------------------------------------------- the league mount (owner-only)
 
 
-def test_pace_lab_under_a_league_is_owner_only_and_authorizes_before_validating(pg, served, client, e2e, tmp_path):
-    from cp_seed import U1, U2, seed_membership, seed_user
+def test_pace_lab_under_a_league_is_a_member_tool_and_authorizes_before_validating(pg, served, client, e2e, tmp_path):
+    from cp_seed import U1, U2, U3, seed_membership, seed_user
     from league_fixtures import publish_local
     from test_leagues_api import bearer
-    pub = publish_local(pg, e2e, served, tmp_path / "w")
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
     with pg.connect() as c:
         seed_user(c, U1)
-        seed_membership(c, U1, pub.league_id, "admin")
-        seed_user(c, U2, admin=True)
+        seed_membership(c, U1, pub.league_id, "viewer")
+        seed_user(c, U2, admin=True)                                            # a platform admin who is a member
+        seed_membership(c, U2, pub.league_id, "viewer")
+        seed_user(c, U3)                                                        # signed in, not a member
         c.commit()
     url = f"/v2/leagues/{pub.league_id}/api/pace-lab"
-    assert client.get(url).status_code == 404
-    assert client.get(url, headers=bearer(U1)).status_code == 404               # a league admin is not enough
-    assert client.get(url + "?team=K1&window=bogus", headers=bearer(U1)).status_code == 404   # before validation
+    assert client.get(url).status_code == 404                                   # anonymous, private league
+    assert client.get(url, headers=bearer(U3)).status_code == 404               # an outsider
+    assert client.get(url + "?team=K1&window=bogus", headers=bearer(U3)).status_code == 404   # before validation
     assert client.get(f"/v2/leagues/lg_{'q' * 24}/api/pace-lab?team=K1").status_code == 404
-    r = client.get(url + "?team=KC", headers=bearer(U2))
+    assert client.get(url + "?team=KC", headers=bearer(U2)).status_code == 200  # a platform admin who is a member
+    r = client.get(url + "?team=KC", headers=bearer(U1))
     assert r.status_code == 200, r.text[:300]
     assert r.json()["contract"] == "pace-lab.v1" and r.json()["team"]["team"] == "KC"
     assert r.headers["cache-control"] == "private, no-store"
-    assert client.get(url + "?team=K1", headers=bearer(U2)).status_code == 422
+    assert client.get(url + "?team=K1", headers=bearer(U1)).status_code == 422
 
 
 from test_league_scope import client, e2e, served  # noqa: E402,F401  (fixtures for the league mount test)

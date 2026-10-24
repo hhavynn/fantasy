@@ -211,10 +211,11 @@ test("the availability timeline follows injury impact and marks itself, not Inju
 });
 
 
-test("owner research pages are hidden only when asked, and nothing else is", () => {
+test("only Projection accuracy is hidden from members; the research tools are member pages", () => {
   const all = ALL_NAV_PAGES.map((p) => p.href);
   const shown = visibleGroups(true).flatMap((g) => g.pages.map((p) => p.href));
-  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/pace-lab", "/projection-performance", "/research", "/research/splits"]);
+  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/projection-performance"]);
+  for (const href of ["/research", "/research/splits", "/pace-lab"]) assert.ok(shown.includes(href), href);
   assert.equal(visibleGroups(false), NAV_GROUPS);
 });
 

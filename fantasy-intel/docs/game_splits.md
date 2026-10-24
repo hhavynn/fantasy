@@ -17,7 +17,7 @@ and no league roster, lineup or scoring rule feeds a number.
 | `nfl_rosters_weekly` | Teammate status per week: ACT, INA, RES, DEV, SUS and other statuses, and the team he was listed on | REG rows (or rows without a game type). A player listed twice in a week is ambiguous unless an appearance resolves it. |
 | `nfl_schedules` | Game existence (byes), final score, game day for the cutoff, home/away, opponent, team points | A game counts only when final. |
 | `nfl_team_week` (optional) | Neutral pass rate, offensive plays | Missing values stay missing. |
-| `team_game_lines` (optional) | Implied team total | Missing values stay missing. |
+| `team_game_lines` | Not read. Whether nflverse-redistributed betting lines may be shown to league members is an open owner decision (#289); until then game splits carry no implied team total, as Pace Lab carries none. | |
 | `nfl_players` | Names and positions | |
 | `player_id_map` | The ESPN id behind the player-profile link only (a high-confidence single match; two ids link to neither) | Same use as the Research lab. |
 

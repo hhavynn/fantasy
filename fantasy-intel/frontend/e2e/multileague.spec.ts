@@ -11,8 +11,9 @@ type Manifest = { leagues: Record<"espn_public" | "espn_private" | "sleeper", st
 const manifest = (): Manifest =>
   JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../data/e2e-multileague/manifest.json"), "utf8"));
 
-// Owner-only research pages need a platform admin: for these visitors they answer "not found", checked separately. The set
-// comes from the nav's ownerOnly flags, so a new owner page is never added to the member parity matrix.
+// Owner-only pages (Projection accuracy) need a platform admin: for these visitors they answer "not found", checked
+// separately. The set comes from the nav's ownerOnly flags, so a new owner page is never added to the member parity
+// matrix. The research tools (Research lab, Game splits, Pace lab) are member pages and are in the matrix.
 const OWNER_ONLY = new Set(ALL_NAV_PAGES.filter((p) => p.ownerOnly).map((p) => p.href));
 const PAGES = [...ALL_NAV_PAGES.map((p) => p.href).filter((h) => !OWNER_ONLY.has(h)), "/managers/2", "/players?id=201"];
 const FAILURE_TEXT = /Can't reach the backend|The backend returned an error|database schema is out of date|Something went wrong|This page couldn't be rendered|League not found/;
@@ -67,22 +68,33 @@ test("a signed-out visitor never sees the private league", async ({ page }) => {
   await expect(page.locator("main")).not.toContainText("Echo RB");
 });
 
-test("owner-only research pages are not shown to a member who is not a platform admin", async ({ page, context }) => {
+test("a member sees the research tools, on desktop and in the phone menu, but not Projection accuracy", async ({ page, context }) => {
   await signIn(context);
   const lg = manifest().leagues.espn_private;
-  for (const p of OWNER_ONLY) {
+  for (const p of OWNER_ONLY) {                                         // Projection accuracy: platform admins only
     await page.goto(`/l/${lg}${p}`, { waitUntil: "load" });
-    await expect(page.locator("main")).not.toContainText(/MAE|promotion gate|Research Lab pool/);
+    await expect(page.locator("main")).not.toContainText(/MAE|promotion gate/);
   }
-  await page.goto(`/l/${lg}/rankings`, { waitUntil: "load" });         // the Players group, where both live
-  await expect(page.getByRole("link", { name: "Research lab" })).toHaveCount(0);
+  const research = [["Research lab", "/research"], ["Game splits", "/research/splits"], ["Pace lab", "/pace-lab"]] as const;
+  await page.goto(`/l/${lg}/rankings`, { waitUntil: "load" });         // the Players group, where all four live
   await expect(page.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Game splits" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Pace lab" })).toHaveCount(0);
+  for (const [name, href] of research) {
+    const link = page.getByRole("link", { name, exact: true }).first();
+    await expect(link, name).toBeVisible();
+    expect(new URL(await link.getAttribute("href") ?? "", page.url()).pathname, name).toBe(`/l/${lg}${href}`);
+  }
+  await page.setViewportSize({ width: 375, height: 812 });            // the phone menu lists the same pages
+  await page.getByRole("button", { name: /^Open menu/ }).click();
+  const menu = page.getByRole("navigation", { name: "All pages" });
+  await expect(menu).toBeVisible();
+  for (const [name] of research) await expect(menu.getByRole("link", { name, exact: true }), name).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Projection accuracy", exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
   // The 404 page lists the pages a visitor may open: the same filter as the nav.
   await page.goto(`/l/${lg}/no-such-page`, { waitUntil: "load" });
   const pages = page.locator("main").getByRole("navigation", { name: "All pages" });
   await expect(pages.getByRole("link", { name: "Rankings", exact: true })).toBeVisible();
+  await expect(pages.getByRole("link", { name: "Research lab", exact: true })).toBeVisible();
   for (const p of ALL_NAV_PAGES.filter((q) => q.ownerOnly)) {
     await expect(pages.getByRole("link", { name: p.label, exact: true }), p.href).toHaveCount(0);
   }
