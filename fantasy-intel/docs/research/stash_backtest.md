@@ -93,6 +93,52 @@ For each, report the mean and a 95% percentile bootstrap CI (2,000 resamples, se
 - Injuries are not projected ahead: only byes are known in advance, as in the planner, which uses only verified
   unavailability.
 
-## Results
+## Results (run at f29592b, 2026-10-24)
 
-(Added after the run.)
+**Pre-registered outcome: no evidence.** The planner's stashes help against doing nothing, but they are not shown to
+beat the projected-total greedy pick.
+
+| | Mean, realized points over the 4 later weeks | 95% CI, (season, week) clusters | 95% CI, (season, league, team) clusters |
+|---|---:|---|---|
+| `R_PLAN` (against NONE = 0) | **+13.5** | 9.7 to 17.2 | 12.1 to 14.8 |
+| `D1 = R_PLAN - R_B1` (deciding) | +0.7 | -7.9 to 8.8 | -2.1 to 3.4 |
+| `D2 = R_PLAN - R_B2` (reported) | +4.4 | -3.8 to 12.0 | 2.0 to 6.7 |
+
+- **Sample.** 3 seasons x 10 leagues x 12 teams x 11 weeks = 3,960 team-weeks. PLAN returned a stash on 2,014. On the
+  other 1,946 it found none.
+- **Precision.** 70% of PLAN's stashes realized a positive gain.
+- **Calibration.** PLAN projected +12.7 later points per stash on average and realized +13.5. The exact lineup
+  difference is close to unbiased under this projection.
+- **By season** (n, `R_PLAN`, `D1`, `D2`):
+
+  | Season | n | `R_PLAN` | `D1` | `D2` |
+  |---|---:|---:|---:|---:|
+  | 2023 | 720 | 13.6 | +2.7 | +2.9 |
+  | 2024 | 673 | 14.6 | +19.7 | +22.1 |
+  | 2025 | 621 | 12.2 | -22.2 | -12.9 |
+
+### Reading (post-hoc, does not change the outcome)
+
+The `D1` swings come from the baseline, not from the planner:
+- B1 is the single free agent with the highest projected total. With static rosters and an all-free-agent pool, that
+  is the same player for every team in a week. Across a season B1 picked only 2-10 distinct players, against 68-75
+  for PLAN, and the two agreed on about 10% of team-weeks.
+- One B1 player accounted for +12,649 of 2024's +13,260 summed `D1`, and another for -13,329 of 2025's -13,792. Each
+  was the same free agent busting or breaking out for everyone.
+- So the pre-registered B1 comparison has very few independent outcomes, and its wide intervals are the honest
+  result. The test cannot tell the planner from "pick the highest projected free agent", in either direction.
+
+What the run does support:
+- A stash chosen by the exact lineup difference realizes about what it projects (+13.5 vs +12.7).
+- The stash beats doing nothing under both clusterings.
+- The planner's picks are spread across many players rather than one.
+
+Neither of those is the pre-registered claim, so the product claims nothing beyond the v1 overview.
+
+### Suggested v2 (not run; would need its own pre-registration)
+
+- A baseline chosen per team rather than league-wide, for example the highest projected free agent at the position
+  of the team's weakest bye-week starter, so every arm has comparable effective sample size.
+- Leagues where claimed players leave the pool, so one breakout cannot be every team's pick.
+- More leagues per season. This only narrows the team-clustered interval; the week-clustered one is limited by
+  shared players.
