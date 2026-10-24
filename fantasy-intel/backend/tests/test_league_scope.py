@@ -107,7 +107,8 @@ def test_signal_provenance_names_the_versions_read_and_no_league_id(pg, served, 
     """signal-provenance.v1 in a league-scoped request: league data carries the league file version, nflverse data the
     global file version (the same values as the headers); the opaque league id never appears in the block."""
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
-    for path in ("/api/overview", "/api/start-sit", "/api/waivers", "/api/trades/options"):
+    # Start/Sit needs a team in view (#348); the anonymous visitor names one
+    for path in ("/api/overview", "/api/start-sit?team_id=1", "/api/waivers", "/api/trades/options"):
         r = client.get(f"/v2/leagues/{pub.league_id}{path}")
         assert r.status_code == 200, (path, r.text[:200])
         prov = r.json()["provenance"]
@@ -128,6 +129,32 @@ def test_an_anonymous_visitor_reads_a_public_league_from_any_perspective(pg, ser
     assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").json()["perspective"] is None
     teams = client.get(f"/v2/leagues/{pub.league_id}/api/teams?team_id=3").json()["teams"]
     assert [t["team_id"] for t in teams if t["is_owner_default"]] == [3]
+
+
+def test_start_sit_with_no_team_in_view_is_404_never_the_first_teams_lineup(pg, served, client, e2e, tmp_path):
+    """#348: no saved team and no ?team_id= is no "my team", so Start/Sit (and its what-if) answer 404 as Matchup does,
+    for an anonymous visitor and for a member who has not picked a team; ?team_id= or a saved team still answers."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_membership(con, U1, pub.league_id, "viewer")      # a member with no saved team
+        seed_user(con, U2)
+        seed_membership(con, U2, pub.league_id, "viewer")
+        con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '3')",
+                    [U2, pub.league_id])
+        con.commit()
+    base = f"/v2/leagues/{pub.league_id}/api"
+    for headers in ({}, bearer(U1)):
+        for path in ("/start-sit", "/start-sit/what-if", "/matchup"):
+            r = client.get(base + path, headers=headers)
+            assert r.status_code == 404, (path, r.text)
+            assert "No team is marked as yours" in r.json()["detail"] or path == "/matchup", (path, r.text)
+        r = client.get(f"{base}/start-sit?team_id=2", headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["team"]["id"] == 2
+    r = client.get(f"{base}/start-sit", headers=bearer(U2))                  # the saved team is the default
+    assert r.status_code == 200, r.text
+    assert r.json()["team"]["id"] == 3
 
 
 def test_private_leagues_and_unknown_ids_are_404_before_any_file_is_read(pg, served, client, e2e, tmp_path):

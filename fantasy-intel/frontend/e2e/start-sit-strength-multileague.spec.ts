@@ -20,14 +20,15 @@ for (const { width, height } of [{ width: 375, height: 812 }, { width: 1440, hei
   test(`at ${width}px a league's strength is in words and its other options stay in that league`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     const lg = manifest().leagues.espn_public;
-    await page.goto(`/l/${lg}/start-sit`);
+    // an anonymous visitor reads a public league from a team's perspective (?team=): with none, Start/Sit asks for one
+    await page.goto(`/l/${lg}/start-sit?team=1`);
     await expectStrengthInWords(page, { badge: true });
     await expectTryItLinksStayIn(page, `/l/${lg}/start-sit`);
   });
 
   test(`at ${width}px a league with partial projections is unverified, never clear or close`, async ({ page }) => {
     await page.setViewportSize({ width, height });
-    await page.goto(`/l/${manifest().leagues.espn_partial}/start-sit`);
+    await page.goto(`/l/${manifest().leagues.espn_partial}/start-sit?team=1`);
     const shown = await expectStrengthInWords(page, { badge: false });
     expect(shown.filter((t) => /^(Clear call|Close call)$|^(Clear|Close call):/.test(t))).toEqual([]);
     expect(shown.some((t) => /^Unverified/.test(t)), "the partial league is not graded unverified").toBe(true);

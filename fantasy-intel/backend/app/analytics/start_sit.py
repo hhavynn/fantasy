@@ -900,9 +900,12 @@ def load_start_sit_evaluation(
         if target_team is None:
             raise LookupError(f"Team {team_id} not found in this league.")
     else:
+        # no first-team fallback: with no team in view (a v2 viewer with no saved team and no ?team_id=, or no
+        # is_mine team) the answer would be some other manager's lineup presented as "yours" (#348), as Matchup refuses;
+        # the frontend's needsTeam() keys on this wording to show the team picker
         target_team = next((t for t in teams if t.get("is_mine")), None)
         if target_team is None:
-            target_team = teams[0]
+            raise LookupError("No team is marked as yours (is_mine); pass team_id.")
 
     tid = target_team["team_id"]
 
