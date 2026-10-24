@@ -195,7 +195,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
         drop_notes.append(f"This league uses an undroppable list; whether {drop.name} is on it is not known here.")
     rostered = {p.espn_player_id for p in players}
     pool = [p for p in free_agents if p.espn_player_id not in rostered and p.position in STASH_POSITIONS
-            and lineup_relevant(p.position, slots) and free_agent_status.get(p.espn_player_id) in ADDABLE]
+            and lineup_relevant(p, slots) and free_agent_status.get(p.espn_player_id) in ADDABLE]
     counts = {"free_agents": len(free_agents), "considered": len(pool)}
     projected = [p for p in pool if all(projection(proj, p.espn_player_id, w) is not None for w in hweeks)]
     counts["excluded_unprojected"] = len(pool) - len(projected)

@@ -82,7 +82,9 @@ class LineupTotals:
         levels = stream_levels(state.projections)
         self.stream = [{pos: per[w] for pos, per in levels.items() if pos in state.slots and per.get(w) is not None}
                        for w in weeks]
-        relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
+        relevant = {p for p in pids if teams.get(p) and lineup_relevant(
+            {"position": positions.get(p), "eligible_slots": self.elig_slots[p]} if p in self.elig_slots
+            else positions.get(p), state.slots)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
         unsupported = unsupported_of(state.slots)

@@ -123,9 +123,11 @@ def r(x: float | None) -> float | None:
     return None if x is None else round(x + 0.0, NDIGITS) + 0.0   # + 0.0 turns -0.0 into 0.0
 
 
-def lineup_relevant(position: str | None, slots: list[str]) -> bool:
-    """Can a player at this position fill any starting slot in this league?"""
-    return any(eligible(s, position) for s in set(slots))
+def lineup_relevant(player, slots: list[str]) -> bool:
+    """Can this player fill any starting slot in this league? `player` is a position (None = unknown) or a player with
+    `position` and optionally `eligible_slots`, so a player listed at a second position the slots take counts exactly
+    as the lineup solver starts him (#253 G11): his missing projection leaves the total unknown, never complete."""
+    return any(eligible(s, player) for s in set(slots))
 
 
 def projection(proj: Projections, pid: int, week: int) -> float | None:
@@ -238,7 +240,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         elif v is not None:
             known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v,
                           "eligible_slots": p.eligible_slots})
-        elif not lineup_relevant(p.position, slots):
+        elif not lineup_relevant(p, slots):
             continue
         elif p.pro_team:
             missing.append(p.espn_player_id)
@@ -275,7 +277,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         "_projections_complete": not missing,
         # active players who can fill no slot the engines fill (the candidates for the unsupported slots)
         "_offslot": frozenset(p.espn_player_id for p in players if not p.reserved
-                              and not lineup_relevant(p.position, slots)) if unsupported else frozenset(),
+                              and not lineup_relevant(p, slots)) if unsupported else frozenset(),
     }
 
 
@@ -548,7 +550,7 @@ def best_fa_addition(players: list[RosterPlayer], free_agents: list[RosterPlayer
     guaranteed. Only free agents ESPN projects in every remaining week are scored (no projection is
     ever manufactured)."""
     rostered = {p.espn_player_id for p in players}
-    pool = [p for p in free_agents if p.espn_player_id not in rostered and lineup_relevant(p.position, slots)
+    pool = [p for p in free_agents if p.espn_player_id not in rostered and lineup_relevant(p, slots)
             and (positions is None or p.position in positions)]
     scored = [p for p in pool if all(projection(proj, p.espn_player_id, w) is not None for w in window.weeks)]
     base = project_team(players, slots, window, proj)

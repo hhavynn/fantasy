@@ -145,7 +145,7 @@ def _version_text(versions) -> str:
 def _calc(board: AssetBoard, p, tags: dict | None = None) -> dict:
     """One player's value on one board, week by week (module docstring)."""
     base = board.base.get(p.position, {})
-    relevant = lineup_relevant(p.position, board.state.slots) and bool(p.pro_team)
+    relevant = lineup_relevant(p, board.state.slots) and bool(p.pro_team)
     weekly, raws, missing, unmeasured, structure = [], [], [], [], []
     phase = {"regular": 0.0, "playoff": 0.0}
     for w in board.weeks:

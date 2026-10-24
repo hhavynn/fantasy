@@ -375,7 +375,7 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
               for p in roster]
     sched = load_schedule_facts(con, season)
     loaded_rosters = roster_weeks(con, season)
-    active = [p for p in roster if not p.reserved and lineup_relevant(p.position, slots)]
+    active = [p for p in roster if not p.reserved and lineup_relevant(p, slots)]
     states = {w: {p.espn_player_id: player_week(p, avail.get(p.espn_player_id), w, sched) for p in active}
               for w in weeks}
     solved: dict = {}           # one matching per distinct set of certain and unknown players (most weeks share one)
@@ -393,7 +393,7 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
             "espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
             "injury_status": p.injury_status,
             "slot": "ir" if p.on_ir else "taxi" if p.on_taxi else "starter" if p.espn_player_id in starters else "bench",
-            "counts": not p.reserved and lineup_relevant(p.position, slots),
+            "counts": not p.reserved and lineup_relevant(p, slots),
             "eligible_slots": [s for s in dict.fromkeys(slots) if eligible(s, p)],
             "bye_week": bye,
             "availability": {k: rec.get(k) for k in ("status", "earliest_eligible_week", "eligibility_basis",

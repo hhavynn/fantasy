@@ -366,3 +366,23 @@ def test_the_free_agency_board_totals_equal_the_evaluators(league, row):
     for players in state.rosters.values():
         assert board.total(players) == pytest.approx(known_total(project_team(players, state.slots, state.window(),
                                                                               state.projections)), abs=1e-9)
+
+
+@pytest.mark.parametrize("listed", [None, (6, 4)], ids=["te-only", "te-and-wr"])
+def test_a_missing_projection_leaves_the_total_unknown_when_only_his_second_position_starts(listed):
+    """A TE also listed at WR in a league with a WR slot and no TE or flex slot starts at WR when projected, so without a
+    projection his contribution is unknown: the week is incomplete, in project_week and in the trade engine's totals.
+    A TE without that listing can fill no slot there, and his missing projection changes nothing."""
+    from app.analytics.team_lineups import RosterPlayer, project_week
+    slots = lineup_slots({"WR": 1})
+    te = RosterPlayer(1, "TE", pro_team="KC", name="TE", eligible_slots=listed)
+    starts_at_wr = listed is not None
+    week = project_week([te], slots, 1, {1: {1: 10.0}})
+    assert week["known_lineup_points"] == (10.0 if starts_at_wr else 0.0) and week["projection_complete"]
+    week = project_week([te], slots, 1, {})
+    assert week["projection_complete"] is not starts_at_wr
+    assert week["missing_projection_ids"] == ([1] if starts_at_wr else [])
+    assert week["projected_lineup_points"] == (None if starts_at_wr else 0.0)
+    state = types.SimpleNamespace(slots=slots, projections={})
+    T = LineupTotals(state, (1,), {1}, {1: "TE"}, {1: "KC"}, eligibility={1: listed})
+    assert T.missing == [frozenset({1} if starts_at_wr else ())]

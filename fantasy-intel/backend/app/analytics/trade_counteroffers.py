@@ -334,7 +334,7 @@ def counteroffers(state: LeagueState, team_a: int, team_b: int, a_sends, b_sends
 
 def _unknown_reason(state: LeagueState, ids: tuple) -> str:
     slots = unsupported_of(state.slots)
-    if slots and any(not lineup_relevant(p.position, state.slots)
+    if slots and any(not lineup_relevant(p, state.slots)
                      for t in state.rosters.values() for p in t if p.espn_player_id in ids):
         return (f"The offer moves a player who can start only in {', '.join(slots)}, a slot no engine fills, so its "
                 "impact is unknown and there is nothing exact to improve on.")

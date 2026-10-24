@@ -188,7 +188,7 @@ def unvalued_ids(players: list[RosterPlayer], state: LeagueState) -> frozenset[i
     one is never chosen for its "0" known cost (issue #253). Empty in a league without such slots."""
     if not unsupported_of(state.slots):
         return frozenset()
-    return frozenset(p.espn_player_id for p in players if not lineup_relevant(p.position, state.slots))
+    return frozenset(p.espn_player_id for p in players if not lineup_relevant(p, state.slots))
 
 
 def unvalued_note(names: list[str], state: LeagueState) -> str:

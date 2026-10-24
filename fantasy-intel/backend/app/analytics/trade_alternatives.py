@@ -150,7 +150,7 @@ class FreeAgencyBoard:
         rostered = {p.espn_player_id for ps in state.rosters.values() for p in ps}
         self.pool, self.excluded_unprojected = [], Counter()
         for p in state.free_agents:
-            if p.espn_player_id in rostered or not lineup_relevant(p.position, state.slots):
+            if p.espn_player_id in rostered or not lineup_relevant(p, state.slots):
                 continue
             if all(projection(state.projections, p.espn_player_id, w) is not None
                    for w in self.weeks if w not in p.unavailable_weeks):
@@ -171,7 +171,7 @@ class FreeAgencyBoard:
     def unprojected(self, p: RosterPlayer) -> bool:
         """An active lineup-relevant player with an NFL team and no ESPN projection in some eligible week:
         what he is worth is unknown, so dropping him has an unknown cost (never a measured 0)."""
-        return not p.reserved and bool(p.pro_team) and lineup_relevant(p.position, self.state.slots) and any(
+        return not p.reserved and bool(p.pro_team) and lineup_relevant(p, self.state.slots) and any(
             projection(self.state.projections, p.espn_player_id, w) is None
             for w in self.weeks if w not in p.unavailable_weeks)
 
