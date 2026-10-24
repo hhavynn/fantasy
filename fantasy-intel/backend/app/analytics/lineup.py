@@ -18,7 +18,6 @@ A FLEX is one slot: 2 RB + 2 WR + 1 FLEX = exactly five RB/WR/TE starters.
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from itertools import combinations, product
 from types import MappingProxyType
 
@@ -160,11 +159,6 @@ def positions_of(player) -> frozenset[str]:
 
 def slot_takes(slots) -> frozenset[str]:
     """Every position some slot in `slots` takes."""
-    return _slot_takes(tuple(slots))
-
-
-@lru_cache(maxsize=256)
-def _slot_takes(slots: tuple[str, ...]) -> frozenset[str]:
     return frozenset(q for s in set(slots) for q in slot_positions(s))
 
 

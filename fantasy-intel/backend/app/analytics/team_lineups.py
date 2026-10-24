@@ -45,7 +45,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, separable, slot_positions, unsupported_of
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, positions_of, separable, slot_positions,
+                     unsupported_of)
 
 PROJECTION_SOURCE = "ESPN"
 NO_PROJECTIONS = "Unavailable"      # as start_sit.NO_PROJECTIONS
@@ -512,23 +513,24 @@ def replacement_market(free_agents: list[RosterPlayer], slots: list[str], window
 
 
 def _pareto(cands: list[RosterPlayer], weeks: tuple[int, ...], proj: Projections) -> list[RosterPlayer]:
-    """Drop candidates weakly dominated week-by-week by another candidate at the same position.
-    Exact: same position = same slot eligibility, and the optimal lineup total is non-decreasing in
-    one player's weekly value, so a dominated candidate can never produce a higher total (ties keep
-    the lower id, matching the final tie-break)."""
+    """Drop candidates weakly dominated week-by-week by another candidate at the same position who can fill every
+    position he can (lineup.positions_of: a WR also listed at RB is never dropped for a WR-only player, #253 G11).
+    Exact: the dominating candidate fits every slot the other fits, and the optimal lineup total is non-decreasing in
+    one player's weekly value, so a dominated candidate can never produce a higher total (ties keep the lower id,
+    matching the final tie-break)."""
     out = []
     by_pos: dict[str | None, list] = {}
     for c in cands:
         # A verified NFL-ineligible week contributes nothing, exactly like a 0 (he cannot start).
         by_pos.setdefault(c.position, []).append((c, tuple(0.0 if w in c.unavailable_weeks else proj[c.espn_player_id][w]
-                                                           for w in weeks)))
+                                                           for w in weeks), positions_of(c)))
     for items in by_pos.values():
         items.sort(key=lambda t: (-sum(t[1]), t[0].espn_player_id))
         kept: list = []
-        for c, v in items:
-            if not any(all(kv[i] >= v[i] for i in range(len(v))) for _, kv in kept):
-                kept.append((c, v))
-        out += [c for c, _ in kept]
+        for c, v, pos in items:
+            if not any(kpos >= pos and all(kv[i] >= v[i] for i in range(len(v))) for _, kv, kpos in kept):
+                kept.append((c, v, pos))
+        out += [c for c, _, _ in kept]
     return out
 
 

@@ -343,3 +343,26 @@ def test_the_stash_bound_never_cuts_a_free_agent_who_gains_only_through_his_seco
                               active_capacity=len(roster), horizon=2, projection_source="ESPN")
         found = [x["espn_player_id"] for x in res["pick_up_now"] + res["stashes"]]
         assert (found == [40]) is gains, res["counts"]
+
+
+def test_a_free_agent_listed_at_two_positions_is_never_pruned_for_a_one_position_player():
+    from app.analytics.team_lineups import RosterPlayer, Window, best_fa_addition
+    slots = lineup_slots({"RB": 1, "WR": 1})
+    win = Window((1, 2), 1)
+    roster = [RosterPlayer(1, "RB", pro_team="KC", name="RB1"), RosterPlayer(2, "WR", pro_team="KC", name="WR2")]
+    fas = [RosterPlayer(10, "WR", pro_team="KC", name="WR only"),
+           RosterPlayer(11, "WR", pro_team="KC", name="WR/RB", eligible_slots=(4, 2))]
+    proj = {1: {1: 1.0, 2: 1.0}, 2: {1: 20.0, 2: 20.0}, 10: {1: 11.0, 2: 11.0}, 11: {1: 10.0, 2: 10.0}}
+    out = best_fa_addition(roster, fas, slots, win, proj)
+    assert out["player"]["espn_player_id"] == 11 and out["known_lineup_points_added"] == pytest.approx(18.0)
+
+
+@pytest.mark.parametrize("row", DUAL_ROWS, ids=lambda r: r.id)
+def test_the_free_agency_board_totals_equal_the_evaluators(league, row):
+    from app.analytics.trade_alternatives import FreeAgencyBoard
+    state = load_league_state(league(row), now=NOW)
+    board = FreeAgencyBoard(state, state.window())
+    assert board.T.general                                    # team 1's dual player sends every week to the exact path
+    for players in state.rosters.values():
+        assert board.total(players) == pytest.approx(known_total(project_team(players, state.slots, state.window(),
+                                                                              state.projections)), abs=1e-9)

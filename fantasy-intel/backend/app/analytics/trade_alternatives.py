@@ -161,7 +161,8 @@ class FreeAgencyBoard:
                    {p.espn_player_id: p for p in self.pool}
         self.T = _Totals(state, self.weeks, set(everyone), {i: p.position for i, p in everyone.items()},
                          {i: p.pro_team for i, p in everyone.items()},
-                         {i: p.unavailable_weeks for i, p in everyone.items() if p.unavailable_weeks})
+                         {i: p.unavailable_weeks for i, p in everyone.items() if p.unavailable_weeks},
+                         eligibility={i: p.eligible_slots for i, p in everyone.items()})
         self.negative = self.T.negative
         self._totals: dict[tuple, float] = {}
         self._best: dict[tuple, dict] = {}
