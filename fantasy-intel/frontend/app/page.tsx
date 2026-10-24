@@ -126,7 +126,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Notice>
       )}
 
-      {band}
+      {/* The hub is one team's week: with no team in view (no saved team, no ?team=) Start/Sit and the waivers would
+          answer for whichever team they fall back to, so it waits for a team to be picked (#165) */}
+      {me && band}
 
       {me && (
         <StatStrip compact>

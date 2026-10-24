@@ -187,7 +187,7 @@ def _trim_start_sit(ss: dict) -> dict:
         "scoring_period": ss.get("scoring_period"),
         "is_future_preview": ss.get("is_future_preview"),
         "projection_source": ss.get("projection_source"),
-        "summary": {k: summary.get(k) for k in ("starters_count", "status", "projection_complete")},
+        "summary": {k: summary.get(k) for k in ("starters_count", "status", "projection_complete", "all_locked")},
         "decisions": ss.get("decisions") or [],
         "schedule_warnings": ss.get("schedule_warnings") or [],
         "provenance": ss.get("provenance"),

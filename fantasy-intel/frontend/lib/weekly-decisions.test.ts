@@ -336,6 +336,10 @@ test("Start/Sit all_locked: no lineup alert is the actionable next step; non-lin
   assert.equal(counted({ locked_players_count: 16, lineup_coverage: { status: "partial" } }).primary?.id, "out-2");
   // an older backend without the counts infers nothing
   assert.equal(counted({}).primary?.id, "out-2");
+  // the engine's own flag is exact and wins over the counts: held starters locked too, or a count that disagrees
+  assert.equal(counted({ all_locked: true, locked_players_count: 16, lineup_coverage: { status: "partial" } }).primary, null);
+  assert.equal(counted({ all_locked: true }).primary, null);
+  assert.equal(counted({ all_locked: false, locked_players_count: 16 }).primary?.id, "out-2");
 });
 
 test("Start/Sit incomplete_data is never \"Lineup is set\": the hub is partial and says why", () => {

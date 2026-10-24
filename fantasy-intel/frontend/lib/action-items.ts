@@ -69,6 +69,8 @@ export type StartSitInput = {
     ir_count?: number;
     /** Present when the league starts slots no engine fills; those held starters are in no count above. */
     lineup_coverage?: unknown;
+    /** Every rostered player's game has kicked off, held starters included (older backends omit it). */
+    all_locked?: boolean;
   };
   decisions: {
     id: string;
@@ -163,11 +165,13 @@ type Base = Omit<ActionItem, "statusReason" | "players" | "position" | "signals"
 const item = (b: Base): ActionItem => ({ statusReason: null, players: [], position: null, signals: null, ...b });
 
 /**
- * Whether Start/Sit says every rostered player's game has kicked off. `all_locked` is its status for that, but the
- * engine reports `incomplete_data` first, so the counts are read too: every starter, bench and IR player locked. That is
- * only exact without held starters (`lineup_coverage` absent), whose locks the counts include but no count lists.
+ * Whether Start/Sit says every rostered player's game has kicked off. The engine's `all_locked` flag says so exactly,
+ * whatever its status reports first (`incomplete_data` outranks `all_locked`). Older backends without the flag: the
+ * status, else the counts (every starter, bench and IR player locked), which are only exact without held starters
+ * (`lineup_coverage` absent), whose locks the counts include but no count lists.
  */
 export function everyGameLocked(summary: StartSitInput["summary"]): boolean {
+  if (typeof summary.all_locked === "boolean") return summary.all_locked;
   if (summary.status === "all_locked") return true;
   const { locked_players_count: locked, bench_count: bench, ir_count: ir } = summary;
   if (summary.lineup_coverage != null || locked == null || bench == null || ir == null) return false;

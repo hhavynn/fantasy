@@ -1300,6 +1300,10 @@ def load_start_sit_evaluation(
             "bench_count": len(bench),
             "ir_count": len(ir),
             "locked_players_count": locked_count,
+            # every rostered player Start/Sit can see has kicked off (held starters included; starters missing from the
+            # player data are not seen), whatever `status` reports first: `incomplete_data` outranks `all_locked` there,
+            # so consumers read this flag rather than infer it (#165)
+            "all_locked": all_locked,
             "status": summary_status,
             **({"lineup_coverage": coverage} if coverage else {}),
         },
