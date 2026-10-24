@@ -478,3 +478,46 @@ def test_no_team_in_view_asks_for_one_instead_of_answering_for_another(e2e_file,
         assert card["status"] == "clarify" and card["clarify"]["code"] == "needs_team", q
     assert ask(c, "who should i start", team_id=2)["status"] == "answered"
     assert ask(c, "how is papa wr doing")["status"] == "answered"     # a player question needs no team
+
+
+def test_bye_players_are_named_from_the_planners_own_players_table(client, monkeypatch):
+    """bye_planner lists player ids per week (Codex P1 on #350): the card names them from the planner's players."""
+    from app.api import ask as ask_api
+    fake = {"team": {"name": "Team 2"}, "players": [{"espn_player_id": 304, "name": "Papa WR"}],
+            "weeks": [{"week": 3, "status": "short", "status_text": "Short", "covered": 8, "required": 9,
+                       "byes": [304, 999], "starters_on_bye": [304]}],
+            "summary": {"conflict_weeks": [3]}, "provenance": None}
+    monkeypatch.setattr(ask_api.schedule_intelligence, "bye_planner", lambda team_id: fake)
+    f = facts(ask(client, "who is on bye this week"))
+    assert f["Starters on bye"] == "Papa WR"
+    assert f["Players on bye"] == "Papa WR, player id 999"
+
+
+def _fake_start_sit(monkeypatch, *, starting, bench, options, preview=False):
+    from app.api import ask as ask_api
+    out = {"team": {"name": "Team 2"}, "scoring_period": 3, "is_future_preview": preview, "decisions": [],
+           "actual_lineup": [{"player_id": p} for p in starting], "current_bench": [{"player_id": p} for p in bench],
+           "recommended_lineup": [{"player_id": p} for p in starting], "provenance": None, "freshness": None,
+           "alternatives": [] if preview else [{"starter_id": starting[0], "label": "WR 1", "options": [
+               {"player_id": o, "name": f"P{o}", "position": "WR", "projection": 5.0, "delta": -1.0,
+                "whatif": f"w3t2~WR_0.{o}"} for o in options]}]}
+    monkeypatch.setattr(ask_api, "_start_sit", lambda ctx: out)
+
+
+def test_a_start_choice_outside_the_capped_alternatives_abstains(client, monkeypatch):
+    """Start/Sit lists at most MAX_ALTERNATIVES per slot (Codex P2 on #350): a bench player missing from the list is
+    not shown to be ineligible, so the card abstains instead of claiming the two do not compete."""
+    _fake_start_sit(monkeypatch, starting=[304], bench=[305, 306, 307, 308], options=[306, 307, 308])
+    card = ask(client, "should i start Papa WR or Quebec WR")
+    assert card["status"] == "abstain" and card["abstain"]["code"] == "not_listed"
+    _fake_start_sit(monkeypatch, starting=[304, 305], bench=[306], options=[306])
+    assert "starts both" in ask(client, "should i start Papa WR or Quebec WR")["answer"]["headline"]
+    _fake_start_sit(monkeypatch, starting=[301], bench=[304, 305], options=[304])
+    assert ask(client, "should i start Papa WR or Quebec WR")["answer"]["headline"].startswith("Neither")
+
+
+def test_a_future_week_preview_lists_no_alternatives_so_slot_questions_abstain(client, monkeypatch):
+    _fake_start_sit(monkeypatch, starting=[304], bench=[305], options=[], preview=True)
+    for q in ("should i start Papa WR or Quebec WR next week", "best replacement for Papa WR next week"):
+        card = ask(client, q)
+        assert card["status"] == "abstain" and card["abstain"]["code"] == "preview", q

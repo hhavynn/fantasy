@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics import ask as grammar
 from ..analytics.legacy_league import latest_league
+from ..analytics.lineup_what_if import MAX_ALTERNATIVES
 from ..analytics.screener import METRIC_BY_KEY, UNKNOWN_OWNERSHIP
 from . import matchup as matchup_api
 from . import (
@@ -399,11 +400,23 @@ def _on_roster(out: dict, pid: int) -> bool:
     return pid in ids
 
 
+def _preview(question: str, parsed: grammar.Parsed, out: dict) -> dict | None:
+    """Start/Sit lists no alternatives for a future-week preview: nothing about a slot can be established then."""
+    if not out.get("is_future_preview"):
+        return None
+    return _card("abstain", question, parsed, code="preview",
+                 reason=f"Week {out.get('scoring_period')} is a preview: Start/Sit lists legal alternatives for the "
+                        f"current week only.", link={"path": "/start-sit", "query": {"week": out.get("scoring_period")}})
+
+
 def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     p = ctx["players"]["p"]
     pid = p["espn_player_id"]
     out = _start_sit(ctx)
     team = out["team"]["name"]
+    preview = _preview(question, parsed, out)
+    if preview is not None:
+        return preview
     if not _on_roster(out, pid):
         return _card("abstain", question, parsed, code="not_on_roster",
                      reason=f"{p['full_name']} is not on {team}'s roster for this week.")
@@ -419,7 +432,8 @@ def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
                   "cells": {"name": o["name"], "position": o["position"], "projection": o.get("projection"),
                             "delta": o.get("delta")}} for o in opts[:TOP]]
         headline = (f"{p['full_name']} starts at {alt['label']} in Start/Sit's best projected lineup; these are the "
-                    f"legal players who could take that slot." if shown else
+                    f"closest legal alternatives Start/Sit lists for that slot (at most {MAX_ALTERNATIVES})." if shown
+                    else
                     f"No legal alternative to {p['full_name']} at {alt['label']} (kickoff locks, eligibility and IR "
                     f"rules apply).")
         return _card("answered", question, parsed, interpretation=interp, link=link,
@@ -449,6 +463,9 @@ def run_start_choice(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     a, b = ctx["players"]["p"], ctx["players"]["p2"]
     out = _start_sit(ctx)
     team = out["team"]["name"]
+    preview = _preview(question, parsed, out)
+    if preview is not None:
+        return preview
     for x in (a, b):
         if not _on_roster(out, x["espn_player_id"]):
             return _card("abstain", question, parsed, code="not_on_roster",
@@ -469,11 +486,20 @@ def run_start_choice(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
                           _fact("Change to the lineup total", opt.get("delta"), "pts")],
                 "columns": [], "rows": [], "truncated": False, "whatif": opt.get("whatif")},
                 provenance=out.get("provenance"), freshness=out.get("freshness"))
-    return _card("answered", question, parsed, interpretation=interp,
-                 link={"path": "/compare", "query": {"a": a["espn_player_id"], "b": b["espn_player_id"]}},
-                 answer={"headline": f"{a['full_name']} and {b['full_name']} do not compete for one slot in Start/Sit's "
-                                     f"best projected lineup this week. Compare them side by side instead.",
-                         "facts": [], "columns": [], "rows": [], "truncated": False},
+    starting = {x.get("player_id") for x in out.get("recommended_lineup") or []}
+    a_in, b_in = a["espn_player_id"] in starting, b["espn_player_id"] in starting
+    if a_in != b_in:
+        # One starts and the other is not among the slot's listed alternatives: the list is capped, so this does not
+        # establish that the other cannot take the slot, or what the swap is worth.
+        return _card("abstain", question, parsed, code="not_listed", link=link,
+                     reason=f"Start/Sit lists only the closest {MAX_ALTERNATIVES} legal alternatives for each slot, so "
+                            f"it cannot say here what starting {(b if a_in else a)['full_name']} instead of "
+                            f"{(a if a_in else b)['full_name']} would change. Try the move on the Start/Sit page.")
+    headline = (f"Start/Sit's best projected lineup starts both {a['full_name']} and {b['full_name']} this week."
+                if a_in else
+                f"Neither {a['full_name']} nor {b['full_name']} is in Start/Sit's best projected lineup this week.")
+    return _card("answered", question, parsed, interpretation=interp, link=link,
+                 answer={"headline": headline, "facts": [], "columns": [], "rows": [], "truncated": False},
                  provenance=out.get("provenance"), freshness=out.get("freshness"))
 
 
@@ -624,8 +650,12 @@ def run_byes(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
         return _card("abstain", question, parsed, code="no_week",
                      reason=f"The bye planner has no week {want} (it covers the remaining weeks).", link=link)
 
-    def names(xs):
-        return [x.get("name") if isinstance(x, dict) else x for x in xs or []]
+    by_id = {pl.get("espn_player_id"): pl.get("name") for pl in out.get("players") or []}
+
+    def names(ids):
+        """The planner lists player ids; their names come from its own players table (an id it does not name is shown
+        as the id, never dropped)."""
+        return [by_id.get(i) or f"player id {i}" for i in ids or []]
 
     facts = [_fact("Week", row["week"]), _fact("Status", row.get("status_text") or row.get("status")),
              _fact("Starting slots covered", row.get("covered")), _fact("Starting slots required", row.get("required")),
