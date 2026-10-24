@@ -31,9 +31,9 @@ from .decision_feedback import (
     _aware,
     _json,
     _marks,
+    _nfl,
     _own_team,
     _weekly_teams,
-    kickoff_for,
 )
 from .legacy_league import latest_league
 from .lineup import lineup_slots
@@ -103,6 +103,7 @@ class WaiverData:
     matchups: list[dict] = field(default_factory=list)
     week: int | None = None                          # selected matchup period
     kickoffs: dict = field(default_factory=dict)     # (week, nfl team) -> aware kickoff
+    games: set = field(default_factory=set)          # (week, nfl team) with a scheduled REG game, kickoff known or not
     weekly_team: dict = field(default_factory=dict)  # (week, espn id) -> nflverse team that week
     players: dict = field(default_factory=dict)      # espn id -> {full_name, position, pro_team}
     rosters: list[dict] = field(default_factory=list)    # roster_history rows of the team
@@ -181,6 +182,17 @@ def _rp(data: WaiverData, pid: int, on_ir: bool = False) -> RosterPlayer:
     return RosterPlayer(pid, p.get("position"), pro_team=p.get("pro_team"), name=p.get("full_name"), on_ir=on_ir)
 
 
+def known_bye(data: WaiverData, week: int, pid: int) -> bool:
+    """True only when the schedule lists games for `week` and none of the player's known NFL teams (his team, his
+    nflverse weekly team) plays in one. Decided from scheduled games, never from kickoff times: a game whose kickoff is
+    unknown is still a game, so a missing outcome there is unknown, not a bye (Codex #353)."""
+    if not any(w == week for w, _ in data.games):
+        return False
+    p = data.players.get(pid) or {}
+    teams = {t for t in (_nfl(p.get("pro_team")), data.weekly_team.get((week, pid))) if t and t != "FA"}
+    return bool(teams) and not any((week, t) in data.games for t in teams)
+
+
 def _actuals(data: WaiverData, weeks: list[int], pids: set[int]) -> dict | None:
     """{pid: {week: points}} with a known bye as 0, or None when any value is unknown."""
     out: dict[int, dict[int, float]] = {}
@@ -188,8 +200,7 @@ def _actuals(data: WaiverData, weeks: list[int], pids: set[int]) -> dict | None:
         for w in weeks:
             v = data.outcomes.get((w, pid))
             if v is None:
-                _, status = kickoff_for(data, w, pid)
-                if status != "bye":
+                if not known_bye(data, w, pid):
                     return None
                 v = 0.0
             out.setdefault(pid, {})[w] = float(v)
@@ -342,6 +353,10 @@ def load_waiver_data(con, week: int | None = None) -> WaiverData:
         return data
     tid = data.team["team_id"]
     data.kickoffs = pf.team_kickoffs(con, season)
+    if table_exists(con, "nfl_schedules"):
+        data.games = {(int(g["week"]), t) for g in fetch_dicts(
+            con, "SELECT week, home_team, away_team FROM nfl_schedules WHERE season = ? AND game_type = 'REG'", [season])
+            for t in (g["home_team"], g["away_team"]) if t}
     if not table_exists(con, TABLE):           # a league file built before the archive: every week says no_archive
         return data
     data.captures = fetch_dicts(con, f"""SELECT * FROM {TABLE} WHERE league_id = ? AND season = ? AND team_id = ?

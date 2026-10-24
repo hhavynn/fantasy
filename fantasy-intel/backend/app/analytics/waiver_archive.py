@@ -50,9 +50,20 @@ def _canonical(v):
     return v
 
 
+def _unstamped(v):
+    """`v` without sync stamps nested in the evidence (K/D/ST streaming evidence carries `projection_synced_at` and a
+    `synced_at` per week, Codex #353): kept in the archived row, left out of its hash like the top-level stamps."""
+    if isinstance(v, dict):
+        return {k: _unstamped(x) for k, x in v.items() if not (k.endswith("synced_at") or k == "computed_at")}
+    if isinstance(v, list):
+        return [_unstamped(x) for x in v]
+    return v
+
+
 def content_sha256(rows: list[dict]) -> str:
     """The hash of a team's capture: its rows' CONTENT_FIELDS in rank order, as canonical JSON (no time or stamp)."""
-    body = [{k: _canonical(r.get(k)) for k in CONTENT_FIELDS} for r in sorted(rows, key=lambda r: r["rank"])]
+    body = [{k: _unstamped(_canonical(r.get(k))) for k in CONTENT_FIELDS}
+            for r in sorted(rows, key=lambda r: r["rank"])]
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 

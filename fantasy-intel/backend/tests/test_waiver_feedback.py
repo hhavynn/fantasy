@@ -23,6 +23,7 @@ def data(**kw):
     d.matchups = [{"matchup_period": p, "home_team_id": 1, "away_team_id": 2, "home_points": 1, "away_points": 0,
                    "winner": "HOME", "playoff_tier": None, "matchup_id": p} for p in range(1, 7)]
     d.kickoffs = {(w, t): kick(w) for w in range(1, 18) for t in ("KC", "BUF")}
+    d.games = set(d.kickoffs)                                 # every scheduled game, its kickoff known or not
     d.players = {1: {"full_name": "QB", "position": "QB", "pro_team": "KC"},
                  2: {"full_name": "RB2", "position": "RB", "pro_team": "KC"},
                  3: {"full_name": "RB3", "position": "RB", "pro_team": "BUF"},
@@ -111,10 +112,21 @@ def test_a_missing_outcome_is_unknown_but_a_known_bye_scores_zero():
     d = data(captures=cap)
     del d.outcomes[(3, 10)]
     d.kickoffs = {k: v for k, v in d.kickoffs.items() if k != (3, "KC")}      # KC on bye in week 3 (RB 2, RB 10)
+    d.games.discard((3, "KC"))
     del d.outcomes[(3, 2)], d.outcomes[(3, 1)]
     (claim,) = wf.week_feedback(d, 2)["claims"]
     # +7 in weeks 2 and 4; in KC's bye week RB 3 (BUF, dropped) would have started for 1, and nobody replaces him
     assert claim["gain"] == 13.0
+
+
+def test_a_scheduled_game_with_an_unknown_kickoff_is_not_a_bye():
+    """Codex #353: KC plays in week 3 but its kickoff time is unknown (absent from the kickoffs). RB 10's missing
+    outcome is then unknown, never a bye scored 0."""
+    d = data(captures=flat(capture(2, datetime(2026, 9, 14, 13, tzinfo=UTC))))
+    del d.outcomes[(3, 10)]
+    d.kickoffs = {k: v for k, v in d.kickoffs.items() if k != (3, "KC")}      # the game stays in d.games
+    out = wf.week_feedback(d, 2)
+    assert out["excluded"] == {"unknown_outcome": 1} and out["claims"] == []
 
 
 def test_a_player_another_team_added_in_the_waiver_window_is_excluded():
