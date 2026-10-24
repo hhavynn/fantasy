@@ -44,10 +44,11 @@ The rule was fixed in code before any real data was run (`DECISION_RULE` in the 
 
 | Time | What |
 |---|---|
-| 01:27:42 | pre-registration commit dc8d04d (module, rule, tests, script) pushed |
+| 01:27:42 | pre-registration commit dc8d04d (module, rule, tests, script); pushed 01:27:44 |
 | 01:27:51 | first and only run starts from that commit; the report records `git_sha` dc8d04d, clean |
 | 01:28:06 | results written |
-| after | one post-hoc check (offense vs league, below), labelled as such; the deciding numbers are unchanged |
+| after | post-hoc checks: mine, and the independent reviewer's sweep (below), labelled as such. The deciding numbers are unchanged |
+| after review | the script's report key `weeks` renamed `eval_weeks`. It had been overwritten by `evaluate()`'s count of season-weeks, so `report.json` recorded 56 instead of [5, 18]. The module and the rule are unchanged |
 
 ## Data
 
@@ -83,19 +84,40 @@ wrong way.
 * **Abstention.**
   * A defense had at least 30 prior attempts in 3.48 of the 6 cells on average, mostly the three short cells.
   * Every evaluated attempt had at least one adjusted cell.
-  * All 6 cells were adjusted on 0.3% of attempts: the deep cells rarely reach 30.
+  * All 6 cells were adjusted on 0.3% of attempts. Middle-deep is almost never adjusted (0.7% of attempts); left-deep
+    and right-deep are adjusted about a third of the time.
 * **Per-game cell-share MAE** (realized vs predicted shares): league 0.0529, offense 0.0530, combined 0.0531. The
   defense profile is no better on this measure either.
-* **Post-hoc, after the result:** offense − league is −0.00034, with CIs (−0.00137, +0.00063) by season-week and
-  (−0.00156, +0.00091) by season-defense. Even an offense's own same-season direction tendency does not measurably
-  beat the league mix at this cell grain.
+* **Post-hoc, after the result** (none of this decides anything):
+  * **Offense vs league at the pre-registered shrinkage (100):** −0.00034, with CIs (−0.00137, +0.00063) and
+    (−0.00156, +0.00091), so not measurable at that setting. **The setting under-shrinks:** at shrinkage 400 the gap is
+    −0.00226, with CIs (−0.00288, −0.00167) and (−0.00299, −0.00152), below 0 under both clusterings. Offenses' own
+    direction tendencies are real but small. (I reproduced both numbers with `pdr._ll_gap(rows, "p_offense",
+    "p_league")` on the predictions, setting `SHRINK` to each value.)
+  * **The reviewer's robustness sweep** of the defense adjustment, an independent post-hoc script:
+    * The pre-registered model is, if anything, under-regularised rather than over-penalising the defense. The
+      30-attempt gate helps at every shrinkage tried. Weaker defense shrinkage, or a stronger ratio exponent, makes
+      the combined model worse.
+    * Damped variants beat the offense prediction in-sample: a ratio exponent of 0.5 gives −0.00092, and defense
+      shrinkage of 400 gives −0.00083, both with CIs below 0. Each still fails against the league mix under the
+      season-defense clustering, and every gain comes from 2022–23. In 2024–25 every interval includes 0.
+    * An exponent fitted on 2022–23 (0.5) gives −0.000085 on 2024–25, with a CI of (−0.0008, +0.0007).
+    * Additive, opponent-adjusted, depth-only and location-only variants also fail.
+
+    No reasonable variant passes the full rule.
 
 ## Reading
 
-* **Where a pass goes is mostly the league's mix plus noise.** All three predictions sit within 0.0004 nats of each
-  other, against a gap of 0.26 nats between any of them and a uniform guess.
-* **The defense's allowed direction carries no measurable next-game information** beyond the offense's tendency or the
-  league mix. A "throws left-short against this defense" line would be describing noise.
+* **At this cell grain, most of the predictable part of where a pass goes is the league mix.**
+  * All three predictions sit within 0.0004 nats of each other, against 0.26 nats between any of them and a uniform
+    guess.
+  * Offense tendencies add a small, real amount, but only with heavier shrinkage (post-hoc).
+  * This test did not model situation (down, distance, score) or alignment.
+* **Under the pre-registered model the defense profile adds no detectable signal.**
+  * The intervals rule out a gain larger than about 0.0007 nats per attempt over the offense prediction.
+  * Damped post-hoc variants reach at most about 0.001 nats, and that does not replicate in 2024–25.
+  * Defenses do differ in what they allow, partly because of their schedules. Those differences are not a usable
+    next-game signal at this grain. A "throws left-short against this defense" line would not be backed by evidence.
 * **Recommendation:** no matchup indicator built on the defense's pass-direction profile, on any page. Per
   `docs/research/defensive_matchup_sources.md`, the remaining candidates are:
   * last season's man/zone mix (participation; license check pending);
@@ -107,8 +129,9 @@ wrong way.
 
 * **Granularity.** The cells are coarse: three directions × two depths. A finer grain, such as air-yard bins, or a
   receiver-level target model was not tested, because it was not pre-registered.
-* **Shrinkage.** The shrinkage strength (100) and the 30-attempt threshold were fixed in advance and not tuned. A
-  different choice was not tested.
+* **Shrinkage.** The shrinkage strength (100) and the 30-attempt threshold were fixed in advance and not tuned for
+  the decision. The post-hoc sweep above shows that heavier shrinkage helps both the offense and the defense
+  predictions slightly, and that no variant changes the decision.
 * **Sample.** Weeks 5–18 only, within a season. A defense's profile carried over from the prior season was not tested.
 * **No opponent adjustment.** This matches the label the profile would carry.
 * **Scope.** The test measures prediction of attempt location, not efficiency. EPA per cell was not tested.

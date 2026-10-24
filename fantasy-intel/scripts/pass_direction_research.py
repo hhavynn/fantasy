@@ -50,7 +50,7 @@ def main() -> int:
     preds.write_parquet(args.out_dir / "preds.parquet")
     cell_mix = {c: round(float((att["cell"] == c).mean()), 4) for c in pdr.CELLS}
     report = {"git_sha": git_sha(), "nflreadpy": getattr(nfl, "__version__", None), "seasons": [lo, hi],
-              "weeks": list(pdr.EVAL_WEEKS), "attempt_counts": counts, "league_cell_mix": cell_mix,
+              "eval_weeks": list(pdr.EVAL_WEEKS), "attempt_counts": counts, "league_cell_mix": cell_mix,
               **pdr.evaluate(preds), "seconds": round(time.time() - t, 1)}
     (args.out_dir / "report.json").write_text(json.dumps(report, indent=1, default=str))
     print(json.dumps(report, indent=1, default=str))
