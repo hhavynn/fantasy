@@ -129,9 +129,10 @@ def _authorize(principal, league_id: str, timing: Timing):
     return access
 
 
-def _pin(access, team_param: str | None, timing: Timing, *, wait: bool = True):
+def _pin(access, team_param: str | None, timing: Timing, *, wait: bool = True, since: float | None = None):
     """(scope, pinned pair) for an authorized league, or None when `wait` is False and the files are not cached here.
-    The caller releases the pair (`league_file_cache().release_pair`) when the request ends."""
+    `since` (a perf_counter time) is when a cold request started waiting: the files phase counts from it and is coded
+    cold. The caller releases the pair (`league_file_cache().release_pair`) when the request ends."""
     from ..db.league_conn import perspective_team
     snap = access.snapshot
     cache = league_file_cache()
@@ -139,7 +140,7 @@ def _pin(access, team_param: str | None, timing: Timing, *, wait: bool = True):
         # Pinned until the request ends (league_scope releases them): never evicted before the handler opens them.
         # With a newer pointer than this instance holds, at most the budget is spent waiting; then this league's own
         # previous files are read and the response says so.
-        t0 = time.perf_counter()
+        t0 = time.perf_counter() if since is None else since
         if wait:
             pair = cache.pin_pair(access.league_id, snap.data_version, snap.global_version,
                                   budget_s=cold_load_budget_s())
@@ -154,7 +155,7 @@ def _pin(access, team_param: str | None, timing: Timing, *, wait: bool = True):
         raise HTTPException(503, FILES_UNAVAILABLE) from None
     if pair is None:
         return None
-    timing.set_code("files", "stale" if pair.degraded else "cold" if pair.cold else "warm")
+    timing.set_code("files", "stale" if pair.degraded else "cold" if pair.cold or since is not None else "warm")
     timing.size = size_bucket(version_bytes(pair.data_version))
     if pair.degraded:
         log.warning("league %s served from its previous files (%s)", access.league_id, pair.degraded)
@@ -183,40 +184,64 @@ def _resolve_if_cached(principal, league_id: str, team_param: str | None, timing
 
 # Cold loads (issue #201 risk 2). A request whose files are not cached here waits for them on the event loop, not in a
 # thread-pool slot: per pair, one request (the leader) takes one of COLD_LOADS permits and loads in the pool; the
-# others for the same pair wait for it and then pin from the cache, or answer the leader's error (one wait for room
-# per pair, never one after another). A request waiting for room in a full cache therefore never holds a thread that a
-# request holding pinned files needs to finish and release them.
+# others for the same pair wait for it, then pin from the cache, read the same previous files when the leader was
+# served those (pin_pair returns within what is left of the budget, so no permit), or answer 503 when it failed: one
+# wait for room per pair, never one after another. A request waiting for room in a full cache therefore never holds a
+# thread that a request holding pinned files needs to finish and release them. Waiting for a permit or for the leader
+# ends after COLD_WAIT_S with a 503; a thread hop is never cancelled (its pinned files would never be released).
+COLD_WAIT_S = 20.0
 _COLD: dict[asyncio.AbstractEventLoop, tuple[asyncio.Semaphore, dict]] = {}
+_COLD_LOCK = threading.Lock()
 
 
 def _cold_state() -> tuple[asyncio.Semaphore, dict]:
     loop = asyncio.get_running_loop()
-    state = _COLD.get(loop)
-    if state is None:
-        for old in [lp for lp in _COLD if lp.is_closed()]:
-            del _COLD[old]
-        state = _COLD[loop] = (asyncio.Semaphore(cold_loads_per_loop()), {})
+    with _COLD_LOCK:                                # test clients run loops in threads: never iterate while inserting
+        state = _COLD.get(loop)
+        if state is None:
+            for old in [lp for lp in _COLD if lp.is_closed()]:
+                del _COLD[old]
+            state = _COLD[loop] = (asyncio.Semaphore(cold_loads_per_loop()), {})
     return state
 
 
 async def _pin_cold(access, team_param: str | None, timing: Timing):
+    since = time.perf_counter()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + COLD_WAIT_S
     gate, flights = _cold_state()
     snap = access.snapshot
     key = (access.league_id, snap.data_version, snap.global_version)
+
+    async def within(aw):
+        try:
+            return await asyncio.wait_for(aw, max(0.0, deadline - loop.time()))
+        except TimeoutError:
+            timing.add("files", time.perf_counter() - since, "slow")
+            raise HTTPException(503, FILES_UNAVAILABLE) from None
+
     while (leader := flights.get(key)) is not None:
-        failed = await asyncio.shield(leader)       # the leader's HTTPException, or None (loaded, or cancelled)
-        if failed is not None:
-            raise HTTPException(failed.status_code, failed.detail, headers=failed.headers)
-        found = await run_in_threadpool(_pin, access, team_param, timing, wait=False)
+        outcome = await within(asyncio.shield(leader))  # "loaded", "degraded", "failed", or None (leader cancelled)
+        if outcome == "failed":
+            timing.add("files", time.perf_counter() - since, "error")
+            raise HTTPException(503, FILES_UNAVAILABLE)  # a constant: nothing of the leader's request crosses over
+        if outcome == "degraded":
+            return await run_in_threadpool(_pin, access, team_param, timing, since=since)
+        found = await run_in_threadpool(_pin, access, team_param, timing, wait=False, since=since)
         if found is not None:
-            return found                            # else evicted again since: lead a load of its own
-    done = flights[key] = asyncio.get_running_loop().create_future()
+            return found                                # else evicted again since: lead a load of its own
+    done = flights[key] = loop.create_future()
     outcome = None
     try:
-        async with gate:
-            return await run_in_threadpool(_pin, access, team_param, timing)
-    except HTTPException as err:
-        outcome = err
+        await within(gate.acquire())
+        try:
+            found = await run_in_threadpool(_pin, access, team_param, timing, since=since)
+        finally:
+            gate.release()
+        outcome = "degraded" if found[1].degraded else "loaded"
+        return found
+    except HTTPException:
+        outcome = "failed"
         raise
     finally:
         if flights.get(key) is done:
