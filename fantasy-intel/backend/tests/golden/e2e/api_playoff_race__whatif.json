@@ -2699,6 +2699,84 @@
      "tied": false
     }
    ],
+   "rooting": {
+    "conclusions": {
+     "claims": [],
+     "status": "blocked"
+    },
+    "games": [],
+    "label": "hypothetical",
+    "later_open_games": 22,
+    "method": "Rooting guide: for each open game in the next matchup period that your team does not play, your place if the home side wins and if the away side wins. Scenario place: every other result as in this scenario (hypothetical): cutline status first, then the places your rank group spans, since no tiebreak is applied (a shared rank is never read as the top of the tie). Possible range: the record bounds with that result fixed and every other remaining game open (no projections): above the line in every outcome, below it in every outcome, or open, under the assumed record order. A side is preferred only when it is no worse on both and better on at least one; a game where they disagree is shown as a conflict. A tied result is not evaluated. Deterministic: no probability, and never a clinch or elimination claim.",
+    "no_effect": [
+     {
+      "away_team_id": 3,
+      "basis": [],
+      "close": false,
+      "conflict": false,
+      "home_team_id": 4,
+      "if_away": {
+       "range": null,
+       "scenario": {
+        "places": [
+         1,
+         1
+        ],
+        "rank": 1,
+        "record": {
+         "losses": 2,
+         "ties": 0,
+         "unresolved": 0,
+         "wins": 13
+        },
+        "status": "inside",
+        "tied": false
+       }
+      },
+      "if_home": {
+       "range": null,
+       "scenario": {
+        "places": [
+         1,
+         1
+        ],
+        "rank": 1,
+        "record": {
+         "losses": 2,
+         "ties": 0,
+         "unresolved": 0,
+         "wins": 13
+        },
+        "status": "inside",
+        "tied": false
+       }
+      },
+      "matchup_id": 6,
+      "matchup_period": 3,
+      "prefer": null,
+      "scenario_result": null,
+      "status": "upcoming",
+      "swing": {
+       "range_changes": false,
+       "rank_difference": 0,
+       "status_changes": false
+      },
+      "weeks": [
+       3
+      ]
+     }
+    ],
+    "own_game": 5,
+    "period": 3,
+    "probabilities": null,
+    "range_abstain": [
+     "The provider's records do not match the stored final matchups (see the record check), so the remaining schedule cannot bound them."
+    ],
+    "status": "ok",
+    "weeks": [
+     3
+    ]
+   },
    "unresolved_open_games": 1
   },
   "schedule_coverage": {

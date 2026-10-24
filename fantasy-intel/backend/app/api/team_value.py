@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..analytics.injury_impact import InjuryImpactUnavailable
 from ..analytics.marginal_utility import MarginalUtilityError, marginal_utility
+from ..analytics.opportunity_tree import build_opportunity_tree
+from ..analytics.stash_planner import HORIZONS, StashPlanError, contingencies, plan_stashes
 from ..analytics.playoff_race import NotSynced, load_race_data
 from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, replacement_positions, source_label, without
 from ..analytics.team_value import NotFound, _position_legal, build_team_value, load_team_value_inputs
-from ..analytics.trades import with_streaming
+from ..analytics.trades import roster_legality, with_streaming
 from .deps import db
 from .signal_provenance import trade_provenance
 
@@ -99,3 +102,44 @@ def my_team_marginal(ids: list[int] = Query(..., max_length=MAX_ASSETS), team_id
         return {**res, "contract": "roster-utility/v1", "pools": list(ROUTE_POOLS),
                 "team": {k: teams[tid][k] for k in ("team_id", "name", "is_mine")}, "names": names,
                 "provenance": trade_provenance(con, race.league, state)}
+
+
+@router.get("/my-team/stash")
+def my_team_stash(team_id: int | None = None, horizon: int = 4, kdst_streaming: bool = True):
+    """Multi-week stash planner (#218, analytics/stash_planner.py) for one team (default: yours): free agents that add
+    projected starting points to this roster only in later weeks (exact lineup differences with the drop candidate
+    removed), kept apart from current-week pickups, plus "if a starter is out" contingencies from the injury
+    opportunity tree with their samples. No probabilities. Read-only."""
+    if horizon not in HORIZONS:
+        raise HTTPException(422, f"horizon must be one of {', '.join(map(str, HORIZONS))}")
+    with db() as con:
+        try:
+            race = load_race_data(con)
+        except NotSynced as err:
+            raise HTTPException(503, str(err))
+        state = with_streaming(race.state) if kdst_streaming else race.state
+        teams = {t["team_id"]: t for t in race.teams}
+        tid = team_id if team_id is not None else next((t["team_id"] for t in race.teams if t["is_mine"]), None)
+        if tid is None:
+            raise HTTPException(404, "No team is marked as yours (is_mine); pass team_id.")
+        if tid not in teams:
+            raise HTTPException(404, f"Unknown team {tid}")
+        try:
+            plan = plan_stashes(state.rosters.get(tid) or [], state.slots, state.window(), state.projections,
+                                free_agents=state.free_agents, free_agent_status=state.free_agent_status,
+                                active_capacity=state.active_capacity, position_limits=state.position_limits,
+                                horizon=horizon,
+                                projection_source=source_label(state.projection_source, state.projections),
+                                roster_count_unverified=(roster_legality(state, tid) or {}).get("reason"),
+                                undroppable_list_in_use=state.undroppable_list_in_use)
+        except StashPlanError as err:
+            raise HTTPException(422, str(err))
+        try:                        # tid is already in this league, so only "not available yet" is expected here
+            tree = build_opportunity_tree(con, team_id=tid)
+        except InjuryImpactUnavailable as err:
+            contingency = {"available": False, "reason": str(err), "items": []}
+        else:
+            contingency = {"available": True, "week": tree.get("week"), **contingencies(tree)}
+        return {**plan, "contract": "stash-plan/v1",
+                "team": {k: teams[tid][k] for k in ("team_id", "name", "is_mine")},
+                "contingencies": contingency, "provenance": trade_provenance(con, race.league, state)}
