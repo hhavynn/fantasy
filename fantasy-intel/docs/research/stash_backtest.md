@@ -93,52 +93,92 @@ For each, report the mean and a 95% percentile bootstrap CI (2,000 resamples, se
 - Injuries are not projected ahead: only byes are known in advance, as in the planner, which uses only verified
   unavailability.
 
-## Results (run at f29592b, 2026-10-24)
+## Results
 
-**Pre-registered outcome: no evidence.** The planner's stashes help against doing nothing, but they are not shown to
-beat the projected-total greedy pick.
+**Pre-registered outcome: no evidence.** Against doing nothing, PLAN's stashes clearly help. Against the
+projected-total greedy pick, there is no evidence either way.
 
-| | Mean, realized points over the 4 later weeks | 95% CI, (season, week) clusters | 95% CI, (season, league, team) clusters |
+### Run history (disclosed)
+
+The first run (f29592b) deviated from the pre-registration. A player with no game before `w` took his team from his
+**first game later this season**, and a player who never played that season was dropped as unprojected. That leaked
+future teams into byes and made the planner abstain (`drop_unknown`) on 1,804 team-weeks across 164 of 360 teams.
+
+An independent review caught it. 06eb923 restores the pre-registered as-of rule: with no game before `w`, the player's
+team is the one from his last previous-season game, and every player with a prior season is projected. 06eb923
+re-runs the same rule, data and seeds. The outcome is "no evidence" in both runs.
+
+| | First run, f29592b (deviation) | **Corrected run, 06eb923** |
+|---|---:|---:|
+| Team-weeks | 3,960 | 3,960 |
+| With a stash (compared) | 2,014 | **3,689** |
+| Abstained (`drop_unknown`) | 1,804 | **0** |
+| No stash found | 142 | **271** |
+| Outcome | no evidence | **no evidence** |
+
+### Corrected run (06eb923, 2026-10-24)
+
+| | Mean, realized points over the 4 later weeks | 95% CI, (season, week) clusters (33) | 95% CI, (season, league, team) clusters (360) |
 |---|---:|---|---|
-| `R_PLAN` (against NONE = 0) | **+13.5** | 9.7 to 17.2 | 12.1 to 14.8 |
-| `D1 = R_PLAN - R_B1` (deciding) | +0.7 | -7.9 to 8.8 | -2.1 to 3.4 |
-| `D2 = R_PLAN - R_B2` (reported) | +4.4 | -3.8 to 12.0 | 2.0 to 6.7 |
+| `R_PLAN` (against NONE = 0) | **+13.8** | 9.8 to 17.8 | 12.8 to 14.8 |
+| `D1 = R_PLAN - R_B1` (deciding) | -0.2 | -9.0 to 8.1 | -2.3 to 1.8 |
+| `D2 = R_PLAN - R_B2` (reported) | +4.7 | -3.6 to 12.8 | 3.0 to 6.4 |
 
-- **Sample.** 3 seasons x 10 leagues x 12 teams x 11 weeks = 3,960 team-weeks. PLAN returned a stash on 2,014. On the
-  other 1,946 it found none.
-- **Precision.** 70% of PLAN's stashes realized a positive gain.
-- **Calibration.** PLAN projected +12.7 later points per stash on average and realized +13.5. The exact lineup
-  difference is close to unbiased under this projection.
 - **By season** (n, `R_PLAN`, `D1`, `D2`):
 
   | Season | n | `R_PLAN` | `D1` | `D2` |
   |---|---:|---:|---:|---:|
-  | 2023 | 720 | 13.6 | +2.7 | +2.9 |
-  | 2024 | 673 | 14.6 | +19.7 | +22.1 |
-  | 2025 | 621 | 12.2 | -22.2 | -12.9 |
+  | 2023 | 1,249 | 11.4 | +4.2 | +6.3 |
+  | 2024 | 1,219 | 15.9 | +18.7 | +21.6 |
+  | 2025 | 1,221 | 14.1 | -23.7 | -13.8 |
+
+- **Precision.** 68% of PLAN's stashes realized a positive gain.
+- **Projected against realized** (the pre-registered calibration). The means are close (+12.8 projected, +13.8
+  realized), but the projection ranks stashes only weakly: the slope of realized on projected is 0.29 and the
+  correlation 0.17. By quintile of projected later gain, projected → realized:
+
+  | Quintile | 1 | 2 | 3 | 4 | 5 |
+  |---|---:|---:|---:|---:|---:|
+  | Projected | 1.5 | 4.2 | 8.4 | 15.8 | 33.9 |
+  | Realized | 7.2 | 8.3 | 13.7 | 19.4 | 20.3 |
+
+  Small projected gains are under-projected and large ones over-projected. **The stash gains are not calibrated**,
+  and only the means match.
+- **No-stash team-weeks.** On the 271 team-weeks where PLAN found no stash, B1 realized a mean of +3.0.
 
 ### Reading (post-hoc, does not change the outcome)
 
-The `D1` swings come from the baseline, not from the planner:
-- B1 is the single free agent with the highest projected total. With static rosters and an all-free-agent pool, that
-  is the same player for every team in a week. Across a season B1 picked only 2-10 distinct players, against 68-75
-  for PLAN, and the two agreed on about 10% of team-weeks.
-- One B1 player accounted for +12,649 of 2024's +13,260 summed `D1`, and another for -13,329 of 2025's -13,792. Each
-  was the same free agent busting or breaking out for everyone.
-- So the pre-registered B1 comparison has very few independent outcomes, and its wide intervals are the honest
-  result. The test cannot tell the planner from "pick the highest projected free agent", in either direction.
+- **B1 is mostly not a stash.** 71% of B1's picks are players PLAN lists as *pick up now*: they add points this week,
+  so the planner excludes them as stashes by design.
+  - So the pre-registered arms compare a stash with a mostly current-week pick. The pre-registered Question asked for
+    "a fair lineup-unaware pick of the same kind", and the Arms definition did not enforce it.
+- **B1 has very few independent outcomes.**
+  - It is the single free agent with the highest projected total. With static rosters and an all-free-agent pool,
+    that is the same player for every team in a week: 1 distinct pick per week in 2023 and 2024, 1-4 in 2025, against
+    68-75 distinct PLAN picks per season.
+  - So `D1` mostly records whether one player broke out or busted. In 2024 B1 was mostly a backup QB whose prior-season
+    rate came from one game (the prior has no minimum games). In 2025 it was an elite RB.
+- **The intervals overstate precision.** The team clustering ignores that every team shares the same B1 player in a
+  week, and adjacent weeks share realized weeks (the horizons overlap). The week-clustered intervals, from 33 clusters,
+  are the honest ones.
+- **`R_PLAN > 0` is not hindsight alone.** A random projected free agent with the same drop realizes -4.5 (week CI -5.0
+  to -4.1). PLAN minus that random pick is +18.3 (week CI 14.2 to 22.4).
 
-What the run does support:
-- A stash chosen by the exact lineup difference realizes about what it projects (+13.5 vs +12.7).
-- The stash beats doing nothing under both clusterings.
-- The planner's picks are spread across many players rather than one.
+What the run supports: a stash chosen by the exact lineup difference beats doing nothing, and beats a random free agent,
+on realized points. What it does not support: that the planner beats a good lineup-unaware pick, or that its projected
+gain is calibrated. The product claims nothing beyond the v1 overview, and the stash page should not present the
+projected gain as a forecast of realized points.
 
-Neither of those is the pre-registered claim, so the product claims nothing beyond the v1 overview.
+### Further limitations found in the run
+
+- Drafting on prior-season totals takes retired players (for example, a 2022 quarterback who retired before 2023). Each
+  is a roster spot that scores 0 all season, for every arm alike.
+- nflverse labels some fullbacks FB (71-110 player-seasons a year). They are excluded, although ESPN lists some of them
+  as RB.
 
 ### Suggested v2 (not run; would need its own pre-registration)
 
-- A baseline chosen per team rather than league-wide, for example the highest projected free agent at the position
-  of the team's weakest bye-week starter, so every arm has comparable effective sample size.
+- A baseline of the same kind as the planner's pick: the highest-projected free agent who adds nothing this week. Or
+  choose the baseline per team, for example at the position of the team's weakest bye-week starter.
 - Leagues where claimed players leave the pool, so one breakout cannot be every team's pick.
-- More leagues per season. This only narrows the team-clustered interval; the week-clustered one is limited by
-  shared players.
+- A minimum number of prior-season games for the prior rate.
