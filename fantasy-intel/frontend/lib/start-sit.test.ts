@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, emptyStartingSlots, actionabilityBadge, slotChange,
-  NO_PROJECTIONS, noProjections, projectedTotal, projectionsMeta,
+  NO_PROJECTIONS, noProjections, projectedTotal, projectionsMeta, strengthBadge,
 } from "./start-sit-helpers.ts";
 
 test("formatGain formats positive, zero, and missing gains", () => {
@@ -114,4 +114,14 @@ test("a submitted lineup in a week without projections has no total, never a par
   assert.deepEqual(projectedTotal(true, false, true, 0, 0), { value: 0, partial: false });
   assert.equal(projectionsMeta("ESPN", true), "ESPN projections, none for this team this week");
   assert.equal(projectionsMeta(NO_PROJECTIONS, true), "no projections");
+});
+
+test("strength reads as words, never a number; an unknown label is unverified; none shows nothing (#172)", () => {
+  assert.deepEqual(strengthBadge({ label: "clear" }), { label: "Clear call", tone: "good" });
+  assert.deepEqual(strengthBadge({ label: "close" }), { label: "Close call", tone: "warn" });
+  assert.deepEqual(strengthBadge({ label: "unverified" }), { label: "Unverified", tone: "info" });
+  assert.deepEqual(strengthBadge({ label: "95%" }), { label: "Unverified", tone: "info" });
+  assert.equal(strengthBadge(null), null);
+  assert.equal(strengthBadge(undefined), null);
+  for (const l of ["clear", "close", "unverified"]) assert.doesNotMatch(strengthBadge({ label: l })!.label, /\d|%/);
 });

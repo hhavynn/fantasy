@@ -50,6 +50,59 @@ ACTIONABILITY_UNCERTAIN = "UNCERTAIN"
 ACTIONABILITY_IR_BLOCKED = "IR_BLOCKED"
 ACTIONABILITY_NO_CHANGE = "NO_CHANGE"
 
+# Recommendation strength (issue #172). One close rule: a projected gain of at most CLOSE_CALL_POINTS is a close call,
+# the margin the decision backtests score close calls by (their CLOSE_PAIR_POINTS; tested equal in
+# tests/test_start_sit_strength.py). A label with its reason, never a probability: no calibrated confidence exists.
+CLOSE_CALL_POINTS = 3.0
+STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED = "clear", "close", "unverified"
+
+
+def recommendation_strength(gain: float | None, unknowns: list[str]) -> dict:
+    """How far a recommendation is from a close call. Any unknown (a missing projection, an unverified kickoff) makes it
+    unverified, never certain; otherwise the projected gain against the close rule, stated in the reason."""
+    if unknowns or gain is None:
+        why = " ".join(unknowns) if unknowns else "The projected gain is unknown."
+        return {"label": STRENGTH_UNVERIFIED, "reason": f"Unverified: {why}"}
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gain <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE, "reason": f"Close call: {gain:+.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR, "reason": f"Clear: {gain:+.1f} pts, more than {margin}."}
+
+
+def decision_strength(d, is_future_preview: bool) -> dict | None:
+    """A decision's strength. A preview, or a week with no submitted lineup, is not a decision. A change is graded by its
+    own gain; any warning on a change that is not actionable (an unverified or kicked-off kickoff, an IR slot,
+    incomplete coverage) makes it unverified: certainty is only claimed for a move that can be made as shown. NO_CHANGE
+    returns None here: it is graded against the legal alternatives (lineup_what_if.add_alternatives)."""
+    if d.id == "future_preview_note":
+        return recommendation_strength(None, ["A next-week preview is not a decision yet." if is_future_preview
+                                              else "There is no submitted lineup this week to compare."])
+    if d.action == ACTION_NO_CHANGE:
+        return None
+    if d.actionability == ACTIONABILITY_ACTIONABLE:
+        return recommendation_strength(d.projected_net_gain, [])
+    return recommendation_strength(d.projected_net_gain,
+                                   d.warnings or ["This move cannot be made as shown in the lineup right now."])
+
+
+def no_change_strength(best: dict | None, complete: bool) -> dict:
+    """The strength of keeping the submitted lineup: how close the best legal bench alternative comes (`best`: an
+    alternatives option, delta <= 0 or None when unknown). With incomplete projections it is unverified."""
+    if not complete:
+        return recommendation_strength(None, ["Projection coverage for this lineup is incomplete."])
+    if best is None:
+        return {"label": STRENGTH_CLEAR, "reason": "Clear: no bench player can legally take a starting slot."}
+    if best["delta"] is None:
+        return recommendation_strength(None, [f"{best['name']}'s alternative has an unknown projected total."])
+    gap = max(0.0, -best["delta"])          # a tie reads "0.0", never "-0.0"
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gap <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE,
+                "reason": f"Close call: starting {best['name']} would cost {gap:.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR,
+            "reason": f"Clear: the closest alternative, {best['name']}, would cost {gap:.1f} pts, more than {margin}."}
+
+
 # Minimum regular season games required in nfl_schedules to confirm an NFL bye
 MIN_SCHEDULED_GAMES_FOR_BYE = 12
 
@@ -1110,6 +1163,7 @@ def load_start_sit_evaluation(
             "projected_net_gain": d.projected_net_gain,
             "explanation": d.explanation,
             "warnings": d.warnings,
+            "recommendation_strength": decision_strength(d, is_future_preview),
         }
         for d in decisions_objs
     ]

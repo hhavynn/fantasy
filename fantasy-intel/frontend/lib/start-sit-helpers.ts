@@ -234,3 +234,12 @@ export function slotChange(r: ChangeInput): { kind: "empty" | "same" | "relabel"
   if (r.currentSlot && r.currentSlot !== r.slot) return { kind: "relabel", text: `Starts, moves from ${r.currentSlot}` };
   return { kind: "same", text: "Starts, no change" };
 }
+
+/** The recommendation-strength badge (issue #172): the label in words, never a number. Anything this client does not
+ *  know reads as unverified; no strength (an older backend) shows nothing. */
+export function strengthBadge(s: { label?: string } | null | undefined): { label: string; tone: "good" | "warn" | "info" } | null {
+  if (!s || !s.label) return null;
+  if (s.label === "clear") return { label: "Clear call", tone: "good" };
+  if (s.label === "close") return { label: "Close call", tone: "warn" };
+  return { label: "Unverified", tone: "info" };
+}

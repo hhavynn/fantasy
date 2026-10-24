@@ -201,6 +201,102 @@
     "slot_id": "FLEX_0"
    }
   ],
+  "alternatives": [
+   {
+    "label": "RB 1",
+    "options": [
+     {
+      "delta": -2.0,
+      "known_delta": -2.0,
+      "name": "Hotel RB",
+      "player_id": 204,
+      "position": "RB",
+      "projection": 6.3,
+      "whatif": "w3t2~RB_0.204"
+     }
+    ],
+    "slot": "RB",
+    "slot_id": "RB_0",
+    "starter_id": 206
+   },
+   {
+    "label": "RB 2",
+    "options": [
+     {
+      "delta": -1.0,
+      "known_delta": -1.0,
+      "name": "Hotel RB",
+      "player_id": 204,
+      "position": "RB",
+      "projection": 6.3,
+      "whatif": "w3t2~RB_1.204"
+     }
+    ],
+    "slot": "RB",
+    "slot_id": "RB_1",
+    "starter_id": 205
+   },
+   {
+    "label": "WR 1",
+    "options": [
+     {
+      "delta": -3.0,
+      "known_delta": -3.0,
+      "name": "Papa WR",
+      "player_id": 304,
+      "position": "WR",
+      "projection": 8.3,
+      "whatif": "w3t2~WR_0.304"
+     }
+    ],
+    "slot": "WR",
+    "slot_id": "WR_0",
+    "starter_id": 307
+   },
+   {
+    "label": "WR 2",
+    "options": [
+     {
+      "delta": -2.0,
+      "known_delta": -2.0,
+      "name": "Papa WR",
+      "player_id": 304,
+      "position": "WR",
+      "projection": 8.3,
+      "whatif": "w3t2~WR_1.304"
+     }
+    ],
+    "slot": "WR",
+    "slot_id": "WR_1",
+    "starter_id": 306
+   },
+   {
+    "label": "FLEX",
+    "options": [
+     {
+      "delta": -1.0,
+      "known_delta": -1.0,
+      "name": "Papa WR",
+      "player_id": 304,
+      "position": "WR",
+      "projection": 8.3,
+      "whatif": "w3t2~FLEX_0.304"
+     },
+     {
+      "delta": -3.0,
+      "known_delta": -3.0,
+      "name": "Hotel RB",
+      "player_id": 204,
+      "position": "RB",
+      "projection": 6.3,
+      "whatif": "w3t2~FLEX_0.204"
+     }
+    ],
+    "slot": "FLEX",
+    "slot_id": "FLEX_0",
+    "starter_id": 305
+   }
+  ],
   "current_bench": [
    {
     "injury_status": "ACTIVE",
@@ -273,6 +369,10 @@
     "explanation": "Coordinated multi-player change: Starting Juliet RB (8.3 pts), Sierra WR (11.3 pts) displaces Hotel RB (6.3 pts), Papa WR (8.3 pts) across starting slots for a +5.0 pt net lineup gain.",
     "id": "coordinated_swap",
     "projected_net_gain": 5.0,
+    "recommendation_strength": {
+     "label": "clear",
+     "reason": "Clear: +5.0 pts, more than the 3-point margin the decision backtests treat as a close call."
+    },
     "start_players": [
      {
       "id": 206,
@@ -592,6 +692,10 @@
    "missing_projections": [],
    "projected_gain": 5.0,
    "projection_complete": true,
+   "recommendation_strength": {
+    "label": "clear",
+    "reason": "Clear: +5.0 pts, more than the 3-point margin the decision backtests treat as a close call."
+   },
    "recommended_projected_total": 79.7,
    "starters_count": 9,
    "status": "upgrade_available",

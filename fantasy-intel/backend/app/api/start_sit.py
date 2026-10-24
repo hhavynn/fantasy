@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..analytics.lineup_what_if import MAX_PARAM_LEN, ScenarioSyntaxError, evaluate_what_if, parse_scenario
+from ..analytics.lineup_what_if import (MAX_PARAM_LEN, ScenarioSyntaxError, add_alternatives, build_board,
+                                       evaluate_what_if, parse_scenario)
 from ..analytics.start_sit import load_start_sit_evaluation
 from .deps import db
 from .signal_provenance import Provenance, coverage, payload
@@ -18,10 +19,13 @@ def get_start_sit(
     week: int | None = Query(None, description="Fantasy scoring period / NFL week (defaults to current week)"),
     source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)"),
 ):
-    """Compare manager's actual ESPN lineup against optimal lock-constrained lineup."""
+    """Compare manager's actual ESPN lineup against optimal lock-constrained lineup, with how close the call is
+    (recommendation_strength) and the legal single-move alternatives per starting slot (issue #172)."""
     with db() as con:
         try:
-            out = load_start_sit_evaluation(con, team_id=team_id, week=week, source=source)
+            cap: dict = {}
+            out = add_alternatives(load_start_sit_evaluation(con, team_id=team_id, week=week, source=source,
+                                                             capture=cap), build_board(cap))
         except LookupError as err:
             raise HTTPException(404, str(err))
         except ValueError as err:
