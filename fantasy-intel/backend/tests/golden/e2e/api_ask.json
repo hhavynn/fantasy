@@ -1,0 +1,117 @@
+// /api/ask?q=who+should+I+start
+{
+ "body": {
+  "abstain": null,
+  "answer": {
+   "columns": [
+    {
+     "key": "move",
+     "label": "Move"
+    },
+    {
+     "key": "gain",
+     "label": "Projected gain",
+     "unit": "pts"
+    }
+   ],
+   "facts": [
+    {
+     "label": "Submitted lineup, projected",
+     "unit": "pts",
+     "value": 74.7
+    },
+    {
+     "label": "Best projected lineup",
+     "unit": "pts",
+     "value": 79.7
+    },
+    {
+     "label": "Projected gain",
+     "unit": "pts",
+     "value": 5.0
+    },
+    {
+     "label": "Call strength",
+     "unit": null,
+     "value": "clear"
+    }
+   ],
+   "headline": "Start/Sit finds a projected upgrade.",
+   "rows": [
+    {
+     "cells": {
+      "gain": 5.0,
+      "move": "Coordinated multi-player change: Starting Juliet RB (8.3 pts), Sierra WR (11.3 pts) displaces Hotel RB (6.3 pts), Papa WR (8.3 pts) across starting slots for a +5.0 pt net lineup gain."
+     }
+    }
+   ],
+   "status": "upgrade_available",
+   "truncated": false
+  },
+  "clarify": null,
+  "contract": "ask/v1",
+  "examples": [],
+  "freshness": {
+   "lineup_synced_at": "<masked>",
+   "nfl_schedule_synced_at": "<masked>",
+   "projection_synced_at": "<masked>"
+  },
+  "intent": {
+   "id": "start_sit",
+   "label": "Start/Sit check"
+  },
+  "interpretation": "Start/Sit for Team 2, week 3",
+  "link": {
+   "path": "/start-sit",
+   "query": {}
+  },
+  "notes": [
+   "Clear: +5.0 pts, more than the 3-point margin the decision backtests treat as a close call."
+  ],
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 9,
+      "label": "starters with a projection",
+      "total": 9
+     },
+     "label": "ESPN weekly projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "question": "who should i start",
+  "status": "answered"
+ },
+ "status": 200
+}
