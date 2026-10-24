@@ -740,6 +740,38 @@ CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
 );
 ALTER TABLE team_waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
+-- Append-only, as-of-time archive of each team's top waiver recommendations (issue #346, app/analytics/waiver_archive.py):
+-- one capture per analytics run whose content changed, carried forward across league builds like every league table.
+-- Graded by app/analytics/waiver_feedback.py only from captures taken before the week's waiver cutoff. Create-only.
+CREATE TABLE IF NOT EXISTS waiver_recommendation_snapshots (
+    league_id              BIGINT,
+    season                 INTEGER,
+    week                   INTEGER,   -- leagues.current_week when captured: the scoring period the claim is for
+    team_id                INTEGER,   -- the roster the recommendation was evaluated from
+    captured_at            TIMESTAMP, -- UTC: the analytics run's computed_at (one value per capture)
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    rank                   INTEGER,   -- by waiver_score within (capture, team), ties by player id; 1 = top
+    recommendation         VARCHAR,   -- CLAIM | WAIT | IGNORE
+    waiver_score           DOUBLE,
+    opportunity_score      DOUBLE,
+    roster_fit_score       DOUBLE,
+    availability_status    VARCHAR,
+    suggested_drop_id      BIGINT,
+    components             JSON,
+    reasons                JSON,
+    snapshot_id            VARCHAR,   -- '<league>:<season>:<week>:<team>:<captured_at iso>'
+    projection_source      VARCHAR,   -- the waiver run's projection source (projection_source.normalize)
+    projection_version     VARCHAR,   -- the newest projection stamp the run read
+    scoring_fingerprint    VARCHAR,   -- sha256[:16] of the league's scoring items
+    rule_version           VARCHAR,   -- the archive rule (waiver_archive.RULE_VERSION)
+    archive_k              INTEGER,   -- candidates kept per team in this capture
+    horizon_weeks          INTEGER,   -- the grading horizon this capture was archived for
+    roster_synced_at       TIMESTAMP, -- the newest roster snapshot the evaluation used
+    content_sha256         VARCHAR,   -- canonical JSON of this (capture, team)'s rows, without captured_at/snapshot_id
+    PRIMARY KEY (league_id, season, week, team_id, captured_at, espn_player_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
     gsis_id         VARCHAR,
