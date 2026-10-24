@@ -155,6 +155,21 @@ def test_start_sit_in_a_sleeper_idp_league_names_the_starters_it_cannot_see(leag
     assert cov["held_starters"] == [] and cov["starters_not_in_player_data"] == 3
 
 
+def test_all_locked_is_reported_with_held_starters_whatever_the_status(league, monkeypatch):
+    """#165: `all_locked` counts every rostered player, held starters included, and is its own flag: the status reports
+    incomplete_data or another state first, so the hub reads the flag instead of inferring it from counts."""
+    from app.analytics import start_sit as ss
+    con = league("M8")
+    s = load_start_sit_evaluation(con, team_id=1, now=NOW)["summary"]
+    assert s["all_locked"] is False and "lineup_coverage" in s
+    monkeypatch.setattr(ss, "detect_player_locks", lambda c, season, week, teams, now: {
+        t: ss.PlayerLock(team=t, status=ss.LOCK_LOCKED) for t in teams})
+    s = load_start_sit_evaluation(con, team_id=1, now=NOW)["summary"]
+    total = s["starters_count"] + s["bench_count"] + s["ir_count"]
+    assert s["all_locked"] is True and "lineup_coverage" in s
+    assert s["locked_players_count"] > total            # held starters are locked but in no count the hub could add
+
+
 def test_a_standard_league_has_no_coverage_block(league):
     s = load_start_sit_evaluation(league("M1"), team_id=1, now=NOW)["summary"]
     assert "lineup_coverage" not in s and s["recommended_projected_total"] is not None

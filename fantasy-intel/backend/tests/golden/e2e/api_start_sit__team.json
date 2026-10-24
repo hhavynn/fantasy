@@ -683,6 +683,7 @@
   "scoring_period": 3,
   "summary": {
    "actual_projected_total": 74.7,
+   "all_locked": false,
    "bench_count": 2,
    "ir_count": 1,
    "known_actual_total": 74.7,
