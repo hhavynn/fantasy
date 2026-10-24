@@ -409,13 +409,13 @@ def _on_roster(out: dict, pid: int) -> bool:
     return pid in ids
 
 
-def _preview(question: str, parsed: grammar.Parsed, out: dict) -> dict | None:
+def _preview(question: str, parsed: grammar.Parsed, out: dict, ctx: dict) -> dict | None:
     """Start/Sit lists no alternatives for a future-week preview: nothing about a slot can be established then."""
     if not out.get("is_future_preview"):
         return None
     return _card("abstain", question, parsed, code="preview",
                  reason=f"Week {out.get('scoring_period')} is a preview: Start/Sit lists legal alternatives for the "
-                        f"current week only.", link={"path": "/start-sit", "query": {"week": out.get("scoring_period")}})
+                        f"current week only.", link=_link("/start-sit", {"week": out.get("scoring_period")}, ctx))
 
 
 def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
@@ -423,7 +423,7 @@ def run_replacement(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     pid = p["espn_player_id"]
     out = _start_sit(ctx)
     team = out["team"]["name"]
-    preview = _preview(question, parsed, out)
+    preview = _preview(question, parsed, out, ctx)
     if preview is not None:
         return preview
     if not _on_roster(out, pid):
@@ -472,7 +472,7 @@ def run_start_choice(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     a, b = ctx["players"]["p"], ctx["players"]["p2"]
     out = _start_sit(ctx)
     team = out["team"]["name"]
-    preview = _preview(question, parsed, out)
+    preview = _preview(question, parsed, out, ctx)
     if preview is not None:
         return preview
     for x in (a, b):

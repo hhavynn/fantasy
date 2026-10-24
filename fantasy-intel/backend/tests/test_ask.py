@@ -529,6 +529,10 @@ def test_a_future_week_preview_lists_no_alternatives_so_slot_questions_abstain(c
     for q in ("should i start Papa WR or Quebec WR next week", "best replacement for Papa WR next week"):
         card = ask(client, q)
         assert card["status"] == "abstain" and card["abstain"]["code"] == "preview", q
+        assert card["link"] == {"path": "/start-sit", "query": {"week": 3}}
+    # an explicit team stays in the link, so it opens the same team's preview (Codex P2 on #350)
+    card = ask(client, "best replacement for Papa WR next week", team_id=2)
+    assert card["link"] == {"path": "/start-sit", "query": {"week": 3, "team": 2}}
 
 
 def test_provider_copy_rewording_leaves_names_and_re_asks_alone():
