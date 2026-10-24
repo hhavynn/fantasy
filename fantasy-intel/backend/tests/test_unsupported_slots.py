@@ -168,6 +168,10 @@ def test_all_locked_is_reported_with_held_starters_whatever_the_status(league, m
     total = s["starters_count"] + s["bench_count"] + s["ir_count"]
     assert s["all_locked"] is True and "lineup_coverage" in s
     assert s["locked_players_count"] > total            # held starters are locked but in no count the hub could add
+    # the case the flag exists for: a status other than all_locked (incomplete_data outranks it) with held starters
+    sl = league("M8s")
+    s = load_start_sit_evaluation(sl, team_id=1, now=NOW)["summary"]
+    assert s["status"] == "incomplete_data" and s["all_locked"] is True and "lineup_coverage" in s
 
 
 def test_a_standard_league_has_no_coverage_block(league):

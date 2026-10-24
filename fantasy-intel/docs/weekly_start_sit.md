@@ -134,6 +134,7 @@ When viewing a future scoring period (`week > current_week`):
     "bench_count": 6,
     "ir_count": 1,
     "locked_players_count": 2,
+    "all_locked": false,
     "status": "upgrade_available"
   },
   "recommended_lineup": [ ... ],
