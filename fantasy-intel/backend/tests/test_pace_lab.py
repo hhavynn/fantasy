@@ -509,7 +509,8 @@ def test_pace_lab_under_a_league_is_a_member_tool_and_authorizes_before_validati
     with pg.connect() as c:
         seed_user(c, U1)
         seed_membership(c, U1, pub.league_id, "viewer")
-        seed_user(c, U2, admin=True)
+        seed_user(c, U2, admin=True)                                            # a platform admin who is a member
+        seed_membership(c, U2, pub.league_id, "viewer")
         seed_user(c, U3)                                                        # signed in, not a member
         c.commit()
     url = f"/v2/leagues/{pub.league_id}/api/pace-lab"
@@ -517,7 +518,7 @@ def test_pace_lab_under_a_league_is_a_member_tool_and_authorizes_before_validati
     assert client.get(url, headers=bearer(U3)).status_code == 404               # an outsider
     assert client.get(url + "?team=K1&window=bogus", headers=bearer(U3)).status_code == 404   # before validation
     assert client.get(f"/v2/leagues/lg_{'q' * 24}/api/pace-lab?team=K1").status_code == 404
-    assert client.get(url + "?team=KC", headers=bearer(U2)).status_code == 200  # a platform admin
+    assert client.get(url + "?team=KC", headers=bearer(U2)).status_code == 200  # a platform admin who is a member
     r = client.get(url + "?team=KC", headers=bearer(U1))
     assert r.status_code == 200, r.text[:300]
     assert r.json()["contract"] == "pace-lab.v1" and r.json()["team"]["team"] == "KC"

@@ -61,3 +61,36 @@ def test_unavailable_states_speak_to_the_reader():
     con.close()
     for m in messages:
         assert m and not any(word in m for word in OPERATOR), m
+
+
+def _v2_gates() -> dict[str, list]:
+    """Every /v2/leagues/{league_id} legacy route's path and its include-time dependencies, in order. FastAPI either
+    flattens an included router into routes carrying the dependencies or keeps it as one entry with its include
+    context (newer versions); both are read."""
+    from app.main import app
+    prefix = "/v2/leagues/{league_id}"
+    out: dict[str, list] = {}
+    for r in app.routes:
+        ctx = getattr(r, "include_context", None)
+        if ctx is not None and ctx.prefix == prefix:
+            deps = [d.dependency for d in ctx.dependencies or []]
+            for route in r.original_router.routes:
+                out[route.path] = deps
+        elif getattr(r, "path", "").startswith(prefix + "/api/"):
+            out[r.path[len(prefix):]] = [d.dependency for d in r.dependencies]
+    return out
+
+
+def test_exactly_the_owner_only_routes_carry_the_platform_admin_gate_before_league_scope():
+    from app.api.league_scope import league_scope, require_platform_admin
+    gates = _v2_gates()
+    owner = {"/api/projections/performance", "/api/projections/replay", "/api/projections/independent/promotion"}
+    for path in owner:
+        deps = gates[path]
+        assert require_platform_admin in deps and deps.index(require_platform_admin) < deps.index(league_scope), path
+    member = [p for p in gates if p.startswith(("/api/research/", "/api/pace-lab"))]
+    assert {"/api/research/opportunity", "/api/research/game-splits", "/api/research/game-splits/players",
+            "/api/research/players/{gsis_id}", "/api/pace-lab"} <= set(member)
+    for path in member:
+        assert league_scope in gates[path] and require_platform_admin not in gates[path], path
+    assert {p for p, deps in gates.items() if require_platform_admin in deps} == owner

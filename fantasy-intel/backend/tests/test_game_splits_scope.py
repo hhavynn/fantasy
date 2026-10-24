@@ -46,7 +46,8 @@ def test_game_splits_are_a_member_tool_authorized_before_validation(pg, served, 
     with pg.connect() as con:
         seed_user(con, U1)
         seed_membership(con, U1, pub.league_id, "viewer")
-        seed_user(con, U2, admin=True)
+        seed_user(con, U2, admin=True)                                           # a platform admin who is a member
+        seed_membership(con, U2, pub.league_id, "viewer")
         seed_user(con, U3)                                                       # signed in, not a member
         con.commit()
     for path in (VALID, INVALID, "/api/research/game-splits/players"):
@@ -55,7 +56,7 @@ def test_game_splits_are_a_member_tool_authorized_before_validation(pg, served, 
         assert client.get(url, headers=bearer(U3)).status_code == 404, path      # an outsider, before validation
     assert client.get(f"/v2/leagues/lg_{'z' * 24}{INVALID}", headers=bearer(U1)).status_code == 404
     assert client.get(f"/v2/leagues/{pub.league_id}{INVALID}", headers=bearer(U1)).status_code == 422
-    assert client.get(f"/v2/leagues/{pub.league_id}{VALID}", headers=bearer(U2)).status_code == 200   # platform admin
+    assert client.get(f"/v2/leagues/{pub.league_id}{VALID}", headers=bearer(U2)).status_code == 200   # admin + member
     ok = client.get(f"/v2/leagues/{pub.league_id}{VALID}", headers=bearer(U1))
     assert ok.status_code == 200, ok.text[:300]
     assert ok.headers["cache-control"] == "private, no-store"
