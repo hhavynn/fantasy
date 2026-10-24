@@ -131,6 +131,8 @@ def release_league_files() -> None:
     held = LEAGUE_FILES.get()
     if held is not None:
         held.release()
+
+
 _LAYERED: dict[str, Any] = {}
 
 

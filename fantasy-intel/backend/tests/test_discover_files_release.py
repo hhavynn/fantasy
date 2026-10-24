@@ -3,11 +3,11 @@ files (the data version and every opponent's manager context) is read first, the
 pin is released (deps.release_league_files), and only then does the search run, so 25 concurrent scans no longer pin
 their files for the whole search. The answer is unchanged; the pair is released exactly once."""
 import pytest
-
-from app.api import deps
+from league_fixtures import publish_local
 from test_league_scope import client, e2e, served  # noqa: F401  (fixtures)
 from test_leagues_api import env  # noqa: F401  (fixture)
-from league_fixtures import publish_local
+
+from app.api import deps
 
 
 def _timeless(x):
@@ -21,7 +21,7 @@ def _timeless(x):
 
 @pytest.mark.parametrize("path", ["/api/trades/discover/summary?team_id=1&mode=mutual_upgrades",
                                   "/api/trades/discover?team_id=1&mode=mutual_upgrades"])
-def test_the_scan_runs_with_no_file_pinned_and_the_pair_is_released_once(pg, served, client, e2e, tmp_path,
+def test_the_scan_runs_with_no_file_pinned_and_the_pair_is_released_once(pg, served, client, e2e, tmp_path,  # noqa: F811
                                                                          monkeypatch, path):
     from app.api import league_scope
     from app.api import trade_discovery as api
@@ -56,7 +56,7 @@ def test_the_scan_runs_with_no_file_pinned_and_the_pair_is_released_once(pg, ser
         assert cache._pins == {}
 
 
-def test_evidence_after_a_released_summary_still_reads_its_files(pg, served, client, e2e, tmp_path):
+def test_evidence_after_a_released_summary_still_reads_its_files(pg, served, client, e2e, tmp_path):  # noqa: F811
     """The row's evidence is a separate request: it pins and reads the files again (its ratings), from the view the
     summary stored."""
     from app.api import trade_discovery as api
@@ -93,9 +93,8 @@ def test_db_refuses_released_files_before_opening_them(monkeypatch):
     held.release()
     tokens = deps.LEAGUE_SCOPE.set(scope), deps.LEAGUE_FILES.set(held)
     try:
-        with pytest.raises(RuntimeError, match="release_league_files"):
-            with deps.db():
-                pass
+        with pytest.raises(RuntimeError, match="release_league_files"), deps.db():
+            pass
     finally:
         deps.LEAGUE_FILES.reset(tokens[1])
         deps.LEAGUE_SCOPE.reset(tokens[0])
