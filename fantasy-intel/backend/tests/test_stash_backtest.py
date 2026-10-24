@@ -120,3 +120,29 @@ def test_the_app_never_imports_the_backtest():
     for path in (backend / "app").rglob("*.py"):
         if path.name != "stash_backtest.py":
             assert "stash_backtest" not in path.read_text(), path
+
+
+def test_the_draft_does_not_depend_on_who_plays_later_this_season():
+    """Codex #347: player ids, and so the draft's seeded noise draws, come from preseason information only. Removing
+    one player's week-10 game this season, with last season unchanged, leaves every drafted roster the same."""
+    import importlib.util
+    scripts = pathlib.Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    spec = importlib.util.spec_from_file_location("stash_backtest_research", scripts / "stash_backtest_research.py")
+    research = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(research)
+    pos = ["QB"] * 30 + ["RB"] * 80 + ["WR"] * 90 + ["TE"] * 30
+    players = [(f"00-{i:04d}", p) for i, p in enumerate(pos)]
+
+    def row(season, week, gsis, p, pts):
+        return {"season": season, "season_type": "REG", "week": week, "player_id": gsis, "position": p, "team": "KC",
+                "fantasy_points_ppr": pts, "player_display_name": gsis}
+    prior = [row(2023, w, g, p, 5.0 + (i * 7) % 13) for i, (g, p) in enumerate(players) for w in (1, 2)]
+    late = row(2024, 10, players[150][0], players[150][1], 12.0)
+    current = [late] + [row(2024, w, g, p, 8.0) for g, p in players[::3] for w in (1, 2, 3)]
+    sched = [{"season": 2024, "game_type": "REG", "week": w, "home_team": "KC", "away_team": "BUF"} for w in range(1, 18)]
+
+    def drafts(stats):
+        s = research.build([2024], stats, sched)[0]
+        return [[[s.name[p] for p in r] for r in sb.snake_draft(s, lg)] for lg in range(3)]   # names are gsis ids
+    assert drafts(current + prior) == drafts([r for r in current if r is not late] + prior)

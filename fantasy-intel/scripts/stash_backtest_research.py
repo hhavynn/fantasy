@@ -28,28 +28,31 @@ POSITIONS = ("QB", "RB", "WR", "TE")
 def load(seasons: list[int]) -> list[sb.Season]:
     import nflreadpy as nfl
     years = sorted({y for s in seasons for y in (s - 1, s)})
-    stats = nfl.load_player_stats(years).to_dicts()
-    sched = nfl.load_schedules(years).to_dicts()
-    ids: dict[str, int] = {}
+    return build(seasons, nfl.load_player_stats(years).to_dicts(), nfl.load_schedules(years).to_dicts())
 
-    def pid(gsis: str) -> int:
-        return ids.setdefault(gsis, len(ids) + 1)
 
+def build(seasons: list[int], stats: list[dict], sched: list[dict]) -> list[sb.Season]:
+    """One Season per evaluated year. Player ids are assigned per season from preseason information only: last
+    season's players first, in nflverse id order, then this season's newcomers (never drafted). So who plays which
+    weeks this season cannot reorder the draft's noise draws (Codex #347)."""
     by_year: dict[int, list[dict]] = {}
     for r in stats:
         if r.get("season_type") == "REG" and r.get("position") in POSITIONS and r.get("player_id"):
             by_year.setdefault(r["season"], []).append(r)
     out = []
     for s in seasons:
+        prior_ids = sorted({r["player_id"] for r in by_year.get(s - 1, [])})
+        new_ids = sorted({r["player_id"] for r in by_year.get(s, [])} - set(prior_ids))
+        ids = {g: i + 1 for i, g in enumerate(prior_ids + new_ids)}
         games, position, name = {}, {}, {}
         for r in by_year.get(s, []):
-            p = pid(r["player_id"])
+            p = ids[r["player_id"]]
             games.setdefault(p, []).append((int(r["week"]), r["team"], float(r.get("fantasy_points_ppr") or 0.0)))
             position[p], name[p] = r["position"], r.get("player_display_name") or r["player_id"]
         prior_games: dict[int, list[float]] = {}
         prior_last: dict[int, tuple[int, str]] = {}
         for r in by_year.get(s - 1, []):
-            p = pid(r["player_id"])
+            p = ids[r["player_id"]]
             prior_games.setdefault(p, []).append(float(r.get("fantasy_points_ppr") or 0.0))
             prior_last[p] = max(prior_last.get(p, (0, "")), (int(r["week"]), r["team"]))
             if p not in position:                      # drafted on last season's value even if he never plays now
