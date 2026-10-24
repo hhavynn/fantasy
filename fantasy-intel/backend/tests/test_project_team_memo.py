@@ -56,6 +56,9 @@ def test_every_answer_is_identical_with_the_memo_off(client, monkeypatch):
         assert on[q] == off[q], q
 
 
+STREAM_ATTRS = ("stream", "stream_reference", "stream_rank")   # StreamingProjections' baseline, beside the dict
+
+
 class _Watched(tl.TeamMemo):
     """Snapshots each result when stored and the projections when the scan starts, to check nothing changes them."""
     made: typing.ClassVar[list] = []
@@ -63,6 +66,7 @@ class _Watched(tl.TeamMemo):
     def __init__(self, proj, scope):
         super().__init__(proj, scope)
         self.proj_at_start = copy.deepcopy(proj)
+        self.stream_at_start = {k: copy.deepcopy(getattr(proj, k, None)) for k in STREAM_ATTRS}
         self.snapshots, self.hits = {}, 0
         _Watched.made.append(self)
         entries, snapshots, memo = self.entries, self.snapshots, self
@@ -79,7 +83,9 @@ class _Watched(tl.TeamMemo):
 
             def clear(self):
                 memo.unchanged = all(json.dumps(v, sort_keys=True, default=str) == snapshots[k] for k, v in self.items())
-                memo.proj_unchanged = memo.proj == memo.proj_at_start
+                first = memo.projs[0]
+                memo.proj_unchanged = first == memo.proj_at_start and all(
+                    getattr(first, k, None) == v for k, v in memo.stream_at_start.items())
                 memo.size_at_end = len(self)
                 super().clear()
         self.entries = Entries(entries)
@@ -93,7 +99,23 @@ def test_shared_results_and_the_projections_never_change_and_the_memo_ends_empty
     (memo,) = _Watched.made                                  # one memo per scan
     assert memo.size_at_end > 0 and memo.hits > memo.size_at_end      # it was used: most calls repeat
     assert memo.unchanged and memo.proj_unchanged            # no caller mutated a shared result or the projections
-    assert memo.entries == {} and tl._TEAM_MEMO.get() is None          # nothing outlives the scan
+    assert memo.entries == {}                                # emptied when the scan ends
+
+
+def test_a_search_cached_by_an_earlier_request_is_memoized_too(client, monkeypatch):
+    """Review #352: with the trade search cached and the view not (another filter), the scan works on the cached
+    search's projections object; the memo admits it, and the answer is still the one computed without the memo."""
+    _discover(client, "team_id=1&mode=mutual_upgrades")              # caches the search
+    q = "team_id=1&mode=practical"
+    api._VIEWS.clear()
+    _Watched.made = []
+    monkeypatch.setattr(tl, "TeamMemo", _Watched)
+    warm = client.get(f"/api/trades/discover?{q}")
+    (memo,) = _Watched.made
+    assert len(memo.projs) == 2 and memo.hits > 0 and memo.unchanged
+    monkeypatch.setattr(api, "project_team_memo", lambda *a, **k: contextlib.nullcontext())
+    api._VIEWS.clear()
+    assert _timeless(warm.json()) == _timeless(client.get(f"/api/trades/discover?{q}").json())
 
 
 def test_only_the_scans_own_projections_are_memoized():
@@ -104,8 +126,10 @@ def test_only_the_scans_own_projections_are_memoized():
         a = tl.project_team(players, ["QB"], window, proj)
         assert tl.project_team(players, ["QB"], window, proj) is a          # the same inputs: the stored result
         assert tl.project_team(players, ["QB"], window, other) is not a     # an equal but other object: computed
-        assert tl.project_team(list(reversed(players + [tl.RosterPlayer(2, "QB")])), ["QB"], window, proj) is not a
-        assert len(memo.entries) == 2
+        two = players + [tl.RosterPlayer(2, "QB")]
+        b = tl.project_team(two, ["QB"], window, proj)
+        assert tl.project_team(list(reversed(two)), ["QB"], window, proj) is not b   # the order is part of the key
+        assert len(memo.entries) == 3
     assert memo.entries == {} and tl.project_team(players, ["QB"], window, proj) is not a   # off after the block
 
 

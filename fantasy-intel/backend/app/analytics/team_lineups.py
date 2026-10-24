@@ -326,16 +326,26 @@ def summarize_team(weeks: list[dict], window: Window) -> dict:
 
 
 class TeamMemo:
-    """One scan's project_team results (issue #331): only calls with the scan's own projections object are kept, keyed
-    by the scan's scope (data version, K/D/ST streaming flag) and every other input, the players in their order
-    included. Lives for one `project_team_memo` block, then is emptied."""
+    """One scan's project_team results (issue #331): only calls with one of the scan's own projections objects are
+    kept, each object's apart, keyed by the scan's scope (data version, K/D/ST streaming flag) and every other input,
+    the players in their order included. Lives for one `project_team_memo` block, then is emptied."""
 
     def __init__(self, proj: Projections, scope: tuple):
-        self.proj, self.scope, self.entries = proj, scope, {}
+        self.projs, self.scope, self.entries = [proj], scope, {}
 
-    def key(self, players, slots, window: Window) -> tuple:
+    def admit(self, proj: Projections) -> None:
+        """Also memoize calls on `proj`: the projections of a trade search cached by an earlier request of the same
+        data version and streaming flag, which the scan works on (review #352). Held here, so it lives as long."""
+        if not any(p is proj for p in self.projs):
+            self.projs.append(proj)
+
+    def slot(self, proj: Projections) -> int | None:
+        """Which admitted object `proj` is (its position, not its identity, goes into the key), or None."""
+        return next((i for i, p in enumerate(self.projs) if p is proj), None)
+
+    def key(self, slot: int, players, slots, window: Window) -> tuple:
         # the slot list's unsupported labels too (LineupSlots metadata): project_week reads them (Codex #352)
-        return (self.scope, tuple(players), tuple(slots), unsupported_of(slots), window)
+        return (self.scope, slot, tuple(players), tuple(slots), unsupported_of(slots), window)
 
 
 _TEAM_MEMO: ContextVar[TeamMemo | None] = ContextVar("project_team_memo", default=None)
@@ -357,14 +367,15 @@ def project_team_memo(proj: Projections, scope: tuple = ()):
 
 def project_team(players: list[RosterPlayer], slots: list[str], window: Window, proj: Projections) -> dict:
     memo = _TEAM_MEMO.get()
-    if memo is not None and proj is memo.proj:           # another projections object is never memoized
-        key = memo.key(players, slots, window)
+    slot = None if memo is None else memo.slot(proj)    # a projections object the scan did not admit: never memoized
+    if slot is not None:
+        key = memo.key(slot, players, slots, window)
         hit = memo.entries.get(key)
         if hit is not None:
             return hit
     weeks = [project_week(players, slots, w, proj, window.phase(w)) for w in window.weeks]
     out = {"weeks": weeks, "summary": summarize_team(weeks, window)}
-    if memo is not None and proj is memo.proj:
+    if slot is not None:
         memo.entries[key] = out
     return out
 

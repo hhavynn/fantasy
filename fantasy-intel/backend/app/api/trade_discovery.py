@@ -421,15 +421,17 @@ class _Read:
 
 def _build(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
     # One scan repeats about 3 in 4 lineup projections (#331): they are computed once per scan.
-    with project_team_memo(r.state.projections, (read.version, streaming_enabled(r.state))):
-        return _build_view(read, r, p)
+    with project_team_memo(r.state.projections, (read.version, streaming_enabled(r.state))) as memo:
+        return _build_view(read, r, p, memo)
 
 
-def _build_view(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
+def _build_view(read: _Read, r: _Resolved, p: DiscoverParams, memo=None) -> dict:
     state, team_id, pos = r.state, r.team_id, r.pos
     board = FreeAgencyBoard(state, state.window())
     try:
         ts = _search(read.version, state, team_id, r.shape_list, pos, r.focus)
+        if memo is not None:       # a search cached by an earlier request (same version and streaming) has its own state
+            memo.admit(ts.state.projections)
         anchor = next(t for t in r.teams if t["team_id"] == team_id)
         anchor_label = "You" if anchor.get("is_mine") else (anchor.get("name") or f"Team {team_id}")
         opponent = p.opponent if p.opponent is not None or not r.target_info["player"] else r.target_info["player"]["team_id"]

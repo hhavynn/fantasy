@@ -230,10 +230,12 @@ A deterministic profile of one scan (one league, memo cleared): 1.7 s of wall ti
 once cost about 25 x 1.7 s, the 25-league p50. 71% of it is `evaluate_trade` for the detailed rows, and 77% of its
 `project_team` calls repeat an earlier call's inputs exactly (28,575 week lineups, 6,435 distinct): the anchor's and each
 opponent's "before" lineups are re-projected for every row. `team_lineups.project_team_memo` now keeps one scan's
-results (a ContextVar for one `trade_discovery._build` call, emptied after it; only the scan's own projections object;
-key: data version and K/D/ST streaming flag, the players in order, slots, window). The answers are identical with it on
-and off (tests/test_project_team_memo.py, 15 query variants), and a test snapshots every shared result and the
-projections to show no caller changes them.
+results (a ContextVar for one `trade_discovery._build` call, emptied after it). Only the scan's own projections objects
+are memoized: its league state's, and a trade search cached by an earlier request's, each apart. The key: data version
+and K/D/ST streaming flag, the players in order, the slots and their unsupported labels, the window. The answers are
+identical with it on and off (tests/test_project_team_memo.py, 15 query variants and the cached-search case), and on
+real scans a test snapshots each shared result and the projections to show no caller changes them. The A/B below
+clears the search cache before each scan; with it warm, the scan does less work and the memo still applies.
 
 Same script, machine and fixture, two pairs back to back (A = #351's head 9b10251, B = A + the memo), A→B then B→A,
 load average 0.76-1.66:
