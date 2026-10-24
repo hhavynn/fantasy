@@ -420,7 +420,8 @@ class _Read:
 
 
 def _build(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
-    with project_team_memo():                  # one scan repeats about 3 in 4 lineup projections (#331)
+    # One scan repeats about 3 in 4 lineup projections (#331): they are computed once per scan.
+    with project_team_memo(r.state.projections, (read.version, streaming_enabled(r.state))):
         return _build_view(read, r, p)
 
 

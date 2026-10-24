@@ -325,32 +325,46 @@ def summarize_team(weeks: list[dict], window: Window) -> dict:
     }
 
 
-_TEAM_MEMO: ContextVar[dict | None] = ContextVar("project_team_memo", default=None)
+class TeamMemo:
+    """One scan's project_team results (issue #331): only calls with the scan's own projections object are kept, keyed
+    by the scan's scope (data version, K/D/ST streaming flag) and every other input, the players in their order
+    included. Lives for one `project_team_memo` block, then is emptied."""
+
+    def __init__(self, proj: Projections, scope: tuple):
+        self.proj, self.scope, self.entries = proj, scope, {}
+
+    def key(self, players, slots, window: Window) -> tuple:
+        return (self.scope, tuple(players), tuple(slots), window)
+
+
+_TEAM_MEMO: ContextVar[TeamMemo | None] = ContextVar("project_team_memo", default=None)
 
 
 @contextmanager
-def project_team_memo():
-    """Within this block, identical project_team calls (same players in the same order, slots, window and projections
-    object) return the first call's result (issue #331: one trade-discovery scan repeats about 3 in 4 of them). The
-    result is shared: callers must treat it as read-only, as they already do."""
-    token = _TEAM_MEMO.set({})
+def project_team_memo(proj: Projections, scope: tuple = ()):
+    """Within this block, identical project_team calls on `proj` return the first call's result (one trade-discovery
+    scan repeats about 3 in 4 of them). The result is shared, so callers treat it as read-only, as they already do;
+    tests/test_project_team_memo.py checks that neither the results nor `proj` change during a scan."""
+    memo = TeamMemo(proj, tuple(scope))
+    token = _TEAM_MEMO.set(memo)
     try:
-        yield
+        yield memo
     finally:
         _TEAM_MEMO.reset(token)
+        memo.entries.clear()
 
 
 def project_team(players: list[RosterPlayer], slots: list[str], window: Window, proj: Projections) -> dict:
     memo = _TEAM_MEMO.get()
-    if memo is not None:
-        key = (tuple(players), tuple(slots), window, id(proj))
-        hit = memo.get(key)
-        if hit is not None and hit[0] is proj:          # the entry keeps proj alive, so its id is never reused
-            return hit[1]
+    if memo is not None and proj is memo.proj:           # another projections object is never memoized
+        key = memo.key(players, slots, window)
+        hit = memo.entries.get(key)
+        if hit is not None:
+            return hit
     weeks = [project_week(players, slots, w, proj, window.phase(w)) for w in window.weeks]
     out = {"weeks": weeks, "summary": summarize_team(weeks, window)}
-    if memo is not None:
-        memo[key] = (proj, out)
+    if memo is not None and proj is memo.proj:
+        memo.entries[key] = out
     return out
 
 
