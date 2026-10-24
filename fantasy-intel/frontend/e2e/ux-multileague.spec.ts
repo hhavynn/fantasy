@@ -70,7 +70,9 @@ for (const { kind, signedIn, widths } of MATRIX) {
           if (signedIn) await signIn(context);
           const errors = collectErrors(page);
           await useTheme(page, "light");
-          await open(page, `/l/${manifest().leagues[kind]}${route.path === "/" ? "" : route.path}`);
+          // signed out, Start/Sit is read from a team's perspective (?team=): with none it asks for one (#348)
+          const team = !signedIn && route.path === "/start-sit" ? "?team=1" : "";
+          await open(page, `/l/${manifest().leagues[kind]}${route.path === "/" ? "" : route.path}${team}`);
           await expectStructure(page);
           await expectNoBrokenValues(page);
           await expectDecisionFirst(page, { verdict: !!route.verdict });
@@ -199,8 +201,9 @@ for (const width of [320, 1440]) {
       const errors = collectErrors(page);
       await useTheme(page, "light");
       for (const p of ["", "/start-sit", "/matchup", "/waivers"]) {
-        // the hub is one team's week, so the Overview is opened from a team's perspective (an anonymous visitor's ?team=)
-        await open(page, `/l/${manifest().leagues.espn_partial}${p}${p === "" ? "?team=1" : ""}`);
+        // the hub and Start/Sit are one team's week, so they are opened from a team's perspective (an anonymous
+        // visitor's ?team=)
+        await open(page, `/l/${manifest().leagues.espn_partial}${p}${p === "" || p === "/start-sit" ? "?team=1" : ""}`);
         await expectStructure(page);
         await expectNoBrokenValues(page);
         if (p === "/start-sit") await expect(page.locator("main")).toContainText("Projections are incomplete, so no gain is claimed");
@@ -219,6 +222,11 @@ for (const width of [320, 1440]) {
       await expect(page.locator("main")).toContainText("No default team is set");
       await expect(page.locator("main").getByText(/^Next step ·/)).toHaveCount(0);
       await expect(page.locator("main").getByRole("heading", { name: "Before kickoff" })).toHaveCount(0);
+      // nor does Start/Sit: it asks for a team instead of showing the first team's lineup (#348)
+      await open(page, `/l/${manifest().leagues.espn_partial}/start-sit`);
+      await expect(page.locator("main")).toContainText("Pick a team above to see its lineup against the best projected one");
+      await expect(page.locator("main")).not.toContainText("Projections are incomplete, so no gain is claimed");
+      await bothThemes(page, true);
       expect(errors, "console errors").toEqual([]);
     });
   });

@@ -346,11 +346,11 @@ def test_v2_what_if_is_authorized_before_the_scenario_is_read(pg, served, e2e, t
                 r = client.get(f"/v2/leagues/{lg}{path}", params=params, headers=headers)
                 answers.append((r.status_code, r.json()))
     assert set(map(str, answers)) == {str((404, {"detail": "League not found."}))}
-    r = client.get(f"/v2/leagues/{public.league_id}{path}")
+    r = client.get(f"/v2/leagues/{public.league_id}{path}", params={"team_id": 1})    # a visitor names a team (#348)
     assert r.status_code == 200, r.text[:200]
     key = r.json()["key"]
     opt = next(o for s in r.json()["slots"] for o in s["options"])
-    r2 = client.get(f"/v2/leagues/{public.league_id}{path}", params={"whatif": opt["whatif"]})
+    r2 = client.get(f"/v2/leagues/{public.league_id}{path}", params={"team_id": 1, "whatif": opt["whatif"]})
     assert r2.status_code == 200 and r2.json()["scenario"]["applied"] and r2.json()["key"] == key
     assert r2.headers["cache-control"] == "private, no-store"
     assert client.get(f"/v2/leagues/{public.league_id}{path}", params={"whatif": "nonsense"}).status_code == 422
