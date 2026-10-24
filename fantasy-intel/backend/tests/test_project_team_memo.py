@@ -4,6 +4,7 @@ off, no result or projection changes while it is shared, and the memo is empty o
 import contextlib
 import copy
 import json
+import typing
 
 import pytest
 from fastapi.testclient import TestClient
@@ -57,7 +58,7 @@ def test_every_answer_is_identical_with_the_memo_off(client, monkeypatch):
 
 class _Watched(tl.TeamMemo):
     """Snapshots each result when stored and the projections when the scan starts, to check nothing changes them."""
-    made: list = []
+    made: typing.ClassVar[list] = []
 
     def __init__(self, proj, scope):
         super().__init__(proj, scope)
