@@ -139,7 +139,9 @@ def cutoff(data: WaiverData, week: int) -> tuple[dict | None, str | None]:
     if week <= 1:
         return None, "no_prior_week"
     first, start = data.first_kickoff(week), data.last_kickoff(week - 1)
-    if first is None or start is None:
+    # a scheduled game of either boundary week without a known kickoff (team_kickoffs drops it) could be the real
+    # first or last one, so neither extreme is established
+    if first is None or start is None or any(g not in data.kickoffs for g in data.games if g[0] in (week - 1, week)):
         return None, "kickoff_unknown"
     if not data.process_days:
         return None, "schedule_unknown"

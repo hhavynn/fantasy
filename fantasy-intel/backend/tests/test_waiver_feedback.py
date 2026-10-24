@@ -63,6 +63,18 @@ def test_the_cutoff_is_the_processing_day_starting_in_utc_plus_14_or_the_first_k
     assert c["cutoff"] == datetime(2026, 9, 17, 0, 15, tzinfo=UTC)                     # the first kickoff comes first
 
 
+@pytest.mark.parametrize("week, team", [(2, "KC"), (1, "BUF")])
+def test_a_boundary_game_with_an_unknown_kickoff_leaves_the_cutoff_unknown(week, team):
+    """Codex #353: an unknown kickoff of week W (it could be a Thursday game before the processing day) or of week
+    W-1 (it could be the last game) leaves the other games' extremes unproven: no cutoff, never a later one."""
+    d = data(process_days=[5])
+    del d.kickoffs[(week, team)]                                              # still scheduled: in d.games
+    assert wf.cutoff(d, 2) == (None, "kickoff_unknown")
+    assert wf.week_feedback(d, 2)["status"] == "kickoff_unknown"
+    d.games.discard((week, team))                                             # not scheduled at all: a bye
+    assert wf.cutoff(d, 2)[1] is None
+
+
 @pytest.mark.parametrize("change, status", [
     ({"process_days": None}, "schedule_unknown"),
     ({"kickoffs": {}}, "kickoff_unknown"),
