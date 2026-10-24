@@ -21,6 +21,7 @@ import json
 from datetime import UTC, datetime
 
 from ..db.connection import fetch_dicts, insert_rows, table_exists
+from .legacy_league import latest_league
 
 TABLE = "waiver_recommendation_snapshots"
 RULE_VERSION = "waiver-archive.v1"
@@ -66,14 +67,14 @@ def archive_waiver_recommendations(con, provenance: dict | None) -> dict:
     """Append this run's captures (see the module docstring). `provenance` is build_waivers' "provenance"."""
     if not provenance or not table_exists(con, TABLE) or not table_exists(con, "team_waiver_recommendations"):
         return {"skipped": "no waiver run to archive"}
-    lg = fetch_dicts(con, "SELECT league_id, season, scoring_items FROM leagues ORDER BY synced_at DESC LIMIT 1")
-    if not lg:
+    lg = latest_league(con, ["league_id", "season", "scoring_items"])     # the league build_waivers just evaluated
+    if lg is None:
         return {"skipped": "no league"}
-    league_id, season = lg[0]["league_id"], lg[0]["season"]
+    league_id, season = lg["league_id"], lg["season"]
     week, captured_at = provenance["week"], _utc_naive(provenance["computed_at"])
     common = {"projection_source": provenance.get("projection_source"),
               "projection_version": provenance.get("projection_version"),
-              "scoring_fingerprint": scoring_fingerprint(lg[0]["scoring_items"]), "rule_version": RULE_VERSION,
+              "scoring_fingerprint": scoring_fingerprint(lg["scoring_items"]), "rule_version": RULE_VERSION,
               "archive_k": ARCHIVE_K, "horizon_weeks": HORIZON_WEEKS}
     current = fetch_dicts(con, """
         SELECT team_id, espn_player_id, position, recommendation, waiver_score, opportunity_score, roster_fit_score,
