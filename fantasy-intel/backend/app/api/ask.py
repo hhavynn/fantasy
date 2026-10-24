@@ -56,6 +56,11 @@ def ask(
         raise HTTPException(422, f"A question is at most {grammar.MAX_CHARS} characters and {grammar.MAX_WORDS} "
                                  "words.")
     question = grammar.normalize(q or "")
+    # The bound holds for the text the grammar reads too: NFKC can expand a character into many, and format
+    # characters (zero-width spaces) become word breaks.
+    if len(question) > grammar.MAX_CHARS or len(question.split()) > grammar.MAX_WORDS:
+        raise HTTPException(422, f"A question is at most {grammar.MAX_CHARS} characters and {grammar.MAX_WORDS} "
+                                 "words.")
     parsed = grammar.parse(q or "")
     if isinstance(parsed, grammar.Unsupported):
         return _unsupported(question, parsed)
@@ -78,6 +83,8 @@ def ask(
                 return _card("abstain", question, parsed, code="no_player",
                              reason=f"No player named \"{ref.text}\" is in this league's player pool.")
             players[slot] = found
+        if "p2" in players and players["p"]["espn_player_id"] == players["p2"]["espn_player_id"]:
+            return _card("abstain", question, parsed, code="same_player", reason="Name two different players.")
         week = parsed.slots.get("week")
         if week == "next":
             week = int(lg["current_week"] or 0) + 1
@@ -188,9 +195,11 @@ def _resolve_player(con, lg: dict, ref: grammar.PlayerRef, question: str) -> dic
     for p in cands[:8]:
         unique = len(by_pos_team[(p["position"], p["pro_team"])]) == 1
         qual = f"{p['position']}, {p['pro_team']}" if unique else f"id {p['espn_player_id']}"
+        # The re-ask keeps the asker's own words and adds a qualifier, so it reads the same after provider copy
+        # rewording (which never touches *_name values, and only ever the site's uppercase wording).
         options.append({"player_id": p["espn_player_id"], "name": p["full_name"], "position": p["position"],
-                        "pro_team": p["pro_team"], "fantasy_team": p["fantasy_team"],
-                        "ask": _requalify(question, ref.text, f"{p['full_name']} ({qual})")})
+                        "pro_team": p["pro_team"], "fantasy_team_name": p["fantasy_team"],
+                        "ask": _requalify(question, ref.text, f"{ref.text} ({qual})")})
     return {"status": "clarify", "clarify": {
         "code": "ambiguous_player", "question": f"Which \"{ref.text}\"?",
         "reason": f"{len(cands)} players in this league's pool match that name.", "options": options}}
@@ -335,10 +344,10 @@ def run_waivers_best(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     pos = parsed.slots.get("position")
     out = routes.waivers(position=pos, recommendation=None, limit=TOP, offset=0, view="BEST", team_id=ctx["team_id"])
     columns = [{"key": "name", "label": "Player"}, {"key": "position", "label": "Pos"}, {"key": "team", "label": "NFL"},
-               {"key": "recommendation", "label": "Call"}, {"key": "drop", "label": "Suggested drop"}]
+               {"key": "recommendation", "label": "Call"}, {"key": "drop_name", "label": "Suggested drop"}]
     shown = [{"player_id": r["espn_player_id"],
               "cells": {"name": r.get("full_name"), "position": r.get("position"), "team": r.get("pro_team"),
-                        "recommendation": r.get("recommendation"), "drop": r.get("drop_name")}}
+                        "recommendation": r.get("recommendation"), "drop_name": r.get("drop_name")}}
              for r in out["players"]]
     where = f" at {pos}" if pos else ""
     who = out.get("perspective") or ctx["perspective"]
@@ -578,8 +587,9 @@ def run_compare(question: str, parsed: grammar.Parsed, ctx: dict) -> dict:
     a, b = ctx["players"]["p"], ctx["players"]["p2"]
     out = player_compare.compare_players(a=a["espn_player_id"], b=b["espn_player_id"], source=None)
     names = {"a": out["players"][0]["player"]["full_name"], "b": out["players"][1]["player"]["full_name"]}
-    columns = [{"key": "point", "label": "Point"}, {"key": "leader", "label": "Edge"}, {"key": "text", "label": "Why"}]
-    shown = [{"cells": {"point": s.get("title"), "leader": names.get(s.get("leader")) if s.get("leader") else None,
+    columns = [{"key": "point", "label": "Point"}, {"key": "leader_name", "label": "Edge"},
+               {"key": "text", "label": "Why"}]
+    shown = [{"cells": {"point": s.get("title"), "leader_name": names.get(s.get("leader")) if s.get("leader") else None,
                         "text": s.get("text")}} for s in out.get("summary") or []]
     return _card("answered", question, parsed, interpretation=f"Compare {names['a']} and {names['b']}",
                  answer={"headline": f"{names['a']} vs {names['b']}.", "facts": [], "columns": columns,

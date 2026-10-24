@@ -391,6 +391,9 @@ def test_question_length_is_bounded(client):
     assert ask(client, "a" * grammar.MAX_CHARS)["status"] == "abstain"
     assert ask(client, "")["abstain"]["code"] == "empty"
     assert client.get("/api/ask", params={"q": " ".join(["a"] * (grammar.MAX_WORDS + 1))}).status_code == 422
+    # the bound holds after normalization too: NFKC expands U+FDFA to 18 characters, and zero-width spaces split words
+    assert client.get("/api/ask", params={"q": "\ufdfa" * grammar.MAX_CHARS}).status_code == 422
+    assert client.get("/api/ask", params={"q": "start" + "\u200ba\u200bor" * 48}).status_code == 422
 
 
 def test_one_handler_call_per_question_two_for_a_week_window(client, monkeypatch):
@@ -440,6 +443,11 @@ def test_same_name_players_get_a_clarification_whose_options_resolve(e2e_file, t
     for pid, again in by_id.items():
         answered = ask(c, again)
         assert answered["status"] == "answered" and answered["link"]["query"]["id"] == pid, again
+
+
+def test_two_names_for_the_same_player_are_not_compared(client):
+    card = ask(client, "compare Papa WR (id 304) and Papa WR")
+    assert card["status"] == "abstain" and card["abstain"]["code"] == "same_player"
 
 
 def test_accented_names_match_with_or_without_the_accents(e2e_file, tmp_path, monkeypatch):
@@ -521,3 +529,13 @@ def test_a_future_week_preview_lists_no_alternatives_so_slot_questions_abstain(c
     for q in ("should i start Papa WR or Quebec WR next week", "best replacement for Papa WR next week"):
         card = ask(client, q)
         assert card["status"] == "abstain" and card["abstain"]["code"] == "preview", q
+
+
+def test_provider_copy_rewording_leaves_names_and_re_asks_alone():
+    """On a Sleeper league /v2 rewords the site's "ESPN" (app/api/provider_copy.py); names people chose and the
+    clarification's re-ask (the asker's own lowercase words plus a qualifier) must survive it unchanged."""
+    from app.api.provider_copy import rewrite
+    card = {"clarify": {"options": [{"name": "ESPN Fan", "fantasy_team_name": "ESPN Haters",
+                                     "ask": "how is espn fan (id 7) doing"}]},
+            "answer": {"rows": [{"cells": {"name": "ESPN Fan", "drop_name": "ESPN Fan", "leader_name": "ESPN Fan"}}]}}
+    assert rewrite(card) == card

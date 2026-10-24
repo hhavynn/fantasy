@@ -11,7 +11,9 @@ from the question, nothing written or logged.
 1. **Authorize.** Under `/v2` the router is mounted by `mount_legacy_routers`, so `league_scope` authorizes the
    caller before the handler runs: unknown, private-to-others and anonymous-on-private leagues are the same
    `404 {"detail": "League not found."}` whatever `q` holds, and no league file is downloaded for them.
-2. **Bound.** `q` is at most 200 characters and 40 words (422 above that, after authorization). It is never logged.
+2. **Bound.** `q` is at most 200 characters and 40 words, before and after normalization (422 above that, after
+   authorization). The app never logs it; like every GET's query string, it does appear in the web server's access
+   log where the deployment keeps one.
    The `/v2` response cache keys on the full query string, so the question is part of the key: two questions never
    share an entry.
 3. **Parse.** NFKC, casefold, unified dashes/quotes/≥/≤, collapsed whitespace, polite lead-ins and trailing
