@@ -119,6 +119,10 @@ takes a returning player's position from his last previous-season game, and a ne
 precedes any week he is projected at. On the real data this changed nothing: the e9a85eb run's rows are byte-identical
 to the 9bba4f8 run's.
 
+Codex also found that the post-hoc share of B1 picks that are *pick up now* checked membership in the planner's listed
+top 5, which undercounts. 243c5fa applies the planner's own test to B1 directly. In the 243c5fa run only that flag
+changed: 79% of B1's picks are pick-up-now, not 71%.
+
 Each run uses the same rule, data and seeds. The outcome is "no evidence" in all three.
 
 | | First run, f29592b (team leak) | Second run, 06eb923 (draft-order leak) | **Final run, 9bba4f8 = e9a85eb** |
@@ -163,7 +167,7 @@ Each run uses the same rule, data and seeds. The outcome is "no evidence" in all
 
 ### Reading (post-hoc, does not change the outcome)
 
-- **B1 is mostly not a stash.** 71% of B1's picks are players PLAN lists as *pick up now*: they add points this week,
+- **B1 is mostly not a stash.** 79% of B1's picks are players PLAN lists as *pick up now*: they add points this week,
   so the planner excludes them as stashes by design.
   - So the pre-registered arms compare a stash with a mostly current-week pick. The pre-registered Question asked for
     "a fair lineup-unaware pick of the same kind", and the Arms definition did not enforce it.
