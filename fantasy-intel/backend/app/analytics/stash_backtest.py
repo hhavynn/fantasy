@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 
 from .lineup import lineup_slots
 from .marginal_utility import scenario
-from .stash_planner import plan_stashes
-from .team_lineups import RosterPlayer, Window
+from .stash_planner import EPS, plan_stashes
+from .team_lineups import RosterPlayer, Window, r as _r
 
 SLOTS = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1})
 TEAMS, ROUNDS = 12, 15
@@ -109,6 +109,18 @@ def realized_gain(s: Season, roster: list[RosterPlayer], weeks, drop: int | None
     return res["_ros_exact"]
 
 
+def _is_pick_up_now(roster: list[RosterPlayer], hweeks, proj: dict, drop: int | None, fa: RosterPlayer) -> bool:
+    """The planner's own test for a current-week add, on the as-of projections with the same drop: a net gain over the
+    horizon that includes a gain this week. Computed here, since the planner lists only its top pick-up-now players
+    (Codex #347)."""
+    sc = scenario(roster, SLOTS, Window(tuple(hweeks), LAST_REGULAR), proj, remove=[drop] if drop is not None else (),
+                  add=[fa])
+    total, exact = sc["_ros_exact"], sc["_weeks_exact"]
+    if total is None or any(d is None for d in exact):
+        return False
+    return total > EPS and _r(total) > 0 and exact[0] > EPS and _r(exact[0]) > 0
+
+
 def decide(s: Season, roster_ids: list[int], drafted: set[int], w: int) -> dict:
     """One team-week: the four arms' picks and realized later-week gains (None when PLAN finds no stash)."""
     hweeks = list(range(w, w + HORIZON + 1))
@@ -125,11 +137,10 @@ def decide(s: Season, roster_ids: list[int], drafted: set[int], w: int) -> dict:
     if not pool or (drop is None and plan.get("drop_basis") != "open_spot"):
         return row | {"plan": None}                     # drop_unknown: the planner abstains, nothing is compared
     b1 = max(pool, key=lambda p: (sum(proj[p.espn_player_id][k] for k in later), -p.espn_player_id))
-    pick_up_now = {x["espn_player_id"] for x in plan["pick_up_now"]}
+    b1_now = _is_pick_up_now(roster, hweeks, proj, drop, b1)
     if not plan["stashes"]:                             # pre-registered: R_B1 where PLAN found no stash
         return row | {"plan": None, "b1": b1.espn_player_id, "drop": drop,
-                      "r_b1": realized_gain(s, roster, later, drop, b1), "b1_pick_up_now": b1.espn_player_id in
-                      pick_up_now}
+                      "r_b1": realized_gain(s, roster, later, drop, b1), "b1_pick_up_now": b1_now}
     top = plan["stashes"][0]
     by_id = {p.espn_player_id: p for p in pool}
     b2 = max(pool, key=lambda p: (proj[p.espn_player_id][w], -p.espn_player_id))
@@ -139,7 +150,7 @@ def decide(s: Season, roster_ids: list[int], drafted: set[int], w: int) -> dict:
     gains = {arm: realized_gain(s, roster, later, drop, f) for arm, f in picks.items()}
     return row | {"plan": top["espn_player_id"], "b1": b1.espn_player_id, "b2": b2.espn_player_id, "drop": drop,
                   "r_plan": gains["plan"], "r_b1": gains["b1"], "r_b2": gains["b2"], "r_rand": gains["rand"],
-                  "b1_pick_up_now": b1.espn_player_id in pick_up_now,
+                  "b1_pick_up_now": b1_now,
                   "projected_later": top["later_delta"], "projected_net": top["horizon_delta"]}
 
 

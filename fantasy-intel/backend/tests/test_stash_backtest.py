@@ -96,6 +96,18 @@ def test_the_plan_arm_covers_a_bye_and_the_baselines_are_scored_the_same_way():
     assert row["b1"] == 22 and row["r_b1"] == -2.0
 
 
+def test_b1_is_classified_pick_up_now_even_beyond_the_planners_listed_five():
+    """Codex #347: the planner lists only its top 5 current-week adds. B1 (QB 22, the highest projected total) beats
+    QB 1 by 1 point every week, a current-week add ranked below six WRs who each beat WR 7 at FLEX by 7 a week."""
+    position = {1: "QB", 2: "RB", 3: "RB", 4: "WR", 5: "WR", 6: "TE", 7: "WR", 8: "RB", 22: "QB",
+                **{p: "WR" for p in range(30, 36)}}
+    ppg = {1: 20, 2: 15, 3: 14, 4: 14, 5: 12, 6: 9, 7: 5, 8: 1, 22: 21, **{p: 12 for p in range(30, 36)}}
+    games = {p: [(w, "A", float(ppg[p])) for w in range(1, 10)] for p in position}
+    s = season(games=games, prior_ppg={p: float(v) for p, v in ppg.items()}, position=position)
+    row = sb.decide(s, [1, 2, 3, 4, 5, 6, 7, 8], {1, 2, 3, 4, 5, 6, 7, 8}, 4)
+    assert row["b1"] == 22 and row["b1_pick_up_now"] is True
+
+
 def rows(diffs, plan_gain=5.0):
     return [{"season": 2024, "week": 3 + i % 10, "league": i % 3, "team": i % 12, "plan": 1, "r_plan": plan_gain,
              "r_b1": plan_gain - d, "r_b2": plan_gain, "r_rand": 0.0, "projected_later": 4.0 + i % 7,
