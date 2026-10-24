@@ -36,7 +36,7 @@ lineup number and no probability that the event happens."""
 
 from __future__ import annotations
 
-from .lineup import DUAL_ELIGIBILITY, eligible
+from .lineup import dual_positions, eligible
 from .marginal_utility import scenario
 from .team_lineups import RosterPlayer, Window, lineup_relevant, project_team, projection, r, slot_filled, without
 
@@ -80,13 +80,15 @@ def _effective(proj, p: RosterPlayer, week: int) -> float:
     return 0.0 if week in p.unavailable_weeks else projection(proj, p.espn_player_id, week)
 
 
-def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]:
+def _floors(base: dict, hweeks: list[int], widened: bool = False) -> dict[int, dict[str, float] | None]:
     """Per week and position: the lowest starter a player at that position could push out of the current lineup (0 for
     an empty slot it reaches), following the replacement chain through the slots any rostered player can take. None
     for a week with a missing projection (no bound: the candidate is solved). -inf (no bound) for a position whose
     reachable slots some negative-projected player could fill: a negative player can be forced into a fixed slot and the
     flex solver may leave flex slots empty below a threshold, so the replacement-chain argument does not hold there. A
-    negative player who can fill none of them (a bench D/ST for an RB) does not matter."""
+    negative player who can fill none of them (a bench D/ST for an RB) does not matter. `widened`: some player in the
+    pool or among the candidates is eligible at two positions (lineup.dual_positions, #253 G11), so eligibility widens
+    per player and every slot may be reached."""
     out = {}
     by_week = {w["week"]: w for w in base["weeks"]}
     for wk in hweeks:
@@ -102,7 +104,7 @@ def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]
         negative = {q for q, v in pool if v is not None and v < 0}
         floors = {}
         for pos in STASH_POSITIONS:
-            if DUAL_ELIGIBILITY:                        # eligibility widens per player: every slot may be reached
+            if widened:                                 # eligibility widens per player: every slot may be reached
                 reached = set(range(len(rows)))
             else:
                 # every slot his position reaches through any rostered player who can fill a reached slot, starters and
@@ -119,7 +121,7 @@ def _floors(base: dict, hweeks: list[int]) -> dict[int, dict[str, float] | None]
                                 if eligible(a["slot"], nxt):
                                     seen.add(nxt)
                                     frontier.append(nxt)
-            if (DUAL_ELIGIBILITY and negative) or any(eligible(rows[i]["slot"], q) for i in reached for q in negative):
+            if (widened and negative) or any(eligible(rows[i]["slot"], q) for i in reached for q in negative):
                 floors[pos] = float("-inf")
                 continue
             vals = [(a["points"] if slot_filled(a) else 0.0) for i, a in enumerate(rows) if i in reached]
@@ -205,7 +207,7 @@ def plan_stashes(players: list[RosterPlayer], slots: list[str], window: Window, 
     base_after = base if drop is None else project_team(after_drop, slots, hw, proj)
     ref_players, ref_base, ref_remove = (after_drop, base_after, ()) if drop_gains else \
         (players, base, [drop.espn_player_id] if drop else ())
-    floors = _floors(base_after, hweeks)
+    floors = _floors(base_after, hweeks, widened=any(dual_positions(p, slots) for p in [*after_drop, *legal]))
     cost = 0.0 if drop_gains else (drop_exact or 0.0)
     bounded = [(_bound(p, floors, hweeks, proj) + cost, p) for p in legal]
     possible = [(b, p) for b, p in bounded if b > EPS]

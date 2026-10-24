@@ -326,3 +326,20 @@ def test_the_trade_method_says_deltas_follow_the_second_position_only_where_a_pl
     from app.analytics.trades import DUAL_NOTE, assumptions
     assert DUAL_NOTE in assumptions(load_league_state(league(DUAL_ROWS[0]), now=NOW))
     assert DUAL_NOTE not in assumptions(load_league_state(league(cf.MATRIX["M1"]), now=NOW))
+
+
+def test_the_stash_bound_never_cuts_a_free_agent_who_gains_only_through_his_second_position():
+    from app.analytics import stash_planner as sp
+    from app.analytics.team_lineups import RosterPlayer, Window
+    slots = lineup_slots(cf.NO_FLEX)
+    win = Window((1, 2, 3, 4, 5, 6, 7), 5)
+    roster = [RosterPlayer(pid, pos, pro_team="KC", name=f"P{pid}") for pid, pos in
+              ((1, "QB"), (2, "RB"), (3, "RB"), (4, "RB"), (5, "WR"), (6, "WR"), (7, "WR"), (8, "TE"), (9, "K"), (10, "D/ST"))]
+    values = {1: 20.0, 2: 15.0, 3: 12.0, 4: 9.0, 5: 14.0, 6: 13.0, 7: 3.0, 8: 8.0, 9: 7.0, 10: 6.0, 40: 12.5}
+    pr = {pid: {w: v for w in win.weeks} for pid, v in values.items()}
+    for listed, gains in ((None, False), ((4, 2), True)):         # WR only: 12.5 < every WR starter; RB too: > RB 12.0
+        fa = RosterPlayer(40, "WR", pro_team="KC", name="P40", eligible_slots=listed)
+        res = sp.plan_stashes(roster, slots, win, pr, free_agents=[fa], free_agent_status={40: "FREEAGENT"},
+                              active_capacity=len(roster), horizon=2, projection_source="ESPN")
+        found = [x["espn_player_id"] for x in res["pick_up_now"] + res["stashes"]]
+        assert (found == [40]) is gains, res["counts"]
