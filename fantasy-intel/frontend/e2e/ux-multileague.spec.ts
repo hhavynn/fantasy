@@ -204,10 +204,12 @@ for (const width of [320, 1440]) {
         await expectStructure(page);
         await expectNoBrokenValues(page);
         if (p === "/start-sit") await expect(page.locator("main")).toContainText("Projections are incomplete, so no gain is claimed");
-        // The Overview's hub (issue #165) never reads as an all-clear on it: the incomplete source is named.
+        // The Overview's hub (issue #165) never reads as an all-clear on it: the incomplete source is named. The team's
+        // week also has waiver decisions, so the hub is not empty and names it as a row; the empty hub's "not an
+        // all-clear" verdict is covered in lib/weekly-decisions.test.ts.
         if (p === "") {
+          await expect(page.locator("main")).toContainText("Start/Sit data is incomplete");
           await expect(page.locator("main")).toContainText("Some players have no projection, so Start/Sit claims no gain");
-          await expect(page.locator("main")).toContainText("not an all-clear");
           await expect(page.locator("main").getByText("Lineup is set")).toHaveCount(0);
         }
         await bothThemes(page, true);
