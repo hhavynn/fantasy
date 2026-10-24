@@ -1,7 +1,8 @@
 """Game splits: one WR / RB / TE's games with a teammate on the field against games without him (issue #210).
 
-Read-only, deterministic, descriptive. Every input comes from the global nflverse tables the NFL sync already
-stores; nothing is fetched, written or estimated, and no league roster, lineup or scoring feeds a number.
+Read-only, deterministic, descriptive. Every number comes from the global nflverse tables the NFL sync already
+stores; nothing is fetched, written or estimated, and no league roster, lineup or scoring feeds a number. The caller's
+own league file supplies only player_id_map (the ESPN link of each player). Betting lines are not read.
 Definitions (docs/game_splits.md):
 
   subject game    a REG game in the window that the player played (an offensive snap, target or carry) with both
@@ -260,7 +261,9 @@ def _primary_qbs(con, seasons: list[int], teams: list[str]) -> dict[tuple[int, i
 
 
 def _team_env(con, seasons: list[int], teams: list[str]) -> dict[tuple[int, int, str], dict]:
-    """Optional environment per team-game: neutral pass rate and plays (play-by-play), implied total (lines)."""
+    """Optional environment per team-game: neutral pass rate and plays (play-by-play). Betting lines
+    (team_game_lines) are not read: whether nflverse-redistributed lines may be shown here is an open owner decision,
+    and Pace Lab avoids them too (pace_lab.py)."""
     out: dict[tuple[int, int, str], dict] = defaultdict(dict)
     if not teams:
         return out
@@ -270,11 +273,6 @@ def _team_env(con, seasons: list[int], teams: list[str]) -> dict[tuple[int, int,
                 WHERE season IN ({_in_list(seasons)}) AND team IN (SELECT unnest(?::VARCHAR[]))""", [sorted(teams)]):
             out[(r["season"], r["week"], r["team"])].update(neutral_pass_rate=r["neutral_pass_rate"],
                                                             offense_plays=r["offense_plays"])
-    if table_exists(con, "team_game_lines"):
-        for r in fetch_dicts(con, f"""
-                SELECT season, week, team, implied_total FROM team_game_lines
-                WHERE season IN ({_in_list(seasons)}) AND team IN (SELECT unnest(?::VARCHAR[]))""", [sorted(teams)]):
-            out[(r["season"], r["week"], r["team"])]["implied_total"] = r["implied_total"]
     return out
 
 
@@ -363,14 +361,14 @@ def _mean(values) -> tuple[float | None, int]:
 
 
 def _environment(weeks: list[dict], names: dict[str, dict]) -> dict:
-    """Context of one group's games: points scored, implied totals, pass rate, plays, home games, QBs, opponents."""
+    """Context of one group's games: points scored, pass rate, plays, home games, QBs, opponents."""
     n = len(weeks)
     out: dict = {"games": n}
     if not n:
         return out
     coverage = {}
-    for key, field in (("team_points_pg", "team_points"), ("implied_total_pg", "implied_total"),
-                       ("neutral_pass_rate", "neutral_pass_rate"), ("offense_plays_pg", "offense_plays")):
+    for key, field in (("team_points_pg", "team_points"), ("neutral_pass_rate", "neutral_pass_rate"),
+                       ("offense_plays_pg", "offense_plays")):
         v, k = _mean(w.get(field) if field == "team_points" else w["env"].get(field) for w in weeks)
         out[key] = v
         if k < n:
@@ -404,8 +402,8 @@ def _missing_tables(con) -> list[str]:
 
 def _no_data(q: SplitsQuery, missing: list[str]) -> dict:
     return {"version": VERSION, "status": "no_data", "inputs": q.as_dict(), "cache_key": q.cache_key(),
-            "message": f"Game splits need stored nflverse data that is missing here ({', '.join(missing)}). "
-                       "Run scripts/sync_nfl.py.",
+            "message": "Game splits are not available yet: the NFL usage, roster and schedule data they need has not "
+                       "been loaded.",
             "missing_tables": missing}
 
 
@@ -667,7 +665,8 @@ def build_split_players(con, season: int | None) -> dict:
     if season is None or missing:
         return {"version": VERSION, "season": season, "status": "no_data", "players": [],
                 "missing_tables": missing or ["player_week_usage"],
-                "message": "Game splits need stored nflverse usage, rosters and schedules. Run scripts/sync_nfl.py."}
+                "message": "Game splits are not available yet: the NFL usage, roster and schedule data they need has "
+                           "not been loaded."}
     rows = fetch_dicts(con, """
         SELECT gsis_id, arg_max(position, week) AS position, arg_max(team, week) AS team, count(*) AS games
         FROM player_week_usage

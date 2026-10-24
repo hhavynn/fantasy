@@ -4,7 +4,8 @@ import { EmptyState, Notice, PageHeader, Section, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import {
-  POSITION_NAME, POSITION_OF, SLUGS, SORT_KEYS, WORKLOAD_MAPS, apiQuery, hiddenSentence, parseResearchState, poolSentence,
+  POSITION_NAME, POSITION_OF, SLUGS, SORT_KEYS, WORKLOAD_MAPS, apiQuery, hiddenSentence, noSeasonData, parseResearchState,
+  poolSentence,
   researchHref, type ResearchState, type Slug,
 } from "@/lib/research";
 import type { OpportunityResponse, PlayerResearch } from "@/lib/research-types";
@@ -66,6 +67,8 @@ export async function PositionResearch({ slug, searchParams }: { slug: Slug; sea
 
       {r.status === "no_data" ? (
         <Section><EmptyState title="No NFL usage data">{r.message}</EmptyState></Section>
+      ) : noSeasonData(r) ? (
+        <Section><EmptyState title="No NFL usage data">No NFL usage data is available for the {r.season} season yet.</EmptyState></Section>
       ) : (
         <>
           <DataNotices r={r} />

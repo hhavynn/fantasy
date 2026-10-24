@@ -291,6 +291,15 @@ def test_lock_summary_reads_start_sit_without_inferring():
     assert lock_summary({}, None)["next_kickoff_utc"] is None
 
 
+def test_the_trimmed_start_sit_keeps_the_engines_all_locked_flag():
+    """#165: the card's decisions read Start/Sit's own all_locked flag, which incomplete_data hides from the status."""
+    from app.api.action_center import _trim_start_sit
+    summary = {"starters_count": 9, "status": "incomplete_data", "projection_complete": False, "all_locked": True,
+               "bench_count": 6}
+    assert _trim_start_sit({"summary": summary})["summary"] == {
+        "starters_count": 9, "status": "incomplete_data", "projection_complete": False, "all_locked": True}
+
+
 def test_a_request_never_has_more_than_its_concurrency_in_flight(monkeypatch):
     import threading
     import time

@@ -9,8 +9,9 @@ the handler and before any cache lookup:
   4. pick the perspective ("my team"): the signed-in viewer's saved team, else `?team_id=`, else none;
   5. set the LEAGUE_SCOPE ContextVar, which `deps.db()` turns into a layered read-only cursor.
 
-The owner-only research routers (projection performance, Ours promotion, research) are mounted with
-`require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404).
+The owner-only routers (projection performance and the Ours promotion tracker, app/main.py) are mounted with
+`require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404). The
+research lab, game splits and pace lab are league-member tools, authorized like every other router.
 
 The handlers are unchanged. Responses carry `Cache-Control: private, no-store` and the versions actually read.
 
@@ -37,6 +38,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -88,12 +90,20 @@ def league_file_cache():
         return cache
 
 
-def _resolve(principal, league_id: str, team_param: str | None, timing: Timing | None = None):
-    """(scope, pinned pair): the caller releases the pair (`league_file_cache().release_pair`) when the request ends."""
-    timing = timing or Timing()
+COLD_LOADS = 4                 # leagues one event loop fetches files for at once (LEAGUE_COLD_LOADS overrides)
+
+
+def cold_loads_per_loop() -> int:
+    try:
+        return max(1, int(os.environ.get("LEAGUE_COLD_LOADS") or COLD_LOADS))
+    except ValueError:
+        return COLD_LOADS
+
+
+def _authorize(principal, league_id: str, timing: Timing):
+    """The caller's access to the league (Postgres), before any file is touched: unknown or unauthorized is 404."""
     from ..control_plane.authz import LeagueNotFound, authorize_league_in
     from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
-    from ..db.league_conn import perspective_team
     from ..db.league_split import VERSION_RE
     from .leagues_v2 import SIGN_IN, UNAVAILABLE
     try:
@@ -117,22 +127,39 @@ def _resolve(principal, league_id: str, team_param: str | None, timing: Timing |
     if not VERSION_RE.fullmatch(snap.data_version) or not VERSION_RE.fullmatch(snap.global_version):
         log.warning("league %s has a pointer in an unsupported format", league_id)
         raise HTTPException(503, FILES_UNAVAILABLE)
+    return access
+
+
+def _pin(access, team_param: str | None, timing: Timing, *, wait: bool = True, since: float | None = None):
+    """(scope, pinned pair) for an authorized league, or None when `wait` is False and the files are not cached here.
+    `since` (a perf_counter time) is when a cold request started waiting: the files phase counts from it and is coded
+    cold. The caller releases the pair (`league_file_cache().release_pair`) when the request ends."""
+    from ..db.league_conn import perspective_team
+    snap = access.snapshot
     cache = league_file_cache()
     try:
         # Pinned until the request ends (league_scope releases them): never evicted before the handler opens them.
         # With a newer pointer than this instance holds, at most the budget is spent waiting; then this league's own
         # previous files are read and the response says so.
-        with timing.phase("files"):
+        t0 = time.perf_counter() if since is None else since
+        if wait:
             pair = cache.pin_pair(access.league_id, snap.data_version, snap.global_version,
                                   budget_s=cold_load_budget_s())
+        else:
+            pair = cache.pin_pair_if_cached(access.league_id, snap.data_version, snap.global_version)
+        if pair is not None:                       # a miss records nothing: the cold load that follows is the phase
+            timing.add("files", time.perf_counter() - t0)
     except Exception as err:   # noqa: BLE001 - R2 errors, a missing object, a full cache: never a 500 with details
-        log.warning("league files unavailable for %s: %s %s %s", league_id, type(err).__name__,
+        timing.add("files", time.perf_counter() - t0)
+        log.warning("league files unavailable for %s: %s %s %s", access.league_id, type(err).__name__,
                     getattr(err, "status", ""), getattr(err, "code", ""))
         raise HTTPException(503, FILES_UNAVAILABLE) from None
-    timing.set_code("files", "stale" if pair.degraded else "cold" if pair.cold else "warm")
+    if pair is None:
+        return None
+    timing.set_code("files", "stale" if pair.degraded else "cold" if pair.cold or since is not None else "warm")
     timing.size = size_bucket(version_bytes(pair.data_version))
     if pair.degraded:
-        log.warning("league %s served from its previous files (%s)", league_id, pair.degraded)
+        log.warning("league %s served from its previous files (%s)", access.league_id, pair.degraded)
     # "My team" (fantasy_teams.is_mine) is who the viewer is, exactly as on the legacy site: the signed-in viewer's saved
     # team, even while a route analyses another team through ?team_id= (legacy: is_mine stays the owner's team then).
     # A viewer with no saved team (anonymous, or not chosen yet) takes the URL's team. Golden parity on real Los
@@ -142,6 +169,89 @@ def _resolve(principal, league_id: str, team_param: str | None, timing: Timing |
         chosen = perspective_team(team_param)
     return LeagueScope(access.league_id, pair.league_path, pair.global_path, pair.data_version, pair.global_version,
                        access.visibility_epoch, chosen, access.provider), pair
+
+
+def _resolve(principal, league_id: str, team_param: str | None, timing: Timing | None = None):
+    """(scope, pinned pair), waiting for the files in this thread: the caller releases the pair."""
+    timing = timing or Timing()
+    return _pin(_authorize(principal, league_id, timing), team_param, timing)
+
+
+def _resolve_if_cached(principal, league_id: str, team_param: str | None, timing: Timing):
+    """(access, (scope, pair) or None): authorization, then the pair only if it is already cached (no download)."""
+    access = _authorize(principal, league_id, timing)
+    return access, _pin(access, team_param, timing, wait=False)
+
+
+# Cold loads (issue #201 risk 2). A request whose files are not cached here waits for them on the event loop, not in a
+# thread-pool slot: per pair, one request (the leader) takes one of COLD_LOADS permits and loads in the pool; the
+# others for the same pair wait for it, then pin from the cache, read the same previous files when the leader was
+# served those (pin_pair returns within what is left of the budget, so no permit), or answer 503 when it failed: one
+# wait for room per pair, never one after another. A request waiting for room in a full cache therefore never holds a
+# thread that a request holding pinned files needs to finish and release them. Waiting for a permit or for the leader
+# ends after COLD_WAIT_S with a 503; a thread hop is never cancelled (its pinned files would never be released).
+COLD_WAIT_S = 20.0
+_COLD: dict[asyncio.AbstractEventLoop, tuple[asyncio.Semaphore, dict]] = {}
+_COLD_LOCK = threading.Lock()
+
+
+def _cold_state() -> tuple[asyncio.Semaphore, dict]:
+    loop = asyncio.get_running_loop()
+    with _COLD_LOCK:                                # test clients run loops in threads: never iterate while inserting
+        state = _COLD.get(loop)
+        if state is None:
+            for old in [lp for lp in _COLD if lp.is_closed()]:
+                del _COLD[old]
+            state = _COLD[loop] = (asyncio.Semaphore(cold_loads_per_loop()), {})
+    return state
+
+
+async def _pin_cold(access, team_param: str | None, timing: Timing):
+    since = time.perf_counter()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + COLD_WAIT_S
+    gate, flights = _cold_state()
+    snap = access.snapshot
+    key = (access.league_id, snap.data_version, snap.global_version)
+    if league_file_cache().has_cached_fallback(*key):
+        # The league's previous files are cached: pin_pair serves them within its budget (or the new pair, if it
+        # arrives in time) and never waits for room, so it needs no permit and never queues behind other downloads.
+        return await run_in_threadpool(_pin, access, team_param, timing, since=since)
+
+    async def within(aw):
+        try:
+            return await asyncio.wait_for(aw, max(0.0, deadline - loop.time()))
+        except TimeoutError:
+            timing.add("files", time.perf_counter() - since, "slow")
+            raise HTTPException(503, FILES_UNAVAILABLE) from None
+
+    while (leader := flights.get(key)) is not None:
+        outcome = await within(asyncio.shield(leader))  # "loaded", "degraded", "failed", or None (leader cancelled)
+        if outcome == "failed":
+            timing.add("files", time.perf_counter() - since, "error")
+            raise HTTPException(503, FILES_UNAVAILABLE)  # a constant: nothing of the leader's request crosses over
+        if outcome == "degraded":
+            return await run_in_threadpool(_pin, access, team_param, timing, since=since)
+        found = await run_in_threadpool(_pin, access, team_param, timing, wait=False, since=since)
+        if found is not None:
+            return found                                # else evicted again since: lead a load of its own
+    done = flights[key] = loop.create_future()
+    outcome = None
+    try:
+        await within(gate.acquire())
+        try:
+            found = await run_in_threadpool(_pin, access, team_param, timing, since=since)
+        finally:
+            gate.release()
+        outcome = "degraded" if found[1].degraded else "loaded"
+        return found
+    except HTTPException:
+        outcome = "failed"
+        raise
+    finally:
+        if flights.get(key) is done:
+            del flights[key]
+        done.set_result(outcome)
 
 
 # ---- per-instance response cache ------------------------------------------------------------------------------------
@@ -339,7 +449,9 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
     """Async on purpose: the ContextVar is set in the request's own context, which FastAPI copies into the thread
     pool that runs the (sync) legacy handler. The blocking work runs in the pool."""
     timing = request_timing(request) or Timing()
-    scope, pair = await run_in_threadpool(_resolve, principal, league_id, request.query_params.get("team_id"), timing)
+    team_param = request.query_params.get("team_id")
+    access, found = await run_in_threadpool(_resolve_if_cached, principal, league_id, team_param, timing)
+    scope, pair = found if found is not None else await _pin_cold(access, team_param, timing)
     request.state.fi_scope = scope
     request.state.fi_degraded = pair.degraded
     try:

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  formatDifference, formatSplit, parseSplitsState, reasonList, seasonOptions, splitsApiQuery, splitsHref, visibleWeeks,
-  windowSentence,
+  formatDifference, formatSplit, parseSplitsState, reasonList, seasonOptions, splitsApiQuery, splitsHref,
+  splitsUnavailable, visibleWeeks, windowSentence,
 } from "./game-splits.ts";
 import type { SplitsWeek } from "./game-splits-types.ts";
 
@@ -64,4 +64,11 @@ test("a teammate chosen for another player is dropped when the form submits a ne
   // a shared link without the form field keeps its teammate; for_player never reaches the backend query
   assert.equal(parseSplitsState({ player: "00-SPLWR01", teammate: "00-SPLWR02" }).teammate, "00-SPLWR02");
   assert.equal(splitsApiQuery(same), "player=00-SPLWR01&teammate=00-SPLWR02");
+});
+
+test("no stored usage at all (the 422 asking for a season) is unavailable, not a window to check", () => {
+  assert.equal(splitsUnavailable(422, "no NFL usage is stored yet, so a season must be given"), true);
+  assert.equal(splitsUnavailable(422, "week_to must be between 1 and 18"), false);
+  assert.equal(splitsUnavailable(404, "a season must be given"), false);
+  assert.equal(splitsUnavailable(undefined, undefined), false);
 });

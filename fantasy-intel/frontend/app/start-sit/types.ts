@@ -109,6 +109,8 @@ export interface StartSitSummary {
   bench_count: number;
   ir_count: number;
   locked_players_count: number;
+  /** Every rostered player Start/Sit can see has kicked off, whatever `status` reports first (older backends omit it). */
+  all_locked?: boolean;
   status: "optimal" | "upgrade_available" | "incomplete_data" | "all_locked" | "future_preview";
   /** With `lineup_coverage`: whether every projection the gain compares exists (projection_complete is then false). */
   projections_complete?: boolean;

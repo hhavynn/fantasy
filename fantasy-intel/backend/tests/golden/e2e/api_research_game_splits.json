@@ -43,13 +43,11 @@
    "with": {
     "environment": {
      "coverage": {
-      "implied_total_pg": 0,
       "neutral_pass_rate": 0,
       "offense_plays_pg": 0
      },
      "games": 5,
      "home_games": 5,
-     "implied_total_pg": null,
      "neutral_pass_rate": null,
      "offense_plays_pg": null,
      "opponents": [
@@ -135,13 +133,11 @@
    "without": {
     "environment": {
      "coverage": {
-      "implied_total_pg": 0,
       "neutral_pass_rate": 0,
       "offense_plays_pg": 0
      },
      "games": 4,
      "home_games": 4,
-     "implied_total_pg": null,
      "neutral_pass_rate": null,
      "offense_plays_pg": null,
      "opponents": [

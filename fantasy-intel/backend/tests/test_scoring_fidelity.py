@@ -374,6 +374,8 @@ MODULE_CACHES = {
     "api/deps.py:_SNAP": "the snapshot cache and the classic deployment's single database",
     "api/deps.py:_LAYERED": "the per-process layered database registry; files are pinned per league and version",
     "api/league_scope.py:_CACHE": "the league file cache, keyed by league id and versions (league_files.pin_pair)",
+    "api/league_scope.py:_COLD": "per event loop: a permit semaphore and in-flight cold loads keyed by (league id, data "
+                                 "version, global version); holds no data, and each waiter pins and scopes its own",
     "api/league_scope.py:_RESPONSES": "responses keyed by LeagueScope.cache_key (league, versions, epoch, perspective)",
     "api/provider_copy.py:_CLASSIC": "the classic single-league file's provider, keyed by path and mtime",
     "api/trade_discovery.py:_CACHE": "searches keyed by data version, league id, season, team and search inputs",

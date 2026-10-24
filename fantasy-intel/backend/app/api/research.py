@@ -1,8 +1,10 @@
 """Read-only Fantasy Research Lab endpoints: no writes, no syncs, no ESPN calls. Metrics cover the whole
 NFL WR / RB / TE pool from nflverse data; ESPN league data only supplies optional profile/trade links.
 
-Game splits (issue #210) read only the global nflverse tables (usage, weekly rosters, schedules); every input is in the
-query string, so the league-scoped response cache keys on all of them."""
+Game splits (issue #210) read the global nflverse tables (usage, weekly rosters, schedules) and, from the caller's own
+league file, only player_id_map for the profile link; every input is in the query string, so the league-scoped
+response cache keys on all of them. Under /v2/leagues/{league_id} these are league-member tools: league_scope
+authorizes (404 for an outsider on a private league) before any parameter is validated or any file is read."""
 
 from __future__ import annotations
 

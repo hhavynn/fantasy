@@ -1,7 +1,7 @@
 """Read-only pace and game-script lab (issue #211): no writes, no syncs, no provider calls, no betting lines. Global
 nflverse aggregates for every NFL offense; no league data is read. Mounted like the Research lab: /api/pace-lab on the
-classic site and, owner-only, under /v2/leagues/{league_id}/api/pace-lab, where the league and platform-admin checks
-run before any parameter is validated or any file is read."""
+classic site and, as a league-member tool, under /v2/leagues/{league_id}/api/pace-lab, where league_scope authorizes
+(404 for an outsider on a private league) before any parameter is validated or any file is read."""
 
 from __future__ import annotations
 

@@ -5,7 +5,7 @@ import { EmptyState, Method, Notice, PageHeader, Pos, Section, Stat, StatStrip, 
 import { api } from "@/lib/api";
 import {
   OUTCOME_LABEL, formatDifference, formatSplit, parseSplitsState, reasonList, seasonOptions, splitsApiQuery, splitsHref,
-  visibleWeeks, windowSentence, type SplitsState,
+  splitsUnavailable, visibleWeeks, windowSentence, type SplitsState,
 } from "@/lib/game-splits";
 import type {
   GameSplitsResponse, SplitPlayersResponse, SplitsEnvironment, SplitsNeedsTeammate, SplitsPlayer, SplitsResult, SplitsWeek,
@@ -58,14 +58,16 @@ export default async function GameSplitsPage({ searchParams }: { searchParams: P
       {!players.ok && <BackendProblem error={players.error} kind={players.kind} status={players.status} />}
       {players.ok && players.data.status === "no_data" && (
         <Section>
-          <EmptyState title="No NFL data for splits">{players.data.message ?? "Game splits need stored nflverse usage, rosters and schedules."}</EmptyState>
+          <EmptyState title="No NFL data for splits">{players.data.message ?? "Game splits are not available yet: the NFL data they need has not been loaded."}</EmptyState>
         </Section>
       )}
       {players.ok && !noData && <SplitsForm state={state} players={players.data} teammates={teammates} />}
 
-      {res && !res.ok && (res.status === 404 || res.status === 422
-        ? <Notice tone="caution" title={res.status === 404 ? "Not found" : "Check the window"}>{res.error}</Notice>
-        : <BackendProblem error={res.error} kind={res.kind} status={res.status} />)}
+      {res && !res.ok && (splitsUnavailable(res.status, res.error)
+        ? <Section><EmptyState title="No NFL data for splits">Game splits are not available yet: no NFL usage data has been loaded.</EmptyState></Section>
+        : res.status === 404 || res.status === 422
+          ? <Notice tone="caution" title={res.status === 404 ? "Not found" : "Check the window"}>{res.error}</Notice>
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />)}
 
       {!state.player && players.ok && !noData && (
         <Section>
@@ -286,7 +288,6 @@ function EnvironmentTable({ r }: { r: SplitsResult }) {
   const b = r.groups.without.environment;
   const rows: [string, string | null, string | null][] = [
     ["Team points/G", formatSplit(a.team_points_pg, "num"), formatSplit(b.team_points_pg, "num")],
-    ["Implied team total/G", formatSplit(a.implied_total_pg, "num"), formatSplit(b.implied_total_pg, "num")],
     ["Neutral pass rate", formatSplit(a.neutral_pass_rate, "pct"), formatSplit(b.neutral_pass_rate, "pct")],
     ["Offensive plays/G", formatSplit(a.offense_plays_pg, "num"), formatSplit(b.offense_plays_pg, "num")],
     ["Home games", a.games ? String(a.home_games ?? 0) : null, b.games ? String(b.home_games ?? 0) : null],

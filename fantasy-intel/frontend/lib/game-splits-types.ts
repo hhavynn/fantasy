@@ -25,7 +25,6 @@ export type SplitsPlayer = {
 export type SplitsEnvironment = {
   games: number;
   team_points_pg?: number | null;
-  implied_total_pg?: number | null;
   neutral_pass_rate?: number | null;
   offense_plays_pg?: number | null;
   home_games?: number;

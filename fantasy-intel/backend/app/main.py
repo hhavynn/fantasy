@@ -140,8 +140,13 @@ mount_legacy_routers(app, [
     dst_projections_router, injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
     transactions_router, add_drop_router, claim_plan_router, faab_router, trade_scenarios_router, trade_values_router,
     league_analyzer_router, pace_lab_router, screener_router,
-], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router,
-                                pace_lab_router])
+], require_enabled, owner_only=[
+    # Platform admin only, on every league: the promotion tracker (model governance) and Projection Accuracy, whose
+    # payload carries governance state, unpublished run diagnostics and model internals and whose data exists for one
+    # league only (#289 audit 6377782856). The research lab, game splits and pace lab are league-member tools:
+    # authorize_league alone, like every other legacy router (an outsider on a private league gets 404).
+    projection_promotion_router, projection_performance_router,
+])
 app.middleware("http")(add_scope_headers)
 from .api.provider_copy import classic_copy  # noqa: E402
 app.middleware("http")(classic_copy)
