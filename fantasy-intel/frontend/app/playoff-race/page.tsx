@@ -10,11 +10,12 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import {
-  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, unresolvedText, weeksText, whatifChanged,
-  withCutline, withOverride, type RaceQuery,
+  backendQuery, cutlineIndex, matchupAnalysisHref, parseRaceQuery, raceHref, rootingReason, rootPlace, unresolvedText, weeksText,
+  whatifChanged, withCutline, withOverride, type RaceQuery,
 } from "@/lib/playoff-view";
 import type {
-  PlayoffRace, PrBound, PrLeverage, PrMatchup, PrOutcome, PrPlace, PrPlaceRow, PrRecord, PrStatus, PrTeam, PrWhatIf,
+  PlayoffRace, PrBound, PrLeverage, PrMatchup, PrOutcome, PrPlace, PrPlaceRow, PrRecord, PrRooting, PrRootingGame,
+  PrRootingSide, PrStatus, PrTeam, PrWhatIf,
 } from "@/lib/types";
 import { CopyScenarioLink } from "./CopyScenarioLink";
 import styles from "./playoff.module.css";
@@ -113,6 +114,7 @@ function Body({ d, q, L, action, share }: { d: PlayoffRace; q: Q; L: L; action: 
       <ScenarioBar d={d} q={q} name={name} />
       {d.whatif && <WhatIf d={d} w={d.whatif} q={q} name={name} share={share} L={L} />}
       {focus && <Spotlight d={d} t={focus} q={q} name={name} />}
+      {focus && d.scenario.rooting && <Rooting d={d} g={d.scenario.rooting} t={focus} q={q} name={name} />}
 
       <div className="grid grid-2">
         <Standings d={d} name={name} L={L} />
@@ -400,6 +402,82 @@ function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; na
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- rooting guide (issue #217) --
+
+function RootPlace({ s }: { s: PrRootingSide }) {
+  return <>{rootPlace(s.scenario)} <StatusBadge s={s.scenario.status} /></>;
+}
+
+function Rooting({ d, g, t, q, name }: { d: PlayoffRace; g: PrRooting; t: PrTeam; q: Q; name: Name }) {
+  const when = g.period !== null ? weeksText(g.weeks, g.period) : null;
+  const preferred = g.games.filter((x) => x.prefer !== null);
+  const mixed = g.games.filter((x) => x.conflict);
+  const own = g.own_game !== null ? d.matchups.regular.find((m) => m.matchup_id === g.own_game) : undefined;
+  return (
+    <Section
+      title={<>Rooting guide{when ? `: ${when}` : ""} <Hyp /></>}
+      subtitle={`Other games ${t.name} does not play, one at a time against this scenario. Deterministic, no probability.`}
+      flush
+      footnote={<>Each row sets one game&apos;s result and keeps every other result as in this scenario. {g.later_open_games > 0
+        ? `${g.later_open_games} later open ${plural(g.later_open_games, "game")} also remain and can change any of this. ` : ""}
+        A tied result is not evaluated, and a shared rank counts as the span of places it covers. Nothing here is a clinch or elimination: {g.conclusions.status === "blocked"
+        ? "the league's tiebreak and seeding rules are not mapped." : "no claim is made."}</>}
+    >
+      {g.status === "no_games_remaining" && <p className={styles.padded}>No open regular-season games remain: there is nothing left to root for.</p>}
+      {g.status === "no_other_games" && <p className={styles.padded}>Every open game {when ? `in ${when} ` : ""}involves {t.name}; see its own games above.</p>}
+      {g.status === "ok" && (
+        <>
+          <p className={styles.padded}>
+            {preferred.length > 0
+              ? <>{preferred.length} of {g.games.length + g.no_effect.length} other {plural(g.games.length + g.no_effect.length, "game")} {plural(preferred.length, "has", "have")} a better side for {t.name}.</>
+              : <>No other game {when ? `in ${when} ` : ""}has a better side for {t.name} on its own.</>}
+            {mixed.length > 0 && <> {mixed.length} {plural(mixed.length, "game is", "games are")} mixed.</>}
+            {own && <> {t.name}&apos;s own game, against {name(own.home_team_id === t.team_id ? own.away_team_id : own.home_team_id)}, is not part of this guide.</>}
+          </p>
+          {g.range_abstain.length > 0 && (
+            <div className={styles.padded}>
+              <Notice tone="info">Possible range not used: {g.range_abstain.join(" ")} Only the scenario place is compared.</Notice>
+            </div>
+          )}
+          {g.games.length > 0 && <RootingTable rows={g.games} q={q} name={name} />}
+          {g.no_effect.length > 0 && (
+            <p className={styles.padded}>Neither result is better for {t.name}: {g.no_effect.map((x) =>
+              `${name(x.home_team_id)} vs ${name(x.away_team_id)}`).join(", ")}.</p>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+function RootingTable({ rows, q, name }: { rows: PrRootingGame[]; q: Q; name: Name }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead><tr><th>Game</th><th>Root for</th><th>If home wins</th><th>If away wins</th><th>Why</th><th>Try it</th></tr></thead>
+        <tbody>
+          {rows.map((x) => (
+            <tr key={x.matchup_id}>
+              <td>{name(x.home_team_id)} vs {name(x.away_team_id)}
+                <span className={styles.sub}>{x.status === "in_progress" ? "under way" : weeksText(x.weeks, x.matchup_period)}
+                  {x.scenario_result ? ` · scenario: ${x.scenario_result === "tie" ? "tie" : name(x.scenario_result === "home" ? x.home_team_id : x.away_team_id)}` : " · unresolved"}</span></td>
+              <td>{x.prefer ? <b>{name(x.prefer === "home" ? x.home_team_id : x.away_team_id)}</b> : <Badge value="Mixed" tone="warn" title="The scenario and the possible range point to different sides" />}</td>
+              <td><RootPlace s={x.if_home} /></td>
+              <td><RootPlace s={x.if_away} /></td>
+              <td className={styles.remaining}>{rootingReason(x, (id) => name(id))}</td>
+              <td><span className={styles.overrideLinks}>
+                {(["home", "away"] as const).map((o) => q.o[String(x.matchup_id)] === o
+                  ? <b key={o}>{o === "home" ? "Home wins" : "Away wins"}</b>
+                  : <Link key={o} href={withOverride(q, x.matchup_id, o)}>{o === "home" ? "Home wins" : "Away wins"}</Link>)}
+              </span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

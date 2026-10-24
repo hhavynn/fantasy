@@ -595,6 +595,186 @@ def test_record_bounds_abstain_when_the_schedule_may_hide_games():
     assert all(t["best"] is not None for t in b["teams"])               # the records themselves are still shown
 
 
+# ------------------------------------------------------- rooting guide (issue #217) --
+
+def _viewer_bounds(d, tid, overrides):
+    """The viewer's record-bounds row from the what-if with `overrides` set (the deterministic evaluator)."""
+    b = build_playoff_race(d, team_id=tid, overrides=overrides)["whatif"]["conclusions"]["record_bounds"]
+    row = standing(b["teams"], tid)
+    return {k: row[k] for k in ("teams_able_to_match_worst", "teams_certain_ahead_of_best", "record_order")}
+
+
+_ORDER = {"inside": 2, "cutline_tie": 1, "outside": 0, None: -1}
+
+
+def _places(rows, tid):
+    """The places a team's rank group spans, straight from the standings (no tiebreak: rank .. rank + group - 1)."""
+    me = standing(rows, tid)
+    if me["rank"] is None:
+        return None
+    return [me["rank"], me["rank"] + sum(1 for x in rows if x["rank"] == me["rank"]) - 1]
+
+
+def _no_worse(a, b):
+    """a's scenario place is no worse than b's: a better status, or the same status and both ends of the span."""
+    if _ORDER[a["status"]] != _ORDER[b["status"]]:
+        return _ORDER[a["status"]] > _ORDER[b["status"]]
+    return a["places"] is None or b["places"] is None or (a["places"][0] <= b["places"][0] and a["places"][1] <= b["places"][1])
+
+
+def test_every_rooting_outcome_reproduces_the_deterministic_simulation():
+    for d, tid, ov in ((sr.race(), 1, {}),
+                       (sr.race(n_teams=6, reg_periods=8, spots=3, start_week=5, final_week=10,
+                                strength={1: 24.0, 2: 31.0, 3: 22.0, 4: 27.5, 5: 26.0, 6: 21.0}), 3, {}),
+                       (sr.race(n_teams=8, reg_periods=10, spots=4, start_week=6, final_week=13), 4, {40: "home"})):
+        res = build_playoff_race(d, team_id=tid, overrides=ov)
+        g = res["scenario"]["rooting"]
+        assert g["label"] == "hypothetical" and g["probabilities"] is None and g["conclusions"]["claims"] == []
+        rows = g["games"] + g["no_effect"]
+        assert rows and g["status"] == "ok"
+        for x in rows:
+            assert tid not in (x["home_team_id"], x["away_team_id"]) and x["matchup_period"] == g["period"]
+            for key, outcome in (("if_home", "home"), ("if_away", "away")):
+                trial = {**ov, x["matchup_id"]: outcome}
+                rows_ = build_playoff_race(d, team_id=tid, overrides=trial)["scenario"]["projected_standings"]
+                row = standing(rows_, tid)
+                assert x[key]["scenario"] == {"rank": row["rank"], "tied": row["tied"], "status": row["status"],
+                                              "record": row["record"], "places": _places(rows_, tid)}
+                assert x[key]["range"] == _viewer_bounds(d, tid, trial)
+            if x["prefer"]:
+                win, lose = x["if_" + x["prefer"]], x["if_" + ("away" if x["prefer"] == "home" else "home")]
+                assert _no_worse(win["scenario"], lose["scenario"])
+                assert x["basis"] and not x["conflict"]
+            else:
+                assert x["conflict"] or (x["if_home"] == x["if_away"] or not x["basis"])
+        assert all(x["prefer"] is None and not x["conflict"] for x in g["no_effect"])
+        # Ranked: preferences first, then status swings, then record-order swings, then rank swings.
+        keys = [(x["prefer"] is None, not x["swing"]["status_changes"], not x["swing"]["range_changes"])
+                for x in g["games"]]
+        assert keys == sorted(keys)
+
+
+def test_rooting_covers_only_the_next_period_and_leaves_inputs_untouched():
+    d = sr.race()
+    snapshot = copy.deepcopy(d)
+    res = build_playoff_race(d)
+    g = res["scenario"]["rooting"]
+    open_games = [m for m in res["matchups"]["regular"] if m["status"] == "upcoming"]
+    first = min(m["matchup_period"] for m in open_games)
+    assert g["period"] == first and g["weeks"] == [first]
+    own = next(m for m in open_games if m["matchup_period"] == first and 1 in (m["home_team_id"], m["away_team_id"]))
+    assert g["own_game"] == own["matchup_id"]
+    listed = {x["matchup_id"] for x in g["games"] + g["no_effect"]}
+    assert listed == {m["matchup_id"] for m in open_games if m["matchup_period"] == first} - {own["matchup_id"]}
+    assert g["later_open_games"] == sum(1 for m in open_games if m["matchup_period"] != first)
+    assert d.matchups == snapshot.matchups and d.teams == snapshot.teams and build_playoff_race(d) == res
+    # A set result elsewhere is held while each game is evaluated; the game's own set result is not.
+    x = (g["games"] + g["no_effect"])[0]
+    res2 = build_playoff_race(d, overrides={x["matchup_id"]: "home"})
+    y = next(z for z in res2["scenario"]["rooting"]["games"] + res2["scenario"]["rooting"]["no_effect"]
+             if z["matchup_id"] == x["matchup_id"])
+    assert y["scenario_result"] == "home" and (y["if_home"], y["if_away"]) == (x["if_home"], x["if_away"])
+
+
+def test_rooting_with_ties_at_the_cutline_three_way_ties_and_a_tied_game():
+    # Two teams tied at the cutline (tie_league with 3 spots); a real tied final in period 3 counts half.
+    res = build_playoff_race(tie_league(spots=3), team_id=3, base="actual")
+    g = res["scenario"]["rooting"]
+    assert standing(res["scenario"]["projected_standings"], 3)["status"] == "cutline_tie"
+    assert g["status"] == "ok" and g["period"] == 4
+    # Team 3's rival for the last spot is team 4: rooting for team 4's opponent is preferred, and it reproduces.
+    rival = next(x for x in g["games"] + g["no_effect"] if 4 in (x["home_team_id"], x["away_team_id"]))
+    against_4 = "away" if rival["home_team_id"] == 4 else "home"
+    assert rival["prefer"] == against_4
+    assert rival["if_" + against_4]["scenario"]["status"] == "inside"
+    # Every team level at 0-0-1 (all period-1 games tied, a four-way tie across the cutline). Whoever wins the other
+    # game, team 1 stays tied with the other idle team for the last spot: no preference, listed as no effect.
+    every = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=2, final_week=8,
+                    scores={(1, t): 100.0 for t in range(1, 5)})
+    assert all(x["status"] == "cutline_tie" for x in build_playoff_race(every, base="actual")["scenario"]["current_standings"])
+    g = build_playoff_race(every, base="actual")["scenario"]["rooting"]
+    assert g["games"] == [] and len(g["no_effect"]) == 1
+    x = g["no_effect"][0]
+    assert x["if_home"]["scenario"]["status"] == x["if_away"]["scenario"]["status"] == "cutline_tie"
+    assert x["prefer"] is None and x["basis"] == [] and not x["swing"]["status_changes"]
+
+
+def test_a_shared_rank_is_compared_as_the_span_of_places_it_covers():
+    from app.analytics.playoff_race import _root_better
+    place = lambda status, places: {"status": status, "places": places}                       # noqa: E731
+    # Reviewer's repro: #3 in a five-way tie (3rd to 7th) vs #4 in a three-way tie (4th to 6th), both at the line.
+    assert not _root_better(place("cutline_tie", [3, 7]), place("cutline_tie", [4, 6]))
+    assert not _root_better(place("cutline_tie", [4, 6]), place("cutline_tie", [3, 7]))
+    # #2 shared by three (2nd to 4th) vs #3 alone, both inside: neither dominates.
+    assert not _root_better(place("inside", [2, 4]), place("inside", [3, 3]))
+    assert _root_better(place("inside", [2, 3]), place("inside", [3, 3]))                    # no worse, better top
+    assert _root_better(place("inside", [4, 4]), place("cutline_tie", [2, 5]))              # status first
+    assert not _root_better(place(None, None), place(None, None))
+    # On real leagues: whenever a side is named on the scenario with the same status both ways, its span dominates.
+    import random
+    rnd = random.Random(11)
+    checked = 0
+    for _ in range(40):
+        n, reg = rnd.choice([8, 10]), rnd.choice([8, 10])
+        scores = {(p, t): float(rnd.choice([90, 100, 110])) for p in range(1, reg + 1) for t in range(1, n + 1)}
+        d = sr.race(n_teams=n, reg_periods=reg, spots=rnd.choice([3, 4, 5]), start_week=rnd.randint(3, reg),
+                    final_week=reg + 3, scores=scores, strength={t: rnd.uniform(15, 35) for t in range(1, n + 1)})
+        g = build_playoff_race(d, team_id=rnd.randint(1, n), base=rnd.choice(["projected", "actual"]))["scenario"]["rooting"]
+        for x in g["games"]:
+            if x["prefer"] and "scenario" in x["basis"]:
+                win, lose = x["if_" + x["prefer"]]["scenario"], x["if_" + ("away" if x["prefer"] == "home" else "home")]["scenario"]
+                assert _no_worse(win, lose) and win != lose
+                checked += 1
+    assert checked > 0
+
+
+def test_rooting_abstains_from_the_possible_range_and_never_claims_when_rules_are_unknown():
+    # Divisions: the range is withheld with its reason, the scenario comparison still shows, and nothing is claimed.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8, divisions={1: 1, 2: 1, 3: 2, 4: 2})
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert any("2 divisions" in a for a in g["range_abstain"])
+    assert g["conclusions"] == {"status": "blocked", "claims": []}
+    for x in g["games"] + g["no_effect"]:
+        assert x["if_home"]["range"] is None and x["if_away"]["range"] is None and "possible_range" not in x["basis"]
+    # Unknown playoff spots: no status anywhere, so preferences come from rank alone.
+    g = build_playoff_race(sr.race(spots=None))["scenario"]["rooting"]
+    for x in g["games"] + g["no_effect"]:
+        assert x["if_home"]["scenario"]["status"] is None and x["if_home"]["range"]["record_order"] is None
+    # The provider's records do not match the stored finals: range withheld.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8,
+                records={1: [7, 1, 0], 2: [6, 2, 0], 3: [3, 5, 0], 4: [0, 8, 0]})
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert g["range_abstain"] and all(x["if_home"]["range"] is None for x in g["games"] + g["no_effect"])
+
+
+def test_rooting_with_a_bye_an_in_progress_week_no_other_games_and_none_remaining():
+    # The viewer has a bye in the next period (5 teams, one sits out): every game that period is someone else's.
+    pairs = {p: g for p, g in sr.round_robin([1, 2, 3, 4], 6).items()}
+    pairs[5] = [(2, 3)]                                               # team 1 and team 4 idle in period 5
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8, schedule=pairs)
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert g["period"] == 5 and g["own_game"] is None
+    assert {x["matchup_id"] for x in g["games"] + g["no_effect"]} == {
+        m["matchup_id"] for m in d.matchups if m["matchup_period"] == 5}
+    assert any("missing regular-season matchups" in a for a in g["range_abstain"])   # the stored schedule is short
+    # The current period is under way: its unresolved games are this week's, still never projected.
+    d = sr.race(n_teams=8, reg_periods=10, spots=4, start_week=6, final_week=13, in_progress={5})
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert g["period"] == 5 and all(x["status"] == "in_progress" and x["scenario_result"] is None
+                                    for x in g["games"] + g["no_effect"])
+    # Two teams: the only open game each period is the viewer's own.
+    d = sr.race(n_teams=2, reg_periods=4, spots=1, start_week=3, final_week=6)
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert g["status"] == "no_other_games" and g["games"] == g["no_effect"] == [] and g["own_game"] is not None
+    # Every regular-season game is final: nothing left to root for.
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=None, final_week=8)
+    g = build_playoff_race(d)["scenario"]["rooting"]
+    assert g["status"] == "no_games_remaining" and g["period"] is None and g["games"] == []
+    # No spotlight team: no guide.
+    d = sr.race(mine=99)
+    assert build_playoff_race(d)["scenario"]["rooting"] is None
+
+
 # ------------------------------------------------------- database, API, isolation --
 
 def _db_league(tmp_path):
