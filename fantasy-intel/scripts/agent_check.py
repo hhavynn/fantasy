@@ -135,6 +135,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
                           "tests/test_v2_authorization_matrix.py"]),
     ("api/trade", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py"]),
     # Player screener (issue #226): the bounded query API, its /v2 tenancy and the golden replay.
+    # Ask Fantasy Intel (issue #219): the grammar, the cards against their endpoints and the /v2 tenancy.
+    ("api/ask", ["tests/test_ask.py", "tests/test_ask_scope.py", "tests/test_v2_authorization_matrix.py"]),
     ("api/screener", ["tests/test_screener.py", "tests/test_screener_scope.py", "tests/test_golden_legacy.py",
                       "tests/test_provider_copy.py", "tests/test_v2_authorization_matrix.py"]),
     ("api/start_sit", ["tests/test_start_sit.py", "tests/test_start_sit_evaluation.py", "tests/test_lineup_what_if.py"]),
@@ -173,7 +175,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/trade_scenarios", ["tests/test_trade_scenarios.py", "tests/test_trades.py", "tests/test_golden_legacy.py"]),
     ("analytics/trade_values", ["tests/test_trade_values.py", "tests/test_trade_assets_superflex.py",
                                 "tests/test_golden_legacy.py", "tests/test_provider_copy.py"]),
-    ("analytics/screener", ["tests/test_screener.py", "tests/test_screener_scope.py", "tests/test_golden_legacy.py",
+    ("analytics/ask", ["tests/test_ask.py", "tests/test_ask_scope.py"]),
+    ("analytics/screener", ["tests/test_screener.py", "tests/test_ask.py", "tests/test_screener_scope.py", "tests/test_golden_legacy.py",
                             "tests/test_provider_copy.py"]),
     ("analytics/trades", ["tests/test_trades.py", "tests/test_trade_v3.py", "tests/test_trade_discovery.py", "tests/test_trade_dual_value.py",
                           "tests/test_trade_scenarios.py"]),

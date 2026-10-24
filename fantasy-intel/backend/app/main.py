@@ -43,6 +43,7 @@ from .api.trade_values import router as trade_values_router
 from .api.league_analyzer import router as league_analyzer_router
 from .api.pace_lab import router as pace_lab_router
 from .api.screener import router as screener_router
+from .api.ask import router as ask_router
 
 def docs_urls(settings, env=os.environ) -> dict:
     """FastAPI's interactive docs and OpenAPI schema for a local run only. Their route docstrings name settings and
@@ -125,6 +126,7 @@ app.include_router(trade_values_router)
 app.include_router(league_analyzer_router)
 app.include_router(pace_lab_router)
 app.include_router(screener_router)
+app.include_router(ask_router)
 
 
 # The same routers again under /v2/leagues/{league_id}: authorized per league, served from that league's files
@@ -139,7 +141,7 @@ mount_legacy_routers(app, [
     research_router, player_compare_router, projection_compare_router, rankings_router, kicker_projections_router,
     dst_projections_router, injury_impact_router, power_rankings_router, projection_ranges_router, league_rules_router,
     transactions_router, add_drop_router, claim_plan_router, faab_router, trade_scenarios_router, trade_values_router,
-    league_analyzer_router, pace_lab_router, screener_router,
+    league_analyzer_router, pace_lab_router, screener_router, ask_router,
 ], require_enabled, owner_only=[
     # Platform admin only, on every league: the promotion tracker (model governance) and Projection Accuracy, whose
     # payload carries governance state, unpublished run diagnostics and model internals and whose data exists for one
