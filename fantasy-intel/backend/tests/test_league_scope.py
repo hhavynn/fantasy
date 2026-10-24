@@ -107,7 +107,8 @@ def test_signal_provenance_names_the_versions_read_and_no_league_id(pg, served, 
     """signal-provenance.v1 in a league-scoped request: league data carries the league file version, nflverse data the
     global file version (the same values as the headers); the opaque league id never appears in the block."""
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
-    for path in ("/api/overview", "/api/start-sit", "/api/waivers", "/api/trades/options"):
+    # Start/Sit needs a team in view (#348); the anonymous visitor names one
+    for path in ("/api/overview", "/api/start-sit?team_id=1", "/api/waivers", "/api/trades/options"):
         r = client.get(f"/v2/leagues/{pub.league_id}{path}")
         assert r.status_code == 200, (path, r.text[:200])
         prov = r.json()["provenance"]
