@@ -10,7 +10,7 @@ and calls them.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .lineup import lineup_slots
 from .marginal_utility import scenario
@@ -33,8 +33,8 @@ RESAMPLES = 2000
 @dataclass(frozen=True)
 class Season:
     """One season's inputs, keyed by integer player ids. `games[pid]` is a list of (week, team, points) for weeks
-    played; `prior_ppg` / `prior_total` the previous season's PPR points per game and total; `byes[team]` the weeks
-    that team has no game; `position[pid]` and `name[pid]`."""
+    played; `prior_ppg` / `prior_total` the previous season's PPR points per game and total, `prior_team` the team of
+    his last previous-season game; `byes[team]` the weeks that team has no game; `position[pid]` and `name[pid]`."""
     season: int
     games: dict
     prior_ppg: dict
@@ -42,11 +42,14 @@ class Season:
     byes: dict
     position: dict
     name: dict
+    prior_team: dict = field(default_factory=dict)
 
 
 def asof_projections(s: Season, w: int, weeks) -> dict:
     """pid -> {week: projection} for weeks >= w, from games strictly before `w` (see the pre-registration): 0 on the
-    team's bye, otherwise (points before w + 3 * prior ppg) / (games before w + 3); no prior season needs 2 games."""
+    team's bye, otherwise (points before w + 3 * prior ppg) / (games before w + 3); no prior season needs 2 games.
+    His team is the one of his last game before `w`; with none this season yet, the one of his last previous-season
+    game (as of `w`, never a later game of this season)."""
     out = {}
     for pid in s.position:
         before = [g for g in s.games.get(pid, []) if g[0] < w]
@@ -57,16 +60,11 @@ def asof_projections(s: Season, w: int, weeks) -> dict:
             rate = sum(g[2] for g in before) / len(before)
         else:
             rate = (sum(g[2] for g in before) + SHRINK_GAMES * prior) / (len(before) + SHRINK_GAMES)
-        team = max(before)[1] if before else _first_team(s, pid)
+        team = max(before)[1] if before else s.prior_team.get(pid)
         if team is None:
-            continue
+            continue                                    # no game before w in either season: no as-of team
         out[pid] = {k: 0.0 if k in s.byes.get(team, ()) else round(rate, 4) for k in weeks}
     return out
-
-
-def _first_team(s: Season, pid: int):
-    games = s.games.get(pid)
-    return min(games)[1] if games else None
 
 
 def actual_points(s: Season, pids, weeks) -> dict:
@@ -123,17 +121,25 @@ def decide(s: Season, roster_ids: list[int], drafted: set[int], w: int) -> dict:
                         free_agent_status=status, active_capacity=len(roster), horizon=HORIZON,
                         projection_source="as-of shrunk rate (research)")
     row = {"season": s.season, "week": w, "status": plan["status"], "stashes": len(plan["stashes"])}
-    if not plan["stashes"]:
-        return row | {"plan": None}
-    top = plan["stashes"][0]
     drop = (plan.get("drop") or {}).get("espn_player_id")
-    by_id = {p.espn_player_id: p for p in pool}
+    if not pool or (drop is None and plan.get("drop_basis") != "open_spot"):
+        return row | {"plan": None}                     # drop_unknown: the planner abstains, nothing is compared
     b1 = max(pool, key=lambda p: (sum(proj[p.espn_player_id][k] for k in later), -p.espn_player_id))
+    pick_up_now = {x["espn_player_id"] for x in plan["pick_up_now"]}
+    if not plan["stashes"]:                             # pre-registered: R_B1 where PLAN found no stash
+        return row | {"plan": None, "b1": b1.espn_player_id, "drop": drop,
+                      "r_b1": realized_gain(s, roster, later, drop, b1), "b1_pick_up_now": b1.espn_player_id in
+                      pick_up_now}
+    top = plan["stashes"][0]
+    by_id = {p.espn_player_id: p for p in pool}
     b2 = max(pool, key=lambda p: (proj[p.espn_player_id][w], -p.espn_player_id))
-    picks = {"plan": by_id[top["espn_player_id"]], "b1": b1, "b2": b2}
+    # post-hoc, not deciding (review): a random projected free agent with the same drop
+    rnd = random.Random(f"{SEED}-{s.season}-{w}-{','.join(map(str, roster_ids))}").choice(pool)
+    picks = {"plan": by_id[top["espn_player_id"]], "b1": b1, "b2": b2, "rand": rnd}
     gains = {arm: realized_gain(s, roster, later, drop, f) for arm, f in picks.items()}
     return row | {"plan": top["espn_player_id"], "b1": b1.espn_player_id, "b2": b2.espn_player_id, "drop": drop,
-                  "r_plan": gains["plan"], "r_b1": gains["b1"], "r_b2": gains["b2"],
+                  "r_plan": gains["plan"], "r_b1": gains["b1"], "r_b2": gains["b2"], "r_rand": gains["rand"],
+                  "b1_pick_up_now": b1.espn_player_id in pick_up_now,
                   "projected_later": top["later_delta"], "projected_net": top["horizon_delta"]}
 
 
@@ -166,7 +172,8 @@ def _cluster_ci(values: list[tuple], seed: int = SEED, resamples: int = RESAMPLE
         flat = [v for c in pick for v in c]
         stats.append(sum(flat) / len(flat))
     stats.sort()
-    return mean, stats[int(0.025 * resamples)], stats[int(0.975 * resamples) - 1]
+    lo, hi = int(0.025 * resamples), resamples - 1 - int(0.025 * resamples)
+    return mean, stats[lo], stats[hi]
 
 
 def evaluate(rows: list[dict]) -> dict:
@@ -188,8 +195,30 @@ def evaluate(rows: list[dict]) -> dict:
         outcome = "baseline better"
     else:
         outcome = "no evidence"
-    none_rows = [r for r in rows if r.get("plan") is None]
-    out |= {"outcome": outcome, "stats": stats,
+    none_rows = [r for r in rows if r.get("plan") is None and "r_b1" in r]
+    xs, ys = [r["projected_later"] for r in comp], [r["r_plan"] for r in comp]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    syy = sum((y - my) ** 2 for y in ys)
+    ranked = sorted(comp, key=lambda r: r["projected_later"])
+    q = len(ranked) // 5
+    bins = [ranked[i * q:(i + 1) * q] if i < 4 else ranked[4 * q:] for i in range(5)]
+    out |= {"abstained_drop_unknown": sum(r.get("status") == "drop_unknown" for r in rows),
+            "calibration": {"slope": sxy / sxx if sxx else None,
+                            "correlation": sxy / (sxx * syy) ** 0.5 if sxx and syy else None,
+                            "quintiles": [{"projected": sum(r["projected_later"] for r in b) / len(b),
+                                           "realized": sum(r["r_plan"] for r in b) / len(b), "n": len(b)}
+                                          for b in bins if b]},
+            "no_stash_r_b1": {"n": len(none_rows), "mean": (sum(r["r_b1"] for r in none_rows) / len(none_rows))
+                              if none_rows else None},
+            "post_hoc": {"b1_is_pick_up_now": sum(bool(r.get("b1_pick_up_now")) for r in comp) / len(comp),
+                         "r_rand": {c: _cluster_ci([(key(r), r["r_rand"]) for r in comp])
+                                    for c, key in clusterings.items()},
+                         "plan_minus_rand": {c: _cluster_ci([(key(r), r["r_plan"] - r["r_rand"]) for r in comp])
+                                             for c, key in clusterings.items()},
+                         "clusters": {c: len({key(r) for r in comp}) for c, key in clusterings.items()}},
+            "outcome": outcome, "stats": stats,
             "precision": sum(r["r_plan"] > 0 for r in comp) / len(comp),
             "mean_projected_later": sum(r["projected_later"] for r in comp) / len(comp),
             "mean_projected_net": sum(r["projected_net"] for r in comp) / len(comp),

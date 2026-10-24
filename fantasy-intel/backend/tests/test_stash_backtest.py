@@ -40,6 +40,18 @@ def test_the_team_is_the_one_he_last_played_for():
     assert p[4] == 10.0 and p[5] == 0.0
 
 
+def test_with_no_game_before_w_the_team_is_last_seasons_never_a_later_one():
+    """Review #218: a player who has not played yet (or never plays this season) keeps his previous-season team as of
+    w; his first game later this season (for another team) must not decide his bye."""
+    s = season(games={1: [(8, "KC", 30.0)]}, prior_ppg={1: 12.0, 2: 9.0}, position={1: "QB", 2: "RB"},
+               prior_team={1: "NYJ", 2: "CIN"}, byes={"KC": frozenset({4}), "NYJ": frozenset({5}),
+                                                      "CIN": frozenset({6})})
+    p = sb.asof_projections(s, 3, [3, 4, 5, 6])
+    assert p[1] == {3: 12.0, 4: 12.0, 5: 0.0, 6: 12.0}       # NYJ's bye (week 5), not KC's (week 4)
+    assert p[2] == {3: 9.0, 4: 9.0, 5: 9.0, 6: 0.0}           # never plays this season: still projected, as of w
+    assert sb.actual_points(s, [2], [3, 4])[2] == {3: 0.0, 4: 0.0}
+
+
 def big_season():
     pos = ["QB"] * 30 + ["RB"] * 80 + ["WR"] * 90 + ["TE"] * 30
     position = {i + 1: p for i, p in enumerate(pos)}
@@ -86,7 +98,8 @@ def test_the_plan_arm_covers_a_bye_and_the_baselines_are_scored_the_same_way():
 
 def rows(diffs, plan_gain=5.0):
     return [{"season": 2024, "week": 3 + i % 10, "league": i % 3, "team": i % 12, "plan": 1, "r_plan": plan_gain,
-             "r_b1": plan_gain - d, "r_b2": plan_gain, "projected_later": 4.0, "projected_net": 3.0}
+             "r_b1": plan_gain - d, "r_b2": plan_gain, "r_rand": 0.0, "projected_later": 4.0 + i % 7,
+             "projected_net": 3.0}
             for i, d in enumerate(diffs)]
 
 

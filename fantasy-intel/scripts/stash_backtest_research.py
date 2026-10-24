@@ -47,9 +47,11 @@ def load(seasons: list[int]) -> list[sb.Season]:
             games.setdefault(p, []).append((int(r["week"]), r["team"], float(r.get("fantasy_points_ppr") or 0.0)))
             position[p], name[p] = r["position"], r.get("player_display_name") or r["player_id"]
         prior_games: dict[int, list[float]] = {}
+        prior_last: dict[int, tuple[int, str]] = {}
         for r in by_year.get(s - 1, []):
             p = pid(r["player_id"])
             prior_games.setdefault(p, []).append(float(r.get("fantasy_points_ppr") or 0.0))
+            prior_last[p] = max(prior_last.get(p, (0, "")), (int(r["week"]), r["team"]))
             if p not in position:                      # drafted on last season's value even if he never plays now
                 position[p], name[p] = r["position"], r.get("player_display_name") or r["player_id"]
         prior_ppg = {p: sum(v) / len(v) for p, v in prior_games.items() if v}
@@ -59,7 +61,8 @@ def load(seasons: list[int]) -> list[sb.Season]:
         weeks = sorted({int(g["week"]) for g in reg})
         played = {(g["home_team"], int(g["week"])) for g in reg} | {(g["away_team"], int(g["week"])) for g in reg}
         byes = {t: frozenset(w for w in weeks if (t, w) not in played) for t in teams}
-        out.append(sb.Season(s, {p: sorted(v) for p, v in games.items()}, prior_ppg, prior_total, byes, position, name))
+        out.append(sb.Season(s, {p: sorted(v) for p, v in games.items()}, prior_ppg, prior_total, byes, position, name,
+                             prior_team={p: t for p, (_, t) in prior_last.items()}))
     return out
 
 
