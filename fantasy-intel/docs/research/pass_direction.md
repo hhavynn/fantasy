@@ -93,7 +93,8 @@ wrong way.
     (−0.00156, +0.00091), so not measurable at that setting. **The setting under-shrinks:** at shrinkage 400 the gap is
     −0.00226, with CIs (−0.00288, −0.00167) and (−0.00299, −0.00152), below 0 under both clusterings. Offenses' own
     direction tendencies are real but small. (I reproduced both numbers with `pdr._ll_gap(rows, "p_offense",
-    "p_league")` on the predictions, setting `SHRINK` to each value.)
+    "p_league")` on predictions re-made with `pdr.predict` after setting `SHRINK` to each value, not on the saved
+    `preds.parquet`.)
   * **The reviewer's robustness sweep** of the defense adjustment, an independent post-hoc script:
     * The pre-registered model is, if anything, under-regularised rather than over-penalising the defense. The
       30-attempt gate helps at every shrinkage tried. Weaker defense shrinkage, or a stronger ratio exponent, makes
