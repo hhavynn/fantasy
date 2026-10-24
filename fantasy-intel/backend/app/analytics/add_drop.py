@@ -151,7 +151,7 @@ def _card(p: RosterPlayer, state: LeagueState, window: Window, ctx: AddDropConte
             "availability_status": state.free_agent_status.get(p.espn_player_id),
             "team_id": team_id, "team_name": state.team_names.get(team_id) if team_id is not None else None,
             "on_ir": p.on_ir, "on_taxi": p.on_taxi,
-            "lineup_eligible": lineup_relevant(p.position, state.slots),
+            "lineup_eligible": lineup_relevant(p, state.slots),
             "weekly_projection": {w: projection(state.projections, p.espn_player_id, w) for w in window.weeks},
             "nfl_ineligible_weeks": sorted(w for w in p.unavailable_weeks if w in window.weeks),
             "bye_weeks": _bye_weeks(p, window, ctx), "kickoff_lock": _lock(p, ctx)}
@@ -166,7 +166,7 @@ def _options(state: LeagueState, roster: list[RosterPlayer] | None, window: Wind
     """The pickers: available players (FREEAGENT / WAIVERS, never a rostered one) and the team's roster."""
     rows = []
     for p in state.free_agents:
-        if not lineup_relevant(p.position, state.slots):
+        if not lineup_relevant(p, state.slots):
             continue
         pts, n = _known_points(p, state, window)
         rows.append({"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position,
@@ -224,7 +224,7 @@ def _week_rows(core: dict, slots: list[str], ctx: AddDropContext, names: dict[in
         if w not in ctx.covered:
             return None                     # the schedule does not cover the week: byes are unknown
         return sorted(p.espn_player_id for p in players if not p.reserved and p.pro_team
-                      and lineup_relevant(p.position, slots) and (p.pro_team, w) not in ctx.games)
+                      and lineup_relevant(p, slots) and (p.pro_team, w) not in ctx.games)
     out = []
     for row, b, a in zip(core["compare"]["weeks"], core["before_team"]["weeks"], core["after_team"]["weeks"]):
         sb, sa = starters(b), starters(a)
@@ -384,7 +384,7 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
             notes.append(_item(WAIVER_CLAIM, f"{add_p.name} is on waivers: he can only be acquired by a claim"
                                              f"{_processing(ctx)}. The claim can fail, and he is not on your roster "
                                              "until it is processed.", add, "caution"))
-        if not lineup_relevant(add_p.position, state.slots):
+        if not lineup_relevant(add_p, state.slots):
             notes.append(_item(NOT_LINEUP_ELIGIBLE, f"{add_p.name} ({add_p.position}) cannot fill any starting slot in "
                                                     "this league, so he cannot change a lineup.", add, "caution"))
         if (add_p.injury_status or "").upper() in ("IR", "INJURY_RESERVE", "OUT", "DOUBTFUL", "SUSPENSION"):
@@ -392,7 +392,7 @@ def evaluate_add_drop(state: LeagueState, team_id: int | None, add: int | None, 
                                            "spot; moving him to IR is a separate move this simulation does not make.",
                                add, "caution"))
     unsupported = unsupported_of(state.slots)
-    if drop_p is not None and unsupported and not lineup_relevant(drop_p.position, state.slots):
+    if drop_p is not None and unsupported and not lineup_relevant(drop_p, state.slots):
         notes.append(_item(UNSUPPORTED_SLOT_PLAYER, f"{drop_p.name} ({drop_p.position}) can start only in "
                                                     f"{', '.join(unsupported)}, which no engine fills: what he adds to "
                                                     "your lineup is not modelled, so losing him is not counted.", drop,

@@ -200,7 +200,7 @@ class AssetBoard:
 
     def _profile(self, p: RosterPlayer) -> dict:
         avail = (self.state.availability or {}).get(p.espn_player_id) or {}
-        relevant = lineup_relevant(p.position, self.state.slots) and bool(p.pro_team)
+        relevant = lineup_relevant(p, self.state.slots) and bool(p.pro_team)
         par, raw, missing, blocked, per = 0.0, 0.0, [], [], {"regular": 0.0, "playoff": 0.0}
         base = self.base.get(p.position, {})
         for w in self.weeks:

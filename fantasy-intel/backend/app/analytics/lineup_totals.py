@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from .lineup import assign_lineup, is_flex, lineup_total, separable, slot_positions, unsupported_of
+from .lineup import assign_lineup, dual_positions, is_flex, lineup_total, separable, slot_positions, unsupported_of
 from .team_lineups import STREAMER_IDS, lineup_relevant, stream_levels
 
 
@@ -24,11 +24,13 @@ class LineupTotals:
     flex-eligible players (the exchange argument in analytics/lineup.py). Nested flex types (each flex
     slot takes every position the one before it takes, e.g. FLEX then OP) fill slot by slot with the best
     remaining eligible player (`_nested`). Other mixed flex types (e.g. RB/WR + WR/TE) use the exact
-    assign_lineup itself. `state` is anything with the league's `slots` and `projections` (trades.LeagueState)."""
+    assign_lineup itself, and so does every lineup when a player is eligible at two positions (`eligibility`, issue
+    #253 G11): the fills here assume one position per player. `state` is anything with the league's `slots` and
+    `projections` (trades.LeagueState)."""
 
     def __init__(self, state, weeks: tuple[int, ...], pids: set[int], positions: dict[int, str | None],
                  teams: dict[int, str | None], blocked: dict[int, frozenset] | None = None,
-                 exact_negative: bool = False):
+                 exact_negative: bool = False, eligibility: dict[int, tuple[int, ...] | None] | None = None):
         self.slots = state.slots
         fixed = [s for s in state.slots if not is_flex(s)]
         self.fixed_groups = [(s, fixed.count(s)) for s in dict.fromkeys(fixed)]   # slot order (contiguous)
@@ -41,6 +43,12 @@ class LineupTotals:
                                             for a, b in pairwise(flex))
         # Non-nested mixed flex types need the exact search; non-contiguous fixed slots would change the summation order.
         self.general = (len(set(flex)) > 1 and not nested) or len(runs) != len(self.fixed_groups)
+        # A player eligible at two positions the slots take: every week goes to assign_lineup (its dual path), which
+        # project_week uses for the same players, so totals stay bit-identical to the evaluator's.
+        self.elig_slots = {p: e for p, e in (eligibility or {}).items() if e}
+        if any(dual_positions({"position": positions.get(p), "eligible_slots": e}, state.slots)
+               for p, e in self.elig_slots.items() if p in pids):
+            self.general = True
         self.nested = [tuple(slot_positions(s)) for s in flex] if nested and not self.general else None
         self.elig = set(slot_positions(flex[0])) if flex else set()
         if self.nested:
@@ -74,7 +82,9 @@ class LineupTotals:
         levels = stream_levels(state.projections)
         self.stream = [{pos: per[w] for pos, per in levels.items() if pos in state.slots and per.get(w) is not None}
                        for w in weeks]
-        relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
+        relevant = {p for p in pids if teams.get(p) and lineup_relevant(
+            {"position": positions.get(p), "eligible_slots": self.elig_slots[p]} if p in self.elig_slots
+            else positions.get(p), state.slots)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
         unsupported = unsupported_of(state.slots)
@@ -87,7 +97,8 @@ class LineupTotals:
     def week(self, ids, i: int) -> float:
         row, stream = self.val[i], self.stream[i]
         if self.general or self.exact_week[i]:
-            return lineup_total(assign_lineup([{"espn_player_id": p, "position": self.pos.get(p), "value": row[p][1]}
+            return lineup_total(assign_lineup([{"espn_player_id": p, "position": self.pos.get(p), "value": row[p][1],
+                                                "eligible_slots": self.elig_slots.get(p)}
                                                for p in ids if p in row]
                                               + [{"espn_player_id": STREAMER_IDS[pos], "position": pos, "value": v}
                                                  for pos, v in stream.items()], self.slots))

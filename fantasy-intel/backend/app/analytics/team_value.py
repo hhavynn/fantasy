@@ -241,7 +241,7 @@ def bench_reason(p: RosterPlayer, week: dict, proj, byes: list[int] | None, name
         bye = byes is not None and w in byes
         return {"code": "bye" if bye else "zero_projection",
                 "text": "NFL bye (projected 0)" if bye else "ESPN projects 0"}
-    held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p.position)]
+    held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p)]
     fixed = [a for a in held if not is_flex(a["slot"])]
     flex = [a for a in held if is_flex(a["slot"])]
     def who(rows):

@@ -1,8 +1,8 @@
-"""Slot legality goes through one place (issue #253 G11, PR 1 of 3: plumbing, no behaviour change).
+"""Slot legality goes through one place (issue #253 G11).
 
 positions_of reads a player's eligible positions from provider evidence only; eligible() answers every "may this player
-start here"; no engine reads FLEX_ELIGIBILITY itself. Dual eligibility stays off (lineup.DUAL_ELIGIBILITY) until the
-all-slot solver lands, so every lineup is exactly what it was.
+start here"; no engine reads FLEX_ELIGIBILITY itself. Dual eligibility is on (lineup.DUAL_ELIGIBILITY, PR 2 of 3: the
+solver); turning it off makes every player primary-only again. The solver itself: tests/test_lineup_dual_eligibility.py.
 """
 
 import ast
@@ -31,7 +31,9 @@ def test_the_slot_helpers_are_the_table():
     ({"position": "RB", "eligible_slots": RB_WR}, {"RB", "WR"}),
     ({"position": "RB"}, {"RB"}),                                        # no evidence: primary only
     ({"position": "RB", "eligible_slots": None}, {"RB"}),
-    ({"position": "RB", "eligible_slots": "[2, 4]"}, {"RB"}),            # malformed: primary only, never parsed
+    ({"position": "RB", "eligible_slots": "[2, 4]"}, {"RB", "WR"}),      # the JSON text DuckDB returns for the column
+    ({"position": "RB", "eligible_slots": "[2, 4"}, {"RB"}),             # malformed: primary only
+    ({"position": "RB", "eligible_slots": '{"4": 1}'}, {"RB"}),
     ({"position": "RB", "eligible_slots": [4.0, True, "4"]}, {"RB"}),    # only real int slot ids count
     ({"position": "RB", "eligible_slots": [20, 21, 23, 3, 5, 7]}, {"RB"}),
     ({"position": None, "eligible_slots": [4]}, {"WR"}),
@@ -49,17 +51,17 @@ def test_objects_with_a_position_work_like_dicts():
     assert eligible("RB", P()) and not eligible("TE", P())
 
 
-def test_dual_eligibility_is_off_so_every_player_is_primary_only():
+def test_with_dual_eligibility_off_every_player_is_primary_only(monkeypatch):
+    monkeypatch.setattr(lineup, "DUAL_ELIGIBILITY", False)
     dual = {"position": "RB", "eligible_slots": RB_WR}
-    assert lineup.DUAL_ELIGIBILITY is False
     assert eligible("RB", dual) and eligible("RB/WR", dual) and not eligible("WR", dual)
     for slot in (*lineup.FIXED_SLOTS, *FLEX_SLOTS, "LB"):                # a player answers exactly like his position
         for pos in ("QB", "RB", "WR", "TE", "K", "D/ST", None):
             assert eligible(slot, {"position": pos, "eligible_slots": RB_WR}) == eligible(slot, pos), (slot, pos)
 
 
-def test_with_dual_eligibility_on_a_listed_position_opens_its_slots(monkeypatch):
-    monkeypatch.setattr(lineup, "DUAL_ELIGIBILITY", True)
+def test_with_dual_eligibility_on_a_listed_position_opens_its_slots():
+    assert lineup.DUAL_ELIGIBILITY is True
     assert eligible("WR", {"position": "RB", "eligible_slots": RB_WR})
     assert not eligible("WR", {"position": "RB", "eligible_slots": RB})
     assert not eligible("WR", {"position": "RB"})

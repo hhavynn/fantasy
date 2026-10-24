@@ -45,7 +45,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, separable, slot_positions, unsupported_of
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, positions_of, separable, slot_positions,
+                     unsupported_of)
 
 PROJECTION_SOURCE = "ESPN"
 NO_PROJECTIONS = "Unavailable"      # as start_sit.NO_PROJECTIONS
@@ -80,6 +81,7 @@ class RosterPlayer:
     injury_status: str | None = None
     unavailable_weeks: frozenset[int] = frozenset()   # verified NFL-ineligible weeks (not a fantasy slot)
     on_taxi: bool = False              # Sleeper taxi squad: rostered, never starts, no active roster spot
+    eligible_slots: tuple[int, ...] | None = None   # provider slot ids (lineup.positions_of); None = primary only
 
     @property
     def reserved(self) -> bool:
@@ -121,9 +123,11 @@ def r(x: float | None) -> float | None:
     return None if x is None else round(x + 0.0, NDIGITS) + 0.0   # + 0.0 turns -0.0 into 0.0
 
 
-def lineup_relevant(position: str | None, slots: list[str]) -> bool:
-    """Can a player at this position fill any starting slot in this league?"""
-    return any(eligible(s, position) for s in set(slots))
+def lineup_relevant(player, slots: list[str]) -> bool:
+    """Can this player fill any starting slot in this league? `player` is a position (None = unknown) or a player with
+    `position` and optionally `eligible_slots`, so a player listed at a second position the slots take counts exactly
+    as the lineup solver starts him (#253 G11): his missing projection leaves the total unknown, never complete."""
+    return any(eligible(s, player) for s in set(slots))
 
 
 def projection(proj: Projections, pid: int, week: int) -> float | None:
@@ -234,8 +238,9 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         elif week in p.unavailable_weeks:
             unavailable.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
         elif v is not None:
-            known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v})
-        elif not lineup_relevant(p.position, slots):
+            known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v,
+                          "eligible_slots": p.eligible_slots})
+        elif not lineup_relevant(p, slots):
             continue
         elif p.pro_team:
             missing.append(p.espn_player_id)
@@ -272,7 +277,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         "_projections_complete": not missing,
         # active players who can fill no slot the engines fill (the candidates for the unsupported slots)
         "_offslot": frozenset(p.espn_player_id for p in players if not p.reserved
-                              and not lineup_relevant(p.position, slots)) if unsupported else frozenset(),
+                              and not lineup_relevant(p, slots)) if unsupported else frozenset(),
     }
 
 
@@ -510,23 +515,24 @@ def replacement_market(free_agents: list[RosterPlayer], slots: list[str], window
 
 
 def _pareto(cands: list[RosterPlayer], weeks: tuple[int, ...], proj: Projections) -> list[RosterPlayer]:
-    """Drop candidates weakly dominated week-by-week by another candidate at the same position.
-    Exact: same position = same slot eligibility, and the optimal lineup total is non-decreasing in
-    one player's weekly value, so a dominated candidate can never produce a higher total (ties keep
-    the lower id, matching the final tie-break)."""
+    """Drop candidates weakly dominated week-by-week by another candidate at the same position who can fill every
+    position he can (lineup.positions_of: a WR also listed at RB is never dropped for a WR-only player, #253 G11).
+    Exact: the dominating candidate fits every slot the other fits, and the optimal lineup total is non-decreasing in
+    one player's weekly value, so a dominated candidate can never produce a higher total (ties keep the lower id,
+    matching the final tie-break)."""
     out = []
     by_pos: dict[str | None, list] = {}
     for c in cands:
         # A verified NFL-ineligible week contributes nothing, exactly like a 0 (he cannot start).
         by_pos.setdefault(c.position, []).append((c, tuple(0.0 if w in c.unavailable_weeks else proj[c.espn_player_id][w]
-                                                           for w in weeks)))
+                                                           for w in weeks), positions_of(c)))
     for items in by_pos.values():
         items.sort(key=lambda t: (-sum(t[1]), t[0].espn_player_id))
         kept: list = []
-        for c, v in items:
-            if not any(all(kv[i] >= v[i] for i in range(len(v))) for _, kv in kept):
-                kept.append((c, v))
-        out += [c for c, _ in kept]
+        for c, v, pos in items:
+            if not any(kpos >= pos and all(kv[i] >= v[i] for i in range(len(v))) for _, kv, kpos in kept):
+                kept.append((c, v, pos))
+        out += [c for c, _, _ in kept]
     return out
 
 
@@ -544,7 +550,7 @@ def best_fa_addition(players: list[RosterPlayer], free_agents: list[RosterPlayer
     guaranteed. Only free agents ESPN projects in every remaining week are scored (no projection is
     ever manufactured)."""
     rostered = {p.espn_player_id for p in players}
-    pool = [p for p in free_agents if p.espn_player_id not in rostered and lineup_relevant(p.position, slots)
+    pool = [p for p in free_agents if p.espn_player_id not in rostered and lineup_relevant(p, slots)
             and (positions is None or p.position in positions)]
     scored = [p for p in pool if all(projection(proj, p.espn_player_id, w) is not None for w in window.weeks)]
     base = project_team(players, slots, window, proj)

@@ -24,8 +24,8 @@ from typing import Any
 import json
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import (FIXED_SLOTS, FLEX_SLOTS, NON_STARTING_SLOTS, assign_lineup, eligible, separable,
-                     unsupported_slots)
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, NON_STARTING_SLOTS, assign_lineup, eligible, parse_eligible_slots,
+                     separable, unsupported_slots)
 from .player_availability import load_availability
 from .reserve_slots import is_taxi
 from .team_lineups import RosterPlayer
@@ -348,9 +348,8 @@ def map_actual_starters_to_slots(
 
     # Pass 2: Positionally eligible matches for any remaining starters
     for p in unmatched_players:
-        pos = p.get("position")
         matched_slot = next(
-            (s for s in slots if s.slot_id not in used_slots and eligible(s.slot_type, pos)),
+            (s for s in slots if s.slot_id not in used_slots and eligible(s.slot_type, p)),
             None,
         )
         if matched_slot is not None:
@@ -422,7 +421,7 @@ def load_actual_lineup(
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter,
                l.points, l.projected_points AS snapshot_projected_points, l.synced_at AS snapshot_synced_at,
                fp.full_name, fp.position, fp.pro_team,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, fp.eligible_slots
         FROM lineup_snapshots l
         JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
@@ -433,6 +432,7 @@ def load_actual_lineup(
 
     starters, bench, ir = [], [], []
     for r in rows:
+        r["eligible_slots"] = parse_eligible_slots(r["eligible_slots"], r.get("position"))     # the slots a player may fill (#253 G11)
         slot_id = r.get("lineup_slot_id")
         if slot_id == IR_SLOT:
             ir.append(r)
@@ -542,7 +542,8 @@ def optimize_lock_constrained_lineup(
 
     # 1. Benchmark: Unconstrained optimal lineup
     unconstrained_candidates = [
-        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]]),
+         "eligible_slots": p.get("eligible_slots")}
         for p in roster_players
         if p["espn_player_id"] not in ir_ids
         and p["espn_player_id"] not in unavailable_ids
@@ -560,7 +561,8 @@ def optimize_lock_constrained_lineup(
     remaining_slot_types = [s.slot_type for s in remaining_slot_instances]
 
     candidate_pool = [
-        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]]),
+         "eligible_slots": p.get("eligible_slots")}
         for p in roster_players
         if p["espn_player_id"] not in locked_starter_ids
         and p["espn_player_id"] not in locked_bench_ids
@@ -634,7 +636,7 @@ def optimize_lock_constrained_lineup(
         return sorted(p["espn_player_id"] for p in roster_players
                       if p["espn_player_id"] not in excluded and projections.get(p["espn_player_id"]) is None
                       and p.get("pro_team") not in TEAMLESS_ABBRS
-                      and any(eligible(slot, p.get("position")) for slot in empty))
+                      and any(eligible(slot, p) for slot in empty))
 
     rec_unknown = unknown_fillers(recommended_lineup, ir_ids | unavailable_ids | locked_starter_ids | locked_bench_ids)
     unc_unknown = unknown_fillers(unconstrained_lineup, ir_ids | unavailable_ids)

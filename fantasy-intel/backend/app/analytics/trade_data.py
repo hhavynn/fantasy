@@ -11,7 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import DEFAULT_POSITION_MAP, FANTASY_POSITIONS, IR_SLOT
-from .lineup import lineup_slots
+from .lineup import lineup_slots, parse_eligible_slots
 from .player_availability import AVAILABLE, load_availability
 from .projections import league_window
 from .reserve_slots import active_capacity, is_taxi
@@ -223,13 +223,14 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     rosters: dict[int, list[RosterPlayer]] = {}
     for row in fetch_dicts(con, """
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, fp.full_name, fp.position, fp.pro_team,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, fp.eligible_slots
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
         ORDER BY l.team_id, l.espn_player_id""", [lg["league_id"], season, window.current]):
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row)))
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row),
+            eligible_slots=parse_eligible_slots(row["eligible_slots"], row["position"])))
     teams = fetch_dicts(con, "SELECT team_id, name FROM fantasy_teams WHERE league_id = ? AND season = ?",
                         [lg["league_id"], season])
     for t in teams:
@@ -244,10 +245,12 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         GROUP BY l.team_id""", [lg["league_id"], season, window.current])}
     rostered = {p.espn_player_id for ps in rosters.values() for p in ps}
     fa_rows = [f for f in fetch_dicts(con, f"""
-                   SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status
+                   SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status,
+                          eligible_slots
                    FROM fantasy_players WHERE availability_status IN {FA_STATUSES} ORDER BY espn_player_id""")
                if f["espn_player_id"] not in rostered]
-    free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"])
+    free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"],
+                                eligible_slots=parse_eligible_slots(f["eligible_slots"], f["position"]))
                    for f in fa_rows]
     from .projection_source import league_projections, normalize
     source = normalize(source, con, season)
