@@ -4,7 +4,7 @@ import { collectErrors, expectAccessible, expectNoBrokenValues, expectNoSideways
 // Ask Fantasy Intel (issue #219) against the E2E fixture league (Team 2 is the owner's team; week 3). The page sends the
 // question to GET /api/ask (ask/v1) and shows the card: a verdict whose numbers are the linked page's own, a link to
 // that page with the same view, a clarification with re-ask links, or a declined question with questions that work.
-// The form is a plain GET. Runs on desktop-1440 and mobile-375.
+// The form is a plain GET, so every question is a shareable URL. Runs on desktop-1440 and mobile-375.
 
 test.beforeEach(async ({ page }) => {
   await stubPhotos(page);
@@ -51,16 +51,20 @@ test("a player screen lists the screener's rows and opens the same screen", asyn
   expect(errors, "console errors").toEqual([]);
 });
 
-test("the form works without JavaScript", async ({ browser }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
-  const page = await context.newPage();
-  await stubPhotos(page);
-  await page.goto("/ask", { waitUntil: "load" });
-  await page.getByRole("searchbox", { name: "Question" }).fill("Is Waiver RB available?");
-  await page.getByRole("button", { name: "Ask" }).click();
+// The form is a plain GET, so a question is a shareable URL the server answers. (With JavaScript off the page stays on
+// its loading.tsx skeleton, as every streamed page here does, so this does not claim the answer renders without it.)
+test("the form submits the question as a shareable URL the server answers", async ({ page, request }) => {
+  await open(page, "/ask");
+  const form = page.getByRole("search", { name: "Ask a question" });
+  await expect(form).toHaveAttribute("method", "get");
+  await form.getByRole("searchbox", { name: "Question" }).fill("Is Waiver RB available?");
+  await form.getByRole("button", { name: "Ask" }).click();
   await page.waitForURL(/\/ask\?q=Is\+Waiver\+RB\+available/);
   await expect(main(page)).toContainText("Waiver RB is available: free agent.");
-  await context.close();
+  // the answer is in the server's HTML for that URL, not fetched by the browser afterwards
+  const res = await request.get(ask("Is Waiver RB available?"));
+  expect(res.status()).toBe(200);
+  expect(await res.text()).toContain("Waiver RB is available: free agent.");
 });
 
 test("an unsupported question is declined, and the questions offered instead are answered", async ({ page }) => {

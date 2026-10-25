@@ -43,7 +43,7 @@ function Cell({ cell, column }: { cell: AskCell | undefined; column: AskColumn }
 // Ask Fantasy Intel (issue #219): one question about this league, answered from an existing analysis or declined. The
 // backend (GET /api/ask, contract ask/v1) parses the question with a deterministic grammar, runs exactly one existing
 // read-only analysis and copies its numbers; this page shows the card it returns and links to the page with the same
-// view. The form is a plain GET, so it works without JavaScript.
+// view. The form is a plain GET, so every question is a shareable URL.
 export default async function AskPage({ searchParams }: PageProps<"/ask">) {
   const sp = (await searchParams) as SP;
   const { q, tooLong } = readQuestion(sp);
