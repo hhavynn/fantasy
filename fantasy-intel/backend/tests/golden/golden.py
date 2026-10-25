@@ -83,6 +83,9 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         return {"ids": pid, "team_id": ids["team_id"]} if pid is not None else None
     if path == "/api/research/opportunity":
         return {"position": "WR"}
+    if path == "/api/ask":
+        # Ask (#219): one team question, so the card is built from Start/Sit for the team in view.
+        return {"q": "who should I start"}
     if path == "/api/research/game-splits":
         # The synthetic SPL world (tests/synthetic_splits.py, written in 2023 by scripts/build_e2e_db.py): the receiver
         # and his inactive/reserve teammate.
