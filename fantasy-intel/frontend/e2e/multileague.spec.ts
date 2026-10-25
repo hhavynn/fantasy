@@ -84,6 +84,7 @@ test("Ask submissions, team changes and analysis links stay in the page's league
   expect(next).toBeTruthy();
   await picker.selectOption(next!);
   await expect(page).toHaveURL(new URL(`/l/${lg}${next!}`, page.url()).href);
+  await expect(picker).toHaveValue(next!);
   const link = main.getByRole("link", { name: "Open Start/Sit", exact: true });
   await expect(link).toBeVisible();
   const native = new URL((await link.getAttribute("href"))!, page.url());
