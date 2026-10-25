@@ -8,12 +8,17 @@
    the one an exhaustive depth-first search returns, computed in polynomial time
    (_best_flex).
 
+A player the provider lists at two positions (issue #253 G11: an RB/WR may fill an RB or a WR slot) breaks step 1's
+exchange argument. When one is in the pool, every choice of position for those players is solved by the two steps
+above and the best total wins (_assign_dual); without one the two steps run unchanged.
+
 A FLEX is one slot: 2 RB + 2 WR + 1 FLEX = exactly five RB/WR/TE starters.
 """
 
 from __future__ import annotations
 
-from itertools import combinations
+import json
+from itertools import combinations, product
 from types import MappingProxyType
 
 FIXED_SLOTS = ("QB", "RB", "WR", "TE", "K", "D/ST")
@@ -27,6 +32,7 @@ TIE_TOLERANCE = 1e-9    # flex totals this close to the optimum are ties (sums o
                         # by ~1e-14; distinct projected totals by far more)
 MAX_FLEX_SLOTS = 30     # more flex slots than any real league; a provider can store any count, so more are refused
 MAX_SPLIT_IDS = 4       # players listed under two different flex positions in one pool (not seen in real data)
+MAX_DUAL_CHOICES = 64   # position choices tried for players eligible at two positions (six RB/WRs in one pool)
 
 
 UNSUPPORTED_LINEUP = "This league's lineup configuration is not supported."
@@ -102,9 +108,9 @@ FLEX_SLOTS: tuple[str, ...] = tuple(sorted(FLEX_ELIGIBILITY, key=lambda k: len(F
 # Stored eligible_slots ids (ESPN's lineupSlotId space; the Sleeper writer stores the same) that name a position.
 # Flex, bench and IR ids name slots, not positions, so they never widen eligibility.
 POSITION_SLOT_IDS = MappingProxyType({0: "QB", 2: "RB", 4: "WR", 6: "TE", 16: "D/ST", 17: "K"})
-# Off until the all-slot solver lands: assign_lineup fills fixed slots greedily by primary position, which is only
-# optimal while every player has one position. Until then every player is primary-only, exactly as before.
-DUAL_ELIGIBILITY = False
+# On: assign_lineup tries each position of a player eligible at two (_assign_dual). False makes every player
+# primary-only again, exactly as before G11.
+DUAL_ELIGIBILITY = True
 
 
 def is_flex(slot: str) -> bool:
@@ -120,16 +126,49 @@ def _field(player, name: str):
     return player.get(name) if isinstance(player, dict) else getattr(player, name, None)
 
 
+def parse_eligible_slots(raw, position: str | None = None) -> tuple[int, ...] | None:
+    """A stored `eligible_slots` value (a list, or the JSON text DuckDB returns for the JSON column) as slot ids; None
+    when missing or malformed. With `position` (what loaders pass): only the ids that name a position, and None unless
+    one names a position other than `position`, so a single-position player carries nothing and the solver's checks
+    (dual_positions, eligible) stay a dictionary lookup for him."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return None
+    if not isinstance(raw, (list, tuple)):
+        return None
+    ids = tuple(s for s in raw if type(s) is int)
+    if position is None:
+        return ids
+    named = tuple(s for s in ids if s in POSITION_SLOT_IDS)
+    return named if any(POSITION_SLOT_IDS[s] != position for s in named) else None
+
+
 def positions_of(player) -> frozenset[str]:
     """Every position the provider says a player (a dict or an object with `position`) may fill: the primary position
-    plus each position whose own slot id is in his stored `eligible_slots`. Missing or malformed evidence is the primary
-    position only: eligibility widens on provider evidence, never on a guess."""
+    plus each position whose own slot id is in his stored `eligible_slots` (a list or its JSON text). Missing or
+    malformed evidence is the primary position only: eligibility widens on provider evidence, never on a guess."""
     primary = _field(player, "position")
     out = {primary} if primary else set()
-    slots = _field(player, "eligible_slots")
-    if isinstance(slots, (list, tuple)):
-        out |= {POSITION_SLOT_IDS[s] for s in slots if type(s) is int and s in POSITION_SLOT_IDS}
+    slots = parse_eligible_slots(_field(player, "eligible_slots"))
+    if slots:
+        out |= {POSITION_SLOT_IDS[s] for s in slots if s in POSITION_SLOT_IDS}
     return frozenset(out)
+
+
+def slot_takes(slots) -> frozenset[str]:
+    """Every position some slot in `slots` takes."""
+    return frozenset(q for s in set(slots) for q in slot_positions(s))
+
+
+def dual_positions(player, slots) -> frozenset[str]:
+    """The positions `player` may fill that `slots` take, when provider evidence adds one to his primary position
+    (else empty): the players whose eligibility changes a lineup. Always empty with DUAL_ELIGIBILITY off."""
+    if not DUAL_ELIGIBILITY or not _field(player, "eligible_slots"):
+        return frozenset()
+    taken = positions_of(player) & slot_takes(slots)
+    return taken if taken - {_field(player, "position")} else frozenset()
 
 
 def eligible(slot: str, player) -> bool:
@@ -138,12 +177,13 @@ def eligible(slot: str, player) -> bool:
     allowed = slot_positions(slot)
     if player is None or isinstance(player, str):
         return player in allowed
-    if DUAL_ELIGIBILITY:
+    if DUAL_ELIGIBILITY and _field(player, "eligible_slots"):
         return not positions_of(player).isdisjoint(allowed)
     return _field(player, "position") in allowed
 
 
 def _slot_row(slot: str, pick: dict | None) -> dict:
+    pick = pick.get("_player", pick) if pick else pick      # a dual player's row keeps his primary position
     return {"slot": slot, "player_id": pick["espn_player_id"] if pick else None,
             "position": pick.get("position") if pick else None,
             "value": (pick.get("value") or 0.0) if pick else 0.0,
@@ -363,13 +403,21 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
 
 
 def assign_lineup(players: list[dict], slots: list[str]) -> list[dict]:
-    """players: dicts with espn_player_id, position, value (effective value; None -> 0).
+    """players: dicts with espn_player_id, position, value (effective value; None -> 0), optionally eligible_slots.
     Players with `available` False are never placed. Returns one dict per slot
-    (player_id None = empty slot)."""
+    (player_id None = empty slot). Each row's position is the player's primary position, wherever he starts."""
     pool = sorted((p for p in players if p.get("available", True)),
                   key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
+    duals = [(p, d) for p in pool if p.get("eligible_slots") and (d := dual_positions(p, slots))]
+    if duals:
+        return _assign_dual(pool, slots, duals)
+    return [_slot_row(s, pick) for s, pick in _assign(pool, slots)]
+
+
+def _assign(pool: list[dict], slots: list[str]) -> list[tuple[str, dict | None]]:
+    """Steps 1 and 2 of the module docstring for one position per player: (slot, pick) in slot order."""
     used: set = set()
-    out: list[dict] = []
+    out: list = []
     flex: list[str] = []
     for slot in slots:
         if slot in FLEX_ELIGIBILITY:
@@ -378,11 +426,38 @@ def assign_lineup(players: list[dict], slots: list[str]) -> list[dict]:
         pick = next((p for p in pool if p["espn_player_id"] not in used and p.get("position") == slot), None)
         if pick is not None:
             used.add(pick["espn_player_id"])
-        out.append(_slot_row(slot, pick))
+        out.append((slot, pick))
     if flex:
         remaining = [p for p in pool if p["espn_player_id"] not in used]
-        out += [_slot_row(s, pick) for s, pick in zip(flex, _best_flex(flex, remaining))]
+        out += list(zip(flex, _best_flex(flex, remaining)))
     return out
+
+
+def _assign_dual(pool: list[dict], slots: list[str], duals: list[tuple[dict, frozenset]]) -> list[dict]:
+    """A pool with players eligible at two positions: each such player is given each of his positions in turn (his
+    primary first) and the one-position solver above runs for every combination, under exactly its rules. Every legal
+    lineup starts each player at one of his positions, so with no negative value the best total over the combinations
+    is the optimum over every legal lineup (tests/test_lineup_dual_eligibility.py checks it against an exhaustive
+    search); with negative values it is never below the everyone-primary lineup. That first combination is today's
+    lineup, and a later one replaces the best so far only when it is higher by more than TIE_TOLERANCE: a dual player
+    moves only for a real gain, and ties keep the earlier combination, deterministically. More than MAX_DUAL_CHOICES
+    combinations are refused (LineupTooLargeError), never guessed."""
+    choices = [[p.get("position"), *sorted(d - {p.get("position")})] for p, d in duals]
+    count = 1
+    for c in choices:
+        count *= len(c)
+    if count > MAX_DUAL_CHOICES:
+        raise LineupTooLargeError(f"{UNSUPPORTED_LINEUP} Too many players are eligible at two positions.")
+    at = {p["espn_player_id"]: i for i, (p, _) in enumerate(duals)}
+    best, best_total = None, None
+    for combo in product(*choices):
+        trial = [p if (i := at.get(p["espn_player_id"])) is None or combo[i] == p.get("position")
+                 else {**p, "position": combo[i], "_player": p} for p in pool]
+        rows = _assign(trial, slots)
+        total = sum((pick.get("value") or 0.0) for _, pick in rows if pick is not None)
+        if best_total is None or total > best_total + TIE_TOLERANCE:
+            best, best_total = rows, total
+    return [_slot_row(s, pick) for s, pick in best]
 
 
 def lineup_total(assignment: list[dict]) -> float:

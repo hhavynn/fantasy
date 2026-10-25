@@ -41,7 +41,7 @@ from datetime import datetime
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
 from . import production_forecasts as pf
-from .lineup import FIXED_SLOTS, slots_left_out, unsupported_of
+from .lineup import FIXED_SLOTS, parse_eligible_slots, slots_left_out, unsupported_of
 from .playoff_race import NotSynced, RaceData, all_play, classify_matchups, load_race_data
 from .projection_backtest import _utc
 from .reserve_slots import is_taxi
@@ -324,13 +324,18 @@ def _history_roster(con, st: LeagueState, week: int, kickoff: datetime) -> tuple
                  and (floor is None or t > floor)), None)
     if pick is None:
         return [], None
-    rows = fetch_dicts(con, """SELECT h.team_id, h.espn_player_id, h.lineup_slot_id, fp.full_name, fp.position,
-                                      fp.pro_team, fp.injury_status
+    rows = fetch_dicts(con, f"""SELECT h.team_id, h.espn_player_id, h.lineup_slot_id, fp.full_name, fp.position,
+                                      fp.pro_team, fp.injury_status, {_eligible_slots(con)}
                                FROM roster_history h JOIN fantasy_players fp USING (espn_player_id)
                                WHERE h.snapshot_date = ? AND h.league_id = ? AND h.season = ?
                                ORDER BY h.team_id, h.espn_player_id""",
                        [pick["snapshot_date"], st.league_id, st.season])
     return rows, pick["synced_at"]
+
+
+def _eligible_slots(con) -> str:
+    """The provider slot list a player may fill (lineup.positions_of, #253 G11); absent = primary position only."""
+    return "fp.eligible_slots" if "eligible_slots" in table_columns(con, "fantasy_players") else "NULL AS eligible_slots"
 
 
 def load_previous(con, race: RaceData) -> Previous:
@@ -351,7 +356,7 @@ def load_previous(con, race: RaceData) -> Previous:
         "NULL AS lineup_slot"      # the taxi label (reserve_slots.is_taxi); absent = read as before
     period = fetch_dicts(con, f"""SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, {label}, fp.full_name,
                                          fp.position, fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
-                                         l.acquisition_date, l.synced_at
+                                         l.acquisition_date, l.synced_at, {_eligible_slots(con)}
                                   FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
                                   WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
                                   ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
@@ -374,7 +379,8 @@ def load_previous(con, race: RaceData) -> Previous:
     for row in rows:
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row)))   # roster_history: no label
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row),     # roster_history: no label
+            eligible_slots=parse_eligible_slots(row.get("eligible_slots"), row["position"])))
     proj, snap, synced, reason = _prior_projections(con, st.season, week, st.final_week, kickoff)
     if reason:
         return Previous(week, None, reason)

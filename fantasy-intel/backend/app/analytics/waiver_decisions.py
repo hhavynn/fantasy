@@ -8,7 +8,7 @@ These are decision thresholds, not changes to the shared player scoring model.
 """
 from __future__ import annotations
 
-from .lineup import assign_lineup
+from .lineup import assign_lineup, positions_of
 from .waiver_roster import competing_positions, forward_effect, group_total, player_names, unknown_value_players
 
 VALUE_SCALE = "0-10 position percentile, not fantasy points"
@@ -23,7 +23,8 @@ def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float
     after = [p for p in players if not drop or p["espn_player_id"] != drop["espn_player_id"]] + [candidate]
     cand_raw = candidate.get("raw_value")
     # The add (and the drop) move only their slot groups, so only an unknown player there makes the gain unknown.
-    group = competing_positions(slots, {candidate["position"], drop["position"] if drop else None})
+    group = competing_positions(slots, positions_of(candidate) | (positions_of(drop) if drop else frozenset()),
+                                players + [candidate])
     unknown = ([candidate] if cand_raw is None else []) + unknown_value_players(players, slots, group)
     comparable = not unknown
     before, after_total = group_total(state["lineup"], group), group_total(assign_lineup(after, slots), group)

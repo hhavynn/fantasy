@@ -150,7 +150,7 @@ def apply_move(board: Board, state: dict[str, int | None], slot_id: str, pid: in
         code, why = board.blocked[pid]
         return state, _problem(code, why, slot_id, pid)
     p = board.players[pid]
-    if not eligible(slot.slot_type, p.get("position")):
+    if not eligible(slot.slot_type, p):
         return state, _problem(INELIGIBLE, f"{board.name(pid)} ({p.get('position') or 'no position'}) cannot play "
                                            f"{label}: it takes {_positions(slot.slot_type)}.", slot_id, pid)
     if state.get(slot_id) == pid:
@@ -161,7 +161,7 @@ def apply_move(board: Board, state: dict[str, int | None], slot_id: str, pid: in
     new[slot_id] = pid
     if origin is not None:                  # a starter changing slots swaps with the occupant
         other = board.slot(origin)
-        if occupant is not None and not eligible(other.slot_type, board.players[occupant].get("position")):
+        if occupant is not None and not eligible(other.slot_type, board.players[occupant]):
             return state, _problem(
                 INELIGIBLE_SWAP, f"Moving {board.name(pid)} to {label} would send {board.name(occupant)} "
                                  f"({board.players[occupant].get('position')}) to {board.label(other)}, which takes "

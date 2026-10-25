@@ -5,7 +5,8 @@ import json
 from collections import Counter
 
 from ..espn.constants import BLANK_SLOT_LABEL, DEFAULT_POSITION_MAP, IR_SLOT
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, assign_lineup, eligible, lineup_total, slot_positions
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, assign_lineup, dual_positions, eligible, lineup_total, positions_of,
+                     slot_positions)
 from .reserve_slots import ESPN_IR_STATUSES, TAXI, active_capacity, ir_rules, ir_slot_eligible, is_reserved, is_taxi
 from .team_lineups import STREAMER_IDS
 
@@ -49,20 +50,23 @@ def roster_constraints(league: dict) -> dict:
             "warnings": warnings}
 
 
-def competing_positions(slots: list[str], positions) -> set[str]:
+def competing_positions(slots: list[str], positions, players=()) -> set[str]:
     """The slot group of `positions`: every position sharing a starting slot with one of them, transitively (an OP slot
-    links QB with RB/WR/TE; K and D/ST stand alone). assign_lineup decomposes into these groups (fixed slots fill per
-    position, and every flex slot takes RB or WR, so all flex slots sit in one group), so a lineup change confined to
-    one group's players moves only that group's slots. Empty when no slot takes any of `positions`."""
+    links QB with RB/WR/TE; K and D/ST stand alone), and every position a player in `players` may fill along with one
+    of them (lineup.dual_positions: an RB/WR links RB and WR, issue #253 G11). assign_lineup decomposes into these
+    groups (fixed slots fill per position, every flex slot takes RB or WR, and a dual player starts at one of his
+    positions), so a lineup change confined to one group's players moves only that group's slots. Empty when no slot
+    takes any of `positions`."""
+    links = [d for d in (dual_positions(p, slots) for p in players) if d]
     comp, frontier = set(), [p for p in positions if p]
     while frontier:
         cur = frontier.pop()
-        for s in set(slots):
-            if eligible(s, cur):
-                for q in slot_positions(s):
-                    if q not in comp:
-                        comp.add(q)
-                        frontier.append(q)
+        nxt = [q for s in set(slots) if eligible(s, cur) for q in slot_positions(s)]
+        nxt += [q for d in links if cur in d for q in d]
+        for q in nxt:
+            if q not in comp:
+                comp.add(q)
+                frontier.append(q)
     return comp
 
 
@@ -70,9 +74,9 @@ def unknown_value_players(players: list[dict], slots: list[str], positions=None)
     """Available players who could fill one of `slots` but have no historical value (raw_value None), limited to the
     slot group of `positions` when given. The lineup solver orders such a player as 0, so while one exists in a group
     that group's lineup value is unknown, not a sum that counts him as 0 (frontend/PRODUCT.md: missing is never zero)."""
-    group = competing_positions(slots, positions) if positions is not None else None
+    group = competing_positions(slots, positions, players) if positions is not None else None
     return [p for p in players if p.get("available") and p.get("raw_value") is None
-            and any(eligible(s, p.get("position")) for s in slots) and (group is None or p.get("position") in group)]
+            and any(eligible(s, p) for s in slots) and (group is None or not positions_of(p).isdisjoint(group))]
 
 
 def group_total(assignment: list[dict], group: set[str]) -> float | None:
@@ -114,7 +118,7 @@ def forward_effect(before: list[dict], after: list[dict], slots: list[str], week
     above streaming there."""
     gains, missing = [], []
     for w in weeks:
-        relevant = [p for p in before + after if any(eligible(s, p.get("position")) for s in slots)
+        relevant = [p for p in before + after if any(eligible(s, p) for s in slots)
                     and not is_reserved(p) and w not in p.get("bye_weeks", [])]
         if any(p.get("projections", {}).get(w) is None for p in relevant):
             missing.append(w)
@@ -206,7 +210,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
             short_term = stream_forward["total_gain"] is not None and stream_forward["total_gain"] >= 1
         # The add and this drop move only the slot groups of their two positions: the net gain and removal cost are
         # exact sums over that group, or unknown while it holds a player without a value (never counted as 0).
-        group = competing_positions(slots, {candidate["position"], p["position"]})
+        group = competing_positions(slots, positions_of(candidate) | positions_of(p), players + [candidate])
         unknown = unknown_value_players(players + [candidate], slots, group)
         base_total = group_total(base_lineup, group) if not unknown else None
         net = (group_total(assign_lineup(after, slots), group) - base_total) if base_total is not None else None
@@ -232,12 +236,12 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         removal_loss = (max(0, base_total - group_total(assign_lineup(remaining, slots), group))
                         if base_total is not None else None)
         # Coverage is observed eligibility, not an arbitrary positional value penalty.
-        coverage = sorted({s for s in slots if eligible(s, p["position"])})
+        coverage = sorted({s for s in slots if eligible(s, p)})
         same = [q for q in remaining if q.get("position") == p["position"] and q.get("available")]
         redundant_streamer = p["position"] in ("K", "D/ST") and same and removal_loss == 0
         comparable_weeks = [w for w in weeks if all(q.get("projections", {}).get(w) is not None
                             or w in q.get("bye_weeks", []) or is_reserved(q)
-                            for q in players if any(eligible(s, q.get("position")) for s in slots))]
+                            for q in players if any(eligible(s, q) for s in slots))]
         future_starts = sum(any(a["player_id"] == pid for a in assign_lineup(projected_players(players, w), slots))
                             for w in comparable_weeks)
         raw100 = p.get("raw_value_100")

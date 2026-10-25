@@ -46,7 +46,7 @@ from dataclasses import replace
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT, NON_STARTER_SLOTS
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, eligible, lineup_slots, slot_positions
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, eligible, lineup_slots, parse_eligible_slots, slot_positions
 from .player_availability import (
     ELIGIBLE_UNCONFIRMED,
     INELIGIBLE,
@@ -173,10 +173,17 @@ def player_week(p: RosterPlayer, rec: dict | None, week: int, sched: dict) -> di
 
 # --------------------------------------------------------------- coverage --
 
-def match_slots(slots: list[str], pool: list[tuple[int, str | None, bool]]) -> list[int | None]:
-    """Two-phase maximum matching (module docstring). `pool`: (player id, position, certain) sorted by id; returns the
-    matched player id per slot instance (None = empty). Deterministic: slots in lineup order, players by id."""
-    adj = [[j for j, (_, pos, _) in enumerate(pool) if eligible(s, pos)] for s in slots]
+def _fits(slot: str, entry: tuple) -> bool:
+    """May a match_slots pool entry start in `slot`: (id, position, certain) or (id, position, certain, eligible_slots),
+    the provider slot ids a player eligible at two positions carries (lineup.positions_of, issue #253 G11)."""
+    return eligible(slot, {"position": entry[1], "eligible_slots": entry[3] if len(entry) > 3 else None})
+
+
+def match_slots(slots: list[str], pool: list[tuple]) -> list[int | None]:
+    """Two-phase maximum matching (module docstring). `pool`: (player id, position, certain[, eligible_slots]) sorted by
+    id; returns the matched player id per slot instance (None = empty). Deterministic: slots in lineup order, players by
+    id."""
+    adj = [[j for j, entry in enumerate(pool) if _fits(s, entry)] for s in slots]
     slot_of: dict[int, int] = {}                 # player index -> slot index
     player_at: list[int | None] = [None] * len(slots)
 
@@ -207,7 +214,7 @@ def match_slots(slots: list[str], pool: list[tuple[int, str | None, bool]]) -> l
                 continue
             for k in range(i + 1, len(slots)):
                 c = player_at[k]
-                if c is not None and pool[c][2] and eligible(slots[i], pool[c][1]) and eligible(slots[k], pool[u][1]):
+                if c is not None and pool[c][2] and _fits(slots[i], pool[c]) and _fits(slots[k], pool[u]):
                     player_at[i], player_at[k] = c, u
                     swapped = True
                     break
@@ -221,7 +228,7 @@ def week_coverage(slots: list[str], players: list[RosterPlayer], states: dict[in
     weeks of one request) solves each distinct set of certain and unknown players once."""
     if not slots:
         return []
-    pool = sorted((p.espn_player_id, p.position, states[p.espn_player_id]["state"] == AVAILABLE)
+    pool = sorted((p.espn_player_id, p.position, states[p.espn_player_id]["state"] == AVAILABLE, p.eligible_slots)
                   for p in players if states[p.espn_player_id]["state"] in (AVAILABLE, UNSURE))
     key = tuple(pool)
     if cache is not None and key in cache:
@@ -230,7 +237,7 @@ def week_coverage(slots: list[str], players: list[RosterPlayer], states: dict[in
         matched = match_slots(slots, pool)
         if cache is not None:
             cache[key] = matched
-    certain = {pid for pid, _, ok in pool if ok}
+    certain = {pid for pid, _, ok, _ in pool if ok}
     return [{"slot": s, "player_id": pid,
              "fill": "uncovered" if pid is None else ("covered" if pid in certain else "unknown")}
             for s, pid in zip(slots, matched)]
@@ -246,7 +253,7 @@ def plan_week(week: int, slots: list[str], unresolved: list[dict], players: list
     slot_rows = []
     for label in dict.fromkeys(slots):
         mine = [r for r in rows if r["slot"] == label]
-        elig = [p for p in players if eligible(label, p.position)]
+        elig = [p for p in players if eligible(label, p)]
         count = {s: sum(1 for p in elig if states[p.espn_player_id]["state"] == s) for s in (AVAILABLE, BYE, OUT, UNSURE)}
         slot_rows.append({
             "slot": label, "eligible_positions": list(slot_positions(label)), "required": len(mine),
@@ -264,7 +271,7 @@ def plan_week(week: int, slots: list[str], unresolved: list[dict], players: list
         status = "covered"
     byes = by_state[BYE]
     bench = [{"espn_player_id": p.espn_player_id,
-              "slots": [s for s in dict.fromkeys(slots) if eligible(s, p.position)]}
+              "slots": [s for s in dict.fromkeys(slots) if eligible(s, p)]}
              for p in players if p.espn_player_id not in starters and states[p.espn_player_id]["state"] == AVAILABLE]
     return {
         "week": week, "phase": phase, "matchup_period": matchup_period,
@@ -354,12 +361,13 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
     snap = min(current, final)
     rows = fetch_dicts(con, """
         SELECT l.espn_player_id, l.lineup_slot_id, l.lineup_slot, fp.full_name AS name, fp.position, fp.pro_team,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, fp.eligible_slots
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
         ORDER BY l.espn_player_id""", [lg["league_id"], season, snap, team_id])
     roster = [RosterPlayer(r["espn_player_id"], r["position"], r["pro_team"], r["name"],
-                           r["lineup_slot_id"] == IR_SLOT, r["injury_status"], on_taxi=is_taxi(r)) for r in rows]
+                           r["lineup_slot_id"] == IR_SLOT, r["injury_status"], on_taxi=is_taxi(r),
+                           eligible_slots=parse_eligible_slots(r["eligible_slots"], r["position"])) for r in rows]
     starters = {r["espn_player_id"] for r in rows
                 if r["lineup_slot_id"] not in NON_STARTER_SLOTS and not is_taxi(r)}
     avail = load_availability(con, season, roster, tuple(weeks), {}) if weeks else {}
@@ -367,7 +375,7 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
               for p in roster]
     sched = load_schedule_facts(con, season)
     loaded_rosters = roster_weeks(con, season)
-    active = [p for p in roster if not p.reserved and lineup_relevant(p.position, slots)]
+    active = [p for p in roster if not p.reserved and lineup_relevant(p, slots)]
     states = {w: {p.espn_player_id: player_week(p, avail.get(p.espn_player_id), w, sched) for p in active}
               for w in weeks}
     solved: dict = {}           # one matching per distinct set of certain and unknown players (most weeks share one)
@@ -385,8 +393,8 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
             "espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
             "injury_status": p.injury_status,
             "slot": "ir" if p.on_ir else "taxi" if p.on_taxi else "starter" if p.espn_player_id in starters else "bench",
-            "counts": not p.reserved and lineup_relevant(p.position, slots),
-            "eligible_slots": [s for s in dict.fromkeys(slots) if eligible(s, p.position)],
+            "counts": not p.reserved and lineup_relevant(p, slots),
+            "eligible_slots": [s for s in dict.fromkeys(slots) if eligible(s, p)],
             "bye_week": bye,
             "availability": {k: rec.get(k) for k in ("status", "earliest_eligible_week", "eligibility_basis",
                                                      "nfl_designation_label")} if rec else None,

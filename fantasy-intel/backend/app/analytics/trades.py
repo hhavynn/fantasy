@@ -20,7 +20,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from itertools import combinations
 
-from .lineup import separable, unsupported_of
+from .lineup import dual_positions, separable, unsupported_of
 from .lineup_totals import LineupTotals
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
 from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
@@ -128,12 +128,23 @@ def streaming_enabled(state: LeagueState) -> bool:
     return isinstance(state.projections, StreamingProjections)
 
 
+# Said only in a league with such a player (issue #253 G11), so every other league's text is unchanged.
+DUAL_NOTE = ("A player the provider lists at two positions (for example RB and WR) starts wherever his team scores more "
+             "in these lineups, so a team holding one can show a different lineup delta than it would with his primary "
+             "position alone. His ranks, replacement level and trade value stay at his primary position.")
+
+
+def has_dual_player(state: LeagueState) -> bool:
+    return any(dual_positions(p, state.slots) for ps in (*state.rosters.values(), state.free_agents) for p in ps)
+
+
 def assumptions(state: LeagueState) -> list[str]:
+    dual = [DUAL_NOTE] if has_dual_player(state) else []
     if not streaming_enabled(state):
-        return ASSUMPTIONS
+        return ASSUMPTIONS + dual if dual else ASSUMPTIONS
     return [STREAM_NOTE if a.startswith("Each team's current roster") else a for a in ASSUMPTIONS] + [
         "Apart from that weekly K/D/ST stream, each team's current roster is assumed to be its roster for every "
-        "remaining week (no other waiver moves)."]
+        "remaining week (no other waiver moves)."] + dual
 
 
 # --------------------------------------------------------------------- roster rules --
@@ -177,7 +188,7 @@ def unvalued_ids(players: list[RosterPlayer], state: LeagueState) -> frozenset[i
     one is never chosen for its "0" known cost (issue #253). Empty in a league without such slots."""
     if not unsupported_of(state.slots):
         return frozenset()
-    return frozenset(p.espn_player_id for p in players if not lineup_relevant(p.position, state.slots))
+    return frozenset(p.espn_player_id for p in players if not lineup_relevant(p, state.slots))
 
 
 def unvalued_note(names: list[str], state: LeagueState) -> str:
@@ -333,7 +344,8 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
     # a new solve). project_team runs for the two rosters this resolution reports on.
     T = LineupTotals(state, window.weeks, {p.espn_player_id for p in after},
                      {p.espn_player_id: p.position for p in after}, {p.espn_player_id: p.pro_team for p in after},
-                     {p.espn_player_id: p.unavailable_weeks for p in after if p.unavailable_weeks}, exact_negative=True)
+                     {p.espn_player_id: p.unavailable_weeks for p in after if p.unavailable_weeks}, exact_negative=True,
+                     eligibility={p.espn_player_id: p.eligible_slots for p in after})
     known = T.removal_total(p.espn_player_id for p in after if not p.reserved)
 
     def total(players):

@@ -45,6 +45,15 @@ SLOT_IDS = {"QB": 0, "RB": 2, "RB/WR": 3, "WR": 4, "WR/TE": 5, "TE": 6, "OP": 7,
 ELIGIBLE_SLOTS = {"QB": [0, 7, 20, 21], "RB": [2, 3, 23, 7, 20, 21], "WR": [4, 3, 5, 23, 7, 20, 21],
                   "TE": [6, 5, 23, 7, 20, 21], "K": [17, 20, 21], "D/ST": [16, 20, 21]}
 DEFAULT_POSITION_IDS = {"QB": 1, "RB": 2, "WR": 3, "TE": 4, "K": 5, "D/ST": 16}
+
+
+def eligible_slots(pos: str, fantasy_positions) -> list[int]:
+    """The ESPN-id-space slots a player may fill: his primary position's, then each other Sleeper fantasy_positions
+    entry's (an RB also listed at WR gains WR's slots, issue #253 G11). Positions the engines don't know add nothing."""
+    out = list(ELIGIBLE_SLOTS[pos])
+    for other in fantasy_positions or ():
+        out += [s for s in ELIGIBLE_SLOTS.get(internal_position(other), ()) if s not in out]
+    return out
 PRO_TEAM_IDS = {espn_nflverse_team(i): i for i in PRO_TEAM_MAP if i}
 # Sleeper injury_status -> ESPN's vocabulary (what every consumer and badge reads)
 INJURY = {"questionable": "QUESTIONABLE", "doubtful": "DOUBTFUL", "out": "OUT", "ir": "INJURY_RESERVE",
@@ -354,7 +363,7 @@ def _players(players, pid, on_team, rostered, points, now, stats) -> list[dict]:
         pts = season_pts.get(e, [])
         out.append({"espn_player_id": e, "full_name": pl.full_name, "position": pos,
                     "default_position_id": DEFAULT_POSITION_IDS[pos], "pro_team_id": PRO_TEAM_IDS.get(team),
-                    "pro_team": team, "eligible_slots": ELIGIBLE_SLOTS[pos], "injury_status": injury,
+                    "pro_team": team, "eligible_slots": eligible_slots(pos, pl.fantasy_positions), "injury_status": injury,
                     "injured": injury is not None,
                     "availability_status": "ONTEAM" if s_id in rostered else "FREEAGENT",
                     "on_team_id": on_team.get(s_id), "percent_owned": None, "percent_started": None,
