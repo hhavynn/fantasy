@@ -208,6 +208,35 @@ test("with JavaScript off, a league page renders its links and forms in that lea
   await context.close();
 });
 
+// With JavaScript off, the root layout's <noscript> style shows streamed content in place of the loading.tsx skeletons
+// (after the page shell, not inside <main>): Ask answers in the page's league, and the Overview, another streamed
+// route, shows its own content too.
+test("with JavaScript off, Ask answers in the page's league and the Overview shows its content", async ({ browser }) => {
+  const lg = manifest().leagues.espn_public;
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const skeletons = page.locator("[data-loading-fallback]:visible");
+  await page.goto(`/l/${lg}/ask?team=1`, { waitUntil: "load" });
+  const form = page.getByRole("search", { name: "Ask a question" });
+  await expect(form).toHaveAttribute("action", `/l/${lg}/ask`);
+  await form.getByRole("searchbox", { name: "Question" }).fill("Who should I start this week?");
+  await form.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${lg}/ask\\?q=Who\\+should\\+I\\+start\\+this\\+week%3F&team=1$`));
+  await expect(page.getByText(/Start\/Sit for .+, week \d+/).first()).toBeVisible();
+  const open = page.getByRole("link", { name: "Open Start/Sit", exact: true });
+  await expect(open).toBeVisible();
+  expect(new URL((await open.getAttribute("href"))!, page.url()).pathname).toBe(`/l/${lg}/start-sit`);
+  await expect(skeletons).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(FAILURE_TEXT);
+  await page.goto(`/l/${lg}`, { waitUntil: "load" });
+  await expect(skeletons).toHaveCount(0);
+  await expect(page.locator("h1:visible")).toHaveCount(1);
+  await expect(page.locator("h1:visible")).toHaveText(/\S/);
+  await expect(page.locator("body")).not.toContainText(FAILURE_TEXT);
+  await context.close();
+});
+
 // With JavaScript on, /l/<lg>/<page>?league=clear lands on the same league page without the param (a redirect, so the
 // browser URL that the Nav team picker and tab memory read through useSearchParams() no longer carries it), keeps the
 // other params, and keeps the league cookie on this league.

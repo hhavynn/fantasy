@@ -69,6 +69,12 @@ export const metadata: Metadata = {
   description: "Fantasy football war room for your league",
 };
 
+// With JavaScript off, a page that streams behind a loading.tsx would stay on its skeleton: React sends the finished
+// content in a hidden `<div id="S:…">` that only its inline script swaps in. This style (inside <noscript>, so it never
+// applies with JavaScript on) shows that content and hides the skeletons marked `data-loading-fallback`. The content
+// then renders where React put it, after the page shell (below the tab bar), not inside <main>.
+const NOSCRIPT_STYLE = `<style>div[hidden][id^="S:"]{display:block!important}[data-loading-fallback]{display:none!important}</style>`;
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const league = await currentLeague();
   // With the classic site retired an unscoped page (/leagues, /login) has no single-league routes to ask.
@@ -103,6 +109,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `${THEME_INIT_SCRIPT};${RAIL_INIT_SCRIPT}` }} />
+        <noscript dangerouslySetInnerHTML={{ __html: NOSCRIPT_STYLE }} />
       </head>
       <body>
         <NavVisibility hideOwnerOnly={hideOwnerOnly}>

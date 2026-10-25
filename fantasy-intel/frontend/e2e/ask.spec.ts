@@ -52,20 +52,31 @@ test("a player screen lists the screener's rows and opens the same screen", asyn
   expect(errors, "console errors").toEqual([]);
 });
 
-// The form is a plain GET, so a question is a shareable URL the server answers. (With JavaScript off the page stays on
-// its loading.tsx skeleton, as every streamed page here does, so this does not claim the answer renders without it.)
-test("the form submits the question as a shareable URL the server answers", async ({ page, request }) => {
-  await open(page, "/ask");
-  const form = page.getByRole("search", { name: "Ask a question" });
-  await expect(form).toHaveAttribute("method", "get");
-  await form.getByRole("searchbox", { name: "Question" }).fill("Is Waiver RB available?");
-  await form.getByRole("button", { name: "Ask" }).click();
-  await page.waitForURL(/\/ask\?q=Is\+Waiver\+RB\+available/);
-  await expect(main(page)).toContainText("Waiver RB is available: free agent.");
-  // the answer is in the server's HTML for that URL, not fetched by the browser afterwards
-  const res = await request.get(ask("Is Waiver RB available?"));
-  expect(res.status()).toBe(200);
-  expect(await res.text()).toContain("Waiver RB is available: free agent.");
+// With JavaScript off the form still asks and the answer shows: the root layout's <noscript> style reveals the streamed
+// content and hides the loading.tsx skeletons. That content renders after the page shell, not inside <main>, so these
+// look at the whole page. At 1440 on desktop, and at 375 and 320 on mobile.
+test("with JavaScript off the form asks and the answer, with its freshness, shows instead of the skeleton", async ({ browser }, testInfo) => {
+  const widths = testInfo.project.name === "mobile-375" ? [375, 320] : [1440];
+  for (const width of widths) {
+    const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width, height: 812 } });
+    const page = await context.newPage();
+    await stubPhotos(page);
+    await page.goto("/ask", { waitUntil: "load" });
+    await expect(page.locator("[data-loading-fallback]:visible"), `${width}px: skeleton hidden`).toHaveCount(0);
+    const form = page.getByRole("search", { name: "Ask a question" });
+    await expect(form).toHaveAttribute("method", "get");
+    await form.getByRole("searchbox", { name: "Question" }).fill("WRs with a target share above 10% over the last 3 weeks");
+    await form.getByRole("button", { name: "Ask", exact: true }).click();
+    await page.waitForURL(/\/ask\?q=WRs\+with\+a\+target\+share/);
+    await expect(page.getByText(/player\(s\) match|No player matches/).first()).toBeVisible();
+    await expect(page.getByLabel("Answer freshness")).toContainText(/Data through week \d+/);
+    await expect(page.getByLabel("Answer freshness")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open Screener" }).first()).toBeVisible();
+    await expect(page.locator("[data-loading-fallback]:visible"), `${width}px: skeleton hidden`).toHaveCount(0);
+    await expect(page.locator("h1:visible")).toHaveText(["Ask"]);
+    await expectNoSidewaysScroll(page);
+    await context.close();
+  }
 });
 
 test("an unsupported question is declined, and the questions offered instead are answered", async ({ page }) => {
