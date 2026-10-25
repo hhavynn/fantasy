@@ -403,11 +403,99 @@ def test_teammate_grid_keeps_the_latest_six_games_late_in_the_season(style):
     scene = next(sc for sc, _ in _scenes_for(f, c) if sc["type"] == "teammate_out")
     m, tm = c.p["metrics"][0], c.p["teammate"]
     last = m["series"][-1]["week"]
-    extra = [{"week": last + i, "value": 0.25} for i in range(1, 5)]          # four more games: nine in all
+    extra = [{"week": last + i, "value": 0.15 + i * 0.10} for i in range(1, 5)]          # four more games: nine in all
     m["series"] = m["series"] + extra
     tm["series"] = tm["series"] + [dict(e) for e in extra]
     c.tokens = scene["_tokens"]
     F = vector.draw(style, scene, 3.9, 4.0, c, measure=True)
     weeks = [e["text"] for e in F.log if e["role"] == "axis" and e["text"].startswith("Wk ")]
     assert weeks == [f"Wk {w}" for w in range(last - 1, last + 5)]
+    own = [e["text"] for e in F.log if e["role"] == "number" and e["box"][1] >= 900]
+    assert own == ["85%", "90%", "25%", "35%", "45%", "55%"]
     assert all(e["cap_px"] >= 30 for e in F.log if e["role"] == "number")
+
+
+@pytest.mark.parametrize("kind", ["target_balls", "decision"])
+def test_paper_mini_stickers_stay_clear_of_text_and_captions(kind, tmp_path):
+    # Removing the scene's sticker must remove the white outline in its reserved top-right space.
+    f, c = _ctx(_vanishing(), "00-FALLER")
+    shot = Image.new("RGBA", (120, 140), (0, 0, 0, 0))
+    shot.paste((180, 20, 40, 255), (30, 10, 90, 130))
+    c.headshot = tmp_path / "player.png"
+    shot.save(c.headshot)
+    c.tokens = []
+    sc = {"type": kind, "question": ["Still starting him?"], "split": 3}
+    F = vector.draw("paper", sc, 3.9, 4.0, c, measure=True)
+    a = np.asarray(F.img)
+    white = (a[350:480, 760:934].min(axis=-1) > 230)
+    assert white.sum() > 200
+    # The top-right art remains above the question/chart and the caption band.
+    assert not any(e["box"][2] > 760 and e["box"][1] < 480 and e["box"][3] > 350 for e in F.log)
+
+
+@pytest.mark.parametrize("style", ["premium", "broadcast", "paper"])
+def test_big_compare_reveals_exact_values_and_pen_after_the_claim(style, monkeypatch):
+    f, c = _ctx(_vanishing(), "00-FALLER")
+    m = c.p["metrics"][0]
+    c.tokens = [{"text": "before", "start": 0.2, "end": 0.5, "claim": m["baseline"]},
+                {"text": "now", "start": 2.0, "end": 2.3, "claim": m["recent"]}]
+    sc = {"type": "big_compare", "metric": 0}
+    strokes = []
+    original = paper.circle
+    def circle(F, box, k, color, width):
+        strokes.append(k)
+        return original(F, box, k, color, width)
+    monkeypatch.setattr(paper, "circle", circle)
+    before = vector.draw(style, sc, 1.0, 4.0, c)
+    assert not any(e["src"] == m["recent"] for e in before.log)
+    assert not any(k > 0 for k in strokes)
+    after = vector.draw(style, sc, 3.9, 4.0, c)
+    for cid in (m["baseline"], m["recent"], m["change"]):
+        assert any(e["src"] == cid and e["text"] == c.claims[cid]["display"] for e in after.log)
+    if style == "paper":
+        assert any(k > 0 for k in strokes)
+
+
+@pytest.mark.parametrize("style", ["premium", "broadcast", "paper"])
+def test_big_compare_change_chip_fits_with_a_wide_change_label(style):
+    f, c = _ctx(_vanishing(), "00-FALLER")
+    m = c.p["metrics"][0]
+    # Typography boundary from the frozen Coleman case: 25%, +19 pts.
+    c.claims[m["recent"]].update(value=0.25, display="25%")
+    c.claims[m["change"]].update(value=19, display="+19 pts")
+    c.tokens = []
+    F = vector.draw(style, {"type": "big_compare"}, 3.9, 4.0, c, measure=True)
+    numbers = [e for e in F.log if e["role"] == "number"]
+    assert all(e["box"][2] <= kit.SAFE[2] for e in numbers), numbers
+    result = dict((n, fail) for n, fail, _ in vqa.gates(
+        {"style": style, "samples": [{"frame": "s01_97.png", "log": F.log}], "numbers_visible": {}}, c.claims, None))
+    assert not result["vqa_overlap"]
+
+
+
+@pytest.mark.parametrize("kind,primitive,claim_key", [
+    ("player_card", "circle", "recent"), ("status_stamp", "underline", "status"),
+    ("split", "circle", "recent"), ("volume", "circle", "recent"),
+    ("lineup", "underline", "baseline"), ("teammate_out", "circle", "missed"),
+])
+def test_paper_pen_waits_for_a_late_narrated_claim(kind, primitive, claim_key, monkeypatch):
+    snap = _fill_in()
+    snap["tables"]["nfl_team_week"] = [{"team": "PHI", "week": w, "team_targets": 35} for w in range(1, 6)]
+    f, c = _ctx(snap, "00-RISER")
+    m = c.p["metrics"][0]
+    cid = c.p["teammate"][claim_key] if claim_key in ("status", "missed") else m[claim_key]
+    c.tokens = [{"text": "now", "start": 0.2, "end": 0.3,
+                 "claim": m["baseline"] if claim_key != "baseline" else None},
+                {"text": "watch", "start": 0.3, "end": 0.5, "claim": None},
+                {"text": c.d(cid), "start": 2.0, "end": 2.3, "claim": cid}]
+    progress = []
+    original = getattr(paper, primitive)
+    def stroke(*args, **kwargs):
+        progress.append(args[2] if primitive == "circle" else args[4])
+        return original(*args, **kwargs)
+    monkeypatch.setattr(paper, primitive, stroke)
+    sc = {"type": kind, "crash_word": "now"}
+    vector.draw("paper", sc, 1.4, 4.0, c)
+    assert not any(k > 0 for k in progress)
+    vector.draw("paper", sc, 3.9, 4.0, c)
+    assert any(k > 0 for k in progress)

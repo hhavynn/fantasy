@@ -422,7 +422,7 @@ def scene_player_card(F, L, c, t, dur, spec):
         nb = L.text(F, c.d(m["recent"]), xa, y + 56 + (1 - ka) * 30, "number_l", L.data(c), alpha=K.clamp(ka * 1.4),
                     src=m["recent"], role="number", tabular=True, display=True,
                     max_width=W - L.mr - xa)
-        L.circle(F, nb, t, crash + 0.35)
+        L.circle(F, nb, t, max(crash, c.at(m["recent"], default=crash)) + 0.35)
         L.text(F, K.weeks_label(K.claim_weeks(c, m["recent"])), xa, y + 220, "label",
                L.faint if not L.broadcast else L.muted, alpha=ka, role="axis", src="claim-weeks")
     kc = L.e(t, _turn(c, dur) - 0.05, 0.4)
@@ -456,6 +456,18 @@ def _sticker_card(F, L, c, t, prim):
     F.layer(st, 760 - st.width / 2, 930 - st.height + 30, alpha=K.clamp(pop * 2))
 
 
+def _mini_sticker(F, L, c, t, at, bottom=530):
+    """Small identity accent in the empty header margin; never displace the question or chart."""
+    if not L.paper or bottom - 350 < 80:
+        return
+    pt = L.tk.paper
+    st = (P.sticker(str(c.headshot), 120, 6, pt.sticker_tilt) if c.headshot else
+          P.make_sticker(portrait(c, 120), 6, pt.sticker_tilt))
+    st = st.copy()
+    st.thumbnail((170, int(bottom - 350)), Image.LANCZOS)
+    F.layer(st, W - L.mr - st.width, 350, alpha=L.e(t, at))
+
+
 def scene_target_balls(F, L, c, t, dur, spec):
     games = ball_games(c, spec)          # the window the narration compares
     k_split = spec.get("split") or len(games)
@@ -473,6 +485,7 @@ def scene_target_balls(F, L, c, t, dur, spec):
     boxes = column_chart(F, L, c, t, cols, box, top, 2 if top <= 10 else 5)
     if k_split < len(games):
         L.circle(F, boxes[-1], t, cols[-1]["at"] + 0.5)
+        _mini_sticker(F, L, c, t, cols[-1]["at"] + 0.5)
     early = vals[:k_split]
     if early and k_split < len(games):
         pace = sum(early) / len(early)
@@ -531,7 +544,7 @@ def scene_split(F, L, c, t, dur, spec):
             nb = L.text(F, c.d(m["recent"]), xr + 30, yr - 30, "number_m", color, alpha=L.e(t, at + 0.5, 0.3),
                         src=m["recent"], role="number", tabular=True)
             if m is ts_m:
-                L.circle(F, nb, t, at + 0.8)
+                L.circle(F, nb, t, max(at + 0.8, c.at(m["recent"], default=at) + 0.35))
             L.text(F, m["label"], xr + 30, nb[3] + 8, "label", L.muted,
                    alpha=L.e(t, at + 0.5, 0.3), role="label", c=c)
     snap_y = None
@@ -580,7 +593,7 @@ def scene_volume(F, L, c, t, dur, spec):
         nb = L.text(F, c.d(m["recent"]), bx + 110, y + 92, "number_l", L.data(c), alpha=ks, src=m["recent"],
                     role="number", tabular=True, display=True,
                     max_width=W - L.mr - 44 - bx - 110)
-        L.circle(F, nb, t, t_share + 0.4)
+        L.circle(F, nb, t, max(t_share + 0.4, c.at(m["recent"], default=t_share) + 0.35))
 
 
 def scene_lineup(F, L, c, t, dur, spec):
@@ -623,7 +636,7 @@ def scene_lineup(F, L, c, t, dur, spec):
         q = L.text(F, f"{m['label'].capitalize()} back toward {c.d(m['baseline'])}?", x0, yb + 52, "title"
                    if not L.broadcast else "number_m", L.hi, alpha=kw, role="title", src=m["baseline"], c=c,
                    max_width=x1 - x0, display=True)
-        L.underline(F, q, t, tw + 0.35, gap=2)
+        L.underline(F, q, t, max(tw, c.at(m["baseline"], default=tw)) + 0.35, gap=2)
         vals = [c.claims[m["recent"]]["value"], c.claims[m["baseline"]]["value"]]
         top = K.nice_max(max(vals), 0.1)
         track(F, L, x0, x1, yb + 250, top, [
@@ -643,6 +656,7 @@ def scene_decision(F, L, c, t, dur, spec):
     lines = _wrap(L.case(text, c), L.ty(key), L.mr_width)
     lh = L.ty(key)[1] * 1.08
     y = min(y, CAPTION_ZONE - int(len(lines) * lh + 80 + 120 + 24 + 44))    # keep the block clear of the captions
+    _mini_sticker(F, L, c, t, 0.15, bottom=y - 24)
     for i, line in enumerate(lines):
         lb = L.text(F, line, L.mx, y + i * (L.ty(key)[1] * 1.08), key,
                     L.hi if i == len(lines) - 1 else L.ink, alpha=L.e(t, 0.06 * i), role="title", display=True)
@@ -721,7 +735,8 @@ def scene_teammate_out(F, L, c, t, dur, spec):
             if r == 1:
                 L.text(F, f"Wk {w}", x + cw / 2, y + 176, "label", L.muted, anchor="c", alpha=k, role="axis", src="week")
     if out_x and spec.get("phase") != 2:
-        L.circle(F, (min(out_x), 620, max(out_x) + cw, 770), tc, 0.15 + 0.08 * n + 0.3)
+        L.circle(F, (min(out_x), 620, max(out_x) + cw, 770), tc,
+                 max(0.15 + 0.08 * n + 0.3, c.at(tm["missed"]) + 0.35))
     kc = L.e(t, 0.6)
     if spec.get("phase") == 2:
         L.text(F, f"His role before: {c.d(tm['role'])}", L.mx, 1170, "label", L.hi, alpha=L.e(t, 0.0), role="label",
@@ -745,7 +760,7 @@ def scene_status_stamp(F, L, c, t, dur, spec):
     if not L.broadcast:
         F.rect((L.mx, 640, L.mx + 8, 900), col, alpha=k)
     sb = L.text(F, big, L.mx + 56, 720, "title", col, alpha=k, role="title", display=True, max_width=L.mr_width - 100)
-    L.underline(F, sb, t, 0.6, gap=2)
+    L.underline(F, sb, t, c.at(tm["status"], default=0.25) + 0.35, gap=2)
     src = "NFL roster status" if code == "ir" else "Official injury report"
     L.text(F, f"{src} · Week {week}", L.mx + 56, 820, "label", L.muted, alpha=k, role="label",
            src=f"{tm['status']}:value", c=c)
@@ -783,6 +798,7 @@ def scene_big_compare(F, L, c, t, dur, spec):
         else:
             txt = c.d(m["change"])
             wch = K.measure(txt, *L.ty("number_s")[:2]) + 40
+            x = min(x, W - L.mr - wch)       # broadcast's italic value needs more room for the change chip
             L.panel_box(F, (x, yc - 34, x + wch, yc + 34), L.data(c), alpha=kc, outline=False)
             L.text(F, txt, x + wch / 2, yc - 18, "number_s", _on(L.data(c)), anchor="c", alpha=kc, src=m["change"],
                    role="number")
