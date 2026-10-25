@@ -79,7 +79,7 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
         provenance={evidence ? <>
           <ProvenanceBadge signals={evidence.signals} />
           {(evidence.week !== null || evidence.timestamps.length > 0) && (
-            <p className={styles.hint} aria-label="Answer freshness">
+            <p className={styles.hint} role="note" aria-label="Answer freshness">
               {evidence.week !== null && <>Data through week {evidence.week}</>}
               {evidence.timestamps.map((t, i) => <span key={t.label}>
                 {(evidence.week !== null || i > 0) && " · "}{t.label} {when(t.value)}
