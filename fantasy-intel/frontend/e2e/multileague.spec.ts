@@ -68,6 +68,38 @@ test("a signed-out visitor never sees the private league", async ({ page }) => {
   await expect(page.locator("main")).not.toContainText("Echo RB");
 });
 
+test("Ask submissions, team changes and analysis links stay in the page's league", async ({ page }) => {
+  const lg = manifest().leagues.espn_public;
+  const errors = collectErrors(page);
+  await page.goto(`/l/${lg}/ask?team=1`, { waitUntil: "load" });
+  const form = page.getByRole("search", { name: "Ask a question" });
+  await expect(form).toHaveAttribute("action", `/l/${lg}/ask`);
+  await form.getByRole("searchbox", { name: "Question" }).fill("Who should I start this week?");
+  await form.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${lg}/ask\\?q=Who\\+should\\+I\\+start\\+this\\+week%3F&team=1$`));
+  const main = page.locator("main");
+  const picker = main.getByRole("combobox", { name: "Analyzing" });
+  // Every selectable URL comes from the shared perspective helper, including a possible implicit default.
+  const next = await picker.locator("option:not(:checked):not([disabled])").first().getAttribute("value");
+  expect(next).toBeTruthy();
+  await picker.selectOption(next!);
+  await expect(page).toHaveURL(new URL(`/l/${lg}${next!}`, page.url()).href);
+  const link = main.getByRole("link", { name: "Open Start/Sit", exact: true });
+  await expect(link).toBeVisible();
+  const native = new URL((await link.getAttribute("href"))!, page.url());
+  expect(native.pathname).toBe(`/l/${lg}/start-sit`);
+  expect(native.searchParams.get("team")).toBe(new URL(page.url()).searchParams.get("team"));
+  await link.click();
+  await expect(page).toHaveURL(native.href);
+  expect(errors).toEqual([]);
+});
+
+test("a signed-out Ask question never reveals a private league's answer", async ({ page }) => {
+  const lg = manifest().leagues.espn_private;
+  await page.goto(`/l/${lg}/ask?q=who+should+I+start&team=1`, { waitUntil: "load" });
+  await expect(page.locator("main")).not.toContainText(/Private Fixture League|Echo RB|Start\/Sit for/);
+});
+
 test("a member sees the research tools, on desktop and in the phone menu, but not Projection accuracy", async ({ page, context }) => {
   await signIn(context);
   const lg = manifest().leagues.espn_private;

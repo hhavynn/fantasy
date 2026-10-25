@@ -43,6 +43,7 @@ test("a player screen lists the screener's rows and opens the same screen", asyn
   await open(page, ask("WRs with a target share above 10% over the last 3 weeks"));
   await expect(main(page)).toContainText(/player\(s\) match|No player matches/);
   await expect(main(page)).toContainText("Tgt % > 10%");
+  await expect(main(page).getByLabel("Answer freshness")).toContainText(/Data through week \d+/);
   const details = main(page).getByRole("region", { name: "Details" });
   await expect(details.getByRole("columnheader", { name: "Tgt %" })).toBeVisible();
   await expect(main(page).getByRole("link", { name: "Open Screener" }).first())
@@ -71,6 +72,8 @@ test("an unsupported question is declined, and the questions offered instead are
   const errors = collectErrors(page);
   await open(page, ask("What is the meaning of life?"));
   await expect(main(page)).toContainText("Ask can't answer that exactly");
+  await expect(main(page).getByLabel("Answer freshness")).toHaveCount(0);
+  await expect(main(page).locator("[data-provenance]")).toHaveCount(0);
   const examples = main(page).getByRole("region", { name: "Questions Ask can answer" }).getByRole("link");
   expect(await examples.count()).toBeGreaterThanOrEqual(10);
   await checks(page);
@@ -78,6 +81,24 @@ test("an unsupported question is declined, and the questions offered instead are
   await page.waitForURL(/q=Who\+is\+on\+bye\+this\+week/);
   await expect(main(page)).toContainText("Bye planner for Team 2");
   expect(errors, "console errors").toEqual([]);
+});
+
+test("the question form works by keyboard at 320px and keeps an explicit team", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 320, height: 812 });
+  await open(page, "/ask?team=1");
+  const input = page.getByRole("searchbox", { name: "Question" });
+  await input.focus();
+  await input.fill("Who should I start this week?");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/ask\?q=Who\+should\+I\+start\+this\+week%3F&team=1$/);
+  await expect(main(page)).toContainText("Start/Sit for Team 1, week 3");
+  await expect(main(page).getByRole("combobox", { name: "Analyzing" }).locator("option:checked")).toHaveText(/^Team 1/);
+  await expect(main(page).getByRole("link", { name: "Open Start/Sit" })).toHaveAttribute("href", "/start-sit?team=1");
+  await checks(page);
+  expect(errors).toEqual([]);
 });
 
 test("with no question the page lists what it can answer; a vague metric asks back", async ({ page }) => {

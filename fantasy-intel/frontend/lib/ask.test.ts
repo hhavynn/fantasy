@@ -1,9 +1,56 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  MAX_CHARS, askHref, askPath, isCard, isSample, linkHref, noAnswerTitle, readQuestion, sampleText, valueText,
+  MAX_CHARS, answerEvidence, askHref, askPath, isCard, isSample, linkHref, noAnswerTitle, readQuestion, sampleText, valueText,
   type AskCard,
 } from "./ask.ts";
+
+// signal-provenance.v1 plus the independent freshness shapes copied by ask/v1's executors.
+const provenance = {
+  contract: "signal-provenance.v1",
+  signals: [{
+    signal: "league", label: "League rosters", source: "espn", captured_at: "2026-10-25T12:00:00Z",
+    snapshot_version: null, coverage: { available: 0, total: 10, label: "rosters" },
+    reason_unavailable: null, stale_reason: null, stale_after_hours: 36,
+  }],
+};
+const answered = { status: "answered", provenance: null, freshness: null } as AskCard;
+
+test("answer evidence retains provenance alone, freshness alone, both, or neither", () => {
+  assert.deepEqual(answerEvidence({ ...answered, provenance }), {
+    signals: provenance.signals, week: null, timestamps: [],
+  });
+  const freshness = { data_through_week: 3, cutoffs: { target_share: 3 }, nfl_synced_at: "2026-10-25T11:00:00Z" };
+  assert.deepEqual(answerEvidence({ ...answered, freshness }), {
+    signals: [], week: 3, timestamps: [{ label: "NFL sync", value: "2026-10-25T11:00:00Z" }],
+  });
+  assert.deepEqual(answerEvidence({ ...answered, provenance, freshness }), {
+    signals: provenance.signals, week: 3, timestamps: [{ label: "NFL sync", value: "2026-10-25T11:00:00Z" }],
+  });
+  assert.deepEqual(answerEvidence(answered), { signals: [], week: null, timestamps: [] });
+});
+
+test("freshness preserves week zero, skips absent values, and never duplicates provenance capture times", () => {
+  assert.deepEqual(answerEvidence({ ...answered, provenance, freshness: {
+    data_through_week: 0, espn_synced_at: "2026-10-25T12:00:00+00:00", nfl_synced_at: null,
+    computed_at: null, lineup_synced_at: "", projection_synced_at: "not a timestamp",
+  } }), { signals: provenance.signals, week: 0, timestamps: [] });
+  assert.deepEqual(answerEvidence({ ...answered, freshness: {
+    espn_synced_at: "2026-10-25T12:00:00Z", nfl_synced_at: "2026-10-25T11:00:00Z",
+  } }).timestamps, [
+    { label: "ESPN sync", value: "2026-10-25T12:00:00Z" },
+    { label: "NFL sync", value: "2026-10-25T11:00:00Z" },
+  ]);
+  assert.equal(answerEvidence({ ...answered, freshness: { data_through_week: null } }).week, null);
+});
+
+test("an unanswered card cannot display evidence even if metadata is supplied", () => {
+  for (const status of ["clarify", "abstain", "unavailable"] as const) {
+    assert.deepEqual(answerEvidence({ ...answered, status, provenance, freshness: { data_through_week: 3 } }), {
+      signals: [], week: null, timestamps: [],
+    });
+  }
+});
 
 test("the question is read from ?q=, trimmed, and flagged when past the backend's bound", () => {
   assert.deepEqual(readQuestion({}), { q: "", tooLong: false });

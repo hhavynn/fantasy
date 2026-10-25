@@ -4,14 +4,13 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { Method, Notice, PageHeader, ProvenanceBadge, Section, Verdict, VerdictFigure } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
-  CONTRACT, MAX_CHARS, PATH, askHref, askPath, isCard, isSample, linkHref, noAnswerTitle, readQuestion, sampleText,
+  CONTRACT, MAX_CHARS, PATH, answerEvidence, askHref, askPath, isCard, isSample, linkHref, noAnswerTitle, readQuestion, sampleText,
   valueText, type AskCard, type AskCell, type AskColumn,
 } from "@/lib/ask";
-import { Missing } from "@/lib/format";
+import { Missing, when } from "@/lib/format";
 import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { ALL_NAV_PAGES } from "@/lib/navigation";
-import { signalsOf, type ProvenancePayload } from "@/lib/signal-provenance";
 import { readTeamSelection, selectedTeamId, withTeamId, type TeamsPayload } from "@/lib/team-perspective";
 import styles from "./ask.module.css";
 
@@ -68,6 +67,7 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
   const inView = team ?? (teams.ok ? teams.data.default_team_id ?? null : null);
   const card = res?.ok && isCard(res.data) ? res.data : null;
   const answer = card?.status === "answered" ? card.answer : null;
+  const evidence = card && answer ? answerEvidence(card) : null;
 
   return (
     <div className="stack">
@@ -76,7 +76,17 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
         title={TITLE}
         meta="Questions this league's data can answer exactly. Anything else is declined, never guessed."
         actions={<TeamPerspective path={PATH} sp={sp} current={inView} reset={[]} />}
-        provenance={answer && card?.provenance ? <ProvenanceBadge signals={signalsOf(card.provenance as ProvenancePayload)} /> : undefined}
+        provenance={evidence ? <>
+          <ProvenanceBadge signals={evidence.signals} />
+          {(evidence.week !== null || evidence.timestamps.length > 0) && (
+            <p className={styles.hint} aria-label="Answer freshness">
+              {evidence.week !== null && <>Data through week {evidence.week}</>}
+              {evidence.timestamps.map((t, i) => <span key={t.label}>
+                {(evidence.week !== null || i > 0) && " · "}{t.label} {when(t.value)}
+              </span>)}
+            </p>
+          )}
+        </> : undefined}
       />
 
       <form className={styles.form} action={action} method="get" role="search" aria-label="Ask a question">

@@ -3,6 +3,9 @@
 // number from an existing analysis; this module never computes a number, only formats the ones it is given (missing
 // stays missing) and builds links back to the page that shows the same view.
 
+import { signalsOf, type ProvenancePayload, type SignalProvenance } from "./signal-provenance.ts";
+import { parseTimestamp } from "./sync-status.ts";
+
 export const CONTRACT = "ask/v1";
 export const MAX_CHARS = 200;
 export const PATH = "/ask";
@@ -20,6 +23,17 @@ export type AskOption = {
   ask: string;
 };
 
+export type AskFreshness = {
+  data_through_week?: number | null;
+  cutoffs?: Record<string, number | null>;
+  computed_at?: string | null;
+  espn_synced_at?: string | null;
+  nfl_synced_at?: string | null;
+  lineup_synced_at?: string | null;
+  projection_synced_at?: string | null;
+  nfl_schedule_synced_at?: string | null;
+};
+
 export type AskCard = {
   contract: string;
   status: AskStatus;
@@ -31,13 +45,35 @@ export type AskCard = {
     status?: string; whatif?: string | null; available?: boolean;
   } | null;
   notes: string[];
-  provenance: unknown;
-  freshness: unknown;
+  provenance: ProvenancePayload | null;
+  freshness: AskFreshness | null;
   link: AskLink | null;
   clarify: { code: string; question: string; reason: string; options: AskOption[] } | null;
   abstain: { code: string | null; reason: string | null } | null;
   examples: string[];
 };
+
+/** Evidence for this answer only. Freshness is independent of provenance; never infer a source or a capture time.
+ * Capture times already disclosed by the provenance badge are not listed a second time. */
+export function answerEvidence(card: AskCard): {
+  signals: SignalProvenance[]; week: number | null; timestamps: { label: string; value: string }[];
+} {
+  if (card.status !== "answered") return { signals: [], week: null, timestamps: [] };
+  const signals = signalsOf(card.provenance);
+  const freshness = card.freshness;
+  const captured = new Set(signals.map((s) => parseTimestamp(s.captured_at)).filter((t) => t !== null));
+  const fields = [
+    ["computed_at", "Analysis computed"], ["espn_synced_at", "ESPN sync"], ["nfl_synced_at", "NFL sync"],
+    ["lineup_synced_at", "Lineup sync"], ["projection_synced_at", "Projection sync"],
+    ["nfl_schedule_synced_at", "NFL schedule sync"],
+  ] as const;
+  const timestamps = fields.flatMap(([key, label]) => {
+    const value = freshness?.[key];
+    const time = parseTimestamp(value);
+    return value && time !== null && !captured.has(time) ? [{ label, value }] : [];
+  });
+  return { signals, week: freshness?.data_through_week ?? null, timestamps };
+}
 
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
