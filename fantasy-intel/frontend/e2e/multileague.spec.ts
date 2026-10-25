@@ -68,6 +68,39 @@ test("a signed-out visitor never sees the private league", async ({ page }) => {
   await expect(page.locator("main")).not.toContainText("Echo RB");
 });
 
+test("Ask submissions, team changes and analysis links stay in the page's league", async ({ page }) => {
+  const lg = manifest().leagues.espn_public;
+  const errors = collectErrors(page);
+  await page.goto(`/l/${lg}/ask?team=1`, { waitUntil: "load" });
+  const form = page.getByRole("search", { name: "Ask a question" });
+  await expect(form).toHaveAttribute("action", `/l/${lg}/ask`);
+  await form.getByRole("searchbox", { name: "Question" }).fill("Who should I start this week?");
+  await form.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${lg}/ask\\?q=Who\\+should\\+I\\+start\\+this\\+week%3F&team=1$`));
+  const main = page.locator("main");
+  const picker = main.getByRole("combobox", { name: "Analyzing" });
+  // Every selectable URL comes from the shared perspective helper, including a possible implicit default.
+  const next = await picker.locator("option:not(:checked):not([disabled])").first().getAttribute("value");
+  expect(next).toBeTruthy();
+  await picker.selectOption(next!);
+  await expect(page).toHaveURL(new URL(`/l/${lg}${next!}`, page.url()).href);
+  await expect(picker).toHaveValue(next!);
+  const link = main.getByRole("link", { name: "Open Start/Sit", exact: true });
+  await expect(link).toBeVisible();
+  const native = new URL((await link.getAttribute("href"))!, page.url());
+  expect(native.pathname).toBe(`/l/${lg}/start-sit`);
+  expect(native.searchParams.get("team")).toBe(new URL(page.url()).searchParams.get("team"));
+  await link.click();
+  await expect(page).toHaveURL(native.href);
+  expect(errors).toEqual([]);
+});
+
+test("a signed-out Ask question never reveals a private league's answer", async ({ page }) => {
+  const lg = manifest().leagues.espn_private;
+  await page.goto(`/l/${lg}/ask?q=who+should+I+start&team=1`, { waitUntil: "load" });
+  await expect(page.locator("main")).not.toContainText(/Private Fixture League|Echo RB|Start\/Sit for/);
+});
+
 test("a member sees the research tools, on desktop and in the phone menu, but not Projection accuracy", async ({ page, context }) => {
   await signIn(context);
   const lg = manifest().leagues.espn_private;
@@ -156,7 +189,7 @@ test("with JavaScript off, a league page renders its links and forms in that lea
     .filter((u) => !u.startsWith("//") && !u.startsWith(`/l/${lg}`) && !UNSCOPED_HREF.test(u) && !/[?&]league=clear\b/.test(u));
   // The Overview twice: with no team (no hub, #165) and from a team's perspective, so the weekly hub's links are checked
   const pages = ["/rankings", "/managers", "/", "/?team=1", "/players?id=201", "/start-sit", "/transactions",
-    "/trades/discover", "/luck-lab", "/movers", "/waivers"];
+    "/trades/discover", "/luck-lab", "/movers", "/waivers", "/ask", "/ask?q=who+should+I+start&team=1"];
   for (const p of pages) {
     const res = await page.goto(`/l/${lg}${p === "/" ? "" : p.startsWith("/?") ? p.slice(1) : p}`, { waitUntil: "load" });
     expect(res?.status(), `${p} HTTP status`).toBe(200);
@@ -172,6 +205,35 @@ test("with JavaScript off, a league page renders its links and forms in that lea
   expect(new URL(page.url()).pathname).toBe(`/l/${lg}/start-sit`);
   expect(await page.locator("a[href*='league=clear']:not([href='/?league=clear']), option[value*='league=clear']").count(),
     "no link built from the page's params leaves the league").toBe(0);
+  await context.close();
+});
+
+// With JavaScript off, the root layout's <noscript> style shows streamed content in place of the loading.tsx skeletons
+// (after the page shell, not inside <main>): Ask answers in the page's league, and the Overview, another streamed
+// route, shows its own content too.
+test("with JavaScript off, Ask answers in the page's league and the Overview shows its content", async ({ browser }) => {
+  const lg = manifest().leagues.espn_public;
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const skeletons = page.locator("[data-loading-fallback]:visible");
+  await page.goto(`/l/${lg}/ask?team=1`, { waitUntil: "load" });
+  const form = page.getByRole("search", { name: "Ask a question" });
+  await expect(form).toHaveAttribute("action", `/l/${lg}/ask`);
+  await form.getByRole("searchbox", { name: "Question" }).fill("Who should I start this week?");
+  await form.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/l/${lg}/ask\\?q=Who\\+should\\+I\\+start\\+this\\+week%3F&team=1$`));
+  await expect(page.getByText(/Start\/Sit for .+, week \d+/).first()).toBeVisible();
+  const open = page.getByRole("link", { name: "Open Start/Sit", exact: true });
+  await expect(open).toBeVisible();
+  expect(new URL((await open.getAttribute("href"))!, page.url()).pathname).toBe(`/l/${lg}/start-sit`);
+  await expect(skeletons).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(FAILURE_TEXT);
+  await page.goto(`/l/${lg}`, { waitUntil: "load" });
+  await expect(skeletons).toHaveCount(0);
+  await expect(page.locator("h1:visible")).toHaveCount(1);
+  await expect(page.locator("h1:visible")).toHaveText(/\S/);
+  await expect(page.locator("body")).not.toContainText(FAILURE_TEXT);
   await context.close();
 });
 

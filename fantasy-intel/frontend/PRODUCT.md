@@ -49,6 +49,7 @@ Rules: no new inline `style={{...}}` except computed geometry (chart coordinates
 ## Loading and streaming
 
 - Every route has a `loading.tsx` skeleton (the root one is the fallback) and the root `error.tsx` and `not-found.tsx`.
+- With JavaScript off, the root layout's `<noscript>` style shows the streamed content, which React otherwise sends hidden for its inline script to swap in. It also hides skeletons whose root element carries `data-loading-fallback` (`app/loading.tsx`, `app/ask/loading.tsx`); a route whose own skeleton lacks the marker shows both. The streamed content renders after the page shell (below the tab bar), not inside `<main>`.
 - A page that awaits one slow source beside fast ones starts the slow request without awaiting it, and renders the slow part inside `<Suspense>` with a skeleton of the same footprint, so the header and first section stream at once. Examples: the Overview week band (`app/WeekBand.tsx`) and the Trade analyzer result (`app/trades/EvaluatedTrade.tsx`). Do this only where the wait is real; a section that needs the same payload as the page header cannot stream.
 - Fonts come from `next/font` (self-hosted, size-adjusted fallbacks), so loading them does not shift the layout. Player photos render at fixed square sizes with an initials placeholder, so they reserve their space and never shift the layout.
 
