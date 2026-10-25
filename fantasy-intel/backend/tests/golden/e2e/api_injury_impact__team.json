@@ -1,0 +1,152 @@
+// /api/injury-impact?team_id=2
+{
+ "body": {
+  "counts": {
+   "affects_my_roster": 0,
+   "long_term": 0,
+   "matched": 0,
+   "out": 0,
+   "questionable": 0,
+   "skipped": {
+    "no_games": 0,
+    "no_team": 0,
+    "small_role": 0
+   },
+   "total": 0
+  },
+  "freshness": {
+   "depth_chart_as_of": null,
+   "espn_players_synced_at": "<masked>",
+   "espn_projections_synced_at": "<masked>",
+   "injury_report": {
+    "available": false,
+    "current_week_rows": 0,
+    "latest_week": null
+   },
+   "summary": {
+    "by_source": {
+     "espn_status": 8,
+     "nflverse": 0,
+     "none": 24
+    },
+    "by_status": {
+     "fresh": 8,
+     "missing": 24,
+     "post_kickoff_only": 0,
+     "stale": 0
+    },
+    "espn_fallback_teams": [
+     "BUF",
+     "DET",
+     "KC",
+     "PHI",
+     "SEA",
+     "SF",
+     "TB",
+     "WAS"
+    ],
+    "espn_fallback_without_designations": [
+     "BUF",
+     "DET",
+     "KC",
+     "PHI",
+     "SEA",
+     "SF",
+     "TB",
+     "WAS"
+    ],
+    "publication_time": {
+     "null_provider_time": 8,
+     "used_evidence": 8,
+     "with_provider_time": 0
+    },
+    "teams": 32,
+    "teams_by_status": {
+     "fresh": [
+      "BUF",
+      "DET",
+      "KC",
+      "PHI",
+      "SEA",
+      "SF",
+      "TB",
+      "WAS"
+     ],
+     "missing": [
+      "ARI",
+      "ATL",
+      "BAL",
+      "CAR",
+      "CHI",
+      "CIN",
+      "CLE",
+      "DAL",
+      "DEN",
+      "GB",
+      "HOU",
+      "IND",
+      "JAX",
+      "LA",
+      "LAC",
+      "LV",
+      "MIA",
+      "MIN",
+      "NE",
+      "NO",
+      "NYG",
+      "NYJ",
+      "PIT",
+      "TEN"
+     ],
+     "post_kickoff_only": [],
+     "stale": []
+    },
+    "teams_with_nflverse_designations": 0,
+    "teams_without_any_report": 24,
+    "unknown_kickoff": []
+   },
+   "thresholds": {
+    "stale_after_hours": 24.0,
+    "window_hours": 72.0
+   },
+   "usage_through_week": 3
+  },
+  "generated_at": "<masked>",
+  "league_context": {
+   "available": true,
+   "league_name": "Fixture League",
+   "my_team_id": 2,
+   "perspective": "query"
+  },
+  "method": {
+   "estimate": "Pro-rata estimate: the player's recent volume split over healthy teammates by their recent share. It is not a validated projection. In this project's research a proportional split gets the average total roughly right, but which teammate realizes the extra volume is skewed and hard to predict, so treat every split as a range, not a call.",
+   "observed": "Observed: this season's games for the same team, split by whether the injured player played. Samples are small; a different opponent or game script also changes usage.",
+   "thresholds": {
+    "long_term_missed": 3,
+    "min_opportunities_per_game": 3.0,
+    "min_qb_snap_share": 0.5,
+    "min_snap_share": 0.25,
+    "pool_weeks": 3,
+    "recent_games": 4
+   }
+  },
+  "notices": [
+   {
+    "code": "no_nfl_report",
+    "text": "The NFL injury report has never been synced, so statuses come from ESPN only.",
+    "tone": "caution"
+   },
+   {
+    "code": "missing_teams",
+    "text": "No injury evidence for 24 teams (ARI, ATL, BAL, CAR, CHI, CIN, CLE, DAL, DEN, GB, HOU, IND, JAX, LA, LAC, LV, MIA, MIN, NE, NO, NYG, NYJ, PIT, TEN). A missing report is not a clean bill of health.",
+    "tone": "negative"
+   }
+  ],
+  "players": [],
+  "position": "ALL",
+  "season": 2026,
+  "status": "all",
+  "week": 3
+ },
+ "status": 200
+}

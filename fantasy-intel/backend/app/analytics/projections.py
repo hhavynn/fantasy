@@ -114,7 +114,7 @@ def _part(weeks: list[dict]) -> tuple[float | None, int, int]:
     return total, len(weeks), len(avail)
 
 
-def summarize(window: LeagueWindow, weeks: list[dict]) -> dict:
+def summarize(window: LeagueWindow, weeks: list[dict], projection_source: str = PROJECTION_SOURCE) -> dict:
     ros, ros_exp, ros_av = _part(weeks)
     if window.last_regular is None:
         reg = po = (None, None, None)
@@ -134,11 +134,24 @@ def summarize(window: LeagueWindow, weeks: list[dict]) -> dict:
         "bye_weeks_remaining": None if any(b is None for b in byes) else sum(1 for b in byes if b),
         "bye_weeks": [w["week"] for w in weeks if w["on_bye"]],
         "missing_weeks": [w["week"] for w in weeks if not w["projection_available"]],
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": projection_source,
     }
 
 
-def _projections(con, window: LeagueWindow, pid: int | None = None) -> dict[int, dict]:
+def _projections(con, window: LeagueWindow, pid: int | None = None, source: str = "espn") -> dict[int, dict]:
+    if source != "espn":    # a league without provider projections: Ours (multi-league Phase 4b)
+        from . import forward_ours   # lazy, as below: this module stays free of the opt-in switch at import
+        out = {}
+        detail: dict = {}
+        weeks = range(window.current, window.final + 1)
+        for p, by_week in forward_ours.ps.league_projections(con, window.season, weeks, source, detail).items():
+            if pid is not None and p != pid:
+                continue
+            stamps = [st for _, st in by_week.values() if st]
+            out[p] = {"weeks": {w: v for w, (v, _) in by_week.items()}, "synced_at": max(stamps) if stamps else None,
+                      # the source of each number shown (#254 L2): the models' or the provider's fallback
+                      "label": forward_ours.ps.served_label(detail.get(w, {}).get(p, ("espn",))[0] for w in by_week)}
+        return out
     sql = """SELECT espn_player_id, scoring_period, projected_points, synced_at FROM espn_player_weekly_points
              WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL"""
     params: list = [window.season, window.current, window.final]
@@ -154,15 +167,18 @@ def _projections(con, window: LeagueWindow, pid: int | None = None) -> dict[int,
     return out
 
 
-def build_ros_projections(con, season: int) -> dict:
+def build_ros_projections(con, season: int, source: str | None = None) -> dict:
     """Rebuild player_ros_projections for the season: every rostered player plus every player
-    ESPN projects in at least one remaining week."""
+    projected in at least one remaining week. `source`: None = the league's default (ESPN's for an ESPN league, Ours
+    for a league without provider projections)."""
     if not table_exists(con, "player_ros_projections"):
         return {"skipped": "schema older than v5; run a sync to migrate"}
     window = league_window(con, season)
     if window is None:
         return {"skipped": "league current/final week unknown"}
-    proj = _projections(con, window)
+    from . import forward_ours   # lazy: this module stays free of the opt-in switch at import
+    source = forward_ours.normalize(source, con, season)
+    proj = _projections(con, window, source=source)
     teams = {r["espn_player_id"]: (r["pro_team"], r["availability_status"]) for r in fetch_dicts(
         con, "SELECT espn_player_id, pro_team, availability_status FROM fantasy_players")}
     ids = set(proj) | {pid for pid, (_, status) in teams.items() if status == "ONTEAM"}
@@ -172,7 +188,9 @@ def build_ros_projections(con, season: int) -> dict:
     for pid in sorted(ids):
         p = proj.get(pid, {"weeks": {}, "synced_at": None})
         team = teams.get(pid, (None, None))[0]
-        s = summarize(window, forward_weeks(window, team, p["weeks"], games, covered))
+        # under Ours a row names the source of its own numbers, and no source when it has none (#254 L2)
+        s = summarize(window, forward_weeks(window, team, p["weeks"], games, covered),
+                      p.get("label", "Unavailable") if source == "independent" else PROJECTION_SOURCE)
         rows.append({"season": season, "espn_player_id": pid, **s,
                      "projection_synced_at": p["synced_at"], "computed_at": now})
     replace_where(con, "player_ros_projections", rows, "season = ?", [season])
@@ -187,7 +205,7 @@ def build_ros_projections(con, season: int) -> dict:
     }
 
 
-def player_forward(con, season: int, pid: int, team: str | None, source: str = "espn") -> dict | None:
+def player_forward(con, season: int, pid: int, team: str | None, source: str | None = None) -> dict | None:
     """The forward view for one player, computed with the same functions as the stored table.
 
     ESPN's series is always the baseline. With source="independent" an `ours` block is added (the production
@@ -202,9 +220,10 @@ def player_forward(con, season: int, pid: int, team: str | None, source: str = "
     out = {"source": PROJECTION_SOURCE, "note": BASELINE_NOTE, "summary": summarize(window, weeks),
            "projection_synced_at": p["synced_at"], "weeks": weeks,
            "schedule_available": bool(covered)}
-    if source == "espn":    # the default never loads the opt-in switch
-        return out
     from . import forward_ours   # lazy: the canonical ESPN module stays free of the opt-in switch
+    source = forward_ours.normalize(source, con, season)    # no source: the league's default (Phase 4b)
+    if source == "espn":
+        return out
     ours = forward_ours.ours_forward(con, season, pid, weeks, source=source)
     if ours is not None:
         out["ours"] = ours

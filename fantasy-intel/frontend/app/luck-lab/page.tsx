@@ -1,10 +1,12 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { CSSProperties } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { BarChart, LineChart, ScatterChart } from "@/components/charts";
 import { Badge, Delta, EmptyState, Method, Notice, PageHeader, Section, SortableTh, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import type { LlBrief, LlCounterfactual, LlLeader, LlRecord, LlResult, LlScheduleRow, LlTimeline, LuckLab } from "@/lib/luck-types";
 import { heatOf, luckBars, periodLabel, scatterPoints, signedText, timelineSeries } from "@/lib/luck-view";
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
@@ -68,10 +70,12 @@ export default async function LuckLabPage({ searchParams }: PageProps<"/luck-lab
       </div>
     );
   }
-  return <Body d={res.data} cleared={cleared} sp={sp} />;
+  const prov = providerName((await getLeagueProfile()).provider);
+  return <Body d={res.data} cleared={cleared} sp={sp} prov={prov} />;
 }
 
-function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchParams }) {
+/** `prov` names the league's provider ("ESPN" or "Sleeper"), whose official record the page shows beside its own. */
+function Body({ d, cleared, sp, prov }: { d: LuckLab; cleared: boolean; sp: SearchParams; prov: string }) {
   const name = (id: number | null | undefined) => d.teams.find((t) => t.team_id === id)?.name ?? `Team ${id}`;
   const cov = d.coverage;
   const pending = cov.excluded_periods.filter((e) => e.kind === "not_completed").map((e) => e.matchup_period);
@@ -113,12 +117,12 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
         <Notice tone="caution">No completed, fully observed regular-season period yet: expected wins and schedule luck need every team&apos;s final score in the same period. {cov.rule}</Notice>
       ) : (
         <>
-          <Headline d={d} />
+          <Headline d={d} prov={prov} />
           <div className="grid grid-2">
             <ScatterSection d={d} />
             <LuckBarsSection d={d} />
           </div>
-          <Leaderboard d={d} sp={sp} />
+          <Leaderboard d={d} sp={sp} prov={prov} />
           <WeekByWeek d={d} name={name} />
           <Notables d={d} name={name} />
           <Explorer d={d} name={name} sp={sp} />
@@ -143,7 +147,7 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
 
 // ---------------------------------------------------------------------- headline --
 
-function Headline({ d }: { d: LuckLab }) {
+function Headline({ d, prov }: { d: LuckLab; prov: string }) {
   const s = d.spotlight;
   if (!s.periods) return <Notice tone="caution">{s.name} has no eligible periods.</Notice>;
   const luck = s.schedule_luck ?? 0;
@@ -157,7 +161,7 @@ function Headline({ d }: { d: LuckLab }) {
       <Stat
         label="Actual wins"
         value={s.actual?.win_equivalents.toFixed(1)}
-        note={<>{rec(s.actual)} over {s.periods} eligible {plural(s.periods, "period")} · ESPN {rec(s.espn_record)}</>}
+        note={<>{rec(s.actual)} over {s.periods} eligible {plural(s.periods, "period")} · {prov} {rec(s.espn_record)}</>}
       />
       <Stat
         label="Schedule luck"
@@ -214,7 +218,7 @@ function LuckBarsSection({ d }: { d: LuckLab }) {
 
 // -------------------------------------------------------------------- leaderboard --
 
-function Leaderboard({ d, sp }: { d: LuckLab; sp: SearchParams }) {
+function Leaderboard({ d, sp, prov }: { d: LuckLab; sp: SearchParams; prov: string }) {
   const sort = parseSort(sp, BOARD_SORTS, BOARD_DEFAULT);
   const rows = sortRows(d.leaderboard, (x: LlLeader) => {
     switch (sort.key) {
@@ -252,7 +256,7 @@ function Leaderboard({ d, sp }: { d: LuckLab; sp: SearchParams }) {
             {rows.map((x) => (
               <tr key={x.team_id} className={x.is_mine ? "mine" : ""}>
                 <td className="num faint">{x.luck_rank}</td>
-                <td><Link href={`/luck-lab?team=${x.team_id}`}>{x.name}</Link> <span className="faint">ESPN {rec(x.espn_record)}</span></td>
+                <td><Link href={`/luck-lab?team=${x.team_id}`}>{x.name}</Link> <span className="faint">{prov} {rec(x.espn_record)}</span></td>
                 <td className="num">{x.actual.win_equivalents.toFixed(1)} <span className="faint">({rec(x.actual)})</span></td>
                 <td className="num">{x.expected_wins.toFixed(2)}</td>
                 <td><Delta value={x.schedule_luck} digits={2} /></td>

@@ -2,6 +2,7 @@
 // labels, chart rows). Nothing here computes a new statistic. No `@/` value imports, so it runs
 // under the unit-test runner.
 import type { BarDatum } from "@/components/charts";
+import { parseFeedbackSource, type DfSource } from "./decision-feedback.ts";
 
 export type WrResult = "HOME" | "AWAY" | "TIE";
 export type WrLineupStatus = "STARTER" | "BENCH" | "IR" | "UNROSTERED" | "MIXED";
@@ -126,7 +127,8 @@ export const PLAYER_VIEWS = ["top", "bench", "unrostered"] as const;
 export const MOVE_VIEWS = ["adds", "drops", "trades"] as const;
 export type PlayerView = (typeof PLAYER_VIEWS)[number];
 export type MoveView = (typeof MOVE_VIEWS)[number];
-export type RecapQuery = { week: number | null; players: PlayerView; moves: MoveView };
+/** `source` (the decision feedback's forecast source) is present only when the URL names a known one. */
+export type RecapQuery = { week: number | null; players: PlayerView; moves: MoveView; source?: DfSource };
 
 const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
@@ -137,10 +139,12 @@ function pick<T extends string>(v: string | undefined, allowed: readonly T[]): T
 /** Read `?week=&players=&moves=`; anything unknown falls back to the default (latest week, first tab). */
 export function parseRecapQuery(sp: Record<string, string | string[] | undefined>): RecapQuery {
   const w = Number(first(sp.week));
+  const source = parseFeedbackSource(sp);
   return {
     week: Number.isInteger(w) && w >= 1 ? w : null,
     players: pick(first(sp.players), PLAYER_VIEWS),
     moves: pick(first(sp.moves), MOVE_VIEWS),
+    ...(source ? { source } : {}),
   };
 }
 
@@ -156,6 +160,7 @@ export function recapHref(q: RecapQuery, patch: Partial<RecapQuery> = {}): strin
   if (n.week !== null) p.set("week", String(n.week));
   if (n.players !== PLAYER_VIEWS[0]) p.set("players", n.players);
   if (n.moves !== MOVE_VIEWS[0]) p.set("moves", n.moves);
+  if (n.source) p.set("source", n.source);
   const s = p.toString();
   return s ? `/weekly-recap?${s}` : "/weekly-recap";
 }

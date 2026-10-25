@@ -1,0 +1,68 @@
+name: Visual baselines
+
+# Draws the visual regression baselines (fantasy-intel/frontend/e2e/visual.spec.ts) on CI's own browser build and
+# uploads them as an artifact for a person to review. It never commits: download the artifact, look at every image
+# (and at the diff against the committed set), then commit them with the change that explains why they moved.
+# docs/qa/release-review.md has the procedure. Run it from the Actions tab on the branch whose UI should be drawn.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baselines:
+    name: Draw visual baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: fantasy-intel/frontend
+    env:
+      TZ: UTC
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install backend dependencies
+        working-directory: fantasy-intel/backend
+        run: uv sync --frozen
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "fantasy-intel/frontend/package-lock.json"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Draw baselines
+        run: npm run e2e:visual -- --update-snapshots=all
+
+      - name: Upload baselines for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: fantasy-intel/frontend/e2e/visual-baselines/
+          if-no-files-found: error
+          retention-days: 14

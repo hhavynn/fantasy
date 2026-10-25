@@ -1,11 +1,18 @@
 import { Badge, Notice } from "@/components/ui";
-import { horizonCaution, modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
+import { getLeagueProfile } from "@/lib/league-profile.server";
+import { horizonCaution, modelStatusLine, noProjection, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
 
-/** What the page's projections are when the switch is on "Ours"; nothing for the ESPN default. */
-export function ProjectionNotice({ detail, className }: { detail: ProjectionSourceDetail | null | undefined; className?: string }) {
+/**
+ * What the page's projections are when the switch is on "Ours"; nothing for the ESPN default. A league whose provider
+ * has no projections (Sleeper) has no ESPN numbers to fall back to, so it never mentions them.
+ */
+export async function ProjectionNotice({ detail, className }: { detail: ProjectionSourceDetail | null | undefined; className?: string }) {
   if (!detail || detail.source !== "independent") return null;
+  const { providerProjections } = await getLeagueProfile();
   if (!showingOurs(detail)) {
-    return <Notice tone="caution" title="Showing ESPN projections" className={className}>{detail.reason}</Notice>;
+    return providerProjections
+      ? <Notice tone="caution" title="Showing ESPN projections" className={className}>{detail.reason}</Notice>
+      : <Notice tone="caution" title="Fantasy Intel projections are not ready yet" className={className}>{detail.reason}</Notice>;
   }
   const c = detail.counts;
   const title = detail.governance?.is_fallback
@@ -13,9 +20,15 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
     : "Showing Fantasy Intel projections";
   return (
     <Notice tone="info" title={title} className={className}>
-      {modelStatusLine(detail)} K and D/ST come from our kicker and D/ST models. Players marked{" "}
-      <OriginTag origin="espn" ours /> keep ESPN&apos;s number: anyone our models can&apos;t project this week.
-      {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
+      {modelStatusLine(detail)} K and D/ST come from our kicker and D/ST models.
+      {providerProjections ? (
+        <>
+          {" "}Players marked <OriginTag origin="espn" ours /> keep ESPN&apos;s number: anyone our models can&apos;t project this week.
+          {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN{noProjection(c)}.</>}
+        </>
+      ) : (
+        c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable){noProjection(c)}.</>
+      )}
       {detail.reason && <> {detail.reason}</>}
       {horizonCaution(detail) && <> {horizonCaution(detail)}</>}
     </Notice>

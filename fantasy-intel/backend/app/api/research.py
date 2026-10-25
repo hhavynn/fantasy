@@ -1,5 +1,10 @@
 """Read-only Fantasy Research Lab endpoints: no writes, no syncs, no ESPN calls. Metrics cover the whole
-NFL WR / RB / TE pool from nflverse data; ESPN league data only supplies optional profile/trade links."""
+NFL WR / RB / TE pool from nflverse data; ESPN league data only supplies optional profile/trade links.
+
+Game splits (issue #210) read the global nflverse tables (usage, weekly rosters, schedules) and, from the caller's own
+league file, only player_id_map for the profile link; every input is in the query string, so the league-scoped
+response cache keys on all of them. Under /v2/leagues/{league_id} these are league-member tools: league_scope
+authorizes (404 for an outsider on a private league) before any parameter is validated or any file is read."""
 
 from __future__ import annotations
 
@@ -7,6 +12,8 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query
 
+from ..analytics.game_splits import SplitsError, SplitsNotFound, build_game_splits, build_split_players, latest_season
+from ..analytics.game_splits import validate as validate_splits
 from ..analytics.research import ResearchError, build_opportunity, build_player_research
 from .deps import db
 
@@ -31,6 +38,41 @@ def opportunity(
                                      team.upper() if team else None)
         except ResearchError as err:
             raise HTTPException(422, str(err))
+
+
+@router.get("/game-splits")
+def game_splits(
+    player: str = Query(..., min_length=4, max_length=20, description="nflverse (GSIS) id of a WR, RB or TE"),
+    teammate: str | None = Query(None, min_length=4, max_length=20,
+                                 description="nflverse id of a QB, RB, WR or TE teammate; omit to list teammates"),
+    season_from: int | None = Query(None, ge=1999, le=2100, description="Default: the newest season with usage"),
+    week_from: int | None = Query(None, ge=1, le=18),
+    season_to: int | None = Query(None, ge=1999, le=2100),
+    week_to: int | None = Query(None, ge=1, le=18),
+    as_of: str | None = Query(None, min_length=10, max_length=10,
+                              description="YYYY-MM-DD: only games played before this date count"),
+):
+    """The player's games with the teammate on the field against games without him, over an inclusive window of at
+    most three seasons. Unknown teammate status is excluded (by reason), never counted as without; a split with
+    fewer than three games in either group withholds its differences. Descriptive only: no forecast or causal
+    claim."""
+    with db() as con:
+        try:
+            q = validate_splits(player, teammate, season_from, week_from, season_to, week_to, as_of,
+                                latest_season(con))
+            return build_game_splits(con, q)
+        except SplitsError as err:
+            raise HTTPException(422, str(err))
+        except SplitsNotFound as err:
+            raise HTTPException(404, str(err))
+
+
+@router.get("/game-splits/players")
+def game_split_players(season: int | None = Query(None, ge=1999, le=2100,
+                                                  description="Default: the newest season with usage")):
+    """WR, RB and TE with a played game in the season, for the game-splits player picker."""
+    with db() as con:
+        return build_split_players(con, season)
 
 
 @router.get("/players/{gsis_id}")

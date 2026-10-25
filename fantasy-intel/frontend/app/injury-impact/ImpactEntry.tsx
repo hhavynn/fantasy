@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { CompareLink } from "@/components/CompareLink";
 import { Badge, Sparkline } from "@/components/ui";
 import { Missing, num, pct } from "@/lib/format";
@@ -17,10 +17,13 @@ function kickoffText(iso: string | null): string | null {
   return new Date(iso).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET";
 }
 
-function StatusLine({ s }: { s: InjuryEntry["status"] }) {
+/** `prov` is the league's provider ("ESPN" or "Sleeper"); `espn` is false where it publishes no projections. */
+type Labels = { prov: string; espn: boolean };
+
+function StatusLine({ s, prov }: { s: InjuryEntry["status"]; prov: string }) {
   const parts = [levelLabel(s.level), s.injury].filter(Boolean).join(" · ");
   const src = [s.nfl_report_status ? `NFL report: ${s.nfl_report_status}` : null,
-    s.espn_injury_status && s.espn_injury_status !== "ACTIVE" ? `ESPN: ${s.espn_injury_status.toLowerCase().replaceAll("_", " ")}` : null]
+    s.espn_injury_status && s.espn_injury_status !== "ACTIVE" ? `${prov}: ${s.espn_injury_status.toLowerCase().replaceAll("_", " ")}` : null]
     .filter(Boolean).join(" · ");
   return (
     <>
@@ -62,7 +65,7 @@ function Workload({ e }: { e: InjuryEntry }) {
   );
 }
 
-function TeammateTable({ e }: { e: InjuryEntry }) {
+function TeammateTable({ e, espn }: { e: InjuryEntry; espn: boolean }) {
   const unit = UNIT_SHORT[e.impact.unit];
   const rows = e.impact.teammates;
   if (rows.length === 0) {
@@ -79,7 +82,7 @@ function TeammateTable({ e }: { e: InjuryEntry }) {
             <th scope="col" title={`Pro-rata share of his recent volume and the extra ${unit} per game it implies.`}>Pro-rata</th>
             <th scope="col" className="num" title={`${e.impact.unit_label} per game over the team's last 3 games`}>Recent/g</th>
             <th scope="col" className="num" title="Rank at his position on the team's latest depth chart">Depth</th>
-            <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>
+            {espn && <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>}
             <th scope="col">Roster</th>
           </tr>
         </thead>
@@ -100,7 +103,7 @@ function TeammateTable({ e }: { e: InjuryEntry }) {
                 : <span className={styles.subLine}>Also out</span>}</td>
               <td className="num">{num(m.recent_volume_per_game, 1)}</td>
               <td className="num">{m.depth_rank ?? <Missing why="Not on the latest depth chart" />}</td>
-              <td className="num">{num(m.espn_projection, 1, "No ESPN projection this week")}</td>
+              {espn && <td className="num">{num(m.espn_projection, 1, "No ESPN projection this week")}</td>}
               <td><RosterBadge roster={m.roster} /></td>
             </tr>
           ))}
@@ -110,7 +113,7 @@ function TeammateTable({ e }: { e: InjuryEntry }) {
   );
 }
 
-function QbTables({ e }: { e: InjuryEntry }) {
+function QbTables({ e, espn }: { e: InjuryEntry; espn: boolean }) {
   const qbs = e.impact.teammates;
   return (
     <>
@@ -122,7 +125,7 @@ function QbTables({ e }: { e: InjuryEntry }) {
                 <th scope="col">Quarterback</th>
                 <th scope="col" className="num" title="Rank on the team's latest depth chart">Depth</th>
                 <th scope="col" className="num" title="Pass attempts per game in team games without the starter, and how many he played">Att/g without</th>
-                <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>
+                {espn && <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>}
                 <th scope="col">Roster</th>
               </tr>
             </thead>
@@ -135,7 +138,7 @@ function QbTables({ e }: { e: InjuryEntry }) {
                   <td className="num">{m.observed.without
                     ? <>{num(m.observed.without.volume_per_game, 1)} <span className={styles.games}>{m.observed.without.games} g</span></>
                     : <Missing why="Has not played in a game without the starter this season" />}</td>
-                  <td className="num">{num(m.espn_projection, 1, "No ESPN projection this week")}</td>
+                  {espn && <td className="num">{num(m.espn_projection, 1, "No ESPN projection this week")}</td>}
                   <td><RosterBadge roster={m.roster} /></td>
                 </tr>
               ))}
@@ -154,7 +157,7 @@ function QbTables({ e }: { e: InjuryEntry }) {
                   <th scope="col" className="num" title="Targets per game over the team's last 3 games">Recent tgt/g</th>
                   <th scope="col" className="num" title="PPR points per game with the starter → without him">PPR with → without</th>
                   <th scope="col" className="num">Change</th>
-                  <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>
+                  {espn && <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>}
                   <th scope="col">Roster</th>
                 </tr>
               </thead>
@@ -166,7 +169,7 @@ function QbTables({ e }: { e: InjuryEntry }) {
                     <td className="num"><WithWithout withV={r.observed.with?.ppr_per_game} withoutV={r.observed.without?.ppr_per_game}
                       withGames={r.observed.with?.games} withoutGames={r.observed.without?.games} /></td>
                     <td className="num"><Change v={r.observed.ppr_delta_per_game} /></td>
-                    <td className="num">{num(r.espn_projection, 1, "No ESPN projection this week")}</td>
+                    {espn && <td className="num">{num(r.espn_projection, 1, "No ESPN projection this week")}</td>}
                     <td><RosterBadge roster={r.roster} /></td>
                   </tr>
                 ))}
@@ -180,8 +183,8 @@ function QbTables({ e }: { e: InjuryEntry }) {
 }
 
 /** One absence: who, status, game and data freshness; his observed workload; who could absorb it, and links. */
-export function ImpactEntry({ e, team }: { e: InjuryEntry; team: string | null }) {
-  const fresh = freshnessLabel(e.freshness);
+export function ImpactEntry({ e, team, labels = { prov: "ESPN", espn: true } }: { e: InjuryEntry; team: string | null; labels?: Labels }) {
+  const fresh = freshnessLabel(e.freshness, labels.prov);
   const game = gameLabel(e.game);
   const ko = kickoffText(e.game.kickoff);
   const target = compareTarget(e);
@@ -195,7 +198,7 @@ export function ImpactEntry({ e, team }: { e: InjuryEntry; team: string | null }
             meta={<Badge value={levelBadge(e.status.level)} />} />
         </div>
         <dl className={styles.headFacts}>
-          <div><dt>Status</dt><dd><StatusLine s={e.status} /></dd></div>
+          <div><dt>Status</dt><dd><StatusLine s={e.status} prov={labels.prov} /></dd></div>
           <div>
             <dt>Week {e.game.week}</dt>
             <dd>
@@ -225,7 +228,7 @@ export function ImpactEntry({ e, team }: { e: InjuryEntry; team: string | null }
             <Badge value={CLARITY_LABEL[e.impact.clarity.label]} tone={e.impact.clarity.label === "leaning" ? "info" : "warn"} />
             <span>{e.impact.clarity.text}</span>
           </p>
-          {isQb ? <QbTables e={e} /> : <TeammateTable e={e} />}
+          {isQb ? <QbTables e={e} espn={labels.espn} /> : <TeammateTable e={e} espn={labels.espn} />}
         </div>
       </div>
 

@@ -13,6 +13,7 @@ from .projections import build_ros_projections
 from .trade_data import build_team_lineup_projections
 from .usage import build_player_week_usage
 from .validation import Issue, ValidationError, run_validations
+from .waiver_archive import archive_waiver_recommendations
 from .waivers import build_waivers
 
 log = logging.getLogger("analytics")
@@ -65,6 +66,8 @@ def run_analytics(con, season: int, preferred_provider: str | None = None) -> di
         if has_espn:
             stats["managers"] = build_manager_metrics(con)
             stats["waivers"] = build_waivers(con)
+            # The as-of archive of those recommendations (#346): append-only, deduplicated by content.
+            stats["waiver_archive"] = archive_waiver_recommendations(con, stats["waivers"].pop("provenance", None))
             # ESPN forward baseline summary (byes need the latest nfl_schedules). Display only:
             # nothing above reads it.
             stats["ros_projections"] = build_ros_projections(con, season)

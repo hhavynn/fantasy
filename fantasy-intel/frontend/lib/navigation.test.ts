@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ALL_NAV_PAGES, NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget,
+  ALL_NAV_PAGES, NAV_GROUPS, RAIL_INIT_SCRIPT, RAIL_KEY, getActiveRoute, navClusters, pageContext, pageContextLabel, parseRail,
+  parseTabMemory, tabMemoryEntry, tabTarget, visibleGroups,
 } from "./navigation.ts";
 
 const group = (path: string) => getActiveRoute(path).activeGroup?.label ?? null;
@@ -90,7 +91,7 @@ test("the kicker and D/ST outlooks sit with Waivers, as streaming tools", () => 
 const groupOf = (label: string) => NAV_GROUPS.find((g) => g.label === label)!;
 
 test("My team holds this week's lineup decisions for the analyzed roster", () => {
-  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/start-sit", "/matchup", "/injury-impact", "/my-team/value"]);
+  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/start-sit", "/matchup", "/injury-impact", "/injury-impact/timeline", "/my-team/value"]);
 });
 
 test("Waivers is its own destination, so the other weekly decision is one tap away on phones", () => {
@@ -106,9 +107,16 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
   assert.deepEqual(clusters.map((c) => c.title), [null, "Research"]);
   assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare"]);
   assert.deepEqual(clusters[1].pages.map((p) => p.href).sort(),
-    ["/movers", "/projection-performance", "/research", "/schedule-intelligence"].sort());
+    ["/movers", "/pace-lab", "/projection-performance", "/rankings/compare", "/research", "/research/splits", "/schedule-intelligence",
+      "/schedule-intelligence/sos", "/screener"].sort());
+  assert.equal(getActiveRoute("/rankings/compare").activeHref, "/rankings/compare");
+  assert.equal(getActiveRoute("/rankings").activeHref, "/rankings");
   assert.equal(group("/schedule-intelligence"), "Players");
   assert.equal(getActiveRoute("/research/wr").activeHref, "/research");
+  // Game splits and the pace lab have their own entries; a position page still activates the lab overview.
+  assert.equal(getActiveRoute("/research/splits").activeHref, "/research/splits");
+  assert.equal(getActiveRoute("/pace-lab").activeHref, "/pace-lab");
+  assert.equal(group("/pace-lab"), "Players");
 });
 
 test("groups without a labelled cluster are one cluster", () => {
@@ -175,10 +183,17 @@ test("stored tab memory is parsed defensively", () => {
   })), { Players: { href: "/rankings?pos=WR", team: null } });
 });
 
-test("power rankings sit in League right after the weekly recap, and a team card highlights them", () => {
+test("power rankings sit in League right after the weekly recap and transactions, and a team card highlights them", () => {
   assert.equal(group("/power-rankings"), "League");
-  assert.deepEqual(NAV_GROUPS[4].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
+  assert.deepEqual(NAV_GROUPS[4].pages.map((p) => p.href).slice(0, 3), ["/weekly-recap", "/transactions", "/power-rankings"]);
   assert.equal(getActiveRoute("/power-rankings/4").activeHref, "/power-rankings");
+});
+
+test("the transactions feed sits in League after the weekly recap", () => {
+  assert.equal(getActiveRoute("/transactions").activeHref, "/transactions");
+  assert.equal(group("/transactions"), "League");
+  const hrefs = NAV_GROUPS[4].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/weekly-recap") + 1], "/transactions");
 });
 
 test("injury impact sits in My team, after the matchup", () => {
@@ -186,4 +201,58 @@ test("injury impact sits in My team, after the matchup", () => {
   assert.equal(group("/injury-impact"), "My team");
   const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
   assert.equal(hrefs[hrefs.indexOf("/matchup") + 1], "/injury-impact");
+});
+
+test("the availability timeline follows injury impact and marks itself, not Injuries", () => {
+  assert.equal(getActiveRoute("/injury-impact/timeline").activeHref, "/injury-impact/timeline");
+  assert.equal(group("/injury-impact/timeline"), "My team");
+  const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/injury-impact") + 1], "/injury-impact/timeline");
+});
+
+
+test("only Projection accuracy is hidden from members; the research tools are member pages", () => {
+  const all = ALL_NAV_PAGES.map((p) => p.href);
+  const shown = visibleGroups(true).flatMap((g) => g.pages.map((p) => p.href));
+  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/projection-performance"]);
+  for (const href of ["/research", "/research/splits", "/pace-lab"]) assert.ok(shown.includes(href), href);
+  assert.equal(visibleGroups(false), NAV_GROUPS);
+});
+
+// ---------- Desktop workspace rail (#170) ----------
+
+test("every group names its job in a few words, for the rail's always-visible task line", () => {
+  for (const g of NAV_GROUPS) {
+    assert.ok(g.task && g.task.length <= 32, `${g.label}: a short task line`);
+    assert.match(g.task!, /^[A-Z][^.!]*$/, `${g.label}: sentence case, no closing punctuation`);
+  }
+  assert.equal(new Set(NAV_GROUPS.map((g) => g.task)).size, NAV_GROUPS.length, "each task is distinct");
+});
+
+test("page context names the group and, for the advanced tools, the Research cluster", () => {
+  assert.equal(pageContextLabel(pageContext("/start-sit")), "My team");
+  assert.equal(pageContextLabel(pageContext("/trades/discover")), "Trades");
+  assert.equal(pageContextLabel(pageContext("/movers")), "Players · Research");
+  assert.equal(pageContextLabel(pageContext("/managers/3")), "League");
+  assert.equal(pageContext("/kickers")?.page.label, "Kickers");
+  assert.equal(pageContext("/data"), null, "Data quality is reached from the sync status, not a group");
+  assert.equal(pageContextLabel(pageContext(null)), null);
+});
+
+test("the rail state: only an explicit collapsed choice collapses it", () => {
+  assert.equal(parseRail("collapsed"), "collapsed");
+  for (const raw of [null, undefined, "", "expanded", "COLLAPSED", "true"]) assert.equal(parseRail(raw), "expanded");
+});
+
+test("the rail init script marks <html> collapsed before paint and survives blocked storage", () => {
+  const attrs = new Map<string, string>();
+  const document = { documentElement: { setAttribute: (k: string, v: string) => attrs.set(k, v) } };
+  const run = (localStorage: unknown) => new Function("localStorage", "document", RAIL_INIT_SCRIPT)(localStorage, document);
+  run({ getItem: () => null });
+  assert.equal(attrs.get("data-rail"), undefined);
+  run({ getItem: (k: string) => (k === RAIL_KEY ? "collapsed" : null) });
+  assert.equal(attrs.get("data-rail"), "collapsed");
+  attrs.clear();
+  assert.doesNotThrow(() => run({ getItem: () => { throw new Error("blocked"); } }));
+  assert.equal(attrs.get("data-rail"), undefined);
 });

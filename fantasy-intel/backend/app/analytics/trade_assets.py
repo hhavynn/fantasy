@@ -11,16 +11,27 @@ starter anywhere else. This module measures assets independently of roster conge
 Replacement level is what a manager can actually get for free: the best currently available free
 agent's ESPN projection at that position that week (a streaming baseline, also NFL-availability
 aware). Where no free agent at the position is projected that week, the league-structure level is
-used instead: the projection of the first player beyond the league's starters at that position
-(teams x fixed starting slots). Units are projected fantasy points above replacement over the
+used instead: the projection of the first player beyond the league's starters at that position that
+week (see "league starters" below). Units are projected fantasy points above replacement over the
 evaluation window; nothing is weighted, no star premium is added, positions are never compared on
 raw points.
 
-A player is "starter-caliber" when his PAR ranks within the league's starters at his position
-(teams x fixed starting slots; K and D/ST included only when they are traded). Package labels use
-ratios of PAR with display thresholds stated below. They are heuristic, not empirically calibrated
-and not a market price; the labels never change the canonical delta and never hide a trade from the
-manual analyzer.
+League starters at a position come from one league reference assignment (league_reference): every
+team's exact optimal projected lineup each week (team_lineups.project_team, i.e. lineup.assign_lineup
+over the league's real slots, the same lineups the trade evaluator scores). A fixed slot (QB, RB, WR,
+TE, K, D/ST) is demand for its own position, teams x count, whether or not it is filled. Each flexible
+slot (FLEX, RB/WR, WR/TE, OP) is counted once, for the position of the player who actually fills it in
+that team-week, and not at all when it is empty: a superflex OP filled by a QB adds a QB starter, one
+filled by an RB adds an RB starter, never both. The weekly counts set the league-structure replacement
+level; their mean over the window (flex seats apportioned by largest remainder, never more than the
+mean filled flex slots, rounded) is the season count used for starter-caliber ranks. Flex demand is
+dynamic: it moves with projections, byes, injuries and roster changes. A league with no flexible slot
+gets exactly teams x fixed slots, as before.
+
+A player is "starter-caliber" when his PAR ranks within the league's starters at his position (K and
+D/ST included only when they are traded). Package labels use ratios of PAR with display thresholds
+stated below. They are heuristic, not empirically calibrated and not a market price; the labels never
+change the canonical delta and never hide a trade from the manual analyzer.
 """
 
 from __future__ import annotations
@@ -28,7 +39,7 @@ from __future__ import annotations
 from collections import Counter
 from statistics import median
 
-from .lineup import FIXED_SLOTS
+from .lineup import FIXED_SLOTS, is_flex
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
 from .team_lineups import RosterPlayer, Window, lineup_relevant, project_team, projection, r, slot_filled
 
@@ -53,10 +64,73 @@ NOTE = ("Asset balance is a diagnostic separate from the lineup delta: ESPN poin
         "free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he "
         "starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not "
         "calibrated, and not an acceptance estimate.")
+FLEX_NOTE = ("League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted "
+             "once, for the position of the player who fills it in each team's optimal projected lineup, averaged over "
+             "the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster "
+             "changes, so these counts are a current reference, not a fixed rule.")
 
 
 def _fixed_counts(slots: list[str]) -> Counter:
     return Counter(s for s in slots if s in FIXED_SLOTS)
+
+
+def _round_half_up(total: int, n: int) -> int:
+    """total / n rounded half up, in integers (no float tie ambiguity)."""
+    return (2 * total + n) // (2 * n)
+
+
+def league_reference(lineups: dict[int, dict], slots: list[str], weeks: list[int]) -> dict:
+    """League-wide starter demand per position from every team's exact optimal lineup (project_team output).
+
+    Fixed slots count teams x count for their own position. Each filled flex slot counts once, for the position of
+    the player (or never, for a flex slot left empty) in that team-week's optimal assignment; the K/D/ST waiver
+    streamer only ever fills fixed slots. Returns per-week counts (`weeks`), the per-position flex starts summed over
+    the window (`flex_starts`), their season apportionment (`flex_seats`, see _flex_seats) and the season counts
+    (`starters`): fixed + flex seats. `incomplete_team_weeks` counts team-weeks whose optimal lineup was solved from
+    known projections only (project_team's projection_complete is False); the flex counts are then uncertain.
+    A position is in `starters` when it has a fixed slot (at least 1) or at least one flex seat."""
+    teams = len(lineups)
+    fixed = {pos: n * teams for pos, n in _fixed_counts(slots).items()}
+    flex_slots = sum(1 for s in slots if is_flex(s)) * teams
+    by_week: dict[int, dict[str, int]] = {}
+    flex_starts: Counter = Counter()
+    incomplete = 0
+    rows = {t: {x["week"]: x for x in lineups[t]["weeks"]} for t in sorted(lineups)}
+    for w in weeks:
+        flex = Counter()
+        for t in rows:
+            row = rows[t].get(w) or {}
+            incomplete += row.get("projection_complete") is False
+            for a in row.get("assignment", ()):
+                if a["is_flex"] and slot_filled(a) and a["position"]:
+                    flex[a["position"]] += 1
+        flex_starts.update(flex)
+        by_week[w] = {pos: fixed.get(pos, 0) + flex.get(pos, 0) for pos in sorted(set(fixed) | set(flex))}
+    seats = _flex_seats(flex_starts, len(weeks))
+    starters = {pos: max(1, k) for pos, k in fixed.items()}
+    for pos, share in seats.items():
+        if pos in starters:
+            starters[pos] += share
+        elif share >= 1:
+            starters[pos] = share
+    return {"teams": teams, "fixed": fixed, "flex_slots": flex_slots, "weeks": by_week,
+            "flex_starts": dict(sorted(flex_starts.items())), "flex_seats": seats,
+            "starters": dict(sorted(starters.items())), "note": FLEX_NOTE if flex_slots else None,
+            "incomplete_team_weeks": incomplete}
+
+
+def _flex_seats(flex_starts: Counter, n: int) -> dict[str, int]:
+    """Season flex starters per position: the weekly mean of filled flex slots, rounded half up, apportioned to the
+    positions by largest remainder (ties: position name). Rounding each position on its own could count one slot twice
+    (an OP that is a QB half the weeks and an RB the other half would add one QB and one RB); this never hands out more
+    flex starters than the league's mean filled flex slots, rounded."""
+    if not n or not flex_starts:
+        return {}
+    seats = {pos: k // n for pos, k in flex_starts.items()}
+    left = _round_half_up(sum(flex_starts.values()), n) - sum(seats.values())
+    for pos in sorted((p for p in flex_starts if flex_starts[p] % n), key=lambda p: (-(flex_starts[p] % n), p))[:left]:
+        seats[pos] += 1
+    return dict(sorted(seats.items()))
 
 
 class AssetBoard:
@@ -75,7 +149,12 @@ class AssetBoard:
         self.weeks = list(window.weeks)
         rostered = [p for ps in state.rosters.values() for p in ps]
         self.teams = len(state.rosters)
-        self.starters = {pos: max(1, n * self.teams) for pos, n in _fixed_counts(state.slots).items()}
+        # The league reference assignment: every team's canonical optimal lineups (also reused by team_needs).
+        self.lineups = {t: project_team(state.rosters[t], state.slots, window, state.projections)
+                        for t in sorted(state.rosters)}
+        self._roster_refs = {t: state.rosters[t] for t in self.lineups}
+        self.reference = league_reference(self.lineups, state.slots, self.weeks)
+        self.starters = self.reference["starters"]
         self.base: dict[str, dict[int, dict]] = {}
         positions = sorted({p.position for p in rostered if p.position})
         for pos in positions:
@@ -84,14 +163,20 @@ class AssetBoard:
                 fa = [v for p in state.free_agents if p.position == pos and w not in p.unavailable_weeks
                       and (v := projection(state.projections, p.espn_player_id, w)) is not None]
                 if fa:
-                    per[w] = {"level": max(fa), "source": "best available free agent"}
+                    per[w] = {"level": max(fa), "source": "best available free agent", "measured": True}
                 else:
                     vals = sorted((v for p in rostered if p.position == pos and w not in p.unavailable_weeks
                                    and (v := projection(state.projections, p.espn_player_id, w)) is not None),
                                   reverse=True)
-                    k = self.starters.get(pos, self.teams)
+                    # A lineup-eligible position uses that week's starters, even a flex-only one whose season
+                    # share rounded to 0; only a position no slot accepts falls back to one per team.
+                    lineup_pos = pos in self.starters or lineup_relevant(pos, state.slots)
+                    k = self.reference["weeks"][w].get(pos, 0) if lineup_pos else self.teams
+                    # `measured` False: no projected player beyond the starters, so the 0.0 level is a stand-in, not a
+                    # measurement (the trade values board reports such a week as unknown; the engines here keep 0.0).
                     per[w] = {"level": vals[k] if len(vals) > k else 0.0,
-                              "source": "league-structure replacement (no free agent projected)"}
+                              "source": "league-structure replacement (no free agent projected)",
+                              "measured": len(vals) > k}
             self.base[pos] = per
         self.profiles = {p.espn_player_id: self._profile(p) for p in rostered}
         by_pos: dict[str, list[tuple[float, int]]] = {}
@@ -115,7 +200,7 @@ class AssetBoard:
 
     def _profile(self, p: RosterPlayer) -> dict:
         avail = (self.state.availability or {}).get(p.espn_player_id) or {}
-        relevant = lineup_relevant(p.position, self.state.slots) and bool(p.pro_team)
+        relevant = lineup_relevant(p, self.state.slots) and bool(p.pro_team)
         par, raw, missing, blocked, per = 0.0, 0.0, [], [], {"regular": 0.0, "playoff": 0.0}
         base = self.base.get(p.position, {})
         for w in self.weeks:
@@ -144,7 +229,7 @@ class AssetBoard:
                 "replacement_per_week": r(sum((base.get(w) or {}).get("level", 0.0) for w in self.weeks) / len(self.weeks))
                 if self.weeks else None,
                 "replacement_source": sources, "missing_weeks": missing, "nfl_ineligible_weeks": blocked,
-                "availability_status": status, "fantasy_ir_slot": p.on_ir,
+                "availability_status": status, "fantasy_ir_slot": p.on_ir, **({"fantasy_taxi_slot": True} if p.on_taxi else {}),
                 "return_unconfirmed": status in (INELIGIBLE, ELIGIBLE_UNCONFIRMED),
                 "eligibility_unknown": status == UNKNOWN, "no_eligible_week": status == NO_WEEK_LEFT,
                 "position_rank": None, "position_rank_of": None, "league_starters_at_position": None,
@@ -154,7 +239,8 @@ class AssetBoard:
         """Asset-balance diagnostic for a package; 'you' = the side sending `mine_send`."""
         a = [self.profiles[x] for x in mine_send]
         b = [self.profiles[x] for x in their_send]
-        out = {"you_send": a, "they_send": b, "label": None, "text": None, "note": NOTE,
+        note = NOTE + (" " + self.reference["note"] if self.reference["note"] else "")
+        out = {"you_send": a, "they_send": b, "label": None, "text": None, "note": note,
                "thresholds": {"balanced_ratio": round(BALANCED_RATIO, 3), "significant_ratio": SIGNIFICANT_RATIO,
                               "replacement_per_week": REPLACEMENT_PER_WEEK},
                "you_send_par": None, "they_send_par": None, "ratio": None, "caveats": []}
@@ -186,6 +272,10 @@ class AssetBoard:
                     for x in a + b if x["return_unconfirmed"] and not x["nfl_ineligible_weeks"]]
         caveats += [f"{x['name']}: in a fantasy IR slot; his value assumes he plays every week he is not NFL-restricted"
                     for x in a + b if x["fantasy_ir_slot"] and not x["return_unconfirmed"]]
+        if self.reference["flex_slots"] and self.reference["incomplete_team_weeks"]:
+            caveats.append(f"League flex starter counts use known projections only for "
+                           f"{self.reference['incomplete_team_weeks']} team-week(s) with an unprojected player; "
+                           "starter-caliber labels may shift when those projections arrive")
         out.update(label=label, text=LABELS[label], you_send_par=r(pa), they_send_par=r(pb), ratio=round(ratio, 3),
                    you_send_starter_caliber=sa, they_send_starter_caliber=sb, caveats=caveats,
                    per_week={"you_send": r(pa / n), "they_send": r(pb / n)})
@@ -196,10 +286,13 @@ class AssetBoard:
 
 def team_needs(state, window: Window, team_id: int, board: AssetBoard, team: dict | None = None) -> dict:
     """Per position: the team's fixed starters' average projected points per slot-week (canonical
-    optimal lineups) and its starter-caliber players who start at most half the weeks ("surplus").
+    optimal lineups) and its starter-caliber players who start at most half the weeks ("surplus"; a start
+    in a flex slot counts, and starter-caliber is the board's flex-aware league reference).
     The average is unknown (None) when a rostered player at the position lacks an ESPN projection in
     any week: an empty or partial slot is never scored as a measured 0."""
     roster = state.rosters[team_id]
+    if team is None and board.state is state and board.window == window and board._roster_refs.get(team_id) is roster:
+        team = board.lineups[team_id]                  # the same canonical lineups, already computed
     team = team or project_team(roster, state.slots, window, state.projections)
     counts = _fixed_counts(state.slots)
     n = max(1, len(window.weeks))
@@ -210,7 +303,7 @@ def team_needs(state, window: Window, team_id: int, board: AssetBoard, team: dic
         missing = any(pos_of.get(pid) == pos for w in team["weeks"] for pid in w["missing_projection_ids"])
         pts = sum(a["points"] or 0.0 for w in team["weeks"] for a in w["assignment"]
                   if a["slot"] == pos and slot_filled(a))         # the K/D/ST waiver streamer counts too
-        surplus = [p.espn_player_id for p in roster if p.position == pos and not p.on_ir
+        surplus = [p.espn_player_id for p in roster if p.position == pos and not p.reserved
                    and board.profiles.get(p.espn_player_id, {}).get("starter_caliber") and starts[p.espn_player_id] * 2 <= n]
         out[pos] = {"slot_points_per_week": None if missing else r(pts / (n * k)), "_raw": None if missing else pts / (n * k),
                     "slots": k, "surplus": surplus, "incomplete": missing}

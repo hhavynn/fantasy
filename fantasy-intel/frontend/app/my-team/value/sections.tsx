@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BarChart, LineChart } from "@/components/charts";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Delta, EmptyState, Method, Pos, Section, SortableTh, VisuallyHidden } from "@/components/ui";
@@ -16,7 +16,7 @@ const HEALTHY = ["ACTIVE", "NORMAL"];
 
 const REASON_TEXT: Record<string, string> = {
   flex_competition: "lost FLEX/slot competition", outscored: "outscored at his position", bye: "NFL bye",
-  zero_projection: "projected 0", no_projection: "no projection", ir: "IR (inactive)",
+  zero_projection: "projected 0", no_projection: "no projection", ir: "IR (inactive)", taxi: "taxi squad (inactive)",
   streamable: "a waiver streamer projects more",
 };
 
@@ -222,7 +222,11 @@ function StartStrip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
   );
 }
 
-export function MarginalTable({ d, phase, sort, sp }: { d: TeamValue; phase: TvPhase; sort: SortState; sp: Params }) {
+/** Words that depend on the league: `proj` the projections ("ESPN" or "Ours"), `pv` the provider ("ESPN" or "Sleeper"). */
+export type TvWords = { proj: string; pv: string };
+const ESPN_WORDS: TvWords = { proj: "ESPN", pv: "ESPN" };
+
+export function MarginalTable({ d, phase, sort, sp, words = ESPN_WORDS }: { d: TeamValue; phase: TvPhase; sort: SortState; sp: Params; words?: TvWords }) {
   const phaseWeeks = d.overview?.phases?.[phase]?.weeks ?? d.window.weeks;
   const phaseWeekSet = new Set(phaseWeeks);
   const countIn = (weeks: number[]) => weeks.filter((w) => phaseWeekSet.has(w)).length;
@@ -249,7 +253,7 @@ export function MarginalTable({ d, phase, sort, sp }: { d: TeamValue; phase: TvP
           <thead>
             <tr>
               <SortableTh sortKey="name" label="Player" current={sort} searchParams={sp} defaultDir="asc" />
-              <SortableTh sortKey="proj" label="ESPN proj" align="right" current={sort} searchParams={sp} title="ESPN projected points in this window" />
+              <SortableTh sortKey="proj" label={`${words.proj} proj`} align="right" current={sort} searchParams={sp} title={`${words.proj} projected points in this window`} />
               <SortableTh sortKey="marginal" label="Lineup marginal" align="right" current={sort} searchParams={sp} title="Lineup points added in the selected window" />
               <SortableTh sortKey="regular" label="Regular" align="right" current={sort} searchParams={sp} title="Lineup marginal, regular season" />
               <SortableTh sortKey="playoff" label="Playoff" align="right" current={sort} searchParams={sp} title="Lineup marginal, fantasy playoffs" />
@@ -266,7 +270,7 @@ export function MarginalTable({ d, phase, sort, sp }: { d: TeamValue; phase: TvP
                 <tr key={p.espn_player_id}>
                   <td><span className={styles.person}><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></span></td>
                   <td className="num">
-                    {raw.points !== null ? num(raw.points, 1) : <span className="faint" title={`No ESPN projection for ${plural(raw.missing_weeks.length, "week")} ${raw.missing_weeks.join(", ")}`}>known {num(raw.known_points, 1)}</span>}
+                    {raw.points !== null ? num(raw.points, 1) : <span className="faint" title={`No ${words.proj} projection for ${plural(raw.missing_weeks.length, "week")} ${raw.missing_weeks.join(", ")}`}>known {num(raw.known_points, 1)}</span>}
                   </td>
                   <td className="num"><b><Points value={marginalFor(p, phase)} known={knownMarginalFor(p, phase)} /></b></td>
                   <td className="num faint">{num(p.marginal.regular, 1)}</td>
@@ -275,7 +279,8 @@ export function MarginalTable({ d, phase, sort, sp }: { d: TeamValue; phase: TvP
                   <td><StartStrip p={p} weeks={phaseWeeks} /></td>
                   <td className={styles.context}>
                     <span className={styles.tags}>
-                      {p.on_ir && <Badge value="IR" tone="bad" title="Inactive in the canonical lineup until ESPN shows him off IR" />}
+                      {p.on_ir && <Badge value="IR" tone="bad" title={`Inactive in the canonical lineup until ${words.pv} shows him off IR`} />}
+                      {p.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: rostered, but never in the canonical lineup" />}
                       {p.injury_status && !HEALTHY.includes(p.injury_status) && !p.on_ir && <Badge value={p.injury_status} />}
                       {exactIR && (
                         <span className="faint">
@@ -309,7 +314,7 @@ function fmtSigned(v: number | null | undefined): string {
 
 // ------------------------------------------------------------------ bench --
 
-export function BenchSection({ d }: { d: TeamValue }) {
+export function BenchSection({ d, words = ESPN_WORDS }: { d: TeamValue; words?: TvWords }) {
   const b = d.bench!;
   if (b.players.length === 0) return null;
   const cand = new Set(b.consolidation_candidates);
@@ -325,7 +330,7 @@ export function BenchSection({ d }: { d: TeamValue }) {
           <thead>
             <tr>
               <th>Player</th>
-              <th className="num" title="ESPN projected points in weeks he is benched">Unused proj</th>
+              <th className="num" title={`${words.proj} projected points in weeks he is benched`}>Unused proj</th>
               <th className="num" title="Lineup points he adds">Lineup marginal</th>
               <th>Why he sits</th>
               <th>Covers if a starter is gone</th>
@@ -394,7 +399,7 @@ export function SlotGaps({ d }: { d: TeamValue }) {
   );
 }
 
-export function WaiverMoves({ d }: { d: TeamValue }) {
+export function WaiverMoves({ d, words = ESPN_WORDS }: { d: TeamValue; words?: TvWords }) {
   const up = d.upgrades!;
   const fa = up.free_addition;
   return (
@@ -414,7 +419,7 @@ export function WaiverMoves({ d }: { d: TeamValue }) {
           </p>
         ) : <p className="faint">No fully projected free agent improves the lineup.</p>}
         {fa.excluded_position_limit > 0 && (
-          <p className={styles.faintText}>{fa.excluded_position_limit} available players skipped: adding them would exceed an ESPN position limit.</p>
+          <p className={styles.faintText}>{fa.excluded_position_limit} available players skipped: adding them would exceed {words.pv === "ESPN" ? "an" : "a"} {words.pv} position limit.</p>
         )}
       </div>
       {up.add_drop.length > 0 && (
@@ -444,7 +449,7 @@ export function WaiverMoves({ d }: { d: TeamValue }) {
               <li key={w.add_id}>
                 {w.recommendation} {w.add_name ?? w.add_id}{w.drop_name ? ` / drop ${w.drop_name}` : ""}:{" "}
                 {w.known_ros_delta !== undefined ? <b><Exact value={w.ros_delta} known={w.known_ros_delta} /></b> : null}{" "}
-                <span className="faint">({w.status}; waiver score {num(w.waiver_score, 2)})</span>
+                <span className="faint">({w.status}; waiver score {num(w.waiver_score, 2, "Partial score: lineup gain unknown (a player has no historical value); unknown is not zero.")})</span>
               </li>
             ))}
           </ul>
@@ -580,7 +585,7 @@ export function RaceContext({ d }: { d: TeamValue }) {
 
 // ----------------------------------------------------------------- method --
 
-export function ValueMethod({ d }: { d: TeamValue }) {
+export function ValueMethod({ d, words = ESPN_WORDS }: { d: TeamValue; words?: TvWords }) {
   const ov = d.overview!;
   return (
     <Method title="How to read this">
@@ -588,11 +593,13 @@ export function ValueMethod({ d }: { d: TeamValue }) {
         {d.notes.map((n, i) => <li key={i}>{n}</li>)}
         <li>{ov.league_ranks.rule}</li>
         {ov.league_ranks.excluded_weeks.length > 0 && (
-          <li>Weeks left out of league ranks: {ov.league_ranks.excluded_weeks.map((w) => `week ${w.week} (${w.incomplete_teams.join(", ")} incomplete)`).join("; ")}.</li>
+          <li>Weeks left out of league ranks: {ov.league_ranks.excluded_weeks.map((w) => `week ${w.week} (${w.reason ?? `${w.incomplete_teams.join(", ")} incomplete`})`).join("; ")}.</li>
         )}
         {ov.league_ranks.teams_unranked.length > 0 && <li>Teams without a roster snapshot are not ranked: {ov.league_ranks.teams_unranked.join(", ")}.</li>}
         {d.window.reason && <li>Projection window: {d.window.reason}</li>}
-        <li>Data: ESPN league synced {when(d.freshness.league_synced_at)} · ESPN projections synced {when(d.freshness.projections_synced_at)}.</li>
+        <li>Data: {words.pv} league synced {when(d.freshness.league_synced_at)} · {words.proj === "ESPN"
+          ? <>ESPN projections synced {when(d.freshness.projections_synced_at)}</>
+          : <>Fantasy Intel projections (Ours) as of {when(d.freshness.projections_synced_at)}</>}.</li>
       </ul>
     </Method>
   );

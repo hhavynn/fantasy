@@ -10,22 +10,36 @@ Serve it with FANTASY_DB_PATH=<path> ESPN_SEASON=2026 (the fixture season).
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import _bootstrap  # noqa: F401
 
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
+import synthetic_pace  # noqa: E402
 import synthetic_research  # noqa: E402
+import synthetic_splits  # noqa: E402
 from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
 from app.analytics.pipeline import run_analytics  # noqa: E402
 from app.db.connection import connect, fetch_dicts, open_db  # noqa: E402
+from app.espn import sync as espn_sync  # noqa: E402
 from app.espn.sync import run_espn_sync  # noqa: E402
 
 REGULAR_PERIODS = 14
+# The ESPN sync dates its snapshots (ownership, projection history, roster history) by today's date. The fixture is
+# dated by the day its goldens were recorded instead, so the goldens do not change at midnight UTC.
+FIXTURE_DAY = date(2026, 10, 20)
+
+
+class _FixtureDate(date):
+    @classmethod
+    def today(cls) -> date:
+        return FIXTURE_DAY
 TEAMS = [1, 2, 3, 4]
 
 
@@ -42,8 +56,9 @@ def build(db_path: Path) -> dict:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     for p in (db_path, db_path.with_suffix(db_path.suffix + ".wal")):
         p.unlink(missing_ok=True)
-    run_espn_sync(lambda: open_db(db_path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
-                  client=FakeEspnClient(), save_raw_payloads=False)
+    with patch.object(espn_sync, "date", _FixtureDate):
+        run_espn_sync(lambda: open_db(db_path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
+                      client=FakeEspnClient(), save_raw_payloads=False)
     con = connect(db_path)
     try:
         # A full regular season: weeks before CURRENT final, the rest scheduled and unplayed.
@@ -78,6 +93,14 @@ def build(db_path: Path) -> dict:
         # Research Lab pool (WR/RB/TE usage) on top of the league fixture; written after analytics so the
         # ESPN-only pipeline leaves it alone.
         stats["research"] = synthetic_research.write(con, SEASON)
+        # Pace lab (issue #211): two finished synthetic seasons of team-week aggregates, drives and schedules, so the
+        # current season's pages read exactly what they read before.
+        stats["pace"] = synthetic_pace.write(con, (SEASON - 2, SEASON - 1))
+        # Game splits (issue #210): an invented team with weekly roster statuses, in SEASON - 3 (2023). Not 2024-2025: the
+        # pace lab reads every final schedule row of its seasons, so the invented teams' games would show there as
+        # final games with no play-by-play. nfl_schedules already exists here (the league fixture creates it), so
+        # neither writer creates it; each replaces only its own rows.
+        stats["game_splits"] = synthetic_splits.write(con, SEASON - 3)
         return stats
     finally:
         con.close()

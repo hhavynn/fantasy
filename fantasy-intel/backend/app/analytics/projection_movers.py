@@ -452,12 +452,17 @@ def _payload(season: int, source: str, view: str, position: str | None, ctx: dic
             "thresholds": dict(THRESHOLDS)}
 
 
-def movement(con, season: int, *, source: str = "espn", view: str = "ros", position: str | None = None,
-             baseline: str | None = None, limit: int = 15) -> dict:
+def movement(con, season: int, *, source: str | None = None, view: str = "ros", position: str | None = None,
+             baseline: str | None = None, limit: int = 15, player: int | None = None) -> dict:
     """The `projection-movers/v1` payload (module docstring). ValueError for an invalid source, view, position or
     baseline (a baseline that is unknown or not older than the latest snapshot). Every mover's `evidence` is None:
-    app.analytics.mover_evidence.attach fills it for the listed risers and fallers."""
-    source = ps.normalize(source)
+    app.analytics.mover_evidence.attach fills it for the listed risers and fallers. `attribution` is None too:
+    app.analytics.projection_attribution.attach fills it for those movers and a requested player.
+
+    `player` (an ESPN id, optional): kept in `players` even when outside the MAX_PLAYERS largest changes, and reported
+    in `requested_player` {espn_player_id, status: listed | filtered | not_comparable | not_found, reason}, a key
+    present only when a player is requested, so a stale link never silently shows someone else."""
+    source = ps.normalize(source, con, season)
     if view not in VIEWS:
         raise ValueError(f"view must be one of {', '.join(VIEWS)}")
     position = position.upper() if position else None
@@ -540,13 +545,19 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
 
     n, reasons = len(window), {}
     movers, counts = [], {"up": 0, "down": 0, "flat": 0}
+    requested = None if player is None else {"espn_player_id": player, "status": "not_found",
+                                             "reason": "not a QB, RB, WR or TE with a forecast in either compared run"}
     for pid, pos in sorted(position_of.items()):
         if position and pos != position:
+            if pid == player:
+                requested.update(status="filtered", reason=f"a {pos}, outside the {position} filter")
             continue
         (before, why_b), (after, why_a) = resolved["before"][pid], resolved["after"][pid]
         if before is None or after is None:
             why = why_b or why_a
             reasons[why] = reasons.get(why, 0) + 1
+            if pid == player:
+                requested.update(status="not_comparable", reason=why)
             continue
         b_raw, a_raw = totals["before"][pid], totals["after"][pid]
         b, a = round(b_raw, 2), round(a_raw, 2)
@@ -567,7 +578,8 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
                        "bye_before": x["bye"], "bye_after": y["bye"],
                        "status_before": x["status"], "status_after": y["status"],
                        "horizon_before": x["horizon"], "horizon_after": y["horizon"]} for x, y in zip(before, after)],
-            "components": _split(_components(before, after), delta) if ours else None, "evidence": None})
+            "components": _split(_components(before, after), delta) if ours else None, "evidence": None,
+            "attribution": None})
 
     key = lambda m: (m["name"] or "", m["espn_player_id"])
     movers_by_delta = sorted(movers, key=lambda m: (-abs(m["delta"]), *key(m)))
@@ -576,6 +588,13 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
     out["fallers"] = sorted((m for m in movers if m["relevant"] and m["delta"] <= -THRESHOLDS["min_delta"]),
                             key=lambda m: (m["delta"], *key(m)))[:limit]
     out["players"] = movers_by_delta[:MAX_PLAYERS]
+    if requested is not None:
+        hit = next((m for m in movers if m["espn_player_id"] == player), None)
+        if hit is not None:
+            requested.update(status="listed", reason=None)
+            if all(m is not hit for m in out["players"]):     # beyond the cap: kept, last, for his detail
+                out["players"].append(hit)
+        out["requested_player"] = requested
     out["summary"] = {"compared": len(movers), "risers": counts["up"], "fallers": counts["down"],
                       "unchanged": counts["flat"], "not_comparable": sum(reasons.values()),
                       "not_comparable_reasons": dict(sorted(reasons.items(), key=lambda kv: (-kv[1], kv[0])))}
@@ -595,6 +614,6 @@ def _notes(ours: bool, experimental: bool) -> list[str]:
 def snapshots(con, season: int, source: str) -> list[dict]:
     """Newest-first stored snapshots of the source: {id, label, taken_at (ISO), cycle_week, model_version, run_ids}.
     ours lists only cutoffs that have a candidate run made before its week's kickoff (rows are not read here)."""
-    source = ps.normalize(source)
+    source = ps.normalize(source, con, season)
     snaps = _ours_index(con, season)["snaps"] if source == "independent" else _espn_snapshots(con, season)
     return [_public(s) for s in snaps]

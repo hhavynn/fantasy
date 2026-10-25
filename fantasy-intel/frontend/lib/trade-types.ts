@@ -1,5 +1,6 @@
 // V3 trade analyzer + discovery API types (GET /api/trades/options, POST /api/trades/evaluate,
 // GET /api/trades/discover). Kept apart from lib/types.ts.
+import type { ProvenancePayload, WithProvenance } from "./signal-provenance";
 import type { KdstStreaming, League, ManagerContext, TradeDeltas, TradeResult, TradeSide, TradeWindow } from "@/lib/types";
 
 export type AvailabilityBrief = {
@@ -11,11 +12,15 @@ export type OptionPlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   on_ir: boolean; injury_status: string | null; ros_projected_points: number | null;
   nfl_ineligible_weeks: number[]; availability: AvailabilityBrief | null;
+  /** Sleeper taxi squad: inactive on this roster, arrives active after a trade (absent for everyone else). */
+  on_taxi?: boolean;
 };
 export type OptionTeam = { team_id: number; name: string; abbrev: string; is_mine: boolean; roster: OptionPlayer[] };
 export type TradeOptionsV3 = {
   league: League; evaluation: TradeWindow; teams: OptionTeam[]; active_capacity: number;
   position_limits: Record<string, number>; max_players_per_side: number; availability_note: string;
+  /** signal-provenance.v1: league data, rest-of-season projections, injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
 };
 
 export type AvailabilityRecord = AvailabilityBrief & {
@@ -37,7 +42,8 @@ export type InjuryScenarios = {
 };
 
 export type RosterIssues = {
-  active_before_drops: number; active_capacity: number; over_capacity_by: number;
+  /** null when roster legality is unverified: the count leaves players out. */
+  active_before_drops: number | null; active_capacity: number; over_capacity_by: number | null;
   position_limits: { position: string; limit: number; count_before_drops: number; over_by: number }[];
 };
 
@@ -48,7 +54,7 @@ export type TradeSideV3 = TradeSide & {
   displaced: { espn_player_id: number; name: string | null; position: string | null; starts_lost: number[]; starts_gained: number[] }[];
 };
 
-export type TradeResultV3 = Omit<TradeResult, "team_a" | "team_b" | "players" | "trade"> & {
+export type TradeResultV3 = Omit<TradeResult, "team_a" | "team_b" | "players" | "trade"> & WithProvenance & {
   trade: TradeResult["trade"] & { team_a_sends_count: number; team_b_sends_count: number; max_players_per_side: number };
   team_a: TradeSideV3; team_b: TradeSideV3;
   players: (TradeResult["players"][number] & { availability: AvailabilityRecord | null })[];
@@ -65,6 +71,8 @@ export type AssetProfile = {
   par_regular: number | null; par_playoff: number | null; espn_points_eligible_weeks: number | null;
   replacement_per_week: number | null; replacement_source: string[]; missing_weeks: number[];
   nfl_ineligible_weeks: number[]; availability_status: string | null; fantasy_ir_slot: boolean; return_unconfirmed: boolean;
+  /** Sleeper taxi squad (absent for everyone else). */
+  fantasy_taxi_slot?: boolean;
   eligibility_unknown: boolean; position_rank: number | null; position_rank_of: number | null;
   league_starters_at_position: number | null; starter_caliber: boolean;
 };
@@ -213,7 +221,13 @@ export type DiscoveryV3 = {
     uncertain: boolean; warning: string | null; start_week_reason: string | null };
   query: { team_id: number; mode: string; phase: string; strictness: string; positions: string[]; include_kdst: boolean;
     shapes: string[]; sort: string; category: string | null; opponent: number | null; limit: number; heuristic: boolean;
-    kdst_streaming?: boolean };
+    kdst_streaming?: boolean; target_player?: number | null; target_position?: string | null; need?: string | null; weeks?: string | null };
+  /** Targeted discovery (issue #182): what the view was asked to bring in, as resolved; absent on an older backend. */
+  target?: DiscoveryTarget;
+  target_positions?: string[];
+  needs?: Record<string, string>;
+  /** The horizon a targeted view judges your gain over (the focus weeks, else the phase). */
+  horizon?: { kind: "weeks" | "phase"; phase: string | null; weeks: number[]; label: string; phrase: string };
   mode_text: string;
   sections: Record<string, DResult[]>;
   tiers: Record<string, string>;
@@ -224,7 +238,9 @@ export type DiscoveryV3 = {
       excluded_invalid_roster: number; excluded_missing_data: number; not_evaluated: number; not_evaluated_reason: string | null;
       termination: string; exhaustive: boolean; bounds_valid: boolean; seconds: { stage_a: number; stage_b: number } } | null;
     heuristic: { method: string; shapes: string[]; exhaustive: boolean; packages_evaluated: number; qualifying_rows: number;
-      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string } | null;
+      beam: { seeds: number; width: number; pool_per_signal: number }; seconds: number; note: string;
+      /** Only when the beam's work budget stopped it early for at least one manager. */
+      work_budget?: BeamWorkBudget } | null;
     exact_shapes: string[]; heuristic_shapes: string[]; positions: string[] | null;
   };
   opponents: { opponent_team_id: number; team_name: string | null;
@@ -234,7 +250,7 @@ export type DiscoveryV3 = {
   asset_note: string; asset_thresholds: { balanced_ratio: number; significant_ratio: number; replacement_per_week: number };
   search: { consistency_checked: number; consistency_failures: number };
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean;
-    injury_status: string | null; nfl_ineligible_weeks: number[] }>;
+    on_taxi?: boolean; injury_status: string | null; nfl_ineligible_weeks: number[] }>;
   modes: Record<string, string>; phases: string[]; strictness_options: Record<string, string>;
   categories: Record<string, string>; sorts: string[]; exact_shapes: string[]; heuristic_shapes: string[];
   kdst_policy: string; kdst_streaming?: KdstStreaming; availability_note: string; note: string; assumptions: string[]; limitations: string[];
@@ -242,7 +258,34 @@ export type DiscoveryV3 = {
 
 /** The page header and filters (`GET /api/trades/discover/context`): no search is run. */
 export type DiscoveryContext = Pick<DiscoveryV3, "league" | "anchor" | "teams" | "evaluation" | "query" | "mode_text" | "modes"
-  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes"> & DualValueTop;
+  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes" | "target" | "target_positions" | "needs">
+  & DualValueTop & WithProvenance;
+
+/** A roster need as the backend resolved it (`weakest`: a position; `bye`: a week); unresolved needs say why. */
+export type NeedResolution = { kind: "weakest" | "bye"; resolved: boolean; position: string | null; week: number | null; reason: string };
+
+/** The resolved target of a discovery view. */
+export type DiscoveryTarget = {
+  active: boolean;
+  player: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null; team_id: number;
+    team_name: string | null } | null;
+  position: string | null; need: NeedResolution | null; weeks: number[] | null;
+};
+
+/** One row's trade-off statements in a targeted view (`target_fit`). Every number is a canonical delta or a count. */
+export type TargetFit = {
+  matched: number[];
+  horizon: { label: string; weeks: number[]; mine_delta: number | null; theirs_delta: number | null };
+  tradeoffs: { kind: "horizon" | "target" | "depth" | "roster_fit" | "partner"; text: string }[];
+};
+
+/** `GET /api/trades/discover/targets`: what a targeted search can aim at, without running one. */
+export type DiscoveryTargets = DiscoveryContext & {
+  players: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null; team_id: number;
+    team_name: string | null; on_ir: boolean; on_taxi?: boolean; injury_status: string | null }[];
+  positions: string[];
+  need_resolution: { weakest: NeedResolution; bye: NeedResolution };
+};
 
 /** One results-table row (`GET /api/trades/discover/summary`); the rest of the row is its `DEvidence`. */
 export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor_team_id" | "opponent_team_id" | "opponent_name"
@@ -252,6 +295,8 @@ export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor
   rationale: { trade_type: { kind: string; text: string }; concerns: string[] };
   manager_context: { trade_history: Pick<ManagerContext["trade_history"], "completed_trades" | "confidence"> } | null;
   dual_value_summary?: DualValueSummary | null;
+  /** Targeted views only. */
+  target_fit?: TargetFit;
 };
 
 /** `/discover` with each row cut to its table summary; `names` covers only the players shown. */
@@ -324,3 +369,10 @@ export type TradeVsFreeAgency =
     pool: { available_players_scored: number; excluded_unprojected: Record<string, number>; acquisition_types: Record<string, number> };
     assumptions: string[]; limitations: string[];
   };
+
+/** `coverage.heuristic.work_budget`: the larger-shape search stopped early for some managers (backend
+ * `TradeSearch.beam`, BEAM_WORK_PER_OPPONENT). Present only when the budget was reached. */
+export type BeamWorkBudget = {
+  per_opponent: number; unit: string; opponents_cut: number[]; opponents: number;
+  packages_evaluated: number; packages_generated: number; note: string;
+};

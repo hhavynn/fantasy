@@ -184,6 +184,21 @@ def is_restricted(rec: dict | None) -> bool:
     return bool(rec) and rec["status"] in RESTRICTED
 
 
+def roster_weeks(con, season: int) -> list[int] | None:
+    """The regular-season weeks of `season` with at least one nflverse weekly roster row (the rows load_availability
+    reads), ascending; None when the table or its week/status columns are missing. Rows for another season never
+    count: an empty list means nothing can be verified for this season, not that nobody is on a reserve list."""
+    if not table_exists(con, "nfl_rosters_weekly"):
+        return None
+    cols = set(table_columns(con, "nfl_rosters_weekly"))
+    if not {"week", "status"} <= cols:
+        return None
+    reg = " AND (game_type = 'REG' OR game_type IS NULL)" if "game_type" in cols else ""
+    return [int(r["week"]) for r in fetch_dicts(
+        con, f"SELECT DISTINCT week FROM nfl_rosters_weekly WHERE season = ?{reg} AND week IS NOT NULL ORDER BY 1",
+        [season])]
+
+
 def load_availability(con, season: int, players: list, weeks: tuple[int, ...] | list[int],
                       proj: dict[int, dict[int, float]]) -> dict[int, dict]:
     """Availability records for `players` (RosterPlayer). Missing tables degrade to ESPN-only records."""
@@ -215,8 +230,8 @@ def load_availability(con, season: int, players: list, weeks: tuple[int, ...] | 
                         WHERE r.season = ?{reg} AND {pid} IN ({ph})
                         ORDER BY 1, r.week""", [season, *ids]):
                     rows_by.setdefault(int(r["espn_player_id"]), []).append(r)
-            lw = fetch_dicts(con, f"SELECT max(week) AS w FROM nfl_rosters_weekly r WHERE season = ?{reg}", [season])
-            latest_week = lw[0]["w"] if lw else None
+            loaded = roster_weeks(con, season)
+            latest_week = loaded[-1] if loaded else None
     if table_exists(con, "nfl_schedules"):
         cols = set(table_columns(con, "nfl_schedules"))
         if {"home_team", "away_team", "week"} <= cols:

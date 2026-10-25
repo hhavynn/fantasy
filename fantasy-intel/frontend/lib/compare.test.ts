@@ -579,3 +579,14 @@ test("rowNote drops not-applicable parts (the cells carry the reason) and keeps 
   assert.equal(rowNote(null), null);
   assert.equal(rowNote("Position-relative ratings: not equal value"), "Position-relative ratings: not equal value");
 });
+
+test("a league without ESPN projections (Sleeper) drops the ESPN rows and says Ours only", () => {
+  const r = fresh();
+  const keys = projectionRows(r, false).map((x) => x.key);
+  assert.ok(!keys.includes("next_week_espn") && !keys.includes("ros_espn"));
+  assert.deepEqual(projectionRows(r, true).map((x) => x.key), projectionRows(r).map((x) => x.key));
+  assert.ok(!allRows(r, false).some((x) => x.key === "next_week_espn" || x.key === "ros_espn"));
+  assert.equal(allRows(r, false).length, allRows(r).length - allRows(r).filter((x) => x.key === "next_week_espn" || x.key === "ros_espn").length);
+  assert.equal(projectionSourceLine("independent", false), "Projections: Ours");
+  assert.equal(projectionSourceLine("independent", true), "Projections: ESPN + Ours");
+});

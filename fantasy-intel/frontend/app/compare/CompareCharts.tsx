@@ -5,6 +5,8 @@ import {
   type ChartSeries, type CompareResponse,
   opportunityPoints, remainingProjectionChart, scoringLabel, weeklyPointsChart,
 } from "@/lib/compare";
+import { providerName } from "@/lib/labels";
+import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import styles from "./compare.module.css";
 
 const oneDecimal = (v: number) => v.toFixed(1);
@@ -38,7 +40,10 @@ function ChartData({ xName, xLabels, series }: { xName: string; xLabels: string[
 }
 
 /** Weekly points, opportunity vs production and the remaining-season projections. Server-rendered SVG. */
-export function ChartsSection({ r }: { r: CompareResponse }) {
+export function ChartsSection({ r, profile = ESPN_PROFILE }: { r: CompareResponse; profile?: LeagueProfile }) {
+  // A Sleeper league: scores come from Sleeper and there are no ESPN projections, only Fantasy Intel's own.
+  const provider = providerName(profile.provider);
+  const espnProjections = profile.providerProjections;
   const [a, b] = r.players;
   const names = `${a.player.full_name ?? "Player A"} and ${b.player.full_name ?? "Player B"}`;
   const weekly = weeklyPointsChart(r);
@@ -64,12 +69,12 @@ export function ChartsSection({ r }: { r: CompareResponse }) {
                 yFormat={oneDecimal}
                 ariaLabel={`Weekly league points, weeks 1 to ${last}, ${names}`}
                 title="Weekly league points"
-                caption={`${scoringLabel(r.scoring)}, weeks 1 to ${last}. A gap is a bye or a week with no ESPN score.`}
+                caption={`${scoringLabel(r.scoring)}, weeks 1 to ${last}. A gap is a bye or a week with no ${provider} score.`}
               />
               <ChartData xName="Week" xLabels={weekly.xLabels} series={weekly.series} />
             </>
           ) : (
-            <EmptyState title="No weekly points yet">Neither player has an ESPN score in a completed week, so there is no weekly line to draw.</EmptyState>
+            <EmptyState title="No weekly points yet">Neither player has {provider === "ESPN" ? "an ESPN" : `a ${provider}`} score in a completed week, so there is no weekly line to draw.</EmptyState>
           )}
         </div>
 
@@ -87,7 +92,7 @@ export function ChartsSection({ r }: { r: CompareResponse }) {
           )}
         </div>
 
-        <div className={styles.chartBlock}>
+        {espnProjections ? <div className={styles.chartBlock}>
           {remaining ? (
             <>
               <LineChart
@@ -102,7 +107,11 @@ export function ChartsSection({ r }: { r: CompareResponse }) {
           ) : (
             <EmptyState title="No remaining-season projections">The league&apos;s projection window is unknown or neither player has an ESPN projection for the remaining weeks.</EmptyState>
           )}
-        </div>
+        </div> : !remaining?.ours ? (
+          <div className={styles.chartBlock}>
+            <EmptyState title="No remaining-season projections">The league&apos;s projection window is unknown or neither player has a Fantasy Intel projection for the remaining weeks.</EmptyState>
+          </div>
+        ) : null}
 
         {remaining?.ours ? (
           <div className={styles.chartBlock}>
@@ -111,7 +120,9 @@ export function ChartsSection({ r }: { r: CompareResponse }) {
               yFormat={oneDecimal}
               ariaLabel={`Ours projected points for the remaining weeks, ${names}`}
               title="Remaining weeks: Ours"
-              caption="Fantasy Intel's own numbers, drawn only where the model produced one: ESPN stand-ins and byes are gaps."
+              caption={espnProjections
+                ? "Fantasy Intel's own numbers, drawn only where the model produced one: ESPN stand-ins and byes are gaps."
+                : "Fantasy Intel's own numbers, drawn only where the model produced one: byes and missing weeks are gaps."}
             />
             <ChartData xName="Week" xLabels={remaining.xLabels} series={remaining.ours} />
           </div>

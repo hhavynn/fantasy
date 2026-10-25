@@ -37,6 +37,20 @@ Search (details and proofs in docs/v2_trade_discovery.md):
 
 A candidate qualifies when the anchor's canonical rest-of-season or playoff delta is positive.
 Categories are sign-based (no thresholds). Orderings are descriptive, never acceptance estimates.
+
+Targeted discovery (issue #182, docs/v2_trade_discovery.md "Targeted discovery") adds two optional inputs, neither of
+which is a weight or a new valuation:
+
+  * a TradeTarget (a named player and/or a position the anchor wants to receive) filters the candidates every search
+    stage ranks: the exact top K is the exact top K among matching candidates (the bounds are per candidate, so
+    filtering never invalidates them), and the beam seeds only matching 1-for-1 packages (it only adds players, so
+    every package it grows still matches);
+  * focus weeks (a short horizon or a bye week inside the window) add the anchor's focus delta: the same canonical
+    weekly deltas summed over those weeks (NULL when any of them is incomplete), its own stage-A bound (a sum of the
+    same weekly bounds) and its own sort, `focus_gain`. A candidate whose focus delta is positive also qualifies, and
+    missing data is judged over the focus weeks: an unknown rest-of-season total does not exclude a candidate whose
+    focus delta is complete. The targeted regular-season horizon is the regular-season weeks as focus weeks
+    (trade_practical.regular_season_weeks), so a regular-season-only gain is screened, bounded and qualified too.
 """
 
 from __future__ import annotations
@@ -44,11 +58,12 @@ from __future__ import annotations
 import time
 from bisect import insort
 from collections import Counter
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from itertools import combinations
 
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
-from .team_lineups import NDIGITS, STREAMER_IDS, RosterPlayer, lineup_relevant, r, slot_filled, stream_levels
+from .lineup import unsupported_of
+from .lineup_totals import LineupTotals
+from .team_lineups import NDIGITS, RosterPlayer, lineup_relevant, r, slot_filled
 from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
                      evaluate_trade, legal_roster)
 
@@ -60,11 +75,21 @@ HEURISTIC_SHAPES: dict[str, tuple[int, int]] = {"2-for-2": (2, 2), "3-for-1": (3
                                                 "3-for-2": (3, 2), "2-for-3": (2, 3), "3-for-3": (3, 3)}
 ALL_SHAPES = {**SHAPES, **HEURISTIC_SHAPES}
 SORTS = ("my_gain", "their_gain", "combined", "min_side", "playoff_gain", "min_side_regular", "min_side_playoff")
+# Anchor-side sorts used by targeted discovery only (not offered by the API's `sort`): the anchor's regular-season delta
+# and his delta over the search's focus weeks.
+TARGET_SORTS = ("regular_gain", "focus_gain")
 SKILL_POSITIONS = ("QB", "RB", "WR", "TE")
 DEFAULT_POSITIONS = SKILL_POSITIONS          # K and D/ST only when asked for (docs: "D/ST and K policy")
 BEAM_SEEDS = 6                               # 1-for-1 seeds per opponent (by stage-A smaller-side bound)
 BEAM_WIDTH = 6                               # packages kept per expansion step
 BEAM_POOL = 4                                # players per side and signal offered to the expansion
+# Work budget of the beam, per opponent: lineup totals (each side of an exact package evaluation and each forced-drop
+# candidate set it solves, TradeSearch.work). Deterministic (a package costs the same whether or not it is cached).
+# Standard leagues stay well below it (at most about 7,400 per opponent in the synthetic 16-player 1-FLEX and IDP
+# leagues, about 600 in the E2E league), so their results never change; a deep league (FX-17: 27 active players, many
+# forced drops per package, up to about 56,000) reaches it, and the expansion then stops for that opponent and says so
+# (`work_budget`).
+BEAM_WORK_PER_OPPONENT = 15_000
 CATEGORIES = {
     "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
     "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
@@ -84,103 +109,40 @@ HALF_UNIT = 0.5 * 10 ** -NDIGITS   # a canonical delta is rounded, so it can exc
 # single delta (and for min_side, a min of rounded deltas); combined = round(round(mine) + round(theirs)).
 ROUNDING_SLACK = {"my_gain": HALF_UNIT, "their_gain": HALF_UNIT, "playoff_gain": HALF_UNIT,
                   "min_side": HALF_UNIT, "combined": 3 * HALF_UNIT, "min_side_regular": HALF_UNIT,
-                  "min_side_playoff": HALF_UNIT}
+                  "min_side_playoff": HALF_UNIT, "regular_gain": HALF_UNIT, "focus_gain": HALF_UNIT}
 NOTE = ("Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same "
         "computation as the manual evaluator. Categories and orderings describe projected starting-lineup results "
         "only; they do not estimate whether a manager would accept.")
 
 
+@dataclass(frozen=True)
+class TradeTarget:
+    """What the anchor asked to receive (issue #182): one named player, at least one player at a position, or both.
+    A filter on candidates, never a weight: a matching trade is valued and ranked exactly like any other."""
+    player: int | None = None
+    position: str | None = None
+
+    def matches(self, receives, position_of) -> bool:
+        if self.player is not None and self.player not in receives:
+            return False
+        return self.position is None or any(position_of(x) == self.position for x in receives)
+
+    @property
+    def key(self) -> tuple:
+        return (self.player, self.position)
+
+
+def _target_key(target: TradeTarget | None) -> tuple:
+    return (None, None) if target is None else target.key
+
+
 # ------------------------------------------------------------------ lineup totals --
 
-class _Totals:
-    """Known-projection optimal starting totals per week for arbitrary sets of player ids. With a
-    single flex slot type the optimum is: best players per fixed slot, then the best remaining
-    flex-eligible players (the exchange argument in analytics/lineup.py); mixed flex types use the
-    exact assign_lineup itself."""
-
-    def __init__(self, state: LeagueState, weeks: tuple[int, ...], pids: set[int], positions: dict[int, str | None],
-                 teams: dict[int, str | None], blocked: dict[int, frozenset] | None = None):
-        self.slots = state.slots
-        fixed = [s for s in state.slots if s not in FLEX_ELIGIBILITY]
-        self.fixed_groups = [(s, fixed.count(s)) for s in dict.fromkeys(fixed)]   # slot order (contiguous)
-        flex = [s for s in state.slots if s in FLEX_ELIGIBILITY]
-        self.m = len(flex)
-        runs = [s for i, s in enumerate(fixed) if i == 0 or fixed[i - 1] != s]
-        # Mixed flex types need the exact search; non-contiguous fixed slots would change the summation order.
-        self.general = len(set(flex)) > 1 or len(runs) != len(self.fixed_groups)
-        self.elig = set(FLEX_ELIGIBILITY[flex[0]]) if flex else set()
-        self.flex_only = [p for p in sorted(self.elig) if p not in dict(self.fixed_groups)]
-        self.pos = positions
-        blocked = blocked or {}
-        # A verified NFL-ineligible week (RosterPlayer.unavailable_weeks): he cannot start and his missing
-        # or present projection never matters, exactly as in team_lineups.project_week.
-        self.val = [{p: (positions.get(p), float(state.projections[p][w])) for p in pids
-                     if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
-        self.negative = any(v < 0 for row in self.val for _, v in row.values())
-        # The K/D/ST waiver streamer (team_lineups.project_week): a player every roster always has, worth the
-        # week's streaming baseline. Adding one fixed element to every set keeps the lineup total monotone and
-        # submodular, so every stage-A bound below stays valid.
-        levels = stream_levels(state.projections)
-        self.stream = [{pos: per[w] for pos, per in levels.items() if pos in state.slots and per.get(w) is not None}
-                       for w in weeks]
-        relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
-        self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
-                        for w, row in zip(weeks, self.val)]
-        self.solves = 0
-
-    def week(self, ids, i: int) -> float:
-        row, stream = self.val[i], self.stream[i]
-        if self.general:
-            return lineup_total(assign_lineup([{"espn_player_id": p, "position": self.pos.get(p), "value": row[p][1]}
-                                               for p in ids if p in row]
-                                              + [{"espn_player_id": STREAMER_IDS[pos], "position": pos, "value": v}
-                                                 for pos, v in stream.items()], self.slots))
-        by: dict = {pos: [v] for pos, v in stream.items()}
-        for p in ids:
-            e = row.get(p)
-            if e is not None:
-                lst = by.get(e[0])
-                if lst is None:
-                    by[e[0]] = [e[1]]
-                else:
-                    lst.append(e[1])
-        # Same picks, same order and the same sum() as project_week (slot order, best first; CPython's
-        # float sum is compensated), so totals are bit-identical to the evaluator's and every rounded
-        # delta matches.
-        picks, rest = [], []
-        for pos, n in self.fixed_groups:
-            vs = by.get(pos)
-            if vs:
-                vs.sort(reverse=True)
-                picks += vs[:n]
-                if pos in self.elig:
-                    rest += vs[n:]
-        if self.m:
-            for pos in self.flex_only:
-                rest += by.get(pos, ())
-            rest.sort(reverse=True)
-            picks += rest[:self.m]
-        return sum(picks)
-
-    def vec(self, ids) -> tuple[float, ...]:
-        self.solves += len(self.val)
-        return tuple(self.week(ids, i) for i in range(len(self.val)))
-
-    def complete(self, ids) -> tuple[bool, ...]:
-        s = set(ids)
-        return tuple(not (miss & s) for miss in self.missing)
-
-    def value(self, pid: int, i: int) -> float:
-        e = self.val[i].get(pid)
-        return 0.0 if e is None else e[1]
+_Totals = LineupTotals      # the totals-only solver (analytics/lineup_totals.py); the old name stays importable
 
 
 def _active(players: list[RosterPlayer]) -> list[int]:
-    return [p.espn_player_id for p in players if not p.on_ir]
-
-
-def _minus(ids: list[int], *out: int) -> list[int]:
-    return [x for x in ids if x not in out]
+    return [p.espn_player_id for p in players if not p.reserved]    # IR and taxi players never start
 
 
 # --------------------------------------------------------------------- the search --
@@ -189,7 +151,8 @@ class TradeSearch:
     """Stage A runs once in the constructor; `top()` runs stages B (cached) for any sort/filter."""
 
     def __init__(self, state: LeagueState, anchor: int, shapes=tuple(SHAPES), opponents=None,
-                 max_exact: int = DEFAULT_MAX_EXACT, positions=DEFAULT_POSITIONS):
+                 max_exact: int = DEFAULT_MAX_EXACT, positions=DEFAULT_POSITIONS, focus_weeks=None,
+                 beam_budget: int | None | str = "default"):
         t0 = time.perf_counter()
         requested = set(shapes)
         if anchor not in state.rosters:
@@ -211,51 +174,69 @@ class TradeSearch:
         self.split = self.window.last_regular is not None
         self.reg = [i for i, w in enumerate(self.weeks) if self.window.phase(w) == "regular"]
         self.po = [i for i, w in enumerate(self.weeks) if self.window.phase(w) == "playoff"]
+        # Focus weeks (targeted discovery): a short horizon or a bye week, every one inside the evaluation window.
+        if focus_weeks is not None:
+            focus_weeks = tuple(sorted(set(focus_weeks)))
+            if not focus_weeks or any(w not in self.weeks for w in focus_weeks):
+                raise TradeError(f"focus weeks must be within the evaluation window "
+                                 f"(weeks {self.weeks[0]}-{self.weeks[-1]})" if self.weeks else "no evaluation weeks")
+        self.focus_weeks = focus_weeks
+        self.focus = [self.weeks.index(w) for w in focus_weeks] if focus_weeks else None
         self.players = {p.espn_player_id: p for t in [anchor, *self.opponents] for p in state.rosters[t]}
         self.T = _Totals(state, self.weeks, set(self.players),
                          {p: x.position for p, x in self.players.items()}, {p: x.pro_team for p, x in self.players.items()},
-                         {p: x.unavailable_weeks for p, x in self.players.items() if x.unavailable_weeks})
+                         {p: x.unavailable_weeks for p, x in self.players.items() if x.unavailable_weeks},
+                         eligibility={p: x.eligible_slots for p, x in self.players.items()})
+        # Each team's current lineup values per week, kept once: every roster a trade produces differs from one of them
+        # by a few players and is solved incrementally from it (LineupTotals.vec_change, bit-identical to vec).
+        self.roster_base = {t: self.T.base(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
         self.base = {t: self.T.vec(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
         self.base_complete = {t: self.T.complete(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
         self.exact: dict[str, dict | None] = {}
         self.status: dict[str, str] = {}
+        self.work = 0              # lineup totals evaluated after stage A (exact sides and forced-drop sets)
         self.pairs: dict[str, tuple] = {}            # heuristic exact evaluations (both sides), by key
+        self.pair_work: dict[str, int] = {}          # the lineup totals each of those took (`work`)
+        # the beam's work budget per opponent (None: no budget)
+        self.beam_budget = BEAM_WORK_PER_OPPONENT if beam_budget == "default" else beam_budget
         self.cands = self._screen() if self.shapes else []
         if not self.shapes:
             self.screened_out = 0
-        self._beam: dict | None = None
+        self._beams: dict[tuple, dict] = {}         # beam() results per target
         self.stage_a_seconds = round(time.perf_counter() - t0, 3)
 
     def tradeable(self, players) -> list[int]:
         return sorted(p.espn_player_id for p in players if self.positions is None or p.position in self.positions)
 
     # ---- stage A
-    def _ub(self, after, base) -> tuple[float, float, float]:
+    def _ub(self, after, base) -> tuple[float, float, float, float]:
+        """(rest of season, regular season, playoffs, focus weeks) sums of one side's weekly values."""
         d = [a - b for a, b in zip(after, base)]
-        return sum(d), sum(d[i] for i in self.reg), sum(d[i] for i in self.po)
+        return sum(d), sum(d[i] for i in self.reg), sum(d[i] for i in self.po), \
+            (sum(d[i] for i in self.focus) if self.focus else 0.0)
 
     def _screen(self) -> list[tuple]:
         T, A = self.T, self.anchor
         mine = self.state.rosters[A]
-        a_act = _active(mine)
         a_base = self.base[A]
         m_ids = self.tradeable(mine)
         W = range(len(self.weeks))
-        a_minus = {s: T.vec(_minus(a_act, s)) for s in m_ids}
-        a_pair = {(s1, s2): T.vec(_minus(a_act, s1, s2)) for s1, s2 in combinations(m_ids, 2)} \
+        AB = self.roster_base[A]
+        a_minus = {s: T.vec_change(AB, (s,)) for s in m_ids}
+        a_pair = {(s1, s2): T.vec_change(AB, (s1, s2)) for s1, s2 in combinations(m_ids, 2)} \
             if "2-for-1" in self.shapes else {}
         out = []
         self.screened_out = 0
         for opp in self.opponents:
             theirs = self.state.rosters[opp]
-            o_act = _active(theirs)
             o_base = self.base[opp]
             o_ids = self.tradeable(theirs)
-            o_minus = {t: T.vec(_minus(o_act, t)) for t in o_ids}
-            o_pair = {(t1, t2): T.vec(_minus(o_act, t1, t2)) for t1, t2 in combinations(o_ids, 2)} \
+            OB = self.roster_base[opp]
+            o_minus = {t: T.vec_change(OB, (t,)) for t in o_ids}
+            o_pair = {(t1, t2): T.vec_change(OB, (t1, t2)) for t1, t2 in combinations(o_ids, 2)} \
                 if "1-for-2" in self.shapes else {}
-            a_swap = {(s, t): T.vec(_minus(a_act, s) + [t]) for s in m_ids for t in o_ids}
-            o_swap = {(t, s): T.vec(_minus(o_act, t) + [s]) for s in m_ids for t in o_ids}
+            a_swap = {(s, t): T.vec_change(AB, (s,), (t,)) for s in m_ids for t in o_ids}
+            o_swap = {(t, s): T.vec_change(OB, (t,), (s,)) for s in m_ids for t in o_ids}
             v = {p: tuple(T.value(p, i) for i in W) for p in m_ids + o_ids}
             if "1-for-1" in self.shapes:
                 for s in m_ids:
@@ -286,39 +267,62 @@ class TradeSearch:
 
     def _add(self, out, shape, opp, sends, receives, me_after, me_base, them_after, them_base) -> None:
         me = self._ub(me_after, me_base)
-        if not self.T.negative and me[0] <= EPS and not (self.split and me[2] > EPS):
-            self.screened_out += 1          # provably no rest-of-season or playoff gain for the anchor
+        if not self.T.negative and me[0] <= EPS and not (self.split and me[2] > EPS) and not (self.focus and me[3] > EPS):
+            self.screened_out += 1          # provably no rest-of-season, playoff or focus-week gain for the anchor
             return
         out.append((shape, opp, sends, receives, me, self._ub(them_after(), them_base)))
 
     # ---- stage B
-    def _side(self, team: int, sends: tuple, receives: tuple) -> dict:
-        """Exact canonical comparison for one side (the rules of trades.side_lineups + compare)."""
+    def _side(self, team: int, sends: tuple, receives: tuple, spent: list[int] | None = None) -> dict:
+        """Exact canonical comparison for one side (the rules of trades.side_lineups + compare). The lineup totals it
+        takes (this side plus each forced-drop set solved) are added to `work` and, when given, appended to `spent`: the
+        caller's own count, which a concurrent call on the same (cached) search never touches."""
         st, T = self.state, self.T
+        spent = [] if spent is None else spent
+        self.work += 1
+        spent.append(1)
         roster = st.rosters[team]
         pre = [p for p in roster if p.espn_player_id not in sends] + \
-              [replace(self.players[x], on_ir=False) for x in receives]
+              [replace(self.players[x], on_ir=False, on_taxi=False) for x in receives]
         drops: list[int] = []
         if not legal_roster(pre, st, roster):
-            combo = self._forced_drops(pre, roster, set(receives))
+            try:
+                combo, solves = self._forced_drops(pre, roster, set(receives), team, sends, receives)
+            except EvaluationUnavailable as err:
+                # The search stopped at its own cap after real work: charge it, so a package that abstains costs what
+                # it consumed and repeated abstentions cannot slip past the beam's budget.
+                self.work += err.solves
+                spent.append(err.solves)
+                raise
+            self.work += solves
+            spent.append(solves)
             drops = [p.espn_player_id for p in combo]
-            pre = [p for p in pre if p not in combo]
+            out = {id(p) for p in combo}           # the very objects of `pre`
+            pre = [p for p in pre if id(p) not in out]
         act = _active(pre)
-        after, done_a = T.vec(act), T.complete(act)
+        after = T.vec_change(self.roster_base[team], [*sends, *drops], [x for x in receives if x not in drops])
+        done_a = T.complete(act)
+        if unsupported_of(st.slots):
+            # team_lineups.delta_exact: the slots no engine fills add the same to both lineups only when the trade and
+            # its forced drops leave the players who can start only there unchanged (#253 G3)
+            def offslot(ids) -> frozenset:
+                return frozenset(i for i in ids if not lineup_relevant(self.players.get(i) or T.pos.get(i), st.slots))
+            if offslot(_active(roster)) != offslot(act):
+                done_a = tuple(False for _ in done_a)
         return self._compare(self.base[team], self.base_complete[team], after, done_a, drops)
 
-    def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int]) -> tuple:
+    def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int], team: int,
+                      sends: tuple, receives: tuple) -> tuple[tuple, int]:
         """trades.resolve_roster's choice (the same shared trades.choose_forced_drops) on the same
-        bit-identical totals."""
-        memo: dict[tuple, float] = {}
+        bit-identical totals. Every candidate set only removes players from `after`, so the totals are
+        LineupTotals.removal_total's: a week a removal leaves alone (typically bench players who never start) keeps the
+        full roster's value instead of a new solve, exactly. Returns (the drops, the lineup totals the search solved)."""
+        rt = self.T.removal_total(_active(after), start=self.T.profile_change(self.roster_base[team], sends, receives))
 
         def total(players):
-            key = tuple(sorted(_active(players)))
-            if key not in memo:
-                memo[key] = sum(self.T.vec(list(key)))
-            return memo[key]
-        res = choose_forced_drops(after, before, self.state, incoming, total, self.T.negative)
-        return (res["best"].get(False) or res["best"][True])[1]
+            return rt(_active(players))
+        res = choose_forced_drops(after, before, self.state, incoming, total, self.T.negative, rt.dropping, rt.bound)
+        return (res["best"].get(False) or res["best"][True])[1], res["solves"]
 
     def _compare(self, before, done_b, after, done_a, drops) -> dict:
         d = [a - b for a, b in zip(after, before)]
@@ -328,7 +332,8 @@ class TradeSearch:
             return None if not all(ok[i] for i in idx) else r(sum(d[i] for i in idx))
         ros = agg(range(len(d)))
         rounded = [r(x) for x, k in zip(d, ok) if k]
-        return {"ros_delta": ros,
+        focus = {"focus_delta": agg(self.focus)} if self.focus else {}
+        return {**focus, "ros_delta": ros,
                 "regular_season_delta": agg(self.reg) if self.split else None,
                 "playoff_delta": agg(self.po) if self.split else None,
                 "known_ros_delta": r(sum(d)),
@@ -351,9 +356,9 @@ class TradeSearch:
         row, status = None, "not_qualified"
         try:
             mine = self._side(self.anchor, sends, receives)
-            if mine["ros_delta"] is None:
+            if self._incomplete(mine):
                 status = "excluded_missing_data"
-            elif mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0):
+            elif _qualifies(mine):
                 theirs = self._side(opp, receives, sends)
                 row, status = self._row(shape, opp, sends, receives, mine, theirs), "qualified"
         except EvaluationUnavailable:
@@ -371,20 +376,35 @@ class TradeSearch:
                 "opponent_team_id": opp, "opponent_name": self.state.team_names.get(opp),
                 "sends": list(sends), "receives": list(receives),
                 "mine": mine, "theirs": theirs,
-                "combined_ros_delta": r(m + t) if t is not None else None,
-                "min_side_ros_delta": min(m, t) if t is not None else None,
+                "combined_ros_delta": r(m + t) if m is not None and t is not None else None,
+                "min_side_ros_delta": min(m, t) if m is not None and t is not None else None,
                 "forced_drops": drops, "categories": _categories(shape, mine, theirs)}
 
-    def simpler_equivalent(self, row: dict, category: str | None = None) -> dict | None:
+    def _incomplete(self, mine: dict) -> bool:
+        """The anchor's canonical total is unknown over the horizon the search judges: the focus weeks when it has
+        them (a missing projection outside them never hides a complete focus gain), else the rest of the season."""
+        return (mine.get("focus_delta") if self.focus else mine["ros_delta"]) is None
+
+    def position_of(self, pid: int) -> str | None:
+        p = self.players.get(pid)
+        return p.position if p else None
+
+    def _matches(self, target: TradeTarget | None, receives) -> bool:
+        return target is None or target.matches(receives, self.position_of)
+
+    def simpler_equivalent(self, row: dict, category: str | None = None,
+                           target: TradeTarget | None = None) -> dict | None:
         """The 1-for-1 sub-trade with identical canonical effects for both teams (every aggregate and
         weekly delta and the forced drops: the extra player changes no projected lineup and no roster
         move), but only when that simpler trade is itself eligible for the current results:
-        1-for-1 is a searched shape, it qualifies, and it belongs to the requested category (same
-        opponent by construction). Otherwise None, and the two-player trade is shown."""
+        1-for-1 is a searched shape, it qualifies, it belongs to the requested category and it still brings in the
+        requested target (same opponent by construction). Otherwise None, and the two-player trade is shown."""
         if row["shape"] == "1-for-1" or "1-for-1" not in self.shapes:
             return None
         for s in row["sends"]:
             for t in row["receives"]:
+                if not self._matches(target, (t,)):
+                    continue
                 sub = self.evaluate(("1-for-1", row["opponent_team_id"], (s,), (t,)))
                 if sub and (category is None or category in sub["categories"]) and _same_effects(sub, row):
                     return sub
@@ -392,18 +412,26 @@ class TradeSearch:
 
     # ---- larger shapes: bounded beam expansion (heuristic coverage, exact rows)
     def _pair(self, shape: str, opp: int, sends: tuple, receives: tuple):
-        """Exact both-side comparison of any package (cached); (mine, theirs, status)."""
+        """Exact both-side comparison of any package (cached); (mine, theirs, status). The work it took (lineup totals)
+        is kept with it, so a cached package is charged to a work budget exactly as when it was first solved. That work is
+        counted by this call alone (`spent`), not as a difference of the shared `work` counter: the API serves one cached
+        search to concurrent requests, whose work would otherwise be charged to this package and cut a beam short at a
+        point that depends on timing. Its cost is stored before the package, so a reader that finds the package also
+        finds its cost (two calls racing on one package compute the same result and the same cost)."""
         key = _key(shape, opp, sends, receives)
         if key not in self.pairs:
+            spent: list[int] = []
             try:
-                self.pairs[key] = (self._side(self.anchor, sends, receives), self._side(opp, receives, sends), "evaluated")
+                out = (self._side(self.anchor, sends, receives, spent), self._side(opp, receives, sends, spent), "evaluated")
             except EvaluationUnavailable:
-                self.pairs[key] = (None, None, "excluded_evaluation_unavailable")
+                out = (None, None, "excluded_evaluation_unavailable")
             except TradeError:
-                self.pairs[key] = (None, None, "excluded_invalid_roster")
+                out = (None, None, "excluded_invalid_roster")
+            self.pair_work[key] = sum(spent)
+            self.pairs[key] = out
         return self.pairs[key]
 
-    def beam(self) -> dict:
+    def beam(self, target: TradeTarget | None = None) -> dict:
         """Candidate generation for HEURISTIC_SHAPES, per opponent:
 
           1. signals from exact lineup totals: what each player costs his own team (removal), what he
@@ -419,49 +447,60 @@ class TradeSearch:
              a package whose added player changes neither team's effects is padding and is skipped.
 
         Every row is the exact canonical evaluation, but the list is not exhaustive and not a proven
-        top K: unexamined packages may be better. Coverage is reported per opponent."""
-        if self._beam is not None:
-            return self._beam
+        top K: unexamined packages may be better. Coverage is reported per opponent.
+
+        With a target, the pools also offer the matching players (the named player; the BEAM_POOL players at the
+        position who add most to the anchor) and only matching 1-for-1 pairs seed the beam, so every package grown
+        from them still receives the target. Cached per target."""
+        tk = _target_key(target)
+        if tk in self._beams:
+            return self._beams[tk]
         t0 = time.perf_counter()
         T, A, W = self.T, self.anchor, range(len(self.weeks))
         rows: list[dict] = []
         per_opp = []
         if not self.heuristic_shapes:
-            self._beam = {"rows": [], "per_opponent": [], "evaluated": 0, "seconds": 0.0}
-            return self._beam
+            self._beams[tk] = {"rows": [], "per_opponent": [], "evaluated": 0, "seconds": 0.0}
+            return self._beams[tk]
         max_s = max(HEURISTIC_SHAPES[x][0] for x in self.heuristic_shapes)
         max_r = max(HEURISTIC_SHAPES[x][1] for x in self.heuristic_shapes)
-        mine_act = _active(self.state.rosters[A])
         m_ids = self.tradeable(self.state.rosters[A])
         base_me = sum(self.base[A])
         own = {p: sum(T.value(p, i) for i in W) for p in self.players}
-        my_cost = {x: base_me - sum(T.vec(_minus(mine_act, x))) for x in m_ids}
+        AB = self.roster_base[A]
+        my_cost = {x: base_me - sum(T.vec_change(AB, (x,))) for x in m_ids}
         total_evals = 0
         for opp in self.opponents:
-            o_act = _active(self.state.rosters[opp])
             o_ids = self.tradeable(self.state.rosters[opp])
             if not m_ids or not o_ids:
                 per_opp.append({"opponent_team_id": opp, "seeds": 0, "evaluated": 0, "rows": 0})
                 continue
             base_o = sum(self.base[opp])
-            their_cost = {t: base_o - sum(T.vec(_minus(o_act, t))) for t in o_ids}
-            adds_me = {t: sum(T.vec(mine_act + [t])) - base_me for t in o_ids}
-            adds_them = {x: sum(T.vec(o_act + [x])) - base_o for x in m_ids}
+            OB = self.roster_base[opp]
+            their_cost = {t: base_o - sum(T.vec_change(OB, (t,))) for t in o_ids}
+            adds_me = {t: sum(T.vec_change(AB, (), (t,))) - base_me for t in o_ids}
+            adds_them = {x: sum(T.vec_change(OB, (), (x,))) - base_o for x in m_ids}
 
             def top(ids, score):
                 return [i for i in sorted(ids, key=lambda i: (-score(i), i))[:BEAM_POOL]]
-            pool_t = sorted(set(top(o_ids, lambda t: adds_me[t])) | set(top(o_ids, lambda t: own[t] - their_cost[t])))
+            wanted = [t for t in o_ids if self._matches(target, (t,))] if target is not None else []
+            pool_t = sorted(set(top(o_ids, lambda t: adds_me[t])) | set(top(o_ids, lambda t: own[t] - their_cost[t]))
+                            | set(top(wanted, lambda t: adds_me[t])))
             pool_m = sorted(set(top(m_ids, lambda x: adds_them[x])) | set(top(m_ids, lambda x: own[x] - my_cost[x])))
             approx = sorted(((min(adds_me[t] - my_cost[x], adds_them[x] - their_cost[t]), (x,), (t,))
-                             for x in pool_m for t in pool_t), key=lambda z: (-z[0], z[1], z[2]))[:BEAM_SEEDS]
+                             for x in pool_m for t in pool_t if self._matches(target, (t,))),
+                            key=lambda z: (-z[0], z[1], z[2]))[:BEAM_SEEDS]
             beam, seen, evals, made = [], set(), 0, 0
-            for _, x, t in approx:
+            spent, skipped, steps_left = 0, 0, 0          # work budget: lineup totals charged, packages not evaluated
+            for _, x, t in approx:                         # the seeds are always evaluated
                 mine, theirs, st = self._pair("1-for-1", opp, x, t)
+                spent += self.pair_work[_key("1-for-1", opp, x, t)]
                 evals += 1
                 seen.add((x, t))
                 if st == "evaluated":
                     beam.append((x, t, mine, theirs))
-            for _ in range(max_s + max_r - 2):
+            steps = max_s + max_r - 2
+            for step in range(steps):
                 nxt = []
                 for x, t, pm, pt in beam:
                     grown = [(tuple(sorted(x + (a,))), t) for a in pool_m if a not in x and len(x) < max_s] + \
@@ -470,8 +509,12 @@ class TradeSearch:
                         if (nx, nt) in seen:
                             continue
                         seen.add((nx, nt))
+                        if self.beam_budget is not None and spent >= self.beam_budget:
+                            skipped += 1               # generated but not evaluated: the budget is spent
+                            continue
                         shape = f"{len(nx)}-for-{len(nt)}"
                         mine, theirs, st = self._pair(shape, opp, nx, nt)
+                        spent += self.pair_work[_key(shape, opp, nx, nt)]
                         evals += 1
                         if st != "evaluated":
                             continue
@@ -480,28 +523,50 @@ class TradeSearch:
                         if padding:
                             continue
                         nxt.append((nx, nt, mine, theirs))
-                        if shape in self.heuristic_shapes and mine["ros_delta"] is not None and (
-                                mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0)):
+                        if shape in self.heuristic_shapes and not self._incomplete(mine) and _qualifies(mine) \
+                                and self._matches(target, nt):
                             rows.append(self._row(shape, opp, nx, nt, dict(mine), dict(theirs)))
                             made += 1
                 nxt.sort(key=lambda z: (z[3]["ros_delta"] is None or z[2]["ros_delta"] is None,
                                         -min(z[2]["ros_delta"] or 0.0, z[3]["ros_delta"] or 0.0), z[0], z[1]))
                 beam = nxt[:BEAM_WIDTH]
+                if skipped:
+                    steps_left = steps - step - 1      # later expansion steps never run
+                    break
                 if not beam:
                     break
             total_evals += evals
-            per_opp.append({"opponent_team_id": opp, "seeds": len(approx), "pool_mine": pool_m, "pool_theirs": pool_t,
-                            "evaluated": evals, "rows": made})
-        self._beam = {"rows": rows, "per_opponent": per_opp, "evaluated": total_evals,
-                      "seconds": round(time.perf_counter() - t0, 3)}
-        return self._beam
+            entry = {"opponent_team_id": opp, "seeds": len(approx), "pool_mine": pool_m, "pool_theirs": pool_t,
+                     "evaluated": evals, "rows": made}
+            if skipped:
+                entry["work_budget"] = {"reached": True, "packages_generated": evals + skipped,
+                                        "packages_not_evaluated": skipped, "expansion_steps_not_run": steps_left}
+            per_opp.append(entry)
+        out = {"rows": rows, "per_opponent": per_opp, "evaluated": total_evals,
+               "seconds": round(time.perf_counter() - t0, 3)}
+        cut = [x for x in per_opp if "work_budget" in x]
+        if cut:
+            generated = sum(x["evaluated"] + x.get("work_budget", {}).get("packages_not_evaluated", 0) for x in per_opp)
+            out["work_budget"] = {
+                "per_opponent": self.beam_budget, "unit": "lineup totals (exact package sides and forced-drop sets)",
+                "opponents_cut": [x["opponent_team_id"] for x in cut], "opponents": len(per_opp),
+                "packages_evaluated": total_evals, "packages_generated": generated,
+                "note": f"A work budget of {self.beam_budget:,} lineup totals per manager stopped the larger-shape "
+                        f"search early for {len(cut)} of {len(per_opp)} managers: it evaluated {total_evals:,} of the "
+                        f"{generated:,} packages it generated, and later expansion steps did not run for them. "
+                        "Unevaluated packages may be better than the ones listed."}
+        self._beams[tk] = out
+        return self._beams[tk]
 
-    def heuristic_top(self, sort: str, category: str | None, opponent: int | None, limit: int) -> dict:
+    def heuristic_top(self, sort: str, category: str | None, opponent: int | None, limit: int,
+                      target: TradeTarget | None = None) -> dict:
         """Rows from the beam for the requested filters, ranked like top(); coverage is heuristic."""
-        b = self.beam()
+        self._check_sort(sort)
+        b = self.beam(target)
         rk = _rank_key(sort)
         found = sorted((x for x in b["rows"] if (opponent is None or x["opponent_team_id"] == opponent)
-                        and (category is None or category in x["categories"])), key=rk)
+                        and (category is None or category in x["categories"])
+                        and self._matches(target, x["receives"])), key=rk)
         return {"results": [{**x, "simpler_equivalent": None} for x in found[:max(1, min(int(limit), MAX_LIMIT))]],
                 "search": {"method": "heuristic_beam", "shapes": self.heuristic_shapes, "exhaustive": False,
                            "packages_evaluated": b["evaluated"], "qualifying_rows": len(b["rows"]),
@@ -509,18 +574,28 @@ class TradeSearch:
                            "per_opponent": b["per_opponent"], "seconds": b["seconds"],
                            "note": "Exact evaluation of every listed package, but candidate generation is a bounded "
                                    "beam: packages outside the pools and the beam were never evaluated, so this is "
-                                   "not a proven top list."}}
+                                   "not a proven top list." + (" " + b["work_budget"]["note"] if "work_budget" in b
+                                                               else ""),
+                           **({"work_budget": b["work_budget"]} if "work_budget" in b else {})}}
 
     # ---- ranking
-    def top(self, sort: str = "my_gain", category: str | None = None, opponent: int | None = None,
-            limit: int = DEFAULT_LIMIT, include_redundant: bool = False) -> dict:
-        if sort not in SORTS:
+    def _check_sort(self, sort: str) -> None:
+        if sort not in SORTS and sort not in TARGET_SORTS:
             raise TradeError(f"sort must be one of {', '.join(SORTS)}")
+        if sort == "focus_gain" and not self.focus:
+            raise TradeError("focus_gain needs focus weeks")
+
+    def top(self, sort: str = "my_gain", category: str | None = None, opponent: int | None = None,
+            limit: int = DEFAULT_LIMIT, include_redundant: bool = False, target: TradeTarget | None = None) -> dict:
+        self._check_sort(sort)
         if category is not None and category not in CATEGORIES:
             raise TradeError(f"category must be one of {', '.join(CATEGORIES)}")
         limit = max(1, min(int(limit), MAX_LIMIT))
         t0 = time.perf_counter()
-        pool = [c for c in self.cands if (opponent is None or c[1] == opponent) and self._may_match(c, category)]
+        # A target only removes candidates; each remaining candidate keeps its own valid bound, so the best-first stop
+        # below proves the top K among the matching candidates.
+        pool = [c for c in self.cands if (opponent is None or c[1] == opponent) and self._may_match(c, category)
+                and self._matches(target, c[3])]
         order = {s: i for i, s in enumerate(SHAPES)}
         pool.sort(key=lambda c: (-_bound(c, sort), order[c[0]], c[1], c[2], c[3]))
         rk = _rank_key(sort)
@@ -543,7 +618,7 @@ class TradeSearch:
             row = self.evaluate(c)
             if row is None or (category and category not in row["categories"]) or row["key"] in keys:
                 continue
-            sub = self.simpler_equivalent(row, category)
+            sub = self.simpler_equivalent(row, category, target)
             if sub is not None and not include_redundant:
                 redundant += 1
                 if sub["key"] not in keys:      # the eligible simpler trade is shown in its place
@@ -641,13 +716,19 @@ def _key(shape, opp, sends, receives) -> str:
     return f"{shape}:{opp}:{'-'.join(map(str, sends))}:{'-'.join(map(str, receives))}"
 
 
+def _qualifies(mine: dict) -> bool:
+    """The anchor gains: rest of season, playoffs or (in a focus search) the focus weeks. Unknown is never a gain."""
+    return any(mine.get(k) is not None and mine[k] > 0 for k in ("ros_delta", "playoff_delta", "focus_delta"))
+
+
 def _bound(c: tuple, sort: str) -> float:
-    """Upper bound on a candidate's sort value. Per-phase bounds are sums of the same weekly bounds
-    over that phase's weeks, so they are upper bounds too."""
+    """Upper bound on a candidate's sort value. Per-phase (and focus-week) bounds are sums of the same weekly
+    bounds over those weeks, so they are upper bounds too."""
     me, them = c[4], c[5]
-    return {"my_gain": me[0], "their_gain": them[0], "combined": me[0] + them[0],
-            "min_side": min(me[0], them[0]), "playoff_gain": me[2],
-            "min_side_regular": min(me[1], them[1]), "min_side_playoff": min(me[2], them[2])}[sort]
+    return {"my_gain": lambda: me[0], "their_gain": lambda: them[0], "combined": lambda: me[0] + them[0],
+            "min_side": lambda: min(me[0], them[0]), "playoff_gain": lambda: me[2],
+            "min_side_regular": lambda: min(me[1], them[1]), "min_side_playoff": lambda: min(me[2], them[2]),
+            "regular_gain": lambda: me[1], "focus_gain": lambda: me[3]}[sort]()
 
 
 def _min(a, b):
@@ -660,7 +741,8 @@ def _sort_value(row: dict, sort: str):
             "combined": row["combined_ros_delta"], "min_side": row["min_side_ros_delta"],
             "playoff_gain": m["playoff_delta"],
             "min_side_regular": _min(m["regular_season_delta"], t["regular_season_delta"]),
-            "min_side_playoff": _min(m["playoff_delta"], t["playoff_delta"])}[sort]
+            "min_side_playoff": _min(m["playoff_delta"], t["playoff_delta"]),
+            "regular_gain": m["regular_season_delta"], "focus_gain": m.get("focus_delta")}[sort]
 
 
 def _rank_key(sort: str):
@@ -704,14 +786,14 @@ def _usage(items: list[dict]) -> list[dict]:
 
 
 def _empty_slots(side: dict) -> list[dict]:
-    """Starting slots the team could fill before the trade but not after (no eligible player)."""
+    """Starting slots the team could fill before the trade but not after (no eligible player): per week and slot
+    label, how many more of them are empty after than before (a slot already empty before is not the trade's)."""
     out = []
     for b, a in zip(side["lineups"]["before"], side["lineups"]["after"]):
-        had = [x["slot"] for x in b["assignment"] if slot_filled(x)]
-        for x in a["assignment"]:
-            if not slot_filled(x) and x["slot"] in had:
-                had.remove(x["slot"])
-                out.append({"week": a["week"], "slot": x["slot"]})
+        filled_before = Counter(x["slot"] for x in b["assignment"] if slot_filled(x))
+        filled_after = Counter(x["slot"] for x in a["assignment"] if slot_filled(x))
+        for slot in dict.fromkeys(x["slot"] for x in a["assignment"]):
+            out += [{"week": a["week"], "slot": slot}] * max(0, filled_before[slot] - filled_after[slot])
     return out
 
 
@@ -729,6 +811,7 @@ def _side_detail(side: dict) -> dict:
         "redundant_incoming_asset": ro["redundant_incoming_asset"],
         "open_active_roster_spots_before": ro["open_active_roster_spots_before"],
         "open_active_roster_spots": ro["open_active_roster_spots"],
+        **({"legality": ro["legality"]} if ro.get("legality") else {}),
         "hypothetical_fa_fill": side["hypothetical_fa_fill"],
         "incomplete": side["incomplete"],
         "empty_slots_after": _empty_slots(side),
@@ -748,6 +831,7 @@ def detail(state: LeagueState, row: dict) -> dict:
         and [d["espn_player_id"] for d in b["roster"]["forced_drops"]] == row["forced_drops"]["theirs"]
     players = [{**{k: p[k] for k in ("espn_player_id", "name", "position", "pro_team", "injury_status", "on_ir",
                                      "from_team_id", "to_team_id", "availability")},
+                **({"on_taxi": True} if p.get("on_taxi") else {}),
                 "marginal_value_on_current_team": p["marginal_value_on_current_team"]["roster_marginal_lineup_points"]}
                for p in res["players"]]
     return {**row, "consistent_with_manual_evaluator": consistent,

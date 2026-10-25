@@ -1,0 +1,81 @@
+// /api/weekly-recap/waiver-feedback
+{
+ "body": {
+  "available_weeks": [
+   1,
+   2
+  ],
+  "definitions": {
+   "cutoff": "For scoring week W: the first listed waiver processing day D after week W-1's last kickoff, at 00:00 UTC+14 (the earliest instant D exists anywhere), or W's first kickoff if earlier. Unknown processing days or kickoffs: no cutoff, the week is ungraded. Rule waiver-feedback.v1.",
+   "decision_set": "The CLAIM rows of your team's latest capture of week W archived strictly before the cutoff, each with its archived suggested drop.",
+   "gain": "gain(x) = sum over the horizon of [best lineup of (roster - drop + x) - best lineup of roster], on the league's actual points, rounded to 0.01. It assumes the claim succeeded and lineups were set optimally both ways: claim order and FAAB are not modelled. A known bye scores 0; any other missing outcome is unknown and the claim is excluded.",
+   "horizon": "Scoring weeks W to W+2 (at most the league's final scoring period).",
+   "regret_lower_bound": "max(0, max over the capture's other archived candidates c of gain(c) - gain(x)), each c with its own archived drop. Only archived candidates are compared, so it is a lower bound.",
+   "roster": "The roster the capture was evaluated from, archived with it (IR slots stay IR).",
+   "verdict": "helped if gain > 0, did not help if gain < 0, push if gain = 0."
+  },
+  "exclusion_reasons": {
+   "drop_not_on_roster": "The archived drop was not on the roster archived with the capture.",
+   "not_eligible": "The archived availability was not free agent or waivers.",
+   "taken_by_other_team": "Another team added the player in that waiver window: whether the claim could have succeeded is unknown.",
+   "unknown_outcome": "A horizon week's outcome is unknown for a player the lineups need (not a known bye)."
+  },
+  "league_name": "Fixture League",
+  "message": "No claim of these weeks can be graded yet; each week says why.",
+  "rule_version": "waiver-feedback.v1",
+  "schema": "waiver-feedback.v1",
+  "scoring_periods": [
+   2
+  ],
+  "season": 2026,
+  "season_to_date": {
+   "did_not_help": 0,
+   "excluded": {},
+   "graded": 0,
+   "helped": 0,
+   "push": 0,
+   "total_gain": null,
+   "weeks": [
+    1,
+    2
+   ]
+  },
+  "selected_week": 2,
+  "status": "nothing_graded",
+  "summary": {
+   "did_not_help": 0,
+   "excluded": {},
+   "graded": 0,
+   "helped": 0,
+   "push": 0,
+   "total_gain": null
+  },
+  "team": {
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "week_status": {
+   "horizon_incomplete": "Not every week of the grading horizon is complete yet.",
+   "kickoff_unknown": "The kickoff times needed to place the waiver cutoff are unknown.",
+   "no_archive": "No waiver recommendations of your team were archived before this week's waiver cutoff.",
+   "no_claims": "The archived recommendations before the cutoff contain no CLAIM.",
+   "no_prior_week": "Week 1 has no waiver run between weeks: nothing to grade.",
+   "no_roster": "No roster was archived with the capture taken before this week's waiver cutoff.",
+   "schedule_unknown": "The league's waiver processing days are unknown, so no recommendation can be shown to be archived before the waiver run."
+  },
+  "weeks": [
+   {
+    "capture": null,
+    "claims": [],
+    "cutoff": null,
+    "excluded": {},
+    "horizon": [],
+    "message": "The league's waiver processing days are unknown, so no recommendation can be shown to be archived before the waiver run.",
+    "roster": null,
+    "status": "schedule_unknown",
+    "week": 2
+   }
+  ]
+ },
+ "status": 200
+}

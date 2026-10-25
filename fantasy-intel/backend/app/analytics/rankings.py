@@ -357,13 +357,11 @@ def _ordered(players: list[dict], key: str, direction: str) -> list[dict]:
     return present + absent
 
 
-def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source: str = "espn", sort: str = "rank",
-                   dir: str | None = None, q: str = "", status: str = "all", limit: int = 100,
-                   offset: int = 0) -> dict:
-    """The Player Rankings payload. ValueError (naming the parameter) for a bad value; RankingsUnavailable when
-    the league is not synced or its current week is unknown."""
-    position, horizon, source, sort_key, direction, needle, status, limit, offset = _validate(
-        position, horizon, source, sort, dir, q, status, limit, offset)
+def rank_pool(con, *, horizon: str, source: str) -> dict:
+    """The whole ranked pool for one window and one (validated) source, before any position / search / roster filter:
+    the league, window, Ours state, notes and every player with his projection block and competition ranks. Shared by
+    build_rankings and analytics/projection_compare.py, so both rank exactly the same way. RankingsUnavailable when the
+    league is not synced or its current week is unknown."""
     lg = latest_league(con, ["league_id", "season", "name"])
     if lg is None:
         raise RankingsUnavailable("ESPN league not synced yet. Run scripts/sync_espn.py.")
@@ -458,13 +456,47 @@ def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source:
                      "position_label": f"{x['position']}{prank}" if prank else None}
         if x["projection"]["status"] in counts:
             counts[x["projection"]["status"]] += 1
+    return {"league": lg, "season": season, "window_state": lw, "window": win, "pool": pool, "players": players,
+            "teams": teams, "espn_synced": espn_synced, "ours": ours, "ours_on": ours_on, "basis": basis,
+            "notes": notes, "unranked": counts, "scoring_fingerprint": fp, "why_scoring": why_scoring,
+            "games": games, "covered": covered}
 
-    matched = [x for x in players
-               if (position == "ALL" or x["position"] == position)
-               and (not needle or needle in _fold(x["full_name"]))
-               and (status == "all"
-                    or (status == "rostered" and x["roster"]["status"] == "ROSTERED")
-                    or (status == "available" and x["roster"]["status"] in ("FREE_AGENT", "WAIVERS")))]
+
+def matches(x: dict, position: str, needle: str, status: str) -> bool:
+    """The position / name / roster filter (applied after ranking, so a filter never renumbers anyone)."""
+    return ((position == "ALL" or x["position"] == position)
+            and (not needle or needle in _fold(x["full_name"]))
+            and (status == "all"
+                 or (status == "rostered" and x["roster"]["status"] == "ROSTERED")
+                 or (status == "available" and x["roster"]["status"] in ("FREE_AGENT", "WAIVERS"))))
+
+
+def newest(values) -> str | None:
+    """The latest non-null stamp as text (freshness lines)."""
+    return _newest(values)
+
+
+def fold(text: str | None) -> str:
+    """Accent- and case-insensitive form of a name, as the search compares it."""
+    return _fold(text)
+
+
+def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source: str | None = None, sort: str = "rank",
+                   dir: str | None = None, q: str = "", status: str = "all", limit: int = 100,
+                   offset: int = 0) -> dict:
+    """The Player Rankings payload. ValueError (naming the parameter) for a bad value; RankingsUnavailable when
+    the league is not synced or its current week is unknown."""
+    source = ps.normalize(source, con)      # no source: the league's default (Phase 4b)
+    position, horizon, source, sort_key, direction, needle, status, limit, offset = _validate(
+        position, horizon, source, sort, dir, q, status, limit, offset)
+    ranked_pool = rank_pool(con, horizon=horizon, source=source)
+    lg, lw, win = ranked_pool["league"], ranked_pool["window_state"], ranked_pool["window"]
+    season, first, pool, players = ranked_pool["season"], win["first"], ranked_pool["pool"], ranked_pool["players"]
+    teams, espn_synced, ours = ranked_pool["teams"], ranked_pool["espn_synced"], ranked_pool["ours"]
+    ours_on, basis, notes, counts = ranked_pool["ours_on"], ranked_pool["basis"], ranked_pool["notes"], ranked_pool["unranked"]
+    fp, why_scoring = ranked_pool["scoring_fingerprint"], ranked_pool["why_scoring"]
+
+    matched = [x for x in players if matches(x, position, needle, status)]
     page = _ordered(matched, sort_key, direction)[offset:offset + limit]
     if sort_key == "ours" and not ours_on:
         notes.append("Sorting by Ours has no effect: Ours is not loaded, so rank order is kept.")

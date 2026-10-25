@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { MovesTable } from "@/components/MovesTable";
@@ -6,16 +6,20 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
-import { num } from "@/lib/format";
+import { Missing, PartialMark, num } from "@/lib/format";
+import { needPartialReason } from "@/lib/waivers";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { ordinal } from "@/lib/matchup";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import type { Matchup } from "@/lib/matchup-types";
+import { signalsOf, type WithProvenance } from "@/lib/signal-provenance";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import { isUnknownTeam, readTeamSelection, withTeamId, type Perspective } from "@/lib/team-perspective";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
@@ -27,7 +31,7 @@ export const metadata = { title: { absolute: "Overview · Fantasy Intel" } };
 type Overview = {
   league: League; my_team: Team | null; team: Team | null; perspective: Perspective | null; standings: Team[]; roster: RosterPlayer[]; injuries: RosterPlayer[];
   needs: Need[]; recent_transactions: Move[]; sync: SyncInfo; nfl_latest_week: number | null;
-};
+} & WithProvenance;
 
 const STANDINGS_SORTS = ["rank", "record", "pf", "pa"] as const;
 const STANDINGS_DEFAULT: SortState = { key: "rank", dir: "asc" };
@@ -43,18 +47,20 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
     );
   }
-  // Each section has its own source; one failing endpoint degrades only its own section. The week band's three
-  // sources start now but are not awaited here: the band streams in behind the header, stat strip and roster.
-  const projection = await getProjectionSource();
+  // Each section has its own source; one failing endpoint degrades only its own section. The decision hub's three
+  // sources start now but are not awaited here: the hub streams in behind the header, stat strip and roster.
+  const [projection, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const provider = providerName(profile.provider);
   // Every section is computed for the selected team (`?team=`); without one, the owner's team as before.
   const matchup = api<Matchup>(withTeamId(withSource("/api/matchup", projection), sel));
-  const startSit = api<StartSitInput>(withTeamId(withSource("/api/start-sit", projection), sel));
-  const waivers = api<{ players: WaiverInput[]; total: number }>(withTeamId("/api/waivers?view=BEST&limit=3", sel));
+  const startSit = api<StartSitInput & WithProvenance>(withTeamId(withSource("/api/start-sit", projection), sel));
+  const waivers = api<{ players: WaiverInput[]; total: number } & WithProvenance>(withTeamId("/api/waivers?view=BEST&limit=3", sel));
   const res = await api<Overview>(withTeamId("/api/overview", sel));
   const band = (
     <Suspense fallback={<WeekBandSkeleton />}>
-      <WeekBand matchup={matchup} startSit={startSit} waivers={waivers} roster={res.ok ? res.data.roster : null}
-                fallbackWeek={res.ok ? res.data.league.current_week : null} />
+      <WeekBand matchup={matchup} startSit={startSit} waivers={waivers} projection={projection}
+                overview={res.ok ? { roster: res.data.roster, league: res.data.league, provenance: res.data.provenance } : null}
+                team={sel.kind === "team" ? String(sel.id) : null} />
     </Suspense>
   );
 
@@ -67,7 +73,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
     );
   }
   if (!res.ok) {
-    // Without the overview, the page is only worth showing if the matchup (the week band's anchor) loaded.
+    // Without the overview, the page is only worth showing if the matchup (the week band's anchor) loaded. That also
+    // keeps the hub to a resolved team: Matchup and Start/Sit both answer 404 with no team in view (#348).
     if (!(await matchup).ok) {
       return (
         <div className="stack">
@@ -100,23 +107,29 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         eyebrow={`Week ${o.league.current_week} · ${o.league.name}`}
         title={me ? me.name : "Team overview"}
         meta={`${me ? `${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}${rank ? ` · ${ordinal(rank)} of ${n}` : ""} · ` : ""}${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
+        // The header vouches for the roster and injuries; the usage signal backs only the hub's trade decisions.
+        provenance={<ProvenanceBadge signals={signalsOf(o.provenance).filter((s) => s.signal !== "usage")} />}
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 
-      {!me && (
+      {!me && (profile.provider === "espn" ? (
         <Notice tone="caution">
           No default team is set (it wasn&apos;t identified from SWID). Pick a team above to analyze it, or set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.
         </Notice>
-      )}
+      ) : (
+        <Notice tone="caution">No default team is set. Pick a team above to analyze it.</Notice>
+      ))}
 
 
-      {projection === "ours" && (
+      {projection === "ours" && profile.providerProjections && (
         <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
           Switched in the header (K and D/ST from our kicker and D/ST models). Waiver and rest-of-season numbers stay on ESPN.
         </Notice>
       )}
 
-      {band}
+      {/* The hub is one team's week: with no team in view (no saved team, no ?team=) Start/Sit and the waivers would
+          answer for whichever team they fall back to, so it waits for a team to be picked (#165) */}
+      {me && band}
 
       {me && (
         <StatStrip compact>
@@ -125,7 +138,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
           <Stat label="Pts against" value={num(me.points_against, 1)} note={paRank ? `${ordinal(paRank)} most allowed` : undefined} />
           <Stat
             label={o.league.is_faab ? "FAAB left" : "Waiver priority"}
-            value={o.league.is_faab ? `$${(o.league.faab_budget ?? 0) - (me.faab_spent ?? 0)}` : `#${me.waiver_rank ?? "?"}`}
+            value={o.league.is_faab
+              ? (o.league.faab_budget != null && me.faab_spent != null ? `$${o.league.faab_budget - me.faab_spent}` : <Missing why="FAAB budget or spending not synced" />)
+              : `#${me.waiver_rank ?? "?"}`}
             note={o.league.is_faab ? `of $${o.league.faab_budget ?? "?"}` : `of ${n} teams`}
           />
           <Stat label="Injuries" value={o.injuries.length} note="designations on the roster" />
@@ -138,7 +153,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Section>
 
         <div className="stack">
-          {o.injuries.length > 0 && <InjuriesSection injuries={o.injuries} />}
+          {o.injuries.length > 0 && <InjuriesSection injuries={o.injuries} provider={provider} />}
           <Section title="Biggest roster needs" subtitle="Where the lineup is thinnest against the league" flush>
             <div className="table-wrap">
               <table>
@@ -153,7 +168,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
                   {o.needs.filter((x) => x.starters_required > 0).map((x) => (
                     <tr key={x.position}>
                       <td><Pos value={x.position} /></td>
-                      <td><Score value={x.need_score * 10} /></td>
+                      <td><Score value={x.need_score * 10} /><PartialMark why={needPartialReason(x.details)} /></td>
                       <td className="num" title={`${x.starters_required} start${x.starters_required === 1 ? "" : "s"}${x.details.flex_slots_filled ? " incl. FLEX" : ""} · ${x.unavailable} out`}>
                         {avail(x.effective_available ?? x.healthy)} / {x.details.depth_target}
                       </td>
@@ -176,12 +191,12 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
 
       <div className="stack">
-        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
+        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0} footnote={o.recent_transactions.length > 0 ? <Link href="/transactions">See all transactions</Link> : undefined}>
           {o.recent_transactions.length === 0
-            ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
+            ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next {provider} sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}
         </Section>
-        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} />
+        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} providerProjections={profile.providerProjections} />
       </div>
     </div>
   );
@@ -232,12 +247,12 @@ function StandingsSection({ standings, sp, selected }: { standings: Team[]; sp: 
   );
 }
 
-function InjuriesSection({ injuries }: { injuries: RosterPlayer[] }) {
+function InjuriesSection({ injuries, provider }: { injuries: RosterPlayer[]; provider: string }) {
   return (
     <Section title="Injuries on the roster" subtitle={`${injuries.length} ${injuries.length === 1 ? "player" : "players"} with a designation`} flush>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
+          <thead><tr><th>Player</th><th>{provider}</th><th>NFL report</th></tr></thead>
           <tbody>
             {injuries.map((p) => (
               <tr key={p.espn_player_id}>

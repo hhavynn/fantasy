@@ -33,7 +33,7 @@ def league(teams: dict[int, list[tuple]], fas: list[tuple] = (), capacity: int |
     return LeagueState(season=2026, slots=slots, final_week=weeks[-1], last_regular=last_regular, start_week=weeks[0],
                        rosters=rosters, free_agents=free, projections=proj, active_capacity=cap,
                        position_limits=limits or {}, team_names={t: f"Team {t}" for t in rosters},
-                       first_projection_week=weeks[0])
+                       first_projection_week=weeks[0], players_missing={t: 0 for t in rosters})
 
 
 def filler(team: int, base: int, qb=15, rb=(9, 8, 4), wr=(9, 8, 4), te=(6,), k=7, dst=7) -> list[tuple]:

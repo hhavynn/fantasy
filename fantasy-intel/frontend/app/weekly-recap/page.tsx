@@ -1,11 +1,15 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import { BarChart } from "@/components/charts";
 import { Badge, Delta, EmptyState, Method, Notice, PageHeader, Pos, Section, Stat, StatStrip, Tabs } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
+import { feedbackPath, type DecisionFeedback } from "@/lib/decision-feedback";
 import { cx } from "@/lib/cx";
 import { date, num, pct } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import {
   backendPath, joinNames, MOVE_TYPE_LABEL, parseRecapQuery, pointsText, recapHref, recordText, scoreBars, sideResult,
@@ -13,13 +17,15 @@ import {
   type RecapQuery, type WeeklyRecap, type WrAward, type WrGame, type WrMatchup, type WrMove, type WrPlayer,
   type WrTeamScore,
 } from "@/lib/weekly-recap";
+import { DecisionFeedbackSection, DecisionFeedbackSkeleton } from "./DecisionFeedback";
 import styles from "./weekly-recap.module.css";
 
 export const metadata = { title: "Weekly recap" };
 
 // Weekly League Recap: one completed matchup period's awards, scoreboard, standings after the week,
 // standout player scores and league activity. Completed matchups only (ESPN winner home, away or tie);
-// no projections, no win probabilities. Every number comes from the backend.
+// no projections, no win probabilities. Every number comes from the backend. "Your decisions" (decision feedback,
+// app/weekly-recap/DecisionFeedback.tsx) streams in beside it from its own endpoint.
 
 const RESULT_TONE = { W: "good", L: "bad", T: "warn" } as const;
 const RESULT_WORD = { W: "Won", L: "Lost", T: "Tied" } as const;
@@ -27,7 +33,10 @@ const STATUS_TONE: Record<string, string> = { STARTER: "info", BENCH: "warn", IR
 
 export default async function WeeklyRecapPage({ searchParams }: PageProps<"/weekly-recap">) {
   const q = parseRecapQuery(await searchParams);
-  const res = await api<WeeklyRecap>(backendPath(q));
+  // Started now, awaited inside its Suspense boundary: the recap renders without waiting for the archive reads.
+  const feedback = api<DecisionFeedback>(feedbackPath(q.week, q.source ?? null));
+  const [res, profile] = await Promise.all([api<WeeklyRecap>(backendPath(q)), getLeagueProfile()]);
+  const labels: L = { prov: providerName(profile.provider), espn: profile.providerProjections };
   if (!res.ok) {
     return (
       <div className="stack">
@@ -37,17 +46,20 @@ export default async function WeeklyRecapPage({ searchParams }: PageProps<"/week
       </div>
     );
   }
-  return <Body d={res.data} q={q} />;
+  return <Body d={res.data} q={q} L={labels} feedback={feedback} />;
 }
 
-function Body({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
+/** The league's provider ("ESPN" or "Sleeper") and whether it publishes projections. */
+type L = { prov: string; espn: boolean };
+
+function Body({ d, q, L, feedback }: { d: WeeklyRecap; q: RecapQuery; L: L; feedback: Promise<ApiResult<DecisionFeedback>> }) {
   if (d.selected_week === null || !d.awards) {
     return (
       <div className="stack">
         <PageHeader title="Weekly recap" meta={<>{d.league_name} {d.season}</>} />
         <Section>
           <EmptyState title="No completed week yet">
-            The recap starts once ESPN marks a matchup final (a winner, or a tie). Live scores from a week in
+            The recap starts once {L.prov} marks a matchup final (a winner, or a tie). Live scores from a week in
             progress never count.
           </EmptyState>
         </Section>
@@ -66,7 +78,7 @@ function Body({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
         meta={<>
           {d.league_name} {d.season} · <b>{d.matchups.length}</b> final {plural(d.matchups.length, "matchup")}
           {pending > 0 && <> · {pending} not final yet</>}
-          {" "}· results only, no projections
+          {" "}· results only; your decisions are graded against forecasts stored before kickoff
         </>}
       >
         <Tabs
@@ -78,12 +90,16 @@ function Body({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
 
       {pending > 0 && (
         <Notice tone="caution" title="This week is not complete">
-          {pending} {plural(pending, "matchup")} {pending === 1 ? "has" : "have"} no ESPN winner yet. Awards and standings
+          {pending} {plural(pending, "matchup")} {pending === 1 ? "has" : "have"} no {L.prov} winner yet. Awards and standings
           use the {d.matchups.length} final {plural(d.matchups.length, "matchup")} only.
         </Notice>
       )}
 
-      <Awards d={d} />
+      <Awards d={d} L={L} />
+
+      <Suspense fallback={<DecisionFeedbackSkeleton />}>
+        <DecisionFeedbackSection pending={feedback} q={view} providerProjections={L.espn} />
+      </Suspense>
 
       <div className={cx("grid grid-2", styles.pair)}>
         <Scoreboard matchups={d.matchups} />
@@ -93,11 +109,11 @@ function Body({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
       <Standings d={d} />
 
       <div className={cx("grid grid-2", styles.pair)}>
-        <Players d={d} q={view} />
-        <Activity d={d} q={view} />
+        <Players d={d} q={view} L={L} />
+        <Activity d={d} q={view} L={L} />
       </div>
 
-      <MethodNotes d={d} />
+      <MethodNotes d={d} L={L} />
     </div>
   );
 }
@@ -135,7 +151,7 @@ function GameAward({ award }: { award: WrAward<WrGame> }) {
   );
 }
 
-function Awards({ d }: { d: WeeklyRecap }) {
+function Awards({ d, L }: { d: WeeklyRecap; L: L }) {
   const a = d.awards!;
   return (
     <div>
@@ -146,8 +162,9 @@ function Awards({ d }: { d: WeeklyRecap }) {
         <TeamAward award={a.highest_scoring_loser} />
       </StatStrip>
       <p className={styles.footnote}>
-        Margins and scores are matchup totals in points. No biggest-upset award: ESPN projections in this database were
-        synced after the games, so there are no genuine pregame expectations for past weeks.
+        Margins and scores are matchup totals in points. No biggest-upset award: {L.espn
+          ? "ESPN projections in this database were synced after the games, so there are no genuine pregame expectations for past weeks."
+          : "no pregame projections are stored for past weeks, so there are no genuine pregame expectations."}
       </p>
     </div>
   );
@@ -281,7 +298,7 @@ function PlayerTable({ rows, empty }: { rows: WrPlayer[]; empty: string }) {
   );
 }
 
-function Players({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
+function Players({ d, q, L }: { d: WeeklyRecap; q: RecapQuery; L: L }) {
   const views = {
     top: { label: "Top scorers", rows: d.standout_players, empty: "No player points recorded for this week" },
     bench: { label: "Best on a bench", rows: d.bench_standouts, empty: "No benched player scored" },
@@ -295,7 +312,7 @@ function Players({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
       title="Standout players"
       flush
       footnote={<>
-        League-scored ESPN points.
+        League-scored {L.prov} points.
         {missing > 0 && <> {missing} rostered {plural(missing, "player has", "players have")} no recorded points for this week and {missing === 1 ? "is" : "are"} left out, not counted as zero.</>}
         {partial > 0 && <> {partial} {plural(partial, "player")} with points for only part of the period {partial === 1 ? "is" : "are"} left out.</>}
       </>}
@@ -313,7 +330,7 @@ function Players({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
 
 // -------------------------------------------------------------------- activity --
 
-function MoveTable({ rows, showBid }: { rows: WrMove[]; showBid: boolean }) {
+function MoveTable({ rows, showBid, prov }: { rows: WrMove[]; showBid: boolean; prov: string }) {
   if (rows.length === 0) return <EmptyState title="Nothing recorded this week" />;
   return (
     <div className="table-wrap">
@@ -327,7 +344,7 @@ function MoveTable({ rows, showBid }: { rows: WrMove[]; showBid: boolean }) {
               <td><PlayerLink id={m.player_id} name={m.player_name} /> <Pos value={m.position} /></td>
               <td>{m.team_name ? <span className={styles.teamCell} title={m.team_name}>{m.team_name}</span> : <span className="missing" title="Team not recorded">—</span>}</td>
               <td>{MOVE_TYPE_LABEL[m.type] ?? m.type}</td>
-              <td>{date(m.processed_at)}</td>
+              <td>{date(m.processed_at, prov)}</td>
               {showBid && <td className="num">{m.bid_amount === null || m.bid_amount === undefined ? "" : `$${m.bid_amount.toFixed(0)}`}</td>}
             </tr>
           ))}
@@ -337,7 +354,7 @@ function MoveTable({ rows, showBid }: { rows: WrMove[]; showBid: boolean }) {
   );
 }
 
-function Activity({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
+function Activity({ d, q, L }: { d: WeeklyRecap; q: RecapQuery; L: L }) {
   const a = d.league_activity;
   if (!a) {
     return (
@@ -362,14 +379,14 @@ function Activity({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
       </>}
     >
       <Tabs className={styles.sectionTabs} label="Activity type" current={recapHref(q)} items={items} />
-      {q.moves === "adds" && <MoveTable rows={a.adds} showBid />}
-      {q.moves === "drops" && <MoveTable rows={a.drops} showBid={false} />}
+      {q.moves === "adds" && <MoveTable rows={a.adds} showBid prov={L.prov} />}
+      {q.moves === "drops" && <MoveTable rows={a.drops} showBid={false} prov={L.prov} />}
       {q.moves === "trades" && (a.trades.length === 0 ? <EmptyState title="No trades this week" /> : (
         <ul className={styles.trades}>
           {a.trades.map((t) => (
             <li key={t.trade_id}>
               <p className={styles.tradeHead}>
-                {date(t.processed_at)}
+                {date(t.processed_at, L.prov)}
                 {t.placed_by === "activity_date" && <span className="faint" title="Seen only in the league activity feed; placed in this week by its date"> · from the activity feed</span>}
               </p>
               <ul className={styles.tradeSides}>
@@ -385,24 +402,24 @@ function Activity({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
 
 // ---------------------------------------------------------------------- method --
 
-function MethodNotes({ d }: { d: WeeklyRecap }) {
+function MethodNotes({ d, L }: { d: WeeklyRecap; L: L }) {
   const check = d.notes.espn_record_check;
   const snaps = d.notes.lineup_snapshot_weeks ?? [];
   const missingLineups = d.scoring_periods.filter((w) => !snaps.includes(w));
   return (
     <Method title="How the recap is built">
       <ul className="reasons">
-        <li>Only matchups ESPN marks final (a winner, or a tie) count. A week in progress shows only its final games, and live points never count.</li>
+        <li>Only matchups {L.prov} marks final (a winner, or a tie) count. A week in progress shows only its final games, and live points never count.</li>
         <li>{d.rules.awards}</li>
         <li>{d.rules.standings}</li>
         <li>{d.rules.players}</li>
         <li>{d.rules.trades}</li>
-        <li>Free-agent pickups and releases carry the time ESPN recorded the request (they execute immediately); waiver claims and trades carry the processing time.</li>
+        <li>Free-agent pickups and releases carry the time {L.prov} recorded the request (they execute immediately); waiver claims and trades carry the processing time.</li>
         {missingLineups.length > 0 && <li>No stored roster snapshot for week {missingLineups.join(", ")}: players from {missingLineups.length === 1 ? "that week" : "those weeks"} show as unrostered.</li>}
         {(d.notes.byes ?? 0) > 0 && <li>{d.notes.byes} one-team {plural(d.notes.byes ?? 0, "row")} (a bye) {d.notes.byes === 1 ? "is" : "are"} left out of the scoreboard.</li>}
         {check?.compared && (check.mismatched_team_ids.length === 0
-          ? <li>Check: the rebuilt records through {periodName(d, d.standings_through!).toLowerCase()} match ESPN&apos;s current team records.</li>
-          : <li>Check: the rebuilt records differ from ESPN&apos;s current records for {check.mismatched_team_ids.length} {plural(check.mismatched_team_ids.length, "team")}; ESPN may count a result this database does not have.</li>)}
+          ? <li>Check: the rebuilt records through {periodName(d, d.standings_through!).toLowerCase()} match {L.prov}&apos;s current team records.</li>
+          : <li>Check: the rebuilt records differ from {L.prov}&apos;s current records for {check.mismatched_team_ids.length} {plural(check.mismatched_team_ids.length, "team")}; {L.prov} may count a result this database does not have.</li>)}
       </ul>
     </Method>
   );

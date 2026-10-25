@@ -600,3 +600,27 @@ def test_r2_snapshot_publish_replaces_motherduck_when_configured(refresh, monkey
     steps = refresh.plan(publish=True)
     assert steps[-1] == "publish_snapshot.py" and "publish_motherduck.py" not in steps
     assert refresh.plan(publish=False) == list(refresh.STEPS)
+
+
+
+def test_league_files_publish_after_the_snapshot_only_when_configured(refresh, monkeypatch):
+    for k, v in {"SNAPSHOT_BUCKET": "b", "R2_ACCOUNT_ID": "a", "R2_ACCESS_KEY_ID": "k", "R2_SECRET_ACCESS_KEY": "s"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("LEAGUE_PUBLISH_ID", raising=False)
+    monkeypatch.delenv("FI_SYNC_DB_URL", raising=False)
+    assert refresh.plan(publish=True)[-1] == refresh.PUBLISH_SNAPSHOT
+    monkeypatch.setenv("LEAGUE_PUBLISH_ID", "lg_" + "a" * 24)
+    assert refresh.plan(publish=True)[-1] == refresh.PUBLISH_SNAPSHOT        # still needs the fi_sync DSN
+    monkeypatch.setenv("FI_SYNC_DB_URL", "postgresql://fi_sync@db.invalid/postgres")
+    assert refresh.plan(publish=True)[-2:] == [refresh.PUBLISH_SNAPSHOT, refresh.PUBLISH_LEAGUES]
+    assert refresh.plan(publish=False)[-1] == "compute_analytics.py"
+
+
+def test_a_retired_classic_site_stops_the_snapshot_publish(refresh, monkeypatch):
+    for k, v in {"SNAPSHOT_BUCKET": "b", "R2_ACCOUNT_ID": "a", "R2_ACCESS_KEY_ID": "k", "R2_SECRET_ACCESS_KEY": "s",
+                 "LEAGUE_PUBLISH_ID": "lg_" + "a" * 24, "FI_SYNC_DB_URL": "postgresql://fi_sync@db.invalid/postgres"}.items():
+        monkeypatch.setenv(k, v)
+    assert refresh.PUBLISH_SNAPSHOT in refresh.plan(publish=True)
+    monkeypatch.setenv("CLASSIC_SITE_ENABLED", "0")
+    steps = refresh.plan(publish=True)
+    assert refresh.PUBLISH_SNAPSHOT not in steps and steps[-1] == refresh.PUBLISH_LEAGUES

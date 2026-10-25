@@ -28,7 +28,8 @@ function availabilityBadge(p: OptionPlayer) {
 
 const playerName = (p: OptionPlayer) => p.name ?? `#${p.espn_player_id}`;
 
-export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle, className, active = true }: {
+export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle, className, active = true,
+  projLabel = "ESPN", providerLabel = "ESPN" }: {
   role: string;
   /** Phones show one side at a time; the inactive side is hidden there (both always show on wider screens). */
   active?: boolean;
@@ -38,6 +39,10 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
   teams: OptionTeam[];
   picked: number[];
   maxPerSide: number;
+  /** "ESPN", or "Ours" for a league whose provider publishes no projections. */
+  projLabel?: string;
+  /** "ESPN" or "Sleeper": whose IR slot it is. */
+  providerLabel?: string;
   onTeam: (teamId: number) => void;
   onToggle: (playerId: number) => void;
 }) {
@@ -95,7 +100,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
         {groups.length === 0 && <p className={styles.none}>No players match.</p>}
         {groups.map((g) => (
           <div key={g.position} className={styles.group}>
-            <h3 className={styles.groupHead}><span>{g.position} · {g.players.length}</span><span>ESPN ROS</span></h3>
+            <h3 className={styles.groupHead}><span>{g.position} · {g.players.length}</span><span>{projLabel} ROS</span></h3>
             <ul className={styles.rows}>
               {g.players.map((p) => {
                 const on = picked.includes(p.espn_player_id);
@@ -110,13 +115,14 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
                       <span className={styles.rowMain}>
                         <PlayerPhoto id={p.espn_player_id} name={playerName(p)} />
                         <span>{playerName(p)}</span>
-                        {p.on_ir && <Badge value="fantasy IR slot" tone="bad" title="In an ESPN IR slot (inactive in the canonical lineup)" />}
+                        {p.on_ir && <Badge value="fantasy IR slot" tone="bad" title={`In ${providerLabel === "ESPN" ? "an" : "a"} ${providerLabel} IR slot (inactive in the canonical lineup)`} />}
+                        {p.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />}
                         {availabilityBadge(p)}
                       </span>
                       <span className={styles.nfl}>{p.pro_team ?? "FA"}</span>
-                      <span className={styles.ros} title="ESPN rest-of-season projection (sum of weekly projections)">
+                      <span className={styles.ros} title={`${projLabel} rest-of-season projection (sum of weekly projections)`}>
                         {p.ros_projected_points === null
-                          ? <span className="missing" title="Incomplete ESPN coverage">—</span>
+                          ? <span className="missing" title={`Incomplete ${projLabel} coverage`}>—</span>
                           : p.ros_projected_points.toFixed(1)}
                       </span>
                     </label>

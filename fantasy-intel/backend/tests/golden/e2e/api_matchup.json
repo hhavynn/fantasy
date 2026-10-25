@@ -1,0 +1,588 @@
+// /api/matchup
+{
+ "body": {
+  "is_bye_week": false,
+  "league": {
+   "current_week": 3,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "matchup_id": 5,
+  "matchup_period": 3,
+  "me": {
+   "abbrev": "T2",
+   "actual_bench": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Juliet RB",
+     "on_bye": false,
+     "player_id": 206,
+     "points": null,
+     "position": "RB",
+     "pro_team": "SEA",
+     "projected_points": 11.0,
+     "slot": "BE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Sierra WR",
+     "on_bye": false,
+     "player_id": 307,
+     "points": null,
+     "position": "WR",
+     "pro_team": "TB",
+     "projected_points": 11.0,
+     "slot": "BE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Kilo RB",
+     "on_bye": false,
+     "player_id": 207,
+     "points": null,
+     "position": "RB",
+     "pro_team": "TB",
+     "projected_points": 11.0,
+     "slot": "IR"
+    }
+   ],
+   "actual_lineup": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Bravo QB",
+     "on_bye": false,
+     "player_id": 102,
+     "points": null,
+     "position": "QB",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "QB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Hotel RB",
+     "on_bye": false,
+     "player_id": 204,
+     "points": null,
+     "position": "RB",
+     "pro_team": "PHI",
+     "projected_points": 11.0,
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "India RB",
+     "on_bye": false,
+     "player_id": 205,
+     "points": null,
+     "position": "RB",
+     "pro_team": "SF",
+     "projected_points": 11.0,
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Papa WR",
+     "on_bye": false,
+     "player_id": 304,
+     "points": null,
+     "position": "WR",
+     "pro_team": "PHI",
+     "projected_points": 11.0,
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Quebec WR",
+     "on_bye": false,
+     "player_id": 305,
+     "points": null,
+     "position": "WR",
+     "pro_team": "SF",
+     "projected_points": 11.0,
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Victor TE",
+     "on_bye": false,
+     "player_id": 402,
+     "points": null,
+     "position": "TE",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "TE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Bills D/ST",
+     "on_bye": false,
+     "player_id": -16002,
+     "points": null,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "D/ST"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Zulu K",
+     "on_bye": false,
+     "player_id": 502,
+     "points": null,
+     "position": "K",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "K"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Romeo WR",
+     "on_bye": false,
+     "player_id": 306,
+     "points": null,
+     "position": "WR",
+     "pro_team": "SEA",
+     "projected_points": 11.0,
+     "slot": "FLEX"
+    }
+   ],
+   "actual_points": null,
+   "bench": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Papa WR",
+     "on_bye": false,
+     "player_id": 304,
+     "points": 8.3,
+     "position": "WR",
+     "pro_team": "PHI"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Hotel RB",
+     "on_bye": false,
+     "player_id": 204,
+     "points": 6.3,
+     "position": "RB",
+     "pro_team": "PHI"
+    }
+   ],
+   "known_points": 79.7,
+   "lineup": [
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Bravo QB",
+     "on_bye": false,
+     "player_id": 102,
+     "points": 9.3,
+     "position": "QB",
+     "pro_team": "BUF",
+     "slot": "QB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Juliet RB",
+     "on_bye": false,
+     "player_id": 206,
+     "points": 8.3,
+     "position": "RB",
+     "pro_team": "SEA",
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "India RB",
+     "on_bye": false,
+     "player_id": 205,
+     "points": 7.3,
+     "position": "RB",
+     "pro_team": "SF",
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Sierra WR",
+     "on_bye": false,
+     "player_id": 307,
+     "points": 11.3,
+     "position": "WR",
+     "pro_team": "TB",
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Romeo WR",
+     "on_bye": false,
+     "player_id": 306,
+     "points": 10.3,
+     "position": "WR",
+     "pro_team": "SEA",
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Victor TE",
+     "on_bye": false,
+     "player_id": 402,
+     "points": 8.3,
+     "position": "TE",
+     "pro_team": "BUF",
+     "slot": "TE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Zulu K",
+     "on_bye": false,
+     "player_id": 502,
+     "points": 10.3,
+     "position": "K",
+     "pro_team": "BUF",
+     "slot": "K"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Bills D/ST",
+     "on_bye": false,
+     "player_id": -16002,
+     "points": 5.3,
+     "position": "D/ST",
+     "pro_team": "BUF",
+     "slot": "D/ST"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": true,
+     "name": "Quebec WR",
+     "on_bye": false,
+     "player_id": 305,
+     "points": 9.3,
+     "position": "WR",
+     "pro_team": "SF",
+     "slot": "FLEX"
+    }
+   ],
+   "name": "Team 2",
+   "projected_points": 79.7,
+   "projection_complete": true,
+   "record": {
+    "losses": 1,
+    "ties": 0,
+    "wins": 2
+   },
+   "standing": 2,
+   "team_id": 2
+  },
+  "notes": [],
+  "opponent": {
+   "abbrev": "T1",
+   "actual_bench": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Oscar WR",
+     "on_bye": false,
+     "player_id": 303,
+     "points": null,
+     "position": "WR",
+     "pro_team": "DET",
+     "projected_points": 11.0,
+     "slot": "BE"
+    }
+   ],
+   "actual_lineup": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Alpha QB",
+     "on_bye": false,
+     "player_id": 101,
+     "points": null,
+     "position": "QB",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "QB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Echo RB",
+     "on_bye": false,
+     "player_id": 201,
+     "points": null,
+     "position": "RB",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Foxtrot RB",
+     "on_bye": false,
+     "player_id": 202,
+     "points": null,
+     "position": "RB",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Mike WR",
+     "on_bye": false,
+     "player_id": 301,
+     "points": null,
+     "position": "WR",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "November WR",
+     "on_bye": false,
+     "player_id": 302,
+     "points": null,
+     "position": "WR",
+     "pro_team": "BUF",
+     "projected_points": 11.0,
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Uniform TE",
+     "on_bye": false,
+     "player_id": 401,
+     "points": null,
+     "position": "TE",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "TE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Chiefs D/ST",
+     "on_bye": false,
+     "player_id": -16012,
+     "points": null,
+     "position": "D/ST",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "D/ST"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Yankee K",
+     "on_bye": false,
+     "player_id": 501,
+     "points": null,
+     "position": "K",
+     "pro_team": "KC",
+     "projected_points": 11.0,
+     "slot": "K"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "name": "Golf RB",
+     "on_bye": false,
+     "player_id": 203,
+     "points": null,
+     "position": "RB",
+     "pro_team": "DET",
+     "projected_points": 11.0,
+     "slot": "FLEX"
+    }
+   ],
+   "actual_points": null,
+   "bench": [
+    {
+     "injury_status": "ACTIVE",
+     "name": "Mike WR",
+     "on_bye": false,
+     "player_id": 301,
+     "points": 5.3,
+     "position": "WR",
+     "pro_team": "KC"
+    }
+   ],
+   "known_points": 73.7,
+   "lineup": [
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Alpha QB",
+     "on_bye": false,
+     "player_id": 101,
+     "points": 8.3,
+     "position": "QB",
+     "pro_team": "KC",
+     "slot": "QB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Foxtrot RB",
+     "on_bye": false,
+     "player_id": 202,
+     "points": 11.3,
+     "position": "RB",
+     "pro_team": "BUF",
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Echo RB",
+     "on_bye": false,
+     "player_id": 201,
+     "points": 10.3,
+     "position": "RB",
+     "pro_team": "KC",
+     "slot": "RB"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Oscar WR",
+     "on_bye": false,
+     "player_id": 303,
+     "points": 7.3,
+     "position": "WR",
+     "pro_team": "DET",
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "November WR",
+     "on_bye": false,
+     "player_id": 302,
+     "points": 6.3,
+     "position": "WR",
+     "pro_team": "BUF",
+     "slot": "WR"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Uniform TE",
+     "on_bye": false,
+     "player_id": 401,
+     "points": 7.3,
+     "position": "TE",
+     "pro_team": "KC",
+     "slot": "TE"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Yankee K",
+     "on_bye": false,
+     "player_id": 501,
+     "points": 9.3,
+     "position": "K",
+     "pro_team": "KC",
+     "slot": "K"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": false,
+     "name": "Chiefs D/ST",
+     "on_bye": false,
+     "player_id": -16012,
+     "points": 8.3,
+     "position": "D/ST",
+     "pro_team": "KC",
+     "slot": "D/ST"
+    },
+    {
+     "injury_status": "ACTIVE",
+     "is_flex": true,
+     "name": "Golf RB",
+     "on_bye": false,
+     "player_id": 203,
+     "points": 5.3,
+     "position": "RB",
+     "pro_team": "DET",
+     "slot": "FLEX"
+    }
+   ],
+   "name": "Team 1",
+   "projected_points": 73.7,
+   "projection_complete": true,
+   "record": {
+    "losses": 0,
+    "ties": 0,
+    "wins": 3
+   },
+   "standing": 1,
+   "team_id": 1
+  },
+  "period_weeks": null,
+  "phase": "regular",
+  "projection_source": {
+   "available": true,
+   "counts": null,
+   "model_status": null,
+   "reason": null,
+   "run": null,
+   "source": "espn"
+  },
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 18,
+      "label": "starters with a projection",
+      "total": 18
+     },
+     "label": "ESPN weekly projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "status": "upcoming",
+  "week": 3,
+  "weeks_available": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14
+  ]
+ },
+ "status": 200
+}

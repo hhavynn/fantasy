@@ -94,11 +94,14 @@ all_candidates_evaluated`). If the evaluation cap (`max_exact`, 20,000) is reach
 (`termination: evaluation_cap`, `exhaustive: false`): the results are the best among the candidates evaluated,
 not a proven top list, and the largest unevaluated bound is reported only when the bounds are valid.
 
-Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-only solver: the same optimal
-picks summed in the same slot order with the same `sum()` (bit-identical totals, so every rounded delta,
-average and week count is equal), the same forced-drop choice (`resolve_roster`'s search over legal
-removals, keeping the largest known total, ties by lowest ids, incoming players last), the same completeness
-and rounding. Leagues with mixed flex types (e.g. RB/WR + WR/TE) use the exact `assign_lineup` search itself.
+Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-only solver
+(`analytics/lineup_totals.py`): the same optimal picks summed in the same slot order with the same `sum()`
+(bit-identical totals, so every rounded delta, average and week count is equal), the same forced-drop choice
+(`resolve_roster`'s search over legal removals, keeping the largest known total, ties by lowest ids, incoming
+players last), the same completeness and rounding. Nested flex types (each flex slot takes every position the slot
+before it takes: one flex type, or FLEX then OP) fill slot by slot with the best remaining value; other mixed flex
+types (e.g. RB/WR + WR/TE) and, for nested ones, weeks with a negative value use the exact `assign_lineup` search
+itself. See "Deep leagues" below for how the solver avoids re-solving.
 The tests compare discovery and the evaluator on well over a thousand candidates, including forced drops, IR,
 position limits and mixed flex slots.
 
@@ -169,6 +172,185 @@ with the full evaluator took ~90 s for 5,000 candidates of a 12-team league; the
 plus the totals-only solver bring a full page (stage A, results, per-manager summary, 20 full evaluations) to
 roughly 2-3 s. The API keeps the last few stage-A searches in memory, keyed by the database file's
 modification time, anchor, shapes and evaluation window, so changing the sort or filter reuses them.
+
+## Deep leagues (FX-17) and the beam's work budget
+
+FX-17 (`tests/compat_fixtures.py`: six teams, 17 starters with 3 FLEX and 1 OP, 10 bench, 3 IR) took ~470 s for one
+`GET /api/trades/discover` and ~19 s for the team-value trade preview. A cProfile of the request put ~95% of the time
+in forced-drop resolution: a 27-player active roster is full, so nearly every uneven package needs drops, and
+`trades.choose_forced_drops` solved a full 15-week lineup for every single-player removal (its lower bounds) and for
+every zero-bound drop set (C(10, k) bench sets). Every one of those solves went through `assign_lineup`
+(4.6 million calls), because FLEX + OP counted as "mixed flex types".
+
+Exact changes (results unchanged; the search and every choice are the same):
+
+* Nested flex types use the fast fill (above); `lineup._best_flex` skips its matching bound when the first leaf is
+  provably optimal (nested slots, no negative value, no player listed twice), which returns the same picks.
+* `LineupTotals.removal_total` (RemovalTotal): the forced-drop search only removes players from one roster. A week
+  whose lineup a removal leaves alone (every removed player below the lowest value the lineup uses at his position, or
+  tying it with enough equal players left) keeps the full roster's value; any other week is re-solved from the full
+  roster's sorted values minus the removed ones. Same values, same fill, same `sum()`.
+* `choose_forced_drops` takes two optional hooks: `total_without(combo)` (the total without a few players, without
+  rebuilding the roster) and `single_bound(p)` (a player's single-removal cost for the lower bounds). The lineup is a
+  maximum-weight independent set of a matroid and starters at one position are interchangeable, so one solve per week
+  and position gives every starter's single cost (exact up to float rounding, ~1e-13, far inside `DROP_EPS`). Any
+  valid lower bound leaves the choice unchanged: a set is left unsolved only when its bound exceeds the best exact
+  cost by `DROP_EPS`. Discovery and trade-vs-free-agency use both hooks; the manual evaluator uses `total_without`
+  only and keeps its exact singles.
+* Each team's current lineup values per week are kept once (`LineupTotals.base`); stage A, the beam's signals, stage
+  B's sides and each forced-drop search start from them and edit only the positions a trade touches (`vec_change`).
+
+Then a disclosed safety net, for the heuristic beam only (V3, `v3_trade_intelligence.md` section 8): a deterministic
+work budget of 15,000 lineup totals per opponent. Standard leagues stay well below it, so their results are unchanged
+(the E2E goldens and the synthetic M1/M8 leagues compare identical); FX-17 reaches it for every opponent and says so
+in `coverage.heuristic.work_budget` and its note ("evaluated 657 of the 803 packages it generated"). The exact search
+(stages A-C) is never cut by it: its top list stays proven. A package's cost is counted by the call that solves it
+(`TradeSearch._pair`), never as the growth of a counter the search shares: the API serves one cached search to
+concurrent requests, and charging their work to a package would stop a beam at a point that depends on timing
+(`test_concurrent_requests_on_a_cached_search_get_the_same_budgeted_beam`). A package whose forced-drop search stops at
+`MAX_DROP_SOLVES` (`EvaluationUnavailable`) is charged the solves it made before stopping (the exception carries
+them), so abstaining packages spend the budget like any other.
+
+The forced-drop search's `MAX_DROP_SOLVES` cap charges the single-removal costs as one solve per player on both paths
+(exact singles in the evaluator, `single_bound` in discovery), so both abstain on the same rosters. If the manual
+evaluator still abstains on a listed trade (`EvaluationUnavailable`), the view leaves that row out and counts it in
+`excluded.evaluation_unavailable` (present only when it happens) instead of failing the whole response.
+
+Measured on the 4-core container (one request, fresh process, before = f805d5e; two runs where given):
+
+| request | before | after | after, budget off |
+|---|---|---|---|
+| FX-17, discover, team 1 | 465.8 / 469.6 s | 12.6 s | 21.0 s (response identical to before) |
+| FX-17, discover, team 2 | 285.2 s | 10.2 s | 13.8 s (identical) |
+| FX-17, team value (trade preview) | 19.9 / 18.3 s | 2.4 s | same |
+| FX-17, team value, `trades=false` | 0.55 s | 0.51 s | same |
+| M1 standard, discover, team 1 / team 2 | 6.0 / 5.0 s | 2.5 / 2.3 s | budget not reached |
+| M8 IDP, discover, team 1 / team 2 | 6.8 / 6.4 s | 3.6 / 2.6 s | budget not reached |
+| E2E golden league, discover, team 1 / team 2 | 1.4 / 1.8 s | 1.2 / 1.5 s | budget not reached |
+| 12-team FX-17-shaped league, discover, team 1 / team 2 | not run | 25.2 / 17.5 s | not run |
+
+Stages A and B are exact and grow with the number of opponents; that is what is left in the 12-team deep league.
+
+## Targeted discovery (issue #182)
+
+A manager can ask for an RB upgrade, a named player or bye-week coverage. These are query-driven goals on the same
+engine, not another engine and not a new valuation. Every discovery endpoint (`/discover`, `/discover/context`,
+`/discover/summary`, `/discover/evidence`, all also under `/v2/leagues/{league_id}` behind `league_scope`) takes:
+
+| parameter | meaning | bounds |
+|---|---|---|
+| `target_player` | receive this player | integer >= 1; must be on another team's roster in the scoped league, else 422. With no `opponent`, his team becomes the partner; a different `opponent` is a 422 |
+| `target_position` | receive at least one player at this position | `QB`, `RB`, `WR`, `TE`, `K`, `D/ST` (422 otherwise; at most 4 characters). A K or D/ST target is tradeable even without `include_kdst` |
+| `need` | a roster need resolved by the backend | `weakest`: your lowest-ranked starting position strictly below the league median of projected points per slot (`trade_assets.league_needs`), used as `target_position` (422 together with `target_position`; with `target_player`, a 422 when his position is not the resolved one). `bye`: the first evaluation week the bye planner (`bye-planner.v1`) marks short, a bye cluster or with a current starter on bye, used as `weeks` (targeted mode only; 422 together with `weeks`). An unresolved need is reported with its reason and applies no filter |
+| `weeks` | the horizon: week `N` or weeks `A-B` | targeted mode only (422 elsewhere); every week inside the evaluation window; at most 7 characters |
+
+Without any of them every response is what it was, apart from new echo fields (`query.target_player`,
+`query.target_position`, `query.need`, `query.weeks`, `target`, `target_positions`, `needs`, `horizon`) that are null
+or descriptive. Saved links and the existing modes are unchanged.
+
+**How a target narrows the search.** A `TradeTarget` (player and/or position received) filters the candidates every
+stage ranks. Each candidate keeps its own valid upper bound, so the best-first stop still proves the top K among the
+matching candidates (tested against brute force on every candidate of a synthetic league). A two-player trade is
+replaced by its simpler 1-for-1 equivalent only when that sub-trade still receives the target. The beam for larger
+shapes offers the matching players in its pools and seeds only matching 1-for-1 pairs; it only adds players, so every
+package it grows still matches. Its results are cached per target. A target filters every mode, and a lens tab
+other than the targeted one links without it.
+
+**Focus weeks.** `weeks` (or a resolved `need=bye`) gives the search focus weeks. Each side gets a `focus_delta`: the
+same canonical weekly deltas summed over those weeks, NULL when any of them is incomplete. Stage A gets a focus bound
+(a sum of the same weekly bounds, so it is an upper bound). The internal sort `focus_gain` uses it, and a candidate
+also qualifies when its focus delta is positive. Missing data is judged over the focus weeks: an unknown
+rest-of-season total (a missing projection outside them) does not exclude a candidate whose focus delta is complete.
+That row's rest-of-season, combined and smaller-side values stay unknown and say so. The stage-A and need cache keys
+include the focus weeks and the K/D/ST streaming baseline. The public `sort` values are unchanged.
+
+**The targeted mode** (`mode=targeted`, lens "Targeted search"). The horizon is one of:
+
+* the focus weeks;
+* the regular season, searched as focus weeks (`trade_practical.regular_season_weeks`), so a trade whose only gain is
+  in the regular season is screened, bounded and qualified like any other, and the label stays "regular-season";
+* the playoffs (`playoff_gain`, already screened and qualified);
+* the rest of the season (`my_gain`).
+
+The pool is the exact top 100 by your gain over that horizon among matching trades, plus the heuristic rows.
+Rows whose horizon delta is known and not positive are counted as `no_gain_in_horizon`; unknown deltas stay in the
+view as incomplete. Like the other lenses, it ranks by verdict, then Pareto front within the verdict, then your
+horizon gain, then the exact search order, with every verdict shown in its own section. When no regular-season or
+playoff week remains (or the league has no split), the targeted mode uses the rest of the season and says so
+(`lens_note`).
+
+**Trade-offs (`target_fit`).** Every row of a targeted view, and of any view with a target or focus weeks, states in
+plain words:
+
+* the horizon against the rest of the season, called short-term when the gain does not last;
+* how each incoming target would be used (starts out of the horizon's weeks);
+* the depth given up (outgoing players who start at most half the remaining weeks) and any net loss of roster spots;
+* roster fit: forced drops and starting slots the trade leaves empty;
+* the partner's change over the horizon.
+
+Every number is a canonical delta or a count from the manual evaluator's lineups. Nothing predicts acceptance or
+calls a trade guaranteed (tested).
+
+**Reproducible analyzer link.** Every row carries `manual_evaluator_link` (`ta`, `tb`, `a`, `b`). The page's
+"Analyze" link opens exactly that trade in the analyzer (`/trades?ta=&tb=&a=&b=`), and evaluating it gives the row's
+deltas (tested, and checked live as `consistent_with_manual_evaluator`).
+
+**`GET /api/trades/discover/targets`** (and `/v2/leagues/{league_id}/api/trades/discover/targets`) runs no search. It
+lists every player on another roster in the league (team, position, IR or taxi), the positions the league starts, and
+how both needs resolve right now. Resolved needs are cached per data version, league, team and need. The page's goal
+form reads it in the targeted lens.
+
+**Caches and isolation.** The view cache key includes every target parameter and its resolution, so a row's evidence
+is only served for the view that ranked it (another target's view answers 404 for that key). Under `/v2` every read
+goes through the league-scoped connection, so a player id from another league is not on any roster here (422). The
+golden suite records three targeted queries, which the league-scope parity and colliding-ids tests replay through
+`/v2`.
+
+## Counteroffers (issue #214)
+
+`POST /api/trades/counteroffers` (`analytics/trade_counteroffers.py`) repairs one existing offer instead of searching
+every trade: team A sends `team_a_sends` to team B for `team_b_sends`, and the answer is at most three small changes to
+that offer that make it better for the side it treats worse. The analyzer shows them under the evaluation once asked
+("Find counteroffers", `co=1`), each with both teams' change against the offer and a link that opens it in the builder.
+Nothing is submitted to the provider.
+
+**Edits.** A counteroffer removes one unlocked player from a side (each side keeps one), adds one player from either
+roster, or swaps one unlocked player for another from the same roster. With `max_added_per_side` 2 (the cap; default 1)
+the four best single edits also get one more addition. Locked players (`locked`, the analyzer's "Keep in the deal") stay
+on their side; `excluded` players are never added; added players come from `positions` (default QB, RB, WR and TE, as in
+discovery). An edit that breaks the per-side limit, a lock or the cap, or puts one player on both sides, is never built. An
+illegal request (crossed owners, a duplicate in the offer, a player listed on both rosters, a lock not in the offer, an
+excluded id in the offer or on neither roster) is a 422 before any evaluation.
+
+**Exact, and checked twice.** Every package is the exact two-team evaluation of stage B (`TradeSearch._pair`: both
+optimal lineups every remaining week, forced drops, missing projections unknown and never 0). The ones shown are re-run
+through the manual evaluator (`trades.evaluate_trade`, at most six runs per request: `manual_checks`); a package whose
+deltas or forced drops differ is dropped and counted (`inconsistent_dropped`), never shown.
+
+**What qualifies, and the order.** Both teams' rest-of-season deltas must be known, and the smaller of the two must be
+larger than in the original offer. This is the same sign-based reading as the discovery categories: no threshold, no
+weight, no acceptance estimate. Ties go to the larger combined delta, then fewer players, fewer edits and player ids,
+so the answer is deterministic. A package whose effects on both teams equal a better-ranked or smaller one's is hidden
+(`equivalent_hidden`), and so is one that changes nothing (`no_effect`).
+
+**Bounded.** The candidates are ordered by signals (each player's value to his own lineup and to the other team's) and
+evaluated under a work budget of 15,000 lineup totals (the beam's per-opponent budget, counted the same way, signals
+included) and a 6-second wall-clock cap. A search that stops says so (`termination`, `packages_not_evaluated`,
+`exhaustive: false`, `stop_reason`); with two additions per side the second addition is tried only on the best four
+single edits, so that search is never reported as exhaustive. A process runs at most two counteroffer searches at once;
+a request that cannot get a slot within a second is a 503, not a queue (a POST is never response-cached). On the synthetic FX-17 superflex league a 1-for-2 offer takes about 1,200 lineup
+totals (94 packages, 0.07 s), or 3,800 (236 packages, 0.14 s) with two additions per side.
+
+**When nothing is listed**, `status` and `reason` say why: `original_unknown` (the offer's own impact is unknown: a
+missing projection, a player who can start only in a slot no engine fills, or a roster that cannot be resolved),
+`no_legal_edit` (everything is locked or nothing may be added), `none_known` (every package built has an unknown impact),
+`none_verified` (packages qualified but the manual evaluator disagreed, so none is shown), `none_better` (no package with
+a known impact helps the worse side) or `none_within_budget` (the search stopped first, and an unevaluated package may
+qualify).
+
+**Snapshot.** The analyzer sends the data version its options were read on (`data_version`, the signal-provenance league
+snapshot); if the league data has changed since, the answer is a 409 asking for a fresh evaluation. Counteroffers use the
+default horizon, so the action is not offered on an evaluation with an explicit start week.
 
 ## Safeguards
 

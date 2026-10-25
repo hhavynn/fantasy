@@ -1,0 +1,706 @@
+// /api/data-quality
+{
+ "body": {
+  "conflicts": [],
+  "espn_projections": {
+   "history": {
+    "days": 1,
+    "latest": "2026-10-20",
+    "rows": 480
+   },
+   "latest_fetch": {
+    "fetch": {
+     "completeness": "complete = returned == ESPN X-Fantasy-Filter-Player-Count, not truncated, all rostered players with an NFL team returned",
+     "coverage": [
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 3,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 4,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 5,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 6,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 7,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 8,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 9,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 10,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 11,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 12,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 13,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 14,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 15,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 16,
+       "zero": 0
+      },
+      {
+       "available": {
+        "returned": 4,
+        "with_projection": 4,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "complete": true,
+       "espn_total": 32,
+       "reason": null,
+       "returned": 32,
+       "returned_with_projection": 32,
+       "returned_without_projection": 0,
+       "rostered": {
+        "expected": 28,
+        "expected_returned": 28,
+        "expected_with_projection": 28,
+        "omitted": 0,
+        "returned": 28,
+        "rostered": 28,
+        "with_projection": 28,
+        "without_projection": 0,
+        "zero": 0
+       },
+       "truncated": false,
+       "week": 17,
+       "zero": 0
+      }
+     ],
+     "current_week": 3,
+     "failures": {},
+     "final_scoring_period": 17,
+     "history_date": "2026-10-20",
+     "history_rows": 480,
+     "projection_rows": 480,
+     "source": "ESPN kona_player_info (statSourceId 1, statSplitTypeId 1)",
+     "weeks_complete": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ],
+     "weeks_failed": [],
+     "weeks_requested": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ],
+     "weeks_unverified": []
+    },
+    "finished_at": "<masked>",
+    "ros": {
+     "full_coverage": 32,
+     "incomplete": 0,
+     "last_regular_season_week": 14,
+     "players": 32,
+     "rostered_incomplete": 0,
+     "schedule_weeks_covered": 0,
+     "weeks": [
+      3,
+      17
+     ]
+    },
+    "run_id": "<masked>"
+   },
+   "note": "ESPN projection is the forward fantasy-point baseline. Role, sustainability, schedule and league context are evaluated separately.",
+   "ros_incomplete": [],
+   "ros_summary": {
+    "computed_at": "<masked>",
+    "full_coverage": 32,
+    "incomplete": 0,
+    "players": 32
+   },
+   "stored": [
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 3,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 4,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 5,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 6,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 7,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 8,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 9,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 10,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 11,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 12,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 13,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 14,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 15,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 16,
+     "zero": 0
+    },
+    {
+     "latest_synced_at": "<masked>",
+     "projected": 32,
+     "rostered": 28,
+     "rostered_projected": 28,
+     "week": 17,
+     "zero": 0
+    }
+   ],
+   "window": {
+    "current": 3,
+    "final": 17,
+    "last_regular": 14
+   }
+  },
+  "external": {
+   "coverage": [],
+   "duplicate_noops": 0,
+   "imports": [],
+   "issues": [],
+   "rejected": 0,
+   "selection": {},
+   "unmatched": []
+  },
+  "mapping_summary": [
+   {
+    "match_confidence": "high",
+    "match_method": "espn_id:nfl_players",
+    "n": 1
+   }
+  ],
+  "medium_confidence": [],
+  "schema_version": 8,
+  "sync": {
+   "last_success": {
+    "analytics": "<masked>",
+    "espn": "<masked>",
+    "nfl": "<masked>"
+   },
+   "latest_runs": [
+    {
+     "finished_at": "<masked>",
+     "message": "warnings: 0",
+     "source": "espn",
+     "status": "ok"
+    },
+    {
+     "finished_at": "<masked>",
+     "message": null,
+     "source": "nfl",
+     "status": "ok"
+    },
+    {
+     "finished_at": "<masked>",
+     "message": "warnings: 0",
+     "source": "analytics",
+     "status": "ok"
+    }
+   ]
+  },
+  "sync_runs": [
+   {
+    "finished_at": "<masked>",
+    "message": "warnings: 0",
+    "run_id": "<masked>",
+    "source": "analytics",
+    "started_at": "<masked>",
+    "status": "ok"
+   },
+   {
+    "finished_at": "<masked>",
+    "message": "warnings: 0",
+    "run_id": "<masked>",
+    "source": "espn",
+    "started_at": "<masked>",
+    "status": "ok"
+   },
+   {
+    "finished_at": "<masked>",
+    "message": null,
+    "run_id": "<masked>",
+    "source": "nfl",
+    "started_at": "<masked>",
+    "status": "ok"
+   }
+  ],
+  "unmatched": [],
+  "validation_issues": []
+ },
+ "status": 200
+}

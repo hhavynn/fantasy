@@ -1,3 +1,5 @@
+import type { RosterLegality } from "./lineup-coverage.ts";
+
 // Shapes returned by the FastAPI backend (only the fields the UI reads).
 
 export type SyncInfo = {
@@ -9,6 +11,8 @@ export type League = {
   league_id: number; season: number; name: string; size: number; scoring_type: string;
   reception_points: number | null; is_faab: boolean; faab_budget: number | null; current_week: number;
   roster_slots: Record<string, number>; trade_deadline: string | null; synced_at: string;
+  /** A week-based trade deadline (Sleeper); null when the provider has none. Absent from older backends. */
+  trade_deadline_week?: number | null;
 };
 
 export type Team = {
@@ -43,6 +47,7 @@ export type RosterPlayer = PlayerCore & {
   nfl_injury: { week: number; report_status: string | null; report_primary_injury: string | null; practice_status: string | null } | null;
 };
 
+/** status: AVAILABLE | QUESTIONABLE | DOUBTFUL | OUT | SUSPENDED | IR | TAXI (Sleeper taxi squad: cannot start). */
 export type Availability = { status: string; weight: number; sources: string[] };
 
 export type Need = {
@@ -50,6 +55,9 @@ export type Need = {
   effective_available: number | null; starter_value: number | null; need_score: number;
   details: {
     depth_target: number; shortage: number; quality_gap: number; league_avg_starter_value: number | null;
+    /** "partial": a competing player has no historical value, so quality_gap is not measured (quality_gap_known false)
+     * and need_score uses roster shortage only. */
+    quality_gap_known?: boolean; value_status?: "complete" | "partial"; value_note?: string | null;
     fixed_slots?: number; flex_slots_filled?: number;
     availability?: { espn_player_id: number; name: string | null; status: string; weight: number }[];
   };
@@ -135,6 +143,7 @@ export const BASIS_LABEL: Record<string, string> = {
   xfp: "xFP (expected fantasy points)",
   "targets+carries": "targets + carries (xFP unavailable)",
   espn_points: "ESPN league points only",
+  box_score_points: "league points, partly scored by Fantasy Intel from the NFL box score",
   unavailable: "no usage data",
 };
 
@@ -188,7 +197,7 @@ export type TradeOptions = {
   evaluation: TradeWindow;
   teams: { team_id: number; name: string; abbrev: string; is_mine: boolean;
     roster: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-      on_ir: boolean; injury_status: string | null; ros_projected_points: number | null }[] }[];
+      on_ir: boolean; on_taxi?: boolean; injury_status: string | null; ros_projected_points: number | null }[] }[];
   active_capacity: number;
   position_limits: Record<string, number>;
 };
@@ -213,18 +222,26 @@ export type LineupWeek = { week: number; phase: string | null; projection_comple
   known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
   bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
   ir: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
-  missing_projection_ids: number[]; teamless_unprojected_ids: number[] };
+  /** Sleeper taxi-squad players (never start); present only for a team that has one. */
+  taxi?: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
+  missing_projection_ids: number[]; teamless_unprojected_ids: number[];
+  /** Starting slots no engine fills: the total is partial (issue #253 G3). */
+  unsupported_slots?: string[] };
 
 export type TeamLineupSummary = {
   ros_projected_starting_points: number | null; ros_known_starting_points: number;
   regular_season_projected_starting_points: number | null; playoff_projected_starting_points: number | null;
   ros_weeks_expected: number; ros_weeks_complete: number; missing_weeks: number[]; missing_players: number[];
+  /** Starting slots no engine fills: every total above leaves them out, so it is partial (issue #253 G3). */
+  unsupported_slots?: string[];
 };
 
 export type TradeDeltas = {
   ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
   known_ros_delta: number; average_weekly_delta: number | null; weeks_improved: number; weeks_worsened: number;
   weeks_unchanged: number; weeks_incomplete: number[]; projection_complete: boolean;
+  /** Starting slots no engine fills; a delta is still exact when it moves nobody who can start there. */
+  unsupported_slots?: string[];
 };
 
 export type FaPick = {
@@ -251,10 +268,16 @@ export type TradeSide = {
   weekly: { week: number; phase: string | null; before: number | null; after: number | null; delta: number | null;
     known_delta: number; projection_complete: boolean; entered: number[]; exited: number[] }[];
   lineups: { before: LineupWeek[]; after: LineupWeek[] };
-  roster: { active_capacity: number; active_before: number; active_after: number; open_active_roster_spots: number;
-    open_active_roster_spots_before: number;
-    forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
-    forced_drop_lineup_cost: number | null; forced_drop_known_lineup_cost: number; forced_drop_basis: string | null;
+  roster: { active_capacity: number;
+    /** null (with every count below) when roster legality is unverified (`legality`): the count may leave players out. */
+    active_before: number | null; active_after: number | null;
+    open_active_roster_spots: number | null; open_active_roster_spots_before: number | null;
+    legality?: RosterLegality;
+    forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean;
+      /** He can start only in a slot no engine fills: not valued (chosen only when no other drop is legal). */
+      unsupported_slot_player?: boolean }[];
+    forced_drop_lineup_cost: number | null; forced_drop_known_lineup_cost: number | null; forced_drop_basis: string | null;
+    forced_drop_unverified?: { status: "unverified"; code: string; note: string };
     redundant_incoming_asset: { player_ids: number[]; names: (string | null)[]; lineup_points_saved_by_cutting_it: number; note: string } | null };
   incoming_usage: { espn_player_id: number; name: string | null; position: string | null; weeks_started: number[]; slots: Record<string, number> }[];
   fit_notes: string[];
@@ -266,9 +289,11 @@ export type TradeSide = {
 export type TradePlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+  /** Sleeper taxi squad: inactive on his current roster, active after the trade (absent for everyone else). */
+  on_taxi?: boolean;
   marginal_value_on_current_team: { roster_marginal_lineup_points: number | null; regular_season_marginal_lineup_points: number | null;
     playoff_marginal_lineup_points: number | null; known_marginal_lineup_points: number; weeks_started: number[]; weeks_expected: number;
-    on_ir: boolean; ir_activation_sensitivity?: IrActivation };
+    on_ir: boolean; on_taxi?: boolean; ir_activation_sensitivity?: IrActivation };
   ir_activation_sensitivity: IrActivationPlayer | null;
   replacement_context: { replacement: FaPick["player"]; replacement_position: string | null; eligible_positions: string[];
     lineup_points_lost_without_player: number | null; lineup_points_recovered: number | null;
@@ -318,7 +343,7 @@ export type DiscoverySide = {
   forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
   forced_drop_lineup_cost: number | null;
   redundant_incoming_asset: { names: string[]; lineup_points_saved_by_cutting_it: number } | null;
-  open_active_roster_spots_before: number; open_active_roster_spots: number;
+  open_active_roster_spots_before: number | null; open_active_roster_spots: number | null; legality?: RosterLegality;
   hypothetical_fa_fill: { player: { espn_player_id: number; name: string | null; position: string | null } | null;
     lineup_points_added?: number | null } | null;
   incomplete: { missing_weeks: number[]; missing_players: number[] };
@@ -344,7 +369,7 @@ export type DiscoveryRow = {
 export type DiscoveryResult = DiscoveryRow & {
   consistent_with_manual_evaluator: boolean; result_label: string; regular_season_label: string; playoff_label: string;
   players: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-    injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+    injury_status: string | null; on_ir: boolean; on_taxi?: boolean; from_team_id: number; to_team_id: number;
     marginal_value_on_current_team: number | null }[];
   mine_detail: DiscoverySide; theirs_detail: DiscoverySide;
   ir_warning: string | null; ir_assumption: string;
@@ -371,7 +396,7 @@ export type Discovery = {
     limit: number; include_equivalents: boolean };
   results: DiscoveryResult[]; search: DiscoverySearch;
   opponents: { opponent_team_id: number; team_name: string | null; best_my_gain: DiscoveryRow | null; best_mutual: DiscoveryRow | null; exhaustive: boolean }[];
-  names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; injury_status: string | null }>;
+  names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; on_taxi?: boolean; injury_status: string | null }>;
   categories: Record<string, string>; sorts: string[]; shapes: string[];
   note: string; assumptions: string[]; limitations: string[];
 };
@@ -504,12 +529,61 @@ export type PlayoffRace = {
     focus: { scenario: PrPlace; win_out: PrPlace; lose_out: PrPlace; open_games: number;
       fewest_wins_to_get_inside: { wins_needed: number | null; of_games: number; method: string; games: number[]; note?: string } | null;
       helpful_other_results: { matchup_id: number; matchup_period: number; result: PrOutcome; loser_id: number; rank: number | null; status: PrStatus }[] } | null;
+    /** Issue #217: the spotlight team's rooting guide for the next matchup period; null without a spotlight team. */
+    rooting: PrRooting | null;
   };
   schedule_coverage: { checked: boolean; reason?: string; regular_season_periods?: number; complete?: boolean;
     missing: { team_id: number; periods: number[] }[]; unmapped_periods?: number[] };
   record_check: string[];
   rules: { ordering: string; projection: string; close: string; clinch: string; espn_rules_reported: Record<string, unknown>; espn_rules_note: string };
   warnings: string[]; notes: string[];
+  /** Present only when at least one result is set (issue #192); absent, the answer is the scenario-off answer. */
+  whatif?: PrWhatIf;
+};
+
+export type PrPlaceRow = { rank: number | null; tied: boolean; status: PrStatus; record: PrRecord | null };
+export type PrSetResult = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; home_team_id: number; away_team_id: number;
+  status: PrMatchup["status"]; outcome: PrOutcome | "none"; baseline_result: PrOutcome | null; changes_baseline: boolean;
+};
+export type PrBlocker = { rule: string; state: string; reported: Record<string, unknown>; detail: string };
+export type PrBound = {
+  team_id: number; open_games: number; best: PrRecord | null; worst: PrRecord | null;
+  teams_able_to_match_worst: number | null; teams_certain_ahead_of_best: number | null;
+  record_order: "above_line" | "below_line" | "open" | null; claim: null;
+};
+export type PrRange = { teams_able_to_match_worst: number | null; teams_certain_ahead_of_best: number | null;
+  record_order: PrBound["record_order"] };
+/** The spotlight team's place if one side wins: in the scenario (every other result as in it) and its possible range
+ * (record bounds with that result fixed; null when the bounds abstain). */
+export type PrRootingSide = {
+  /** places: the span the rank group covers, [rank, rank + tied teams − 1] (no tiebreak); null when unranked. */
+  scenario: PrPlaceRow & { places: [number, number] | null }; range: PrRange | null;
+};
+export type PrRootingGame = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; home_team_id: number; away_team_id: number;
+  status: PrMatchup["status"]; close: boolean | null; scenario_result: PrOutcome | null;
+  if_home: PrRootingSide; if_away: PrRootingSide;
+  prefer: "home" | "away" | null; basis: ("scenario" | "possible_range")[]; conflict: boolean;
+  swing: { status_changes: boolean; rank_difference: number | null; range_changes: boolean };
+};
+export type PrRooting = {
+  label: "hypothetical"; method: string; status: "ok" | "no_games_remaining" | "no_other_games";
+  period: number | null; weeks: number[] | null; games: PrRootingGame[]; no_effect: PrRootingGame[];
+  own_game: number | null; later_open_games: number; range_abstain: string[];
+  conclusions: { status: "blocked" | "open"; claims: never[] }; probabilities: null;
+};
+export type PrWhatIf = {
+  label: "hypothetical"; method: string;
+  sampling: { method: "deterministic"; scenarios: number; random_samples: number; seed: null; probabilities: null };
+  inputs: { base: "projected" | "actual"; first_actionable_week: number | null; set_results: PrSetResult[] };
+  assumptions: string[];
+  completeness: { status: "complete" | "partial"; unresolved_games: number; by_reason: Record<string, number> };
+  labels: Record<string, string>;
+  baseline_standings: PrStanding[];
+  changes: { team_id: number; baseline: PrPlaceRow; whatif: PrPlaceRow; rank_change: number | null; status_changed: boolean }[];
+  conclusions: { status: "blocked" | "open"; blocked_by: PrBlocker[]; claims: never[];
+    record_bounds: { rule: string; fixed_results: number; open_games: number; abstain: string[]; teams: PrBound[] } };
 };
 
 // ------------------------------------------------------------------- my team value --
@@ -521,10 +595,11 @@ export type TvPhaseSplit = {
   incomplete_weeks: number[]; league_rank: TvRankRow | null;
 };
 export type TvRaw = { points: number | null; known_points: number | null; missing_weeks: number[] };
+/** code: bye | zero_projection | no_projection | ir | taxi (Sleeper taxi squad) | streamable | flex_competition | outscored. */
 export type TvBench = { week: number; projection: number | null; code: string; text: string };
 export type TvPlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-  injury_status: string | null; on_ir: boolean;
+  injury_status: string | null; on_ir: boolean; on_taxi?: boolean;
   espn_projected: Record<TvPhase, TvRaw>;
   marginal: { all: number | null; regular: number | null; playoff: number | null; known_all: number | null;
     known_regular: number | null; known_playoff: number | null };
@@ -569,7 +644,7 @@ export type TeamValue = {
     weekly: { week: number; phase: string | null; projected_lineup_points: number | null; known_lineup_points: number;
       projection_complete: boolean; league_median: number | null }[];
     league_ranks: { rule: string; teams_ranked: number[]; teams_unranked: number[];
-      excluded_weeks: { week: number; incomplete_teams: string[] }[];
+      excluded_weeks: { week: number; incomplete_teams: string[]; reason?: string }[];
       phases: Record<TvPhase, { weeks: number[]; phase_weeks: number[]; teams: TvRankRow[] }> };
   };
   players?: TvPlayer[];

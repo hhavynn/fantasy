@@ -43,6 +43,7 @@ data/*.duckdb.wal
 data/raw/
 data/logs/
 fantasy-intel/data/*.duckdb
+fantasy-intel/data/e2e-multileague/
 fantasy-intel/data/*.duckdb.wal
 fantasy-intel/data/raw/
 fantasy-intel/data/sleeper/
@@ -59,6 +60,7 @@ fantasy-intel/data/logs/
 worktrees/
 .serena/
 .ruff_cache/
+.agent_diagnostics/
 
 # External utilization provider files (licensed/manual). Never commit.
 fantasy-intel/data/imports/

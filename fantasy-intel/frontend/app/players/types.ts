@@ -1,6 +1,7 @@
 import type {
   ContextEvidence, ContextLabels, ForwardProjection, PlayerCore, RouteData, TrendInfo, UsageWeek,
 } from "@/lib/types";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 /** A row of `GET /api/players?q=`. */
 export type PlayerListRow = PlayerCore & { fantasy_team: string | null };
@@ -20,12 +21,17 @@ export type Detail = {
     reasons: string[]; as_of_week: number;
   } | null;
   weekly: UsageWeek[];
-  league_points: { scoring_period: number; actual_points: number | null; projected_points: number | null }[];
+  /** `actual_source` only when a player's rows mix sources (#254 S3): "provider" or "box_score". */
+  league_points: { scoring_period: number; actual_points: number | null; projected_points: number | null; actual_source?: string | null }[];
   forward_projection: ForwardProjection | null;
   injuries: Injury[];
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;
-  waiver: { recommendation: string; waiver_score: number; reasons: string[] } | null;
+  waiver: { recommendation: string; waiver_score: number; reasons: string[];
+    /** roster.fit_status "partial": the score lacks its lineup-gain term (shown as unknown, lib/waivers knownWaiverScore). */
+    components?: { roster?: { fit_status?: string; value_unknown?: { name: string | null }[] } | null } | null } | null;
   unavailable_metrics: Record<string, string>;
+  /** signal-provenance.v1: league data, forward projections, usage and injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
   route_data: RouteData | null;
   context: { labels: ContextLabels; evidence: ContextEvidence } | null;
   team_context: {

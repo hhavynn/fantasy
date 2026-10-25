@@ -572,6 +572,9 @@ _PTS_CACHE: dict[str, tuple] = {}
 DISTS = np.arange(MIN_DIST, MAX_DIST + 1)
 BUCKET_MASKS = {"0_39": DISTS < 40, "40_49": (DISTS >= 40) & (DISTS < 50), "50_59": (DISTS >= 50) & (DISTS < 60),
                 "60_plus": DISTS >= 60}
+# kicker_scoring.SCORING_BUCKETS: the finest buckets any supported scoring uses (stat_line.scoring_stats)
+SCORING_MASKS = {"0_19": DISTS < 20, "20_29": (DISTS >= 20) & (DISTS < 30), "30_39": (DISTS >= 30) & (DISTS < 40),
+                 "40_49": BUCKET_MASKS["40_49"], "50_59": BUCKET_MASKS["50_59"], "60_plus": BUCKET_MASKS["60_plus"]}
 
 
 def _pts_arrays(scoring: KickerScoring) -> tuple:
@@ -614,6 +617,13 @@ def expected_kicking(conv: Conversion, scoring: KickerScoring, lam_fg: float, la
             "p_make_by_distance": {b: round(float(np.sum(pd_[m] * pm[m]) / max(np.sum(pd_[m]), 1e-12)), 3)
                                    for b, m in BUCKET_MASKS.items()},
             "p_pat": round(pp, 4), "points_per_fg_try": round(per_fg, 3), "points_per_pat_try": round(per_pat, 3)}
+    # Expected counts by outcome and distance bucket: any league's scoring applied to them gives that league's points
+    # (kicker_scoring.expected_points; multi-league Phase 4 re-scoring)
+    line["scoring_stats"] = {
+        "fg": {o: {b: round(lam_fg * float(np.sum(pd_[m] * p[m])), 9) for b, m in SCORING_MASKS.items()}
+               for o, p in (("made", pm), ("missed", pmiss), ("blocked", pb))},
+        "pat": {"made": round(lam_pat * pp, 9), "missed": round(lam_pat * max(1 - pp - pbp, 0), 9),
+                "blocked": round(lam_pat * pbp, 9)}}
     return {"points": lam_fg * per_fg + lam_pat * per_pat, "stat_line": line}
 
 

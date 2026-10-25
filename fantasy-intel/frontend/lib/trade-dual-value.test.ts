@@ -18,23 +18,24 @@ const byVerdict = (v: string) => rows.find((r) => r.dual_value_summary?.verdict 
 
 // --------------------------------------------------------------------------------------- lenses --
 
-test("the lens tabs are the six lenses in the documented order, mutual upgrades first", () => {
-  assert.deepEqual(LENSES.map((l) => l.mode), ["mutual_upgrades", "fair", "upside", "consolidation", "playoff", "all"]);
+test("the lens tabs are the seven lenses in the documented order, mutual upgrades first", () => {
+  assert.deepEqual(LENSES.map((l) => l.mode), ["mutual_upgrades", "fair", "upside", "consolidation", "playoff", "targeted", "all"]);
   assert.deepEqual(LENSES.map((l) => l.label), [
-    "Best mutual upgrades", "Fairer asset exchanges", "Maximum upside", "Consolidation deals", "Playoff-focused trades", "All candidates",
+    "Best mutual upgrades", "Fairer asset exchanges", "Maximum upside", "Consolidation deals", "Playoff-focused trades", "Targeted search",
+    "All candidates",
   ]);
   assert.equal(DEFAULT_MODE, "mutual_upgrades");
   assert.equal(LENSES[0].mode, DEFAULT_MODE);
-  assert.equal(lensTabText(LENSES[5]), "All candidates · advanced");
+  assert.equal(lensTabText(LENSES[6]), "All candidates · advanced");
   assert.equal(lensTabText(LENSES[0]), "Best mutual upgrades");
 });
 
 test("a legacy mode adds one extra classic tab; a lens adds none", () => {
-  for (const m of ["mutual_upgrades", "fair", "upside", "consolidation", "playoff", "all", undefined, "bogus"]) {
-    assert.equal(lensTabs(m).length, 6, `${m}`);
+  for (const m of ["mutual_upgrades", "fair", "upside", "consolidation", "playoff", "targeted", "all", undefined, "bogus"]) {
+    assert.equal(lensTabs(m).length, 7, `${m}`);
   }
   const practical = lensTabs("practical");
-  assert.equal(practical.length, 7);
+  assert.equal(practical.length, 8);
   assert.deepEqual(practical.at(-1), { mode: "practical", label: "Practical (classic)" });
   assert.deepEqual(lensTabs("mutual").at(-1), { mode: "mutual", label: "Mutual improvement (classic)" });
   assert.equal(isLegacyMode("practical"), true);

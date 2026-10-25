@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useLeagueHref } from "@/components/useAppPathname";
 import {
   type ScheduleSelectorTeam,
   filterScheduleOptions,
@@ -26,6 +27,7 @@ export function ScheduleSelector({
   children,
 }: ScheduleSelectorProps) {
   const router = useRouter();
+  const leagueHref = useLeagueHref();
   const [selectedTeam, setSelectedTeam] = useState<number>(focusTeamId);
   const [selectedSchedule, setSelectedSchedule] = useState<number | "">(
     getInitialSchedule(focusTeamId, scheduleOf)
@@ -55,13 +57,14 @@ export function ScheduleSelector({
     e.preventDefault();
     const params = buildLuckLabSearchParams(selectedTeam, selectedSchedule);
     const query = params.toString();
-    router.push(query ? `/luck-lab?${query}` : "/luck-lab");
+    // On a league page stay in it (/l/<lg>/luck-lab), not in whichever league another tab viewed last.
+    router.push(leagueHref(query ? `/luck-lab?${query}` : "/luck-lab"));
   };
 
   const scheduleOptions = filterScheduleOptions(teams, selectedTeam);
 
   return (
-    <form action="/luck-lab" method="GET" onSubmit={handleSubmit} className="row-flex">
+    <form action={leagueHref("/luck-lab")} method="GET" onSubmit={handleSubmit} className="row-flex">
       <label>
         Team{" "}
         <select

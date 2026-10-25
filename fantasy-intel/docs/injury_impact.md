@@ -84,3 +84,8 @@ usage history, no league rosters.
 `out` covers OUT, DOUBTFUL, IR and SUSPENDED. 422 for a bad filter, 404 for a team not in the league, 503 when the
 league is not synced or its current week is unknown. The page reads the full list once and filters in the browser, so
 the roster panel always covers every absence.
+
+## Opportunity tree
+
+The page's "Depth charts and opportunity" section (`GET /api/injury-impact/opportunity-tree`) reuses this module's
+context (`load_context`, `impact_entries`) for injured and returning starters: see [opportunity_tree.md](opportunity_tree.md).

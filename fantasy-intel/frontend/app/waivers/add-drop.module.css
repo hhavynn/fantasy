@@ -1,0 +1,47 @@
+/* Add/drop simulator beside Top Claims (issue #178). Tokens only; see globals.css. */
+
+/* Wide screens: Top Claims and the simulator side by side; narrower, the simulator follows the claims. */
+.decisions { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section-gap); min-width: 0; }
+@media (min-width: 1100px) {
+  .decisions { grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); align-items: start; }
+}
+
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); scroll-margin-top: calc(var(--appbar-h) + 12px); }
+.head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
+.eyebrow { margin: 0 0 2px; color: var(--accent); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.title { margin: 0; font-size: 1rem; }
+.h3 { margin: 12px 0 6px; font-size: 13px; }
+
+.form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+@media (min-width: 560px) and (max-width: 1099px) {
+  .form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
+}
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { color: var(--ink-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.field select {
+  width: 100%; min-width: 0; min-height: var(--tap); padding: 8px 10px; border: 1px solid var(--line-control);
+  border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; text-overflow: ellipsis;
+}
+.submit {
+  min-height: var(--tap); padding: 8px 16px; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer;
+}
+.submit:disabled { opacity: .7; cursor: default; }
+.submit:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sub { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.result { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.result > :global(.chip) { justify-self: start; }
+.headline { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.figures { margin: 0; }
+.partial { color: var(--ink-muted); font-size: 12px; }
+.notes { display: grid; gap: 6px; margin: 0; padding-left: 18px; font-size: 13px; line-height: 19px; }
+.notes li[data-tone="caution"]::marker { color: var(--caution); }
+.window { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+
+.details { min-width: 0; }
+.details > summary { cursor: pointer; font-size: 13px; color: var(--ink-muted); min-height: 32px; }
+.details[open] > summary { margin-bottom: 8px; }
+.table th, .table td { white-space: nowrap; }
+.table td:last-child { white-space: normal; min-width: 120px; }
+.depth { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }

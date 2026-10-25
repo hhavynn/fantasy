@@ -1,8 +1,10 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BarChart, LineChart } from "@/components/charts";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, EmptyState, Notice, Pos, Section, Stat, StatStrip } from "@/components/ui";
 import { label } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { pctTick, valueDomain } from "@/lib/player-usage";
 import {
   OPPORTUNITY_AXES, WORKLOAD_MAPS, formatMetric, metricRows, researchHref, tradeHref, waiverHref, weekList,
@@ -24,7 +26,10 @@ function Value({ v }: { v: string | null }) {
 }
 
 /** The selected player's evidence: numbers for the current window, momentum, context, caveats and actions. */
-export function EvidencePanel({ slug, d, state, row }: { slug: Slug; d: PlayerResearch; state: ResearchState; row: ResearchPlayer | null }) {
+export async function EvidencePanel({ slug, d, state, row }: { slug: Slug; d: PlayerResearch; state: ResearchState; row: ResearchPlayer | null }) {
+  const prov = providerName((await getLeagueProfile()).provider);
+  // Player profiles are keyed by ESPN ids for every league; only an ESPN league's readers know them by that name.
+  const profileWord = prov === "ESPN" ? "ESPN profile" : "player profile";
   const p = d.player;
   const w = d.windows[state.window];
   const s = w.window;
@@ -96,7 +101,7 @@ export function EvidencePanel({ slug, d, state, row }: { slug: Slug; d: PlayerRe
         <div><dt>Market signal</dt><dd>{p.market?.market_signal ? <Badge value={p.market.market_signal} title={SIGNAL_NOTE} /> : <Value v={null} />}</dd></div>
         <div><dt>Opportunity tier</dt><dd>{p.market?.opportunity_tier ? label(p.market.opportunity_tier) : <Value v={null} />}</dd></div>
         <div><dt>Role trend</dt><dd>{p.market?.role_trend ? label(p.market.role_trend) : <Value v={null} />}</dd></div>
-        <div><dt>Injury</dt><dd>{injuryText(d)}</dd></div>
+        <div><dt>Injury</dt><dd>{injuryText(d, prov)}</dd></div>
       </dl>
       <p className={styles.noteTight}>{SIGNAL_NOTE}</p>
 
@@ -111,14 +116,16 @@ export function EvidencePanel({ slug, d, state, row }: { slug: Slug; d: PlayerRe
         <Notice tone="caution" title="Coverage">
           {p.excluded_games && <>Played in {weekList(p.excluded_games.weeks).toLowerCase()} but nflverse xFP is not published for it, so that game is left out of every average. </>}
           {partial.length > 0 && <>Some metrics cover fewer games than the window: {partial.map(([k, n]) => `${k.replaceAll("_", " ")} ${n}/${s.games}`).join(", ")}. </>}
-          {p.mapping_status === "ambiguous" && <>Two ESPN players map to this nflverse id, so no ESPN profile is linked.</>}
+          {p.mapping_status === "ambiguous" && (prov === "ESPN"
+            ? <>Two ESPN players map to this nflverse id, so no ESPN profile is linked.</>
+            : <>Two players map to this nflverse id, so no {profileWord} is linked.</>)}
         </Notice>
       )}
 
       <div className={styles.actions}>
         {p.espn_player_id !== null
           ? <Link href={`/players?id=${p.espn_player_id}`}>Full player profile</Link>
-          : <span className="faint" title="No verified ESPN id match">No ESPN profile</span>}
+          : <span className="faint" title="No verified ESPN id match">No {profileWord}</span>}
         {trade && <Link href={trade}>{d.league?.is_mine ? "Shop in the trade analyzer" : "Explore a trade for this player"}</Link>}
         {waiver && <Link href={waiver}>Available: see {p.position} waivers</Link>}
         {d.league === null && p.espn_player_id !== null && <span className="faint">Not in the synced league</span>}
@@ -133,11 +140,12 @@ const TREND_LABEL: Record<string, string> = {
   target_share: "Target share", backfield_rush_share: "Backfield share",
 };
 
-function injuryText(d: PlayerResearch) {
+/** `prov` names whose designation `espn_status` is: the league's provider (Sleeper statuses use ESPN's vocabulary). */
+function injuryText(d: PlayerResearch, prov: string) {
   const inj = d.player.injury;
   if (!inj) return <span className="faint">No designation on file</span>;
   const parts = [];
-  if (inj.espn_status) parts.push(`ESPN ${label(inj.espn_status)}`);
+  if (inj.espn_status) parts.push(`${prov} ${label(inj.espn_status)}`);
   if (inj.nfl_report?.status) parts.push(`NFL report wk ${inj.nfl_report.week}: ${inj.nfl_report.status}${inj.nfl_report.injury ? ` (${inj.nfl_report.injury})` : ""}`);
   else if (inj.nfl_report?.practice) parts.push(`Practice wk ${inj.nfl_report.week}: ${inj.nfl_report.practice}`);
   return parts.length ? parts.join(" · ") : <span className="faint">No designation on file</span>;

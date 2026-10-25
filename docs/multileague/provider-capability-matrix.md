@@ -34,7 +34,7 @@ owner's `ESPN_S2`/`SWID` in the server environment (owner's own leagues); Yahoo 
 | Capability | ESPN (when enabled) | Sleeper (when enabled) | Yahoo (Phase 1) |
 |---|---|---|---|
 | `discover_leagues` | UNSUPPORTED. No documented discovery endpoint; leagues are connected by id. (A cookie-based "fan" API that lists a user's leagues exists in the community libraries; not used.) | SUPPORTED. `GET /user/{username}`, then `GET /user/{user_id}/leagues/nfl/{season}`. A Sleeper username is public, so listing proves nothing about who is asking. | DISABLED. Yahoo offers the signed-in user's leagues (users / games / leagues collections). |
-| `league_settings` | SUPPORTED. `mSettings` view. Undocumented API. | SUPPORTED. `GET /league/{id}`: `roster_positions`, `settings`, `scoring_settings`. | DISABLED. League settings resource. |
+| `league_settings` | SUPPORTED. `mSettings` view. Undocumented API. | SUPPORTED. `GET /league/{id}`: `roster_positions`, `settings`, `scoring_settings`. IR rules are read from `settings.reserve_allow_*` when present (which keys real leagues carry is **unverified**; an IR status they do not decide is reported unverified). No roster restrictions are synced, so waiver add/drop legality stays unknown. | DISABLED. League settings resource. |
 | `teams` | SUPPORTED. `mTeam`; manager ids are one-way hashes (`espn:sha256:<12 hex>`), never SWIDs. | SUPPORTED. Teams are rosters; `external_team_id = str(roster_id)`; managers `sleeper:<user_id>` (owner and co-owners). | DISABLED. League teams resource. |
 | `rosters` | SUPPORTED. `mRoster`; ids `espn:<id>`; GSIS identity is left to the caller (resolved from the analytics `player_id_map`, id-based). | SUPPORTED. `/league/{id}/rosters` plus the cached player list; ids `sleeper:<id>`; GSIS links from the DynastyProcess ID map (high), Sleeper's own `gsis_id` (medium), team defenses, conflicts and unmatched kept with reasons. | DISABLED. Team roster resource; ids would be `yahoo:<player key>`. |
 | `scoring_rules` | SUPPORTED. `scoringItems` verbatim by stat id; known ids mapped to canonical stats; per-slot `pointsOverrides` (how ESPN expresses e.g. a TE premium) kept as `<stat>@slot<id>` and reported unmapped. | SUPPORTED. `scoring_settings` verbatim; known keys mapped (`bonus_rec_te` -> `rec_te_bonus`); the rest listed as unmapped. A league with no `rec` key has no PPR value; nothing defaults to PPR. | DISABLED. Stat modifiers inside league settings. |
@@ -123,5 +123,6 @@ connecting user belongs to it. ESPN reports `settings.isPublic` when present, ot
 10. **Live-shape verification.** Re-record Sleeper matchup (`points` for unplayed weeks, bye rows with
     `matchup_id` null) and transaction (`status`, `leg`, `adds`/`drops`, `waiver_bid`) responses against the live
     API once item 1 allows it, and check Sleeper's `waiver_type` and `trade_deadline` value meanings (the
-    foundation code assumes 0 rolling / 1 reverse standings / 2 FAAB; **unverified** against the primary docs).
+    foundation code assumes 0 rolling / 1 reverse standings / 2 FAAB; **unverified** against the primary docs), and
+    which `reserve_allow_*` IR settings a league carries and what 0/1 mean (#253 G7 reads them; **unverified**).
 11. **Privacy policy and consent text** covering what is read from each provider and how long it is kept.

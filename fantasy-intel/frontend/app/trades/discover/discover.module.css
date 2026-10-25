@@ -29,6 +29,15 @@
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .footnote { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 18px; max-width: 100ch; }
 
+/* ---------- Targeted search (goal form and trade-offs) ---------- */
+
+.goal { display: flex; flex-direction: column; gap: 12px; }
+.goalTitle { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.goal .field { flex: 1 1 200px; }
+.goal .field select { width: 100%; min-width: 0; }
+.fitList { margin: 6px 0 0; padding-left: 16px; color: var(--ink-muted); font-size: 12px; line-height: 17px; white-space: normal; }
+.fitList li { margin: 2px 0; overflow-wrap: anywhere; }
+
 /* ---------- Results table ---------- */
 
 .table th, .table td { vertical-align: top; }

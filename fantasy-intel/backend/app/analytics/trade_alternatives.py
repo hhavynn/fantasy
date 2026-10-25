@@ -59,8 +59,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .lineup import FLEX_ELIGIBILITY
-from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, Window, _pareto, compare, lineup_relevant, project_team,
+from .lineup import is_flex, slot_positions
+from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, source_label, Window, _pareto, compare, lineup_relevant, project_team,
                            project_week, projection, r, slot_filled, starters)
 from .trade_discovery import _Totals
 from .trades import EvaluationUnavailable, LeagueState, TradeError, choose_forced_drops, legal_roster, side_lineups
@@ -118,7 +118,7 @@ LIMITATIONS = [
 
 
 def _active(players: list[RosterPlayer]) -> list[int]:
-    return [p.espn_player_id for p in players if not p.on_ir]
+    return [p.espn_player_id for p in players if not p.reserved]    # IR and taxi players never start
 
 
 def _brief(p: RosterPlayer) -> dict:
@@ -150,7 +150,7 @@ class FreeAgencyBoard:
         rostered = {p.espn_player_id for ps in state.rosters.values() for p in ps}
         self.pool, self.excluded_unprojected = [], Counter()
         for p in state.free_agents:
-            if p.espn_player_id in rostered or not lineup_relevant(p.position, state.slots):
+            if p.espn_player_id in rostered or not lineup_relevant(p, state.slots):
                 continue
             if all(projection(state.projections, p.espn_player_id, w) is not None
                    for w in self.weeks if w not in p.unavailable_weeks):
@@ -161,7 +161,8 @@ class FreeAgencyBoard:
                    {p.espn_player_id: p for p in self.pool}
         self.T = _Totals(state, self.weeks, set(everyone), {i: p.position for i, p in everyone.items()},
                          {i: p.pro_team for i, p in everyone.items()},
-                         {i: p.unavailable_weeks for i, p in everyone.items() if p.unavailable_weeks})
+                         {i: p.unavailable_weeks for i, p in everyone.items() if p.unavailable_weeks},
+                         eligibility={i: p.eligible_slots for i, p in everyone.items()})
         self.negative = self.T.negative
         self._totals: dict[tuple, float] = {}
         self._best: dict[tuple, dict] = {}
@@ -170,7 +171,7 @@ class FreeAgencyBoard:
     def unprojected(self, p: RosterPlayer) -> bool:
         """An active lineup-relevant player with an NFL team and no ESPN projection in some eligible week:
         what he is worth is unknown, so dropping him has an unknown cost (never a measured 0)."""
-        return not p.on_ir and bool(p.pro_team) and lineup_relevant(p.position, self.state.slots) and any(
+        return not p.reserved and bool(p.pro_team) and lineup_relevant(p, self.state.slots) and any(
             projection(self.state.projections, p.espn_player_id, w) is None
             for w in self.weeks if w not in p.unavailable_weeks)
 
@@ -181,8 +182,15 @@ class FreeAgencyBoard:
             self._totals[key] = sum(self.T.vec(list(key)))
         return self._totals[key]
 
+    def drop_search(self, players, legal_base, incoming: set[int]) -> dict:
+        """trades.choose_forced_drops on `players` with self.total's values (same memo): a week a drop leaves alone
+        keeps the full roster's value (LineupTotals.removal_total, exact)."""
+        known = self.T.removal_total(_active(players), self._totals)
+        return choose_forced_drops(players, legal_base, self.state, incoming, lambda ps: known(_active(ps)),
+                                   self.negative, known.dropping, known.bound)
+
     def team(self, players: list[RosterPlayer]) -> dict:
-        key = tuple(sorted((p.espn_player_id, p.on_ir) for p in players))
+        key = tuple(sorted((p.espn_player_id, p.on_ir, p.on_taxi) for p in players))
         if key not in self._teams:
             self._teams[key] = project_team(players, self.state.slots, self.window, self.state.projections)
         return self._teams[key]
@@ -193,7 +201,7 @@ class FreeAgencyBoard:
         """The single available player (of `kinds`, optionally only `positions`) whose acquisition, with
         the legal drop it needs, maximises the roster's known starting total. Legality is judged against
         the team's current roster (state.rosters[team_id]), as in the trade evaluator."""
-        key = (team_id, tuple(sorted((p.espn_player_id, p.on_ir) for p in roster)), tuple(kinds), positions)
+        key = (team_id, tuple(sorted((p.espn_player_id, p.on_ir, p.on_taxi) for p in roster)), tuple(kinds), positions)
         if key in self._best:
             return self._best[key]
         st = self.state
@@ -217,7 +225,7 @@ class FreeAgencyBoard:
                 total = base + bound
             else:
                 try:
-                    res = choose_forced_drops(after, legal_base, st, {c.espn_player_id}, self.total, self.negative)
+                    res = self.drop_search(after, legal_base, {c.espn_player_id})
                 except EvaluationUnavailable:
                     stats["evaluation_unavailable"] += 1
                     continue
@@ -279,7 +287,7 @@ class FreeAgencyBoard:
                 return float("inf")       # never prefer cutting a player whose value is unknown
             return sum(v for w in self.weeks if (v := projection(st.projections, p.espn_player_id, w)) is not None
                        and w not in p.unavailable_weeks)
-        same = [p for p in after if p is not c and not p.on_ir
+        same = [p for p in after if p is not c and not p.reserved
                 and legal_roster([q for q in after if q is not p], st, legal_base)
                 and abs(self.total([q for q in after if q is not p]) - total) <= EPS]
         return (min(same, key=lambda p: (own(p), p.espn_player_id)),) if same else drops
@@ -296,8 +304,7 @@ class FreeAgencyBoard:
         drops: tuple = ()
         if not legal_roster(players, st, st.rosters[team_id]):
             try:
-                res = choose_forced_drops(players, st.rosters[team_id], st, incoming | {fa.espn_player_id}, self.total,
-                                          self.negative)
+                res = self.drop_search(players, st.rosters[team_id], incoming | {fa.espn_player_id})
             except EvaluationUnavailable as err:
                 return {"available": False, "reason": "evaluation_unavailable", "team": None, "drops": [],
                         "drop_cost_unknown": False, "retained_player_ids": [], "error": str(err)}
@@ -486,7 +493,7 @@ def statements(label: str, cmp: dict, alt: dict, waiver: dict | None, position_a
     # flex-eligible position's points move between its slots and FLEX, so only the whole-lineup gain
     # of its best available player is stated.
     by_slot = {s["slot"]: s for s in slots}
-    flexible = {pos for s in by_slot if s in FLEX_ELIGIBILITY for pos in FLEX_ELIGIBILITY[s]}
+    flexible = {pos for s in by_slot if is_flex(s) for pos in slot_positions(s)}
     for pa in position_alts:
         pos, pl = pa["position"], pa["player"]
         whole = pa["gain"]["ros_delta"]
@@ -650,7 +657,7 @@ def analyze(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_
         "pool": {"available_players_scored": len(board.pool),
                  "excluded_unprojected": dict(sorted(board.excluded_unprojected.items())),
                  "acquisition_types": dict(sorted(Counter(board.kind[p.espn_player_id] for p in board.pool).items()))},
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": source_label(state.projection_source, state.projections),
         "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS,
     }
 

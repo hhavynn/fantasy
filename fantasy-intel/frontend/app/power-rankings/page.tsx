@@ -1,9 +1,11 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { TeamLink } from "@/components/TeamLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, Method, Notice, PageHeader, Section, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import {
   biggestMovers, cardHref, focusTeam, ordinal, PATH, weightText, type PowerRankings, type PrTeam,
@@ -31,7 +33,8 @@ export default async function PowerRankingsPage({ searchParams }: PageProps<"/po
       </div>
     );
   }
-  const res = await api<PowerRankings>(withTeamId("/api/power-rankings", sel));
+  const [res, profile] = await Promise.all([api<PowerRankings>(withTeamId("/api/power-rankings", sel)), getLeagueProfile()]);
+  const espn = profile.providerProjections;
   if (!res.ok) {
     if (isUnknownTeam(res, sel)) {
       return (
@@ -60,7 +63,7 @@ export default async function PowerRankingsPage({ searchParams }: PageProps<"/po
       ) : (
         <>
           <Lead d={d} focus={focus} />
-          <Notices d={d} />
+          <Notices d={d} espn={espn} />
           <Section
             title="League power rankings"
             subtitle={`Week ${d.week} · ${rankedCount(d)} ${plural(rankedCount(d), "team")} · each component scaled 0–100 within the league; weights under each heading`}
@@ -79,7 +82,7 @@ export default async function PowerRankingsPage({ searchParams }: PageProps<"/po
               </div>
             </Section>
           )}
-          <PowerMethod d={d} />
+          <PowerMethod d={d} espn={espn} />
         </>
       )}
     </div>
@@ -112,10 +115,17 @@ function Lead({ d, focus }: { d: PowerRankings; focus: PrTeam | null }) {
   );
 }
 
-function Notices({ d }: { d: PowerRankings }) {
+/** `espn` is false for a league whose provider has no projections: last week's edition needs a stored ESPN snapshot. */
+function Notices({ d, espn }: { d: PowerRankings; espn: boolean }) {
   return (
     <>
-      {!d.previous.available && (
+      {!d.previous.available && !espn && (
+        <Notice tone="info" title="No week-over-week movement for this league">
+          Movement is not available for this league: last week&apos;s ranks are rebuilt from a stored provider projection
+          snapshot from before kickoff, and this league&apos;s provider publishes no projections.
+        </Notice>
+      )}
+      {!d.previous.available && espn && (
         <Notice tone="info" title="No week-over-week movement this week">
           Last week&apos;s ranks could not be rebuilt from what was known before its kickoff: {d.previous.reason}.
           Movement is shown only when the stored rosters for that week are provably the rosters at kickoff and an ESPN projection snapshot from before kickoff is stored; nothing is estimated.
@@ -126,7 +136,7 @@ function Notices({ d }: { d: PowerRankings }) {
   );
 }
 
-function PowerMethod({ d }: { d: PowerRankings }) {
+function PowerMethod({ d, espn }: { d: PowerRankings; espn: boolean }) {
   const p = d.previous;
   return (
     <Method title="How power rankings are calculated">
@@ -153,11 +163,13 @@ function PowerMethod({ d }: { d: PowerRankings }) {
             {p.projection_synced_at ? <> (synced {when(p.projection_synced_at)})</> : null} and all-play through week{" "}
             {p.all_play_periods.length ? p.all_play_periods[p.all_play_periods.length - 1] : "—"}.
           </p>
-        ) : (
+        ) : espn ? (
           <p className="faint">Last week&apos;s ranks are unavailable: {p.reason}.</p>
+        ) : (
+          <p className="faint">Last week&apos;s ranks are unavailable for this league. {ESPN_COMPARISON_UNAVAILABLE}</p>
         )}
         <p className="faint">
-          ESPN projections synced {when(d.freshness.projections_synced_at)}; league synced {when(d.freshness.league_synced_at)}.
+          {espn ? "ESPN projections" : "Fantasy Intel projections"} synced {when(d.freshness.projections_synced_at)}; league synced {when(d.freshness.league_synced_at)}.
         </p>
       </div>
     </Method>

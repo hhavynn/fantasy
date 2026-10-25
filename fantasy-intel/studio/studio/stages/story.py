@@ -247,6 +247,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         swing = targets_swing(next(m for m in p["metrics"] if m["column"] == "target_share"), claims)
         hooks = {k: v for k, v in hooks.items() if (k == "swing") == swing}
     kept = story != "held" or role_held(p, claims)
+    ending = None        # the takeaway is the ending; the decision buttons after it are only the call to action
     if story == "held":
         hooks = {k: v for k, v in hooks.items() if (k == "stayed") == kept}
     hook_key = hook_override if hook_override in hooks else choose(list(hooks), used.get("hook", []), seed)
@@ -260,7 +261,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     beats = [beat("hook", hook_text.format(**who), hook_scene, hook_emph, 1.14)]
     if story == "vanishing_targets":
         beats += vanishing_beats(p, claims, who, hook_key)
-        return finish(beats, p, lead, story, hook_key, tm, who)
+        # "isn't panic time. Just watch: does his share get back?": the open question is the ending
+        return finish(beats, p, lead, story, hook_key, tm, who, ending="cliffhanger")
 
     reveal = (f"His {lead['label']} went from {ph(lead['baseline'])} to "
               f"{'just ' if p['role'] == 'faller' else ''}{ph(lead['recent'])}.")
@@ -301,6 +303,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                               {"type": "twist", "snaps": m2["column"]}, [], 1.08))
         beats.append(beat("takeaway", "It's a small sample. But this is the trend that matters.",
                           {"type": "statement", "lines": ["SMALL SAMPLE.", "REAL TREND."]}, ["trend"], 1.08))
+        ending = "warning"
         beats.append(beat("question", f"Are you still starting {who['last']}?",
                           {"type": "decision", "question": ["STILL STARTING", who["last"].upper() + "?"]},
                           ["still", "starting"], 1.0))
@@ -331,6 +334,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                 else:
                     beats.append(beat("held", f"{tm['name']} came back in {ph(tm['back_week'])}.",
                                       {"type": "teammate_out", "phase": 2}, ["back"], 1.08))
+                ending = "verdict"
                 if kept:
                     take = ("The role survived his return. That's what makes it real.",
                             ["HE CAME BACK.", "THE ROLE STAYED."], ["survived"])
@@ -338,7 +342,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                     take = ("Smaller with him back, but still bigger than before.", ["SMALLER.", "STILL BIGGER."],
                             ["still", "bigger"])
                 else:
-                    take = ("With him back, the role shrank.", ["HE CAME BACK.", "THE ROLE SHRANK."], ["shrank"])
+                    take, ending = (("With him back, the role shrank.", ["HE CAME BACK.", "THE ROLE SHRANK."],
+                                     ["shrank"]), "warning")
                 beats.append(beat("takeaway", take[0], {"type": "statement", "lines": take[1]}, take[2], 1.08))
                 beats.append(beat("question", f"Are you buying {who['last']} now?",
                                   {"type": "decision", "question": ["BUYING", who["last"].upper() + "?"]},
@@ -350,7 +355,6 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                 code, _, detail = claims[tm["status"]]["value"]
                 beats.append(beat("status", f"Right now, he's {ph(tm['status'])}.", {"type": "status_stamp"},
                                   [], 1.05))
-                # the takeaway is the ending; the ADD / WAIT buttons after it are only the call to action
                 ending = "conditional"
                 if code == "ir":
                     take, ending = f"So for now, this role is {who['last']}'s.", "verdict"
@@ -388,6 +392,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
             extra = raw_targets_beats(p)
             take = ("Playing time moves first. Watch whether the targets follow.",
                     ["PLAYING TIME", "MOVES FIRST."])
+            ending = "cliffhanger"
         else:
             if m2:
                 beats.append(beat("support", f"And his {m2['label']} went from {ph(m2['baseline'])} to "
@@ -403,6 +408,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
             take = (("The question now is whether it holds.", ["DOES IT", "HOLD?"]) if story == "takeover"
                     else ("The box score catches up later. The role already got bigger.",
                           ["THE ROLE", "GOT BIGGER."]))
+            ending = "cliffhanger" if story == "takeover" else "verdict"
         beats.append(beat("takeaway", take[0], {"type": "statement", "lines": take[1]}, [], 1.08))
         beats.append(beat("question", f"Is {who['last']} on your roster?",
                           {"type": "decision", "question": [f"{who['last'].upper()}", "ON YOUR ROSTER?"],
@@ -410,11 +416,9 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         _fit(beats, counts_at + (story == "unresolved"), extra, claims)
 
     titles = None
-    if story == "fill_in":
-        return finish(beats, p, lead, story, hook_key, tm, who, ending=ending)
     if not kept:
         titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES["held_tested"]]
-    return finish(beats, p, lead, story, hook_key, tm, who, titles=titles)
+    return finish(beats, p, lead, story, hook_key, tm, who, titles=titles, ending=ending)
 
 
 def snaps_steady(p: dict, claims: dict) -> bool:

@@ -24,8 +24,10 @@ from typing import Any
 import json
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
+from .lineup import (FIXED_SLOTS, FLEX_SLOTS, NON_STARTING_SLOTS, assign_lineup, eligible, parse_eligible_slots,
+                     separable, unsupported_slots)
 from .player_availability import load_availability
+from .reserve_slots import is_taxi
 from .team_lineups import RosterPlayer
 from .trade_data import kickoff_utc
 
@@ -48,10 +50,91 @@ ACTIONABILITY_UNCERTAIN = "UNCERTAIN"
 ACTIONABILITY_IR_BLOCKED = "IR_BLOCKED"
 ACTIONABILITY_NO_CHANGE = "NO_CHANGE"
 
+# Recommendation strength (issue #172). One close rule: a projected gain of at most CLOSE_CALL_POINTS is a close call,
+# the margin the decision backtests score close calls by (their CLOSE_PAIR_POINTS; tested equal in
+# tests/test_start_sit_strength.py). A label with its reason, never a probability: no calibrated confidence exists.
+CLOSE_CALL_POINTS = 3.0
+STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED = "clear", "close", "unverified"
+
+
+def recommendation_strength(gain: float | None, unknowns: list[str]) -> dict:
+    """How far a recommendation is from a close call. Any unknown (a missing projection, an unverified kickoff) makes it
+    unverified, never certain; otherwise the projected gain against the close rule, stated in the reason."""
+    if unknowns or gain is None:
+        why = " ".join(unknowns) if unknowns else "The projected gain is unknown."
+        return {"label": STRENGTH_UNVERIFIED, "reason": f"Unverified: {why}"}
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gain <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE, "reason": f"Close call: {gain:+.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR, "reason": f"Clear: {gain:+.1f} pts, more than {margin}."}
+
+
+def decision_strength(d, is_future_preview: bool) -> dict | None:
+    """A decision's strength. A preview, or a week with no submitted lineup, is not a decision. A change is graded by its
+    own gain; any warning on a change that is not actionable (an unverified or kicked-off kickoff, an IR slot,
+    incomplete coverage) makes it unverified: certainty is only claimed for a move that can be made as shown. NO_CHANGE
+    returns None here: it is graded against the legal alternatives (lineup_what_if.add_alternatives)."""
+    if d.id == "future_preview_note":
+        return recommendation_strength(None, ["A next-week preview is not a decision yet." if is_future_preview
+                                              else "There is no submitted lineup this week to compare."])
+    if d.action == ACTION_NO_CHANGE:
+        return None
+    if d.actionability == ACTIONABILITY_ACTIONABLE:
+        return recommendation_strength(d.projected_net_gain, [])
+    return recommendation_strength(d.projected_net_gain,
+                                   d.warnings or ["This move cannot be made as shown in the lineup right now."])
+
+
+def no_change_strength(best: dict | None, complete: bool) -> dict:
+    """The strength of keeping the submitted lineup: how close the best legal bench alternative comes (`best`: an
+    alternatives option, delta <= 0 or None when unknown). With incomplete projections it is unverified."""
+    if not complete:
+        return recommendation_strength(None, ["Projection coverage for this lineup is incomplete."])
+    if best is None:
+        return {"label": STRENGTH_CLEAR, "reason": "Clear: no bench player can legally take a starting slot."}
+    if best["delta"] is None:
+        return recommendation_strength(None, [f"{best['name']}'s alternative has an unknown projected total."])
+    gap = max(0.0, -best["delta"])          # a tie reads "0.0", never "-0.0"
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gap <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE,
+                "reason": f"Close call: starting {best['name']} would cost {gap:.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR,
+            "reason": f"Clear: the closest alternative, {best['name']}, would cost {gap:.1f} pts, more than {margin}."}
+
+
 # Minimum regular season games required in nfl_schedules to confirm an NFL bye
 MIN_SCHEDULED_GAMES_FOR_BYE = 12
 
 TEAMLESS_ABBRS = frozenset({None, "", "FA"})
+
+# The projection source label when no projection exists for the week (e.g. a league whose provider publishes none and
+# whose independent projections abstain): never a provider's name over empty numbers.
+NO_PROJECTIONS = "Unavailable"
+
+
+def projection_source_label(source: str, independent_available: bool, projections: dict,
+                            origin: dict | None = None) -> str:
+    """What the response names as its projection source: NO_PROJECTIONS whenever the week has no number at all (also
+    when a verified independent run exists but every one of its rows abstains), else the independent model when it is
+    shown, else ESPN. With `origin` (the switch's per-player origins), a week where the models supplied none of the
+    shown numbers (every row abstains and ESPN's fallback fills them) is named ESPN, never the model (#254 L2); the rows
+    still carry their own `projection_origin`."""
+    if not any(v is not None for v in projections.values()):
+        return NO_PROJECTIONS
+    if source == "independent" and independent_available:
+        from .projection_source import MODEL_ORIGINS     # lazy, as the switch itself (module stays ESPN-first)
+        if origin is not None and not any(origin.get(pid) in MODEL_ORIGINS
+                                          for pid, v in projections.items() if v is not None):
+            return "ESPN"
+        return "Independent model"
+    return "ESPN"
+
+
+def shown_origin(origin: dict, pid: int | None, value: float | None) -> str | None:
+    """A row's `projection_origin`: the source of the number it shows, None when it shows none (#254, as matchup.py
+    does). A player whose projection is missing has no source, so the page never badges a missing value "ESPN"."""
+    return origin.get(pid) if pid is not None and value is not None else None
 
 
 @dataclass(frozen=True)
@@ -227,7 +310,7 @@ def build_slot_instances(roster_slots: dict[str, int]) -> list[SlotInstance]:
             slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=False))
 
     # Flex slots in canonical order (sorted by eligibility width)
-    for s in sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])):
+    for s in FLEX_SLOTS:
         count = int((roster_slots or {}).get(s, 0))
         for i in range(count):
             slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=True))
@@ -265,9 +348,8 @@ def map_actual_starters_to_slots(
 
     # Pass 2: Positionally eligible matches for any remaining starters
     for p in unmatched_players:
-        pos = p.get("position")
         matched_slot = next(
-            (s for s in slots if s.slot_id not in used_slots and eligible(s.slot_type, pos)),
+            (s for s in slots if s.slot_id not in used_slots and eligible(s.slot_type, p)),
             None,
         )
         if matched_slot is not None:
@@ -339,7 +421,7 @@ def load_actual_lineup(
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter,
                l.points, l.projected_points AS snapshot_projected_points, l.synced_at AS snapshot_synced_at,
                fp.full_name, fp.position, fp.pro_team,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, fp.eligible_slots
         FROM lineup_snapshots l
         JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
@@ -350,6 +432,7 @@ def load_actual_lineup(
 
     starters, bench, ir = [], [], []
     for r in rows:
+        r["eligible_slots"] = parse_eligible_slots(r["eligible_slots"], r.get("position"))     # the slots a player may fill (#253 G11)
         slot_id = r.get("lineup_slot_id")
         if slot_id == IR_SLOT:
             ir.append(r)
@@ -359,6 +442,50 @@ def load_actual_lineup(
             bench.append(r)
 
     return starters, bench, ir
+
+
+def slot_label(p: dict) -> str | None:
+    """A lineup row's slot label (Sleeper rows carry it; ESPN rows also by numeric id)."""
+    label = p.get("lineup_slot")
+    if not label and p.get("lineup_slot_id") is not None:
+        label = SLOT_MAP.get(p["lineup_slot_id"])
+    return label
+
+
+def split_held_starters(starters: list[dict], unsupported) -> tuple[list[dict], list[dict]]:
+    """(starters in slots the engines fill, starters held in slots no engine fills). A held starter (IDP, P, HC, an
+    unrecognised slot) is kept where he is: the recommendation never moves him and no total counts him, so the
+    submitted and recommended lineups differ only in the slots the engines fill and the gain between them is exact
+    (issue #253 G2)."""
+    fillable = {*FIXED_SLOTS, *FLEX_SLOTS}
+
+    def is_held(p: dict) -> bool:          # also a starter whose label no engine fills but the counts do not list
+        label = slot_label(p)
+        return label in set(unsupported) or bool(label) and label not in fillable and label not in NON_STARTING_SLOTS
+    return [p for p in starters if not is_held(p)], [p for p in starters if is_held(p)]
+
+
+def lineup_coverage(unsupported, held: list[dict], projections: dict, not_in_player_data: int) -> dict:
+    """The `lineup_coverage` block: totals are partial when the league starts slots no engine fills (#253 G3)."""
+    slots = ", ".join(unsupported)
+    n = len(held)
+    held_text = (f" Your {n} starter{'s' if n != 1 else ''} there {'are' if n != 1 else 'is'} kept as "
+                 f"{'they are' if n != 1 else 'he is'}." if held else "")
+    missing_text = (f" {not_in_player_data} starter{'s are' if not_in_player_data != 1 else ' is'} not in the synced "
+                    "player data (positions Fantasy Intel does not store) and not shown." if not_in_player_data else "")
+    return {
+        "status": "partial", "unsupported_slots": list(unsupported),
+        "held_starters": [{"player_id": p.get("espn_player_id"), "name": p.get("full_name"),
+                           "position": p.get("position"), "slot": slot_label(p),
+                           "projected_points": projections.get(p.get("espn_player_id"))} for p in held],
+        "starters_not_in_player_data": not_in_player_data,
+        "reason": f"{slots}: no engine fills these slots, so lineup totals cover the other starting slots only and "
+                  f"are partial, never complete.{held_text}{missing_text} A projected gain compares only the slots "
+                  "the engines fill, where the two lineups differ, so it is exact for that comparison."
+                  + ("" if separable(unsupported) else
+                     f" Players the engines value may also start in {slots}, which the recommendation does not "
+                     "consider, so it is not measured against the best full lineup."),
+    }
 
 
 def _map_optimizer_output_to_slots(
@@ -415,7 +542,8 @@ def optimize_lock_constrained_lineup(
 
     # 1. Benchmark: Unconstrained optimal lineup
     unconstrained_candidates = [
-        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]]),
+         "eligible_slots": p.get("eligible_slots")}
         for p in roster_players
         if p["espn_player_id"] not in ir_ids
         and p["espn_player_id"] not in unavailable_ids
@@ -433,7 +561,8 @@ def optimize_lock_constrained_lineup(
     remaining_slot_types = [s.slot_type for s in remaining_slot_instances]
 
     candidate_pool = [
-        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]]),
+         "eligible_slots": p.get("eligible_slots")}
         for p in roster_players
         if p["espn_player_id"] not in locked_starter_ids
         and p["espn_player_id"] not in locked_bench_ids
@@ -497,13 +626,31 @@ def optimize_lock_constrained_lineup(
 
     unc_known_total = sum(a.get("projected_points") or 0.0 for a in unconstrained_lineup if a.get("projected_points") is not None)
 
+    # An empty starting slot is a real (short-handed) 0 only when nobody who could fill it is unknown. When an eligible
+    # rostered player with an NFL team has no projection, the slot is empty because his number is missing: the lineup
+    # total is unknown, never a measured total (issue #253 G1; the rule team_lineups.project_week applies).
+    def unknown_fillers(lineup: list[dict], excluded: set) -> list[int]:
+        empty = {a["slot"] for a in lineup if a.get("player_id") is None}
+        if not empty:
+            return []
+        return sorted(p["espn_player_id"] for p in roster_players
+                      if p["espn_player_id"] not in excluded and projections.get(p["espn_player_id"]) is None
+                      and p.get("pro_team") not in TEAMLESS_ABBRS
+                      and any(eligible(slot, p) for slot in empty))
+
+    rec_unknown = unknown_fillers(recommended_lineup, ir_ids | unavailable_ids | locked_starter_ids | locked_bench_ids)
+    unc_unknown = unknown_fillers(unconstrained_lineup, ir_ids | unavailable_ids)
+    if rec_unknown:
+        rec_complete = False
+    missing_projections = sorted(set(missing_projections) | set(rec_unknown) | set(unc_unknown))
+
     is_complete = actual_complete and rec_complete
 
     # No submitted lineup (a future-week preview or no snapshot) has no actual total: 0 would turn
     # the whole recommended lineup into a "gain".
     actual_total = round(actual_known_total, 2) if actual_complete and actual_starters else None
     recommended_total = round(rec_known_total, 2) if rec_complete else None
-    unconstrained_total = round(unc_known_total, 2) if is_complete else None
+    unconstrained_total = round(unc_known_total, 2) if is_complete and not unc_unknown else None
     projected_gain = (
         round(recommended_total - actual_total, 2)
         if (actual_total is not None and recommended_total is not None)
@@ -537,6 +684,11 @@ class StartSitDecision:
     explanation: str
     warnings: list[str]
 
+
+
+def _pts_text(value) -> str:
+    """A player's projection in an explanation: a missing one is said to be missing, never shown as 0.0."""
+    return "no projection" if value is None else f"{value:.1f} pts"
 
 def generate_start_sit_decisions(
     actual_starters: list[dict],
@@ -659,11 +811,11 @@ def generate_start_sit_decisions(
     actionability, warnings = evaluate_actionability(start_players + bench_players)
 
     starts_desc = ", ".join(
-        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        f"{p.get('full_name')} ({_pts_text(projections.get(p.get('espn_player_id')))})"
         for p in start_players
     )
     benches_desc = ", ".join(
-        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        f"{p.get('full_name')} ({_pts_text(projections.get(p.get('espn_player_id')))})"
         for p in bench_players
     )
     gain_str = f"+{net_gain:.1f}" if net_gain is not None and net_gain > 0 else (f"{net_gain}" if net_gain is not None else "an unknown")
@@ -695,13 +847,18 @@ def load_start_sit_evaluation(
     team_id: int | None = None,
     week: int | None = None,
     now: datetime | None = None,
-    source: str = "espn",
+    source: str | None = None,
+    capture: dict | None = None,
 ) -> dict:
     """Full evaluation payload for Start/Sit Command Center. `source` is "espn" (default) or
-    "independent" (Fantasy Intel's model, see analytics/projection_source.py)."""
+    "independent" (Fantasy Intel's model, see analytics/projection_source.py).
+
+    `capture`, when given, receives the evaluation's internal constraint sets (slot instances, kickoff-locked starters
+    and bench players, IR, taxi and NFL-ineligible players, the projections used): the what-if lineup builder
+    (analytics/lineup_what_if.py) applies exactly these rules instead of re-deriving them. The payload is unchanged."""
     from .projection_source import describe, normalize, weekly
 
-    source = normalize(source)
+    source = normalize(source, con)
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -745,9 +902,12 @@ def load_start_sit_evaluation(
         if target_team is None:
             raise LookupError(f"Team {team_id} not found in this league.")
     else:
+        # no first-team fallback: with no team in view (a v2 viewer with no saved team and no ?team_id=, or no
+        # is_mine team) the answer would be some other manager's lineup presented as "yours" (#348), as Matchup refuses;
+        # the frontend's needsTeam() keys on this wording to show the team picker
         target_team = next((t for t in teams if t.get("is_mine")), None)
         if target_team is None:
-            target_team = teams[0]
+            raise LookupError("No team is marked as yours (is_mine); pass team_id.")
 
     tid = target_team["team_id"]
 
@@ -766,7 +926,18 @@ def load_start_sit_evaluation(
             bench = prev_s + prev_b
             ir = prev_ir
 
-    all_roster = starters + bench + ir
+    # Starters in slots no engine fills (IDP, P, HC) are held where they are: never moved, never in a total (G2).
+    roster_slots_raw = lg.get("roster_slots")
+    if isinstance(roster_slots_raw, str):
+        roster_slots_raw = json.loads(roster_slots_raw)
+    unsupported = unsupported_slots(roster_slots_raw or {})
+    starters, held = split_held_starters(starters, unsupported)
+    if held and not unsupported:            # starters in labels the slot counts do not list: still left out
+        unsupported = tuple(sorted({slot_label(p) for p in held}))
+    held_ids = {p["espn_player_id"] for p in held if "espn_player_id" in p}
+    all_roster = starters + bench + ir + held
+    # Sleeper taxi-squad players load as bench rows (slot label TAXI): rostered, but never a lineup candidate.
+    taxi_ids = {p["espn_player_id"] for p in bench if "espn_player_id" in p and is_taxi(p)}
 
     # 5. Load projections for target_week
     proj_rows = fetch_dicts(
@@ -808,6 +979,7 @@ def load_start_sit_evaluation(
             name=p.get("full_name"),
             on_ir=p["espn_player_id"] in ir_ids,
             injury_status=p.get("injury_status"),
+            on_taxi=p["espn_player_id"] in taxi_ids,
         )
         for p in all_roster if "espn_player_id" in p
     ]
@@ -842,9 +1014,6 @@ def load_start_sit_evaluation(
         )
 
     # 8. Slot instances & lock preservation
-    roster_slots_raw = lg.get("roster_slots")
-    if isinstance(roster_slots_raw, str):
-        roster_slots_raw = json.loads(roster_slots_raw)
     slot_instances = build_slot_instances(roster_slots_raw or {})
 
     actual_assignments: list[dict] = []
@@ -861,12 +1030,12 @@ def load_start_sit_evaluation(
 
     # 9. Optimization
     opt = optimize_lock_constrained_lineup(
-        roster_players=all_roster,
+        roster_players=[p for p in all_roster if p.get("espn_player_id") not in held_ids],
         slot_instances=slot_instances,
         locked_starter_assignments=locked_starters,
         locked_bench_ids=locked_bench_ids,
         unavailable_ids=unavailable_ids,
-        ir_ids=ir_ids,
+        ir_ids=ir_ids | taxi_ids,      # neither an IR nor a taxi player can start
         projections=projections,
         actual_starters=starters,
     )
@@ -889,7 +1058,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": row.get("projected_points"),
-            "projection_origin": origin.get(pid) if pid is not None else None,
+            "projection_origin": shown_origin(origin, pid, row.get("projected_points")),
             "is_flex": row.get("is_flex", False),
             "is_currently_starting": pid in actual_starter_pids,
             "current_slot": p.get("lineup_slot") if pid in actual_starter_pids else ("BE" if p else None),
@@ -923,7 +1092,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "is_flex": slot_inst.is_flex if slot_inst else False,
             "is_currently_starting": True,
             "current_slot": p.get("lineup_slot"),
@@ -978,7 +1147,8 @@ def load_start_sit_evaluation(
                     "position": p.get("position"),
                     "pro_team": p.get("pro_team"),
                     "projection": projections.get(p.get("espn_player_id")),
-                    "projection_origin": origin.get(p.get("espn_player_id")),
+                    "projection_origin": shown_origin(origin, p.get("espn_player_id"),
+                                                      projections.get(p.get("espn_player_id"))),
                     "lock_status": (locks.get(p.get("pro_team")) or PlayerLock(team=p.get("pro_team"), status=LOCK_UNKNOWN)).status,
                 }
                 for p in d.start_players
@@ -998,6 +1168,7 @@ def load_start_sit_evaluation(
             "projected_net_gain": d.projected_net_gain,
             "explanation": d.explanation,
             "warnings": d.warnings,
+            "recommendation_strength": decision_strength(d, is_future_preview),
         }
         for d in decisions_objs
     ]
@@ -1014,7 +1185,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,
@@ -1022,6 +1193,7 @@ def load_start_sit_evaluation(
             "injury_status": p.get("injury_status"),
             "on_ir": False,
             "nfl_ineligible": pid in unavailable_ids,
+            **({"on_taxi": True} if pid in taxi_ids else {}),
         })
     for p in ir:
         pid = p.get("espn_player_id")
@@ -1033,7 +1205,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
-            "projection_origin": origin.get(pid),
+            "projection_origin": shown_origin(origin, pid, projections.get(pid)),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,
@@ -1042,6 +1214,14 @@ def load_start_sit_evaluation(
             "on_ir": True,
             "nfl_ineligible": pid in unavailable_ids,
         })
+
+    coverage = None
+    if unsupported:
+        absent = fetch_dicts(con, """
+            SELECT count(*) AS n FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
+            WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ? AND l.is_starter
+              AND fp.espn_player_id IS NULL""", [league_id, season, target_week, tid])
+        coverage = lineup_coverage(unsupported, held, projections, int(absent[0]["n"]) if absent else 0)
 
     # Summary status
     locked_count = sum(1 for p in all_roster if (locks.get(p.get("pro_team")) or PlayerLock(team=p.get("pro_team"), status=LOCK_UNKNOWN)).status == LOCK_LOCKED)
@@ -1063,6 +1243,16 @@ def load_start_sit_evaluation(
     last_nfl = nfl_runs[0]["last_nfl"] if nfl_runs else None
 
     lineup_sync = starters[0].get("snapshot_synced_at") if starters else (bench[0].get("snapshot_synced_at") if bench else lg.get("synced_at"))
+
+    if capture is not None:
+        capture.update(
+            league_row=lg, slot_instances=slot_instances, locked_starters=locked_starters,
+            locked_bench_ids=set(locked_bench_ids), ir_ids=set(ir_ids), taxi_ids=set(taxi_ids),
+            unavailable_ids=set(unavailable_ids), projections=dict(projections), origin=dict(origin), locks=locks,
+            avail_records=avail_records, starters=list(starters), bench=list(bench), ir=list(ir),
+            held_starters=list(held),
+            recommended_lineup=list(opt["recommended_lineup"]),
+        )
 
     return {
         "league": {
@@ -1089,17 +1279,24 @@ def load_start_sit_evaluation(
         ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
-        "projection_source": "Independent model" if source == "independent" and src["available"] else "ESPN",
+        # named from the players this response shows (the team's roster), never from another team's numbers
+        "projection_source": projection_source_label(
+            source, src["available"], {pid: projections.get(pid) for pid in player_map},
+            {pid: origin[pid] for pid in player_map if pid in origin}),
         "projection_source_detail": describe(src),
         "summary": {
-            "actual_projected_total": opt["actual_total"],
-            "recommended_projected_total": opt["recommended_total"],
+            # With slots no engine fills, a total covers the other slots only: partial (None), the known sum kept (G3).
+            "actual_projected_total": None if coverage else opt["actual_total"],
+            "recommended_projected_total": None if coverage else opt["recommended_total"],
             "known_actual_total": opt["known_actual_total"],
             "known_recommended_total": opt["known_recommended_total"],
-            "unconstrained_total": opt["unconstrained_total"],
+            "unconstrained_total": None if coverage else opt["unconstrained_total"],
             "known_unconstrained_total": opt["known_unconstrained_total"],
             "projected_gain": opt["projected_gain"],
-            "projection_complete": opt["is_complete"],
+            # complete only when the totals are: with slots no engine fills they are partial; whether every projection
+            # the comparison needs exists is then `projections_complete` (the gain needs it, not the slots)
+            "projection_complete": opt["is_complete"] and not coverage,
+            **({"projections_complete": opt["is_complete"]} if coverage else {}),
             "missing_projections": [
                 {"player_id": pid, "name": (player_map.get(pid) or {}).get("full_name"), "position": (player_map.get(pid) or {}).get("position")}
                 for pid in opt["missing_projection_ids"]
@@ -1108,7 +1305,12 @@ def load_start_sit_evaluation(
             "bench_count": len(bench),
             "ir_count": len(ir),
             "locked_players_count": locked_count,
+            # every rostered player Start/Sit can see has kicked off (held starters included; starters missing from the
+            # player data are not seen), whatever `status` reports first: `incomplete_data` outranks `all_locked` there,
+            # so consumers read this flag rather than infer it (#165)
+            "all_locked": all_locked,
             "status": summary_status,
+            **({"lineup_coverage": coverage} if coverage else {}),
         },
         "actual_lineup": enriched_actual,
         "recommended_lineup": enriched_recommended,

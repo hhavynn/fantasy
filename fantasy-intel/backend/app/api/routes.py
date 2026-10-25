@@ -12,18 +12,21 @@ from ..analytics.availability import availability, injury_order_sql, latest_inju
 from ..analytics import forward_ours
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
-from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
+from ..analytics.lineup import unsupported_of
+from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value, source_label
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
+from ..analytics.reserve_slots import is_taxi
 from ..analytics import trade_dual_value
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.trade_discovery import _side_detail
-from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
+from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, roster_legality, with_streaming
 from ..config import get_settings
 from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
 from .perspective import league_teams, resolve_team, waiver_table
+from .signal_provenance import INTERRUPTED, Provenance, coverage, payload, sync_status, trade_provenance
 
 router = APIRouter(prefix="/api")
 
@@ -64,29 +67,30 @@ def _pj(season: int) -> str:
     return PLAYER_JOINS.replace("$season", str(int(season)))
 
 
-# A 'running' row with no finish time is left behind by a sync that died (SyncRun.start writes it, finish()
-# replaces it); a live sync holds the DuckDB lock, so the API cannot even read during one. Report it as
-# 'interrupted', and keep it out of the "latest run" per source so it neither shows as running nor as failed.
-_INTERRUPTED = "(status = 'running' AND finished_at IS NULL)"
+_INTERRUPTED = INTERRUPTED      # a sync that died: see signal_provenance.INTERRUPTED
 _RUN_STATUS = f"CASE WHEN {_INTERRUPTED} THEN 'interrupted' ELSE status END"
-
-
-def _sync_status(con) -> dict:
-    out = {}
-    for r in rows(con, """
-        SELECT source, max(finished_at) AS last_ok FROM sync_runs WHERE status = 'ok' GROUP BY 1"""):
-        out[r["source"]] = r["last_ok"]
-    last = rows(con, f"""
-        SELECT source, status, message, finished_at FROM (
-          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs
-          WHERE NOT {_INTERRUPTED}) WHERE rn = 1""")
-    return {"last_success": out, "latest_runs": last}
+_sync_status = sync_status
 
 
 def _nfl_latest_week(con, season: int) -> int | None:
     if not table_exists(con, "nfl_weekly_stats"):
         return None
     return con.execute("SELECT max(week) FROM nfl_weekly_stats WHERE season = ?", [season]).fetchone()[0]
+
+
+@router.get("/league-profile")
+def league_profile():
+    """Which provider this league comes from and which projections its pages show by default (multi-league Phase
+    4b): ESPN's for an ESPN league, Fantasy Intel's own (Ours) for a Sleeper league, whose provider publishes none."""
+    from ..analytics.projection_source import default_source
+    with db() as con:
+        from ..analytics.legacy_league import latest_league
+        lg = latest_league(con, ["settings_raw"])
+        raw = (lg or {}).get("settings_raw")
+        settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        provider = settings.get("provider") if isinstance(settings, dict) and settings.get("provider") else "espn"
+        source = default_source(con)
+        return {"provider": provider, "default_source": source, "provider_projections": source == "espn"}
 
 
 @router.get("/status")
@@ -125,7 +129,8 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
     for p in roster:
         p["nfl_injury"] = inj.get(p["gsis_id"]) if p["gsis_id"] else None
         report = p["nfl_injury"]["report_status"] if p["nfl_injury"] and p["nfl_injury"]["week"] == week else None
-        p["availability"] = availability(p["injury_status"], p["lineup_slot_id"], report)
+        # a Sleeper taxi-squad player cannot start for this team whatever his health (analytics/reserve_slots.py)
+        p["availability"] = availability(p["injury_status"], p["lineup_slot_id"], report, taxi=is_taxi(p))
         # None = schedule unknown; otherwise whether his NFL team has no game this week
         p["on_bye"] = (bool(p["pro_team"]) and p["pro_team"] not in playing) if playing else None
     return roster
@@ -156,8 +161,15 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
                     or (p.get("nfl_injury") or {}).get("report_status")]
         needs = rows(con, """SELECT * FROM team_position_needs WHERE league_id=? AND season=? AND team_id=?
                              ORDER BY need_score DESC""", [league_id, season, team["team_id"]]) if team else []
+        sync = _sync_status(con)
+        prov = Provenance(con, sync=sync)
+        # D/ST has no NFL injury or practice report to link, so it is not expected to be covered.
+        reportable = [p for p in roster if p["position"] != "D/ST"]
+        linked = coverage(sum(1 for p in reportable if p["gsis_id"]), len(reportable),
+                          "rostered players linked to NFL data") if reportable else None
+        usage = _market_signal_provenance(con, prov, season, roster)
         return {
-            "league": lg,
+            "league": {**lg, "trade_deadline_week": _trade_deadline_week(con, lg)},
             "my_team": me,          # the owner's team (is_mine), unchanged by the selection
             "team": team,           # the team this overview is for
             "perspective": perspective,
@@ -166,9 +178,39 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
             "injuries": injuries,
             "needs": needs,
             "recent_transactions": _recent_moves(con, league_id, season, limit=25),
-            "sync": _sync_status(con),
+            "sync": sync,
             "nfl_latest_week": _nfl_latest_week(con, season),
+            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked), usage),
         }
+
+
+def _market_signal_provenance(con, prov: Provenance, season: int, roster: list[dict]) -> dict:
+    """The roster's market signals (the Overview's trade decisions): player_scores rows the analytics pipeline writes
+    from nflverse usage. Captured at the oldest computed_at behind this roster's signals, stale when the newest
+    analytics run failed; coverage counts the rostered QB/RB/WR/TE that have a signal (an unclassified one is missing)."""
+    skill = [p for p in roster if p["position"] in ("QB", "RB", "WR", "TE")]
+    classified = coverage(sum(1 for p in skill if p.get("market_signal")), len(skill),
+                          "rostered QB, RB, WR and TE with a market signal") if skill else None
+    ids = sorted({p["gsis_id"] for p in skill if p.get("gsis_id") and p.get("market_signal")})
+    computed = con.execute(f"SELECT min(computed_at) FROM player_scores WHERE season = ? AND gsis_id IN "
+                           f"({','.join('?' * len(ids))})", [season, *ids]).fetchone()[0] \
+        if ids and table_exists(con, "player_scores") else None
+    reason = None if ids else "No market signals are computed for this roster yet."
+    sig = prov.analysis("Fantasy Intel market signals (from nflverse usage)", computed, cov=classified, reason=reason)
+    return {**sig, "signal": "usage"}
+
+
+def _trade_deadline_week(con, lg: dict) -> int | None:
+    """A week-based trade deadline (Sleeper's `trade_deadline` setting, kept in settings_raw.trade_deadline_week; ESPN's
+    is the `trade_deadline` timestamp). None when the provider has none, or names a week past the season (no deadline)."""
+    row = one(con, "SELECT settings_raw FROM leagues WHERE league_id = ? AND season = ?", [lg["league_id"], lg["season"]])
+    raw = (row or {}).get("settings_raw")
+    settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    week = settings.get("trade_deadline_week") if isinstance(settings, dict) else None
+    if not isinstance(week, int) or isinstance(week, bool) or week <= 0:
+        return None
+    final = lg.get("final_scoring_period")
+    return None if isinstance(final, int) and week > final else week
 
 
 def _recent_moves(con, league_id: int, season: int, limit: int = 25, team_id: int | None = None) -> list[dict]:
@@ -218,11 +260,20 @@ def search_players(q: str = "", limit: int = Query(30, le=100)):
             SELECT {_player_cols(con)} FROM fantasy_players fp {_pj(lg["season"])}
             WHERE fp.position IN ('QB','RB','WR','TE','K','D/ST')
               AND (? = '' OR strip_accents(lower(fp.full_name)) LIKE '%' || strip_accents(lower(?)) || '%')
-            ORDER BY fp.percent_owned DESC NULLS LAST LIMIT ?
+            ORDER BY fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT ?
         """, [q.strip(), q.strip(), limit])
         for r in out:
             r["fantasy_team"] = teams.get(r["on_team_id"]) if r["availability_status"] == "ONTEAM" else None
         return out
+
+
+def league_points_sources(points: list[dict]) -> list[dict]:
+    """A player's league-point rows, each naming its own source (`actual_source`, #254 S3) only when they do not all
+    come from the provider: a Sleeper player with weeks off a roster mixes Sleeper's points with Fantasy Intel's
+    box-score scoring. Rows that are all the provider's (every ESPN league) keep their exact shape."""
+    if all(r.get("actual_source") in (None, "provider") for r in points):
+        return [{k: v for k, v in r.items() if k != "actual_source"} for r in points]
+    return points
 
 
 @router.get("/players/{espn_player_id}")
@@ -242,8 +293,11 @@ def player_detail(espn_player_id: int):
                     [season, p["gsis_id"]]) if p["gsis_id"] else None
         weekly = rows(con, "SELECT * FROM player_week_usage WHERE season=? AND gsis_id=? ORDER BY week",
                       [season, p["gsis_id"]]) if p["gsis_id"] else []
-        league_pts = rows(con, """SELECT scoring_period, actual_points, projected_points FROM espn_player_weekly_points
-                                  WHERE season=? AND espn_player_id=? ORDER BY scoring_period""", [season, espn_player_id])
+        source_col = (", actual_source" if "actual_source" in table_columns(con, "espn_player_weekly_points")
+                      else "")
+        league_pts = league_points_sources(rows(con, f"""SELECT scoring_period, actual_points, projected_points{source_col}
+                                  FROM espn_player_weekly_points WHERE season=? AND espn_player_id=?
+                                  ORDER BY scoring_period""", [season, espn_player_id]))
         injuries = rows(con, f"""SELECT * FROM nfl_injuries WHERE season=? AND gsis_id=?
                                  ORDER BY {injury_order_sql(con)}""", [season, p["gsis_id"]]) \
             if p["gsis_id"] and table_exists(con, "nfl_injuries") else []
@@ -262,6 +316,7 @@ def player_detail(espn_player_id: int):
         opp_def = one(con, "SELECT * FROM defense_context WHERE season=? AND defteam=?",
                       [season, team_ctx["next_opponent"]]) if team_ctx and team_ctx.get("next_opponent") else None
         forward = player_forward(con, season, espn_player_id, p["pro_team"])
+        prov = Provenance(con)
         return {
             "player": p, "score": score, "weekly": weekly, "league_points": league_pts, "injuries": injuries,
             "forward_projection": forward,
@@ -273,12 +328,36 @@ def player_detail(espn_player_id: int):
                 "man_zone_splits": "unavailable: not in free data",
             },
             "ftn_read_semantics": ftn_semantics(),
+            "provenance": _player_provenance(con, prov, lg, p, weekly, forward),
         }
+
+
+def _player_provenance(con, prov: Provenance, lg: dict, p: dict, weekly: list[dict], forward: dict | None) -> dict:
+    """League data, ESPN's forward projections, nflverse usage and injury reports behind a player's profile."""
+    summary = (forward or {}).get("summary") or {}
+    proj = None
+    if forward is not None and prov.provider != "espn":      # no provider projections: the forward view is Ours
+        ours = forward.get("ours") or {}
+        proj = prov.projections("independent", {"available": bool(ours.get("available")), "reason": ours.get("reason"),
+                                                "run": {"created_at": ours.get("run_created_at")}}, horizon="forward")
+    elif forward is not None:
+        proj = prov.projections("espn", captured_at=forward.get("projection_synced_at"), horizon="forward",
+                                cov=coverage(summary.get("ros_weeks_available"), summary.get("ros_weeks_expected"),
+                                             "remaining weeks with a projection"))
+    if not p["gsis_id"]:
+        unlinked = "Not linked to NFL data: usage, snaps and practice reports cannot be shown for this player."
+        usage = prov.nflverse("usage", "NFL usage and snap counts (nflverse)", reason=unlinked)
+        injuries = prov.nflverse("injuries", "NFL injury and practice reports (nflverse)", reason=unlinked)
+    else:
+        usage = prov.nflverse("usage", "NFL usage and snap counts (nflverse)",
+                              reason=None if weekly else f"No weekly usage is stored for {lg['season']} yet.")
+        injuries = prov.injuries(con, lg["season"])
+    return payload(prov.league(lg), proj, usage, injuries)
 
 
 @router.get("/players/{espn_player_id}/forward")
 def player_forward_view(espn_player_id: int,
-                        source: str = Query("espn", description="Projection source: espn (default) | independent")):
+                        source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)")):
     """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary.
 
     With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.2.0) for
@@ -342,6 +421,16 @@ def _route_summary(weekly: list[dict]) -> dict | None:
     }
 
 
+# Actionable moves first, then by demonstrated benefit. A row whose benefit is unknown (ranking_utility null: a player
+# without a historical value and no forward evidence) ranks after every known one, never among real ~0 gains (#253 G5);
+# the remaining keys keep the order stable.
+_RANKING = "try_cast(w.components->'decision'->'utility'->>'ranking_utility' AS DOUBLE)"
+WAIVER_ORDER = f"""coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false) DESC,
+                     {_RANKING} IS NULL, {_RANKING} DESC,
+                     CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END,
+                     w.waiver_score DESC, w.espn_player_id"""
+
+
 @router.get("/waivers")
 def waivers(position: str | None = None, recommendation: str | None = None,
             limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL",
@@ -386,10 +475,7 @@ def waivers(position: str | None = None, recommendation: str | None = None,
             LEFT JOIN player_context pc ON pc.gsis_id = m.gsis_id AND pc.season = w.season
             LEFT JOIN fantasy_players d ON d.espn_player_id = w.suggested_drop_id
             WHERE w.league_id = ? AND w.season = ? {where}
-            ORDER BY coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false) DESC,
-                     coalesce(try_cast(w.components->'decision'->'utility'->>'ranking_utility' AS DOUBLE), 0) DESC,
-                     CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END,
-                     w.waiver_score DESC, w.espn_player_id
+            ORDER BY {WAIVER_ORDER}
             LIMIT ? OFFSET ?
         """, params)
         computed_at = meta["computed_at"] if meta else None
@@ -403,10 +489,19 @@ def waivers(position: str | None = None, recommendation: str | None = None,
             for r in out:
                 r["drop_on_roster"] = None if r["suggested_drop_id"] is None else r["suggested_drop_id"] in on_roster
         roster_synced = perspective["roster_synced_at"] if perspective else None
+        roster_newer = bool(roster_synced and computed_at and roster_synced > computed_at)
+        pool = (meta["components"].get("decision") or {}).get("coverage") if meta else None
+        prov = Provenance(con)
+        analysis = prov.analysis(
+            "Fantasy Intel waiver analysis", computed_at,
+            cov=coverage(pool.get("evaluated"), pool.get("eligible"), "eligible free agents evaluated")
+            if isinstance(pool, dict) else None,
+            stale_reason="The roster was re-synced after this analysis ran." if roster_newer else None,
+            reason=None if meta else "No waiver analysis is stored for this league yet.")
         return {"league": lg, "perspective": perspective, "players": out, "computed_at": computed_at,
-                "roster_newer_than_analysis": bool(roster_synced and computed_at and roster_synced > computed_at),
-                "coverage": (meta["components"].get("decision") or {}).get("coverage") if meta else None,
-                "total": total, "offset": offset, "limit": limit}
+                "roster_newer_than_analysis": roster_newer, "coverage": pool,
+                "total": total, "offset": offset, "limit": limit,
+                "provenance": payload(prov.league(lg), analysis)}
 
 
 def _team_composition(con, league_id, season, week) -> dict[int, dict]:
@@ -481,7 +576,7 @@ def data_quality():
             WHERE m.match_method = 'unmatched' ORDER BY (fp.availability_status = 'ONTEAM') DESC,
                   fp.percent_owned DESC NULLS LAST LIMIT 200""")
         medium = rows(con, """SELECT m.*, fp.percent_owned FROM player_id_map m JOIN fantasy_players fp USING (espn_player_id)
-                              WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST LIMIT 100""")
+                              WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT 100""")
         conflicts = rows(con, "SELECT * FROM player_id_map WHERE notes LIKE 'Conflicting%' LIMIT 100")
         runs = rows(con, f"SELECT run_id, source, started_at, finished_at, {_RUN_STATUS} AS status, message FROM sync_runs "
                     "ORDER BY started_at DESC LIMIT 30")
@@ -532,7 +627,7 @@ def _projection_quality(con) -> dict | None:
                    r.ros_weeks_expected, r.ros_weeks_available, r.missing_weeks
             FROM player_ros_projections r LEFT JOIN fantasy_players fp USING (espn_player_id)
             WHERE r.season = ? AND r.ros_projected_points IS NULL
-            ORDER BY (fp.availability_status = 'ONTEAM') DESC NULLS LAST, fp.percent_owned DESC NULLS LAST LIMIT 60""",
+            ORDER BY (fp.availability_status = 'ONTEAM') DESC NULLS LAST, fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT 60""",
                           [season])
     history = one(con, """SELECT count(*) AS rows, count(DISTINCT snapshot_date) AS days, max(snapshot_date) AS latest
                           FROM espn_projection_history WHERE season = ?""", [season])
@@ -604,8 +699,11 @@ def lineup_projections():
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
                 "teams_note": None if window.weeks else
                 "No remaining fantasy scoring periods: these are the stored rows from the last actionable window.",
-                "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections)
+                "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections,
+                                                         projection_source=source_label(state.projection_source, state.projections))
                 if window.weeks else None,
+                # slots no engine fills: every stored total is partial (team_lineups.project_week, #253 G3)
+                **({"unsupported_slots": list(unsupported_of(state.slots))} if unsupported_of(state.slots) else {}),
                 "projection_source": "ESPN", "note": BASELINE_NOTE}
 
 
@@ -623,7 +721,9 @@ def team_lineup_projection(team_id: int):
                     "evaluation": _window_info(state), "summary": None, "weeks": [], "marginal_values": []}
         team = project_team(roster, state.slots, window, state.projections)
         names = player_names(con, [p.espn_player_id for p in roster])
-        open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.on_ir))
+        # an unverified roster count (players missing from the player data, #253 G4) has no known open spot
+        legality = roster_legality(state, team_id)
+        open_spots = None if legality else max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
         marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team,
                      **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team,
                                              open_spots)}
@@ -631,7 +731,8 @@ def team_lineup_projection(team_id: int):
         marginal.sort(key=lambda m: -(m["known_marginal_lineup_points"] or 0))
         return {"league": lg, "team_id": team_id, "team_name": state.team_names.get(team_id),
                 "evaluation": _window_info(state), "summary": team["summary"],
-                "weeks": named_weeks(public_weeks(team), names), "marginal_values": marginal}
+                "weeks": named_weeks(public_weeks(team), names), "marginal_values": marginal,
+                **({"legality": legality} if legality else {})}
 
 
 @router.get("/trades/options")
@@ -649,7 +750,7 @@ def trade_options():
         for t in teams:
             t["roster"] = sorted(
                 [{"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
-                  "on_ir": p.on_ir, "injury_status": p.injury_status,
+                  "on_ir": p.on_ir, **({"on_taxi": True} if p.on_taxi else {}), "injury_status": p.injury_status,
                   "ros_projected_points": (ros.get(p.espn_player_id) or {}).get("ros_projected_points"),
                   "nfl_ineligible_weeks": sorted(p.unavailable_weeks),
                   "availability": _availability_brief(state.availability.get(p.espn_player_id))}
@@ -658,7 +759,7 @@ def trade_options():
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
                 "active_capacity": state.active_capacity, "position_limits": state.position_limits,
                 "max_players_per_side": get_settings().trade_max_players_per_side,
-                "availability_note": AVAILABILITY_NOTE}
+                "availability_note": AVAILABILITY_NOTE, "provenance": trade_provenance(con, lg, state)}
 
 
 def _availability_brief(rec: dict | None) -> dict | None:
@@ -732,5 +833,6 @@ def trades_evaluate(body: TradeRequest):
                 "This league uses ESPN's undroppable list; forced drops may name a player ESPN would not let you drop."]
         res["trade_vs_free_agency"] = trade_vs_free_agency(state, res, body.team_a_id, body.team_b_id,
                                                            body.team_a_sends, body.team_b_sends, body.start_week)
+        res["provenance"] = trade_provenance(con, lg, state, body.start_week)
         return res
 

@@ -305,6 +305,7 @@ Postgres is the authoritative queue. Workers run in GitHub Actions. No other inf
 - URLs `/l/<lg_id>/<page>`; old URLs redirect to the viewer's last-viewed league (Los Subies for Havyn).
 - Public league visitors pick any roster as their perspective without signing in; signing in saves it
   and enables pins and private connections. Authentication never gates public analytics.
-- Owner-only research pages (projection performance, research, Ours promotion) remain platform-admin
-  only.
+- Owner-only research pages (projection performance, Ours promotion) remain platform-admin only. The research
+  lab, game splits and pace lab became league-member pages (#289 research-tools rulings): authorized like every
+  other league page, with no betting lines in game splits until the owner decides.
 - Phases, acceptance criteria and rollback: see the plan.

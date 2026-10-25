@@ -96,6 +96,19 @@
 .summaryNote { flex-basis: 100%; color: var(--ink-muted); font-size: 12px; line-height: 17px; font-weight: 400; }
 .group > .entries { padding: 16px; }
 
+/* ---------- Opportunity tree (issue #190): one collapsed team per injured or returning starter ---------- */
+.tree { display: grid; gap: 10px; min-width: 0; }
+.treeLead { margin: 0; color: var(--ink); font-size: 13.5px; line-height: 20px; max-width: 110ch; }
+.treeBody { display: grid; gap: 14px; min-width: 0; padding: 14px 16px 16px; }
+.depthGroup { min-width: 0; }
+.treeCaption { margin: 0 0 6px; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.personnel { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+.scenarios { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 20px; min-width: 0; }
+.scenario { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 12px; border-radius: var(--radius); background: var(--surface-raised); }
+.scenarioTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 600; }
+.scenarioFacts { margin: 0; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; overflow-wrap: anywhere; }
+.effect { display: grid; gap: 3px; min-width: 0; }
+
 .method { max-width: 80ch; }
 .method p { margin: 0 0 10px; }
 
@@ -113,6 +126,8 @@
   .chipRows :global(.chip) { flex: none; }
   .actionWhy { padding-left: 0; }
   .group > .entries { padding: 12px; }
+  .treeBody { padding: 12px; }
+  .scenario { padding: 10px; }
   .mateCell { min-width: 150px; }
   .facts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .workload { padding: 10px; }

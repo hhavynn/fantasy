@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { ShareBar } from "@/components/matchup/ShareBar";
 import { Delta, Section } from "@/components/ui";
 import { num } from "@/lib/format";
@@ -6,7 +6,7 @@ import { headline, margin, ordinal, recordText, share, type Headline } from "@/l
 import type { Matchup, TeamSide } from "@/lib/matchup-types";
 import styles from "./matchup.module.css";
 
-function Team({ side, h, status, mine }: { side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean }) {
+function Team({ side, h, status, mine, projBy }: { side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean; projBy: string }) {
   const projected = h.basis === "actual" && side.projected_points !== null ? side.projected_points : null;
   return (
     <div className={`${styles.team} ${mine ? "" : styles.opp}`}>
@@ -18,14 +18,15 @@ function Team({ side, h, status, mine }: { side: TeamSide; h: Headline; status: 
       <p className={styles.totalLabel}>{h.label}</p>
       {projected !== null ? <p className={styles.totalAside}>Projected {projected.toFixed(1)}</p> : null}
       {h.incomplete ? (
-        <p className={styles.incomplete}>Incomplete: some rostered players have no ESPN projection, so this is not a full-lineup projection.</p>
+        <p className={styles.incomplete}>Incomplete: some rostered players have no {projBy} projection, so this is not a full-lineup projection.</p>
       ) : null}
     </div>
   );
 }
 
 /** You against the opponent: totals in the display face, margin, and my share of the combined points. */
-export function Scoreboard({ m, opponent }: { m: Matchup; opponent: TeamSide }) {
+/** `projBy`: whose projections a missing number lacks ("ESPN", or "Fantasy Intel" where the provider has none). */
+export function Scoreboard({ m, opponent, projBy = "ESPN" }: { m: Matchup; opponent: TeamSide; projBy?: string }) {
   const me = headline(m.me, m.status);
   const opp = headline(opponent, m.status);
   const mg = margin(me, opp);
@@ -34,9 +35,9 @@ export function Scoreboard({ m, opponent }: { m: Matchup; opponent: TeamSide }) 
   return (
     <Section>
       <div className={styles.board} role="group" aria-label="Scoreboard">
-        <Team side={m.me} h={me} status={m.status} mine />
+        <Team side={m.me} h={me} status={m.status} mine projBy={projBy} />
         <span className={styles.versus} aria-hidden="true">vs</span>
-        <Team side={opponent} h={opp} status={m.status} mine={false} />
+        <Team side={opponent} h={opp} status={m.status} mine={false} projBy={projBy} />
         <div className={styles.summary}>
           {mg.value !== null ? (
             <p className={styles.margin}>

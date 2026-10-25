@@ -77,3 +77,23 @@ sets no HTTP timeout (Phase 2: timeouts, per-user caps, circuit breaker); any si
 Sleeper league by id (Sleeper's own model); anonymous `/v2/providers` reveals whether owner ESPN cookies
 are configured (not their values); `FANTASY_DEV_USER_ID` makes every visitor one user on non-production
 servers; `FANTASY_OWNER_USER_ID` must be an unguessable IdP subject once sign-in exists.
+
+## Addendum (2026-10-20): Phase 1 of the multi-league platform
+
+[ADR-0002](ADR-0002-supabase-control-plane.md) replaced the Phase 1 foundation's tenancy store and user assertion
+with a Supabase control plane. These rows restate the threats it changes.
+
+| # | Threat | Mitigation now | Verification |
+|---|---|---|---|
+| T1 | User A reads user B's private league by changing the id | `authorize_league` under the request's Postgres role before anything else; RLS hides non-member private leagues; unknown and unauthorized are both 404 | `tests/test_v2_authorization_matrix.py`, `tests/test_authorize_league.py` |
+| T2 | Caller asserts their own identity | Supabase JWT verified in FastAPI (JWKS, `ES256`/`RS256` only, `iss`, `aud=authenticated`, `exp`, uuid `sub`); a bad header is 401, never anonymous | `tests/test_jwt_auth.py` |
+| T3 | API key holder impersonates users | Unchanged: the API key is service authentication only | `tests/test_leagues_api.py` |
+| T4 | Claims leak between pooled requests | `SET LOCAL ROLE` + transaction-local `request.jwt.claims`; both end with the transaction | `tests/test_control_plane_pg.py` |
+| T5 | A request role escalates in Postgres | `fi_api` is `NOINHERIT` with no grants of its own; no `BYPASSRLS` role; column-level grants; `SECURITY DEFINER` functions check `auth.uid()` and pin `search_path` | `tests/test_control_plane_rls.py`, `tests/test_control_plane_functions.py` |
+| T7 | Credentials leak | Envelope encryption: AES-256-GCM + RSA-OAEP-3072; the API holds only public keys; AAD binds the row; redacting reprs; never logged | `tests/test_credential_crypto.py`, `tests/test_no_credential_leaks.py` |
+| T8 | Collecting ESPN cookies | Now opt-in with explicit consent (Phase 3 UI); used only by sync jobs for that league's ESPN read endpoint; never returned; crypto-erased on account deletion | ADR-0002 §4; Phase 3 adds the URL-allowlist tests |
+| T9 | Control-plane data reaches the published snapshot | The control plane lives only in Supabase; publishers never import it | `test_publishers_never_reference_the_control_plane` |
+| T11 | League id enumeration | Opaque ids; malformed ids are rejected before Postgres; one 404 for every miss | `tests/test_authorize_league.py` |
+| T13 | A revoked member keeps access | RLS and `authorize_league` re-evaluate membership on every request | `test_a_revoked_member_of_a_private_league_is_a_stranger` |
+| T14 | No audit trail | `fi.audit_log` is append-only (trigger rejects UPDATE/DELETE) and written by every SECURITY DEFINER function | `test_audit_log_is_append_only_even_for_the_owner` |
+| T18 | The control plane is reachable through PostgREST with the public anon key | Schema `fi`, not `public`; no grants to `PUBLIC` | `tests/test_control_plane_rls.py` |

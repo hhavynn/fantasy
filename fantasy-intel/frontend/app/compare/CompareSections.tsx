@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Notice, Section, TrendArrow } from "@/components/ui";
 import { cx } from "@/lib/cx";
@@ -7,6 +7,8 @@ import {
   availabilityView, formatEvidence, leaderLabel, playerName,
 } from "@/lib/compare";
 import { label, num, when } from "@/lib/format";
+import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, providerName } from "@/lib/labels";
+import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { hasInjuryDesignation, ownerBadge } from "../players/helpers";
 import styles from "./compare.module.css";
 
@@ -15,7 +17,8 @@ const sideClass = (side: Side) => (side === "a" ? styles.sideA : styles.sideB);
 const letter = (side: Side) => (side === "a" ? "A" : "B");
 
 /** Two identity cards: who is on each side, with the facts that change how to read the numbers. */
-export function CompareHero({ r, only }: { r: CompareResponse; only?: Side }) {
+export function CompareHero({ r, only, profile = ESPN_PROFILE }: { r: CompareResponse; only?: Side; profile?: LeagueProfile }) {
+  const espn = profile.provider === "espn";
   return (
     <div className={cx(styles.hero, only && styles.heroOne)}>
       {SIDES.filter((side) => !only || side === only).map((side) => {
@@ -30,15 +33,15 @@ export function CompareHero({ r, only }: { r: CompareResponse; only?: Side }) {
               id={p.espn_player_id} name={p.full_name} position={p.position} team={p.pro_team} size="lg"
               meta={<>
                 <Badge value={owner.text} tone={owner.tone} />
-                {hasInjuryDesignation(card.availability.espn_status) && <Badge value={card.availability.espn_status} title="ESPN injury designation" />}
+                {hasInjuryDesignation(card.availability.espn_status) && <Badge value={card.availability.espn_status} title={`${providerName(profile.provider)} injury designation`} />}
               </>}
             />
             <p className={styles.heroFacts}>
-              {num(p.percent_owned, 1, "No ownership figure")}% owned ESPN-wide
+              {ownershipAvailable(profile.provider) ? <>{num(p.percent_owned, 1, "No ownership figure")}% owned ESPN-wide</> : OWNERSHIP_UNAVAILABLE}
               {p.match_confidence && !["high", "n/a"].includes(p.match_confidence) ? (
                 <> · <Badge value={`${label(p.match_confidence)} usage match`} tone="warn" title="Matched to nflverse data by name rather than by an ID; verify before relying on the usage numbers" /></>
               ) : null}
-              {p.match_method === "unmatched" ? <> · <Badge value="No usage data" tone="warn" title="No nflverse ID match for this ESPN player" /></> : null}
+              {p.match_method === "unmatched" ? <> · <Badge value="No usage data" tone="warn" title={espn ? "No nflverse ID match for this ESPN player" : "No nflverse ID match for this player"} /></> : null}
             </p>
           </div>
         );
@@ -83,7 +86,7 @@ export function SummarySection({ r }: { r: CompareResponse }) {
   );
 }
 
-function GamesTable({ card, games }: { card: CompareCard; games: WeeklyEntry[] }) {
+function GamesTable({ card, games, provider }: { card: CompareCard; games: WeeklyEntry[]; provider: string }) {
   const pos = card.player.position;
   const rushes = pos === "RB" || pos === "QB";
   const receives = pos === "RB" || pos === "WR" || pos === "TE";
@@ -94,7 +97,7 @@ function GamesTable({ card, games }: { card: CompareCard; games: WeeklyEntry[] }
         <thead>
           <tr>
             <th scope="col">Wk</th><th scope="col">Opp</th>
-            <th scope="col" className="num" title="ESPN points in this league's scoring">League pts</th>
+            <th scope="col" className="num" title={`${provider} points in this league's scoring`}>League pts</th>
             {usage && <th scope="col" className="num" title="nflverse full-PPR points">PPR</th>}
             {usage && <th scope="col" className="num" title="Expected PPR points from the workload (nflverse xFP)">xFP</th>}
             {usage && <th scope="col" className="num">Snap%</th>}
@@ -107,7 +110,7 @@ function GamesTable({ card, games }: { card: CompareCard; games: WeeklyEntry[] }
             <tr key={g.week}>
               <th scope="row" className={styles.gameWeek}>{g.week}</th>
               <td>{g.opponent ?? <span className="missing" title="Opponent not recorded">—</span>}</td>
-              <td className="num">{num(g.league_points, 1, "No ESPN score for this week")}</td>
+              <td className="num">{num(g.league_points, 1, `No ${provider} score for this week`)}</td>
               {usage && <td className="num">{num(g.ppr, 1, "No usage record")}</td>}
               {usage && <td className="num">{num(g.xfp, 1, "No usage record")}</td>}
               {usage && (
@@ -127,7 +130,7 @@ function GamesTable({ card, games }: { card: CompareCard; games: WeeklyEntry[] }
   );
 }
 
-function PlayerContextColumn({ r, side }: { r: CompareResponse; side: Side }) {
+function PlayerContextColumn({ r, side, provider }: { r: CompareResponse; side: Side; provider: string }) {
   const card = r.players[side === "a" ? 0 : 1];
   const p = card.player;
   const av = availabilityView(card, r.as_of_week);
@@ -183,24 +186,25 @@ function PlayerContextColumn({ r, side }: { r: CompareResponse; side: Side }) {
 
       <h4 className={styles.subTitle}>Recent games <span className="faint">(newest first, through week {r.completed_through_week})</span></h4>
       {card.recent_games.length > 0
-        ? <GamesTable card={card} games={card.recent_games} />
+        ? <GamesTable card={card} games={card.recent_games} provider={provider} />
         : <p className="faint">No completed games with a score or usage record yet.</p>}
     </div>
   );
 }
 
 /** Per player: injury designation and report currency, role evidence and the last games. */
-export function ContextSection({ r }: { r: CompareResponse }) {
+export function ContextSection({ r, profile = ESPN_PROFILE }: { r: CompareResponse; profile?: LeagueProfile }) {
+  const provider = providerName(profile.provider);
   return (
     <Section
       title="Availability and context"
       subtitle={`Injury designations as of week ${r.as_of_week}. No designation is not confirmation a player will play.`}
-      footnote={<>ESPN data synced {when(r.freshness.espn_synced_at)} · NFL data synced {when(r.freshness.nfl_synced_at)}
+      footnote={<>{provider} data synced {when(r.freshness.espn_synced_at)} · NFL data synced {when(r.freshness.nfl_synced_at)}
         {r.players.map((c, i) => c.projection?.projection_synced_at
           ? <span key={i}> · {playerName(c)} projections synced {when(c.projection.projection_synced_at)}</span> : null)}</>}
     >
       <div className={styles.contextGrid}>
-        {SIDES.map((side) => <PlayerContextColumn key={side} r={r} side={side} />)}
+        {SIDES.map((side) => <PlayerContextColumn key={side} r={r} side={side} provider={provider} />)}
       </div>
     </Section>
   );

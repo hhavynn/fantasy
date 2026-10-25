@@ -62,6 +62,8 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Crypto: AAD-swap fails, the API (public key only) cannot decrypt, rewrap to a new keypair leaves the cookie ciphertext and AAD untouched and it still decrypts, redaction tests green.
 - Existing suite + E2E green; production unchanged with flags off.
 
+**Status:** done 2026-10-20 (PR #150). Supabase schema `fi` applied (11 migrations, each with a restoring down-migration); FastAPI verifies Supabase JWTs via JWKS; `authorize_league` gates every `/v2` league route (router-enumerated matrix); credential envelope crypto shipped; HMAC assertion and DuckDB tenancy store removed. Reviewed by Codex for 11 rounds, then `/code-review high` after Codex's quota ran out. Pending from Havyn: `fi_api`/`fi_sync` passwords, `SUPABASE_URL`/`SUPABASE_DB_URL` on Vercel (before the flag flips), the credential keypair (Phase 3).
+
 **Rollback:** flags off; Supabase migrations have down-migrations. No existing table or route changed.
 
 ## Phase 2: League-file read path, Los Subies migrated
@@ -75,6 +77,13 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - `/tmp` LRU never exceeds its bound under a 20-league request mix; concurrent first requests download once.
 - `test_league_scope_audit.py` ratchet unchanged or lower.
 
+**Status:** done 2026-10-20 (PR #151).
+- Every legacy router is mounted under `/v2/leagues/{lg}`. League and global files are served from a bounded, pinned `/tmp` cache, with the perspective applied through a per-request `fantasy_teams` view.
+- The publisher moves the league's pointer with a fence it reserves when it starts.
+- Owner-only research routes need a platform admin.
+- All 52 goldens are identical on the fixture and on real Los Subies (run locally).
+- Codex reviewed it for one round, after a `/code-review high` pass.
+
 **Rollback:** `MULTILEAGUE_ENABLED` off routes everything through the Phase 1a single-snapshot path, which stays intact through Phase 5.
 
 ## Phase 3: Sync jobs on GitHub Actions + ESPN connect flows
@@ -87,6 +96,14 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Public-log audit: a full drain run's log contains no team names, player names, cookies or league ids beyond the opaque `lg_` id (automated grep in the workflow).
 - End to end: connect a public ESPN league → data visible once the dispatch run finishes (target < 5 min); flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
 
+**Status:** done 2026-10-21 (PRs #153, #154, #155, #156).
+- Los Subies syncs by jobs with Havyn's private credential.
+- A public ESPN league imported on production published through the dispatch path, and its public log audit was clean.
+- Its first sync took 19.7 minutes. Cause: the waiver engine's flex-lineup search on a 3 FLEX + OP roster. PR #156 makes that search prune, with the same answers, and the league's build fell from 416 s to 33 s.
+- The golden check on real Los Subies through the job path: 52 of 52 identical.
+- The invite → viewer step was not run on production (it needs a second account). It is covered by the connect API tests and the authorization matrix.
+- The flip-to-private probe is covered by the worker tests; it was not flipped on production.
+
 **Rollback:** disable the workflow; re-enable the launchd ESPN step publishing Los Subies; league files keep their last version.
 
 ## Phase 4: Sleeper live + scoring-aware Ours
@@ -97,6 +114,11 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 
 **Rollback:** `SLEEPER_SOURCE=disabled`; Sleeper leagues show "temporarily unavailable"; ESPN leagues unaffected.
 
+**Status (2026-10-20):** merged in PRs #157 (reference runs re-scored per league) and #158 (Sleeper).
+- The job-built Los Subies Ours, K and D/ST tables equal the laptop's.
+- `SLEEPER_SOURCE=live` is set on the API and in Actions. Sleeper answers live.
+- A first real Sleeper league import is still to come.
+
 ## Phase 5: Parity audit
 
 **Scope:** every page × {ESPN public, ESPN private, Sleeper} checked by E2E; fixes only where a page assumed Los Subies; owner-only research pages gated to platform admins; retire the Phase 1a single-snapshot path.
@@ -104,6 +126,11 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 **Acceptance:** E2E matrix green; no "coming soon" anywhere; Havyn signs off on Los Subies after a week of side-by-side use.
 
 **Rollback:** keep the Phase 1a path until sign-off; reverting is a flag flip.
+
+**Status (2026-10-20):** merged in PR #159; the matrix is 68 of 68.
+- Havyn signed off on 2026-10-20, and `CLASSIC_SITE_ENABLED=0` is set on the web, the API and the laptop.
+- The classic `/api/*` routes answer 404.
+- The refresh chain no longer publishes the snapshot.
 
 ## Phase 6: Launch gates, then open sign-ups
 

@@ -1,0 +1,552 @@
+// /api/screener/metrics
+{
+ "body": {
+  "contract": "screener/v1",
+  "limits": {
+   "default_limit": 50,
+   "groups": [
+    "A",
+    "B",
+    "C",
+    "D"
+   ],
+   "incomplete_cap": 50,
+   "max_filters": 8,
+   "max_groups": 4,
+   "max_last": 8,
+   "max_limit": 100,
+   "max_min_games": 18,
+   "max_min_routes": 1000,
+   "max_week": 18,
+   "missing": "A condition on a missing metric is unknown; an unknown screen result excludes the row and reports it as incomplete. A metric a position does not have is false for that position.",
+   "ops": {
+    "gt": ">",
+    "gte": "≥",
+    "lt": "<",
+    "lte": "≤"
+   },
+   "owner": [
+    "any",
+    "available",
+    "rostered"
+   ],
+   "percentile_min_pool": 5,
+   "positions": [
+    "WR",
+    "RB",
+    "TE"
+   ],
+   "precedence": "Filters in the same group are combined with AND; groups are combined with OR.",
+   "rounding": "Values are rounded to 2 decimals and filters compare the rounded value.",
+   "sort_special": [
+    "name",
+    "games"
+   ]
+  },
+  "metrics": [
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Share of the team's offensive snaps the player was on the field for, averaged over his games with a snap record.",
+    "denominator": "the team's offensive snaps in each game; the mean of the weekly shares",
+    "inputs": [
+     "offense_pct"
+    ],
+    "key": "snap_share",
+    "label": "Snap share",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Snap %",
+    "source": "nflverse snap counts (Pro Football Reference)",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Offensive snaps per game played.",
+    "denominator": "games with a snap record",
+    "inputs": [
+     "offense_snaps"
+    ],
+    "key": "snaps_pg",
+    "label": "Offensive snaps per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Snaps/G",
+    "source": "nflverse snap counts (Pro Football Reference)",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Share of pass plays the player ran a route on, as the authorized import reports it. Never estimated from snaps.",
+    "denominator": "provider-defined (usually team dropbacks); the mean of the weekly values",
+    "inputs": [
+     "route_participation"
+    ],
+    "key": "route_participation",
+    "label": "Route participation",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Route %",
+    "source": "authorized external utilization import (missing when none is imported)",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     80
+    ],
+    "definition": "Routes run per game, from the authorized import.",
+    "denominator": "games with imported route data",
+    "inputs": [
+     "routes"
+    ],
+    "key": "routes_pg",
+    "label": "Routes per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Routes/G",
+    "source": "authorized external utilization import (missing when none is imported)",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     30
+    ],
+    "definition": "Targets per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "targets"
+    ],
+    "key": "targets_pg",
+    "label": "Targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Tgt/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's targets over his team's targets, summed over the same games.",
+    "denominator": "the team's targets in the same games (sum of the player's targets / sum of the team's)",
+    "inputs": [
+     "targets",
+     "team_targets"
+    ],
+    "key": "target_share",
+    "label": "Target share",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Tgt %",
+    "source": "nflverse weekly player stats",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's intended air yards over his team's, summed over the same games.",
+    "denominator": "the team's air yards in the same games (sums)",
+    "inputs": [
+     "air_yards",
+     "team_air_yards"
+    ],
+    "key": "air_yards_share",
+    "label": "Air-yard share",
+    "positions": [
+     "WR",
+     "TE"
+    ],
+    "short": "Air %",
+    "source": "nflverse weekly player stats",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's rush plays over all of his team's rush plays.",
+    "denominator": "the team's rush plays in the same games, quarterback runs and scrambles included, kneels excluded",
+    "inputs": [
+     "rush_attempts",
+     "team_rush_attempts"
+    ],
+    "key": "team_rush_share",
+    "label": "Team rush share",
+    "positions": [
+     "RB"
+    ],
+    "short": "Rush %",
+    "source": "nflverse play-by-play",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's designed rushes over all running-back designed rushes on his team.",
+    "denominator": "the team's running-back designed rushes in the same games",
+    "inputs": [
+     "designed_rushes",
+     "team_rb_carries"
+    ],
+    "key": "backfield_share",
+    "label": "Backfield share",
+    "positions": [
+     "RB"
+    ],
+    "short": "Backfield %",
+    "source": "nflverse play-by-play",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     40
+    ],
+    "definition": "Official carries per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "carries"
+    ],
+    "key": "carries_pg",
+    "label": "Carries per game",
+    "positions": [
+     "RB"
+    ],
+    "short": "Car/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     50
+    ],
+    "definition": "Carries plus targets per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "opportunities"
+    ],
+    "key": "opportunities_pg",
+    "label": "Carries + targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Opp/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean_sum",
+    "bounds": [
+     0,
+     20
+    ],
+    "definition": "Targets plus designed rushes inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_targets",
+     "rz_carries"
+    ],
+    "key": "rz_opportunities_pg",
+    "label": "Red-zone opportunities per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "RZ opp/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     15
+    ],
+    "definition": "Targets inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_targets"
+    ],
+    "key": "rz_targets_pg",
+    "label": "Red-zone targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "RZ tgt/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     15
+    ],
+    "definition": "Designed rushes inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_carries"
+    ],
+    "key": "rz_carries_pg",
+    "label": "Red-zone carries per game",
+    "positions": [
+     "RB"
+    ],
+    "short": "RZ car/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     60
+    ],
+    "definition": "Full-PPR points an average player would score from the same targets and carries, per game.",
+    "denominator": "games with a published xFP",
+    "inputs": [
+     "xfp"
+    ],
+    "key": "xfp_pg",
+    "label": "Expected points per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "xFP/G",
+    "source": "nflverse ffopportunity expected points",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     -10,
+     80
+    ],
+    "definition": "Full-PPR fantasy points per game played (1 per reception).",
+    "denominator": "games played",
+    "inputs": [
+     "fantasy_points_ppr"
+    ],
+    "key": "ppr_pg",
+    "label": "PPR points per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "PPR/G",
+    "source": "nflverse weekly player stats",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   },
+   {
+    "aggregation": "mean_diff",
+    "bounds": [
+     -40,
+     40
+    ],
+    "definition": "Actual PPR minus xFP, averaged over the same games. Negative: the box score trails the role.",
+    "denominator": "games with both PPR points and a published xFP",
+    "inputs": [
+     "fantasy_points_ppr",
+     "xfp"
+    ],
+    "key": "fpoe_pg",
+    "label": "Points vs xFP per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "FPOE/G",
+    "source": "nflverse ffopportunity expected points",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   }
+  ],
+  "presets": [
+   {
+    "key": "wr_routes_targets_last3",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:route_participation:gte:70",
+      "1:targets_pg:gte:5"
+     ],
+     "last": 3,
+     "min_games": 3,
+     "pos": [
+      "WR"
+     ],
+     "sort": "targets_pg"
+    },
+    "summary": "Receivers running a route on at least 70% of pass plays and seeing 5+ targets a game over their last three games. Needs imported route data; without it every row is reported as incomplete.",
+    "title": "WR routes and targets, last 3 games"
+   },
+   {
+    "key": "wr_te_target_earners",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:target_share:gte:22",
+      "2:targets_pg:gte:7"
+     ],
+     "min_games": 3,
+     "pos": [
+      "WR",
+      "TE"
+     ],
+     "sort": "target_share"
+    },
+    "summary": "A target share of 22%+ or 7+ targets a game, with 3+ games in the window.",
+    "title": "Target earners (WR, TE)"
+   },
+   {
+    "key": "rb_workhorse",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:backfield_share:gte:60",
+      "1:targets_pg:gte:3"
+     ],
+     "min_games": 3,
+     "pos": [
+      "RB"
+     ],
+     "sort": "xfp_pg"
+    },
+    "summary": "Backs with 60%+ of their team's running-back designed rushes and 3+ targets a game.",
+    "title": "Workhorse backs"
+   },
+   {
+    "key": "unlucky_volume",
+    "query": {
+     "dir": "asc",
+     "f": [
+      "1:xfp_pg:gte:12",
+      "1:fpoe_pg:lte:-2"
+     ],
+     "min_games": 3,
+     "sort": "fpoe_pg"
+    },
+    "summary": "12+ expected points a game while scoring at least 2 points a game under that expectation.",
+    "title": "Volume without the points"
+   },
+   {
+    "key": "red_zone_roles",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:rz_opportunities_pg:gte:1.5"
+     ],
+     "last": 4,
+     "min_games": 3,
+     "sort": "rz_opportunities_pg"
+    },
+    "summary": "1.5+ red-zone opportunities a game (targets plus designed rushes inside the 20), last 4 games.",
+    "title": "Red-zone roles"
+   },
+   {
+    "key": "te_full_time",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:snap_share:gte:75",
+      "1:target_share:gte:15"
+     ],
+     "min_games": 3,
+     "pos": [
+      "TE"
+     ],
+     "sort": "target_share"
+    },
+    "summary": "Tight ends on 75%+ of snaps with 15%+ of their team's targets.",
+    "title": "Full-time tight ends"
+   },
+   {
+    "key": "available_upside",
+    "query": {
+     "dir": "desc",
+     "f": [
+      "1:xfp_pg:gte:9"
+     ],
+     "min_games": 2,
+     "owner": "available",
+     "sort": "xfp_pg"
+    },
+    "summary": "Players this league lists as available (free agent, on waivers or not rostered) with 9+ expected points a game. Unknown ownership is excluded and counted.",
+    "title": "Available with a real role"
+   }
+  ]
+ },
+ "status": 200
+}

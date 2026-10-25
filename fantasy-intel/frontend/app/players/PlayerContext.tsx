@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Badge, Section } from "@/components/ui";
 import { int, num, pct, when } from "@/lib/format";
 import { FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";
@@ -107,7 +107,7 @@ export function ScheduleLink({ id }: { id: number }) {
   return (
     <p className={styles.note}>
       <Link href={`/schedule-intelligence?player=${id}`}>Schedule intelligence</Link>: remaining opponents
-      and what each defense has observed allowing (descriptive; separate from the projection above).
+      and what each defense has observed allowing (descriptive; separate from the projection in Outlook).
     </p>
   );
 }

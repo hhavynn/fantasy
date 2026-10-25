@@ -248,3 +248,94 @@ def test_total_projection_gain_cannot_hide_a_future_positional_hole():
     move = plan_roster_move(st, player(99, "RB", 9, projections={7: 30, 8: 30}))
     assert move["drop"]["espn_player_id"] == 1
     assert any(d["espn_player_id"] == 3 and "future" in d["reason"] for d in move["excluded"])
+
+
+# ---- #253 G5: an unknown value never enters lineup arithmetic as 0.0 ----
+
+def test_drop_sacrifice_with_an_unknown_starter_in_the_group_is_unknown_and_spares_starters():
+    # RB, WR and FLEX share one slot group; its RB starter has no value. The old code counted him as 0.0 in every
+    # net gain and removal cost. Now: starters are not dropped on an unknown cost; the bench WR is, cost unknown.
+    slots = {"RB": 1, "WR": 1, "FLEX": 1, "BE": 1}
+    st = state([player(1, "RB", None), player(2, "WR", 6), player(3, "WR", 2), player(4, "WR", 1)], slots)
+    move = plan_roster_move(st, player(99, "WR", 7))
+    assert move["status"] == "ADD_WITH_DROP" and move["drop"]["espn_player_id"] == 4
+    assert move["drop"]["net_lineup_gain"] is None
+    assert any("unknown" in s and "not zero" in s for s in move["drop"]["sacrifice"])
+    excluded = {x["espn_player_id"]: x["reason"] for x in move["excluded"]}
+    assert excluded[2].startswith("Lineup cost unknown (no value for P1)") and excluded[3].startswith("Lineup cost unknown")
+
+
+def test_unknown_kicker_never_lets_the_planner_drop_a_starting_te():
+    # Review repro: only the K is unknown. The TE group is fully known, so dropping the starting TE (raw 2) costs a
+    # known 2.0 and the bench QB (no lineup cost) is the drop, as on main.
+    slots = {"QB": 1, "TE": 1, "K": 1, "BE": 1}
+    st = state([player(1, "QB", 8), player(2, "QB", 3), player(3, "TE", 2), player(4, "K", None)], slots)
+    move = plan_roster_move(st, player(99, "TE", 2.5))
+    assert move["status"] == "ADD_WITH_DROP" and move["drop"]["espn_player_id"] == 2
+    te = next(a for a in move["alternatives"] if a["espn_player_id"] == 3)
+    assert te["net_lineup_gain"] == pytest.approx(0.5) and move["drop"]["net_lineup_gain"] == pytest.approx(0.5)
+    assert any(s.startswith("Removal alone costs 2.0") for s in te["sacrifice"])
+
+
+def test_unknown_values_never_fabricate_depth_or_lineup_gain():
+    st = state([player(1, "RB", 5), player(2, "RB", 3)], {"RB": 1, "BE": 2})
+    cand = player(99, "RB", None)
+    u = acquisition_utility(st, cand, plan_roster_move(st, cand), need=0.0, opportunity=None)
+    assert u["starter_gain"] is None and u["depth_gain"] is None          # old depth_gain: 0 - 3 = -3
+    assert "P99" in u["summary"] and "not zero" in u["summary"]
+    assert u["unknown_value_ids"] == [99]
+
+
+def test_known_lineup_gain_is_labelled_as_percentile_value_not_points():
+    st = state([player(1, "RB", 2)], {"RB": 1, "BE": 1})
+    cand = player(99, "RB", 7)
+    u = acquisition_utility(st, cand, plan_roster_move(st, cand), need=0.0, opportunity=None)
+    assert u["starter_gain"] == 5 and "position-percentile" in u["summary"] and "not fantasy points" in u["summary"]
+
+
+def test_unknown_benefit_has_no_ranking_utility_while_a_real_zero_gain_ranks_zero():
+    st = state([player(1, "RB", 5), player(2, "RB", 3)], {"RB": 1, "BE": 2})
+    unknown = player(99, "RB", None)
+    assert acquisition_utility(st, unknown, plan_roster_move(st, unknown), need=0.0,
+                               opportunity=None)["ranking_utility"] is None      # old code: 0, among real ~0 gains
+    zero = player(98, "RB", 1)                                                  # known, does not start: gain 0
+    assert acquisition_utility(st, zero, plan_roster_move(st, zero), need=0.0, opportunity=None)["ranking_utility"] == 0
+
+
+def test_waiver_order_ranks_unknown_benefit_after_every_known_row_stably():
+    import json
+    import duckdb
+    from app.api.routes import WAIVER_ORDER
+
+    def comp(rank, actionable=False):
+        return json.dumps({"decision": {"actionable": actionable, "utility": {"ranking_utility": rank}}})
+    con = duckdb.connect()
+    con.execute("CREATE TABLE w (espn_player_id INTEGER, recommendation VARCHAR, waiver_score DOUBLE, components JSON)")
+    con.executemany("INSERT INTO w VALUES (?, ?, ?, ?)", [
+        (1, "WAIT", 9.0, comp(None)),          # unknown benefit, high legacy score: still after every known row
+        (2, "IGNORE", 1.0, comp(0.0)),         # a measured zero gain
+        (3, "WAIT", 5.0, comp(0.4)),
+        (4, "CLAIM", 6.0, comp(2.0, True)),
+        (5, "WAIT", 9.0, comp(None)),          # ties with 1 except the id: stable
+        (6, "IGNORE", 0.5, comp(0.0)),
+    ])
+    order = [r[0] for r in con.execute(f"SELECT espn_player_id FROM w ORDER BY {WAIVER_ORDER}").fetchall()]
+    assert order == [4, 3, 2, 6, 1, 5]
+    con.close()
+
+
+def test_team_value_shows_a_partial_waiver_score_as_unknown_and_ranks_it_last():
+    import json
+    import duckdb
+    from app.analytics.team_value import KNOWN_WAIVER_SCORE
+    con = duckdb.connect()
+    con.execute("CREATE TABLE w (espn_player_id INTEGER, waiver_score DOUBLE, components JSON)")
+    con.executemany("INSERT INTO w VALUES (?, ?, ?)", [
+        (1, 9.0, json.dumps({"roster": {"fit_status": "partial"}})),   # lacks its lineup-gain term
+        (2, 4.0, json.dumps({"roster": {"fit_status": "complete"}})),
+        (3, 6.0, json.dumps({})),                                       # older row without the status
+    ])
+    rows = con.execute(f"SELECT espn_player_id, {KNOWN_WAIVER_SCORE} FROM w "
+                       f"ORDER BY {KNOWN_WAIVER_SCORE} DESC NULLS LAST, espn_player_id").fetchall()
+    assert rows == [(3, 6.0), (2, 4.0), (1, None)]
+    con.close()

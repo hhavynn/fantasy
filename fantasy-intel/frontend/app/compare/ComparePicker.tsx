@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
+import { useLeagueHref, useLeagueId } from "@/components/useAppPathname";
 import { Pos } from "@/components/ui/Pos";
 import { VisuallyHidden } from "@/components/ui/VisuallyHidden";
 import { cx } from "@/lib/cx";
 import { compareHref, swapHref, type Side } from "@/lib/compare";
-import { type SearchPlayer, wrapIndex } from "@/lib/palette";
+import { leagueRouteHref } from "@/lib/league-scope";
+import { type SearchPlayer, searchSrc, wrapIndex } from "@/lib/palette";
 import styles from "./compare.module.css";
 
 const DEBOUNCE_MS = 150;
@@ -16,20 +18,23 @@ const DEBOUNCE_MS = 150;
 /** A player already in the URL. Names are known only once the comparison has loaded. */
 export type PickerSelection = { id: number; name: string | null; position: string | null; team: string | null };
 
-type Result = { q: string; players: SearchPlayer[]; failed: boolean };
+/** `key`: the league and query the players answer, so another league's results are never shown for the same text. */
+type Result = { key: string; players: SearchPlayer[]; failed: boolean };
 
 /**
  * The two player pickers, a Swap link and a Clear link. Everything lives in the URL: choosing a player navigates
- * to /compare with the other side preserved, so a comparison is always a shareable link.
+ * to /compare with the other side preserved, so a comparison is always a shareable link. On a league page every link
+ * stays in that league (`/l/<lg>/compare`) instead of following the last-viewed-league cookie.
  */
 export function ComparePicker({ a, b }: { a: PickerSelection | null; b: PickerSelection | null }) {
   const router = useRouter();
+  const leagueHref = useLeagueHref();
   const [pending, startTransition] = useTransition();
   const any = a !== null || b !== null;
 
   const pick = (side: Side, id: number) => {
     const href = side === "a" ? compareHref(id, b?.id) : compareHref(a?.id, id);
-    startTransition(() => router.push(href));
+    startTransition(() => router.push(leagueHref(href)));
   };
 
   return (
@@ -40,59 +45,70 @@ export function ComparePicker({ a, b }: { a: PickerSelection | null; b: PickerSe
       </div>
       {any && (
         <div className={styles.pickerActions}>
-          <Link className="chip" href={swapHref(a?.id, b?.id)}>
+          <Link className="chip" href={leagueHref(swapHref(a?.id, b?.id))}>
             <span aria-hidden="true">⇄ </span>Swap players
           </Link>
-          <Link className="chip reset" href="/compare">Clear</Link>
+          <Link className="chip reset" href={leagueHref("/compare")}>Clear</Link>
         </div>
       )}
     </div>
   );
 }
 
-function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
-  side: Side;
+/**
+ * One search-and-pick box. On the pair view it is Player A or B; the shortlist reuses it as "Add a player" (no side
+ * colour, its own `label` and `placeholder`).
+ */
+export function PlayerSlot({ side, selected, onPick, autoFocus = false, label, placeholder, disabled = false }: {
+  side?: Side;
   selected: PickerSelection | null;
   onPick: (id: number) => void;
   autoFocus?: boolean;
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
 }) {
+  const league = useLeagueId();
   const uid = useId();
   const inputId = `${uid}-input`;
   const listId = `${uid}-list`;
-  const letter = side === "a" ? "A" : "B";
+  const letter = side === "b" ? "B" : "A";
+  const name = label ?? `Player ${letter}`;
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<Result>({ q: "", players: [], failed: false });
+  const [result, setResult] = useState<Result>({ key: "", players: [], failed: false });
   const [active, setActive] = useState(-1);
 
   const showInput = selected === null || editing;
   const q = query.trim();
-  const pendingSearch = q !== "" && result.q !== q;
-  const players = result.q === q ? result.players : [];
+  const key = `${league ?? ""} ${q}`;
+  const pendingSearch = q !== "" && result.key !== key;
+  const players = result.key === key ? result.players : [];
 
-  // Debounced search; a newer keystroke aborts the request still in flight (same route as the command palette).
+  // Debounced search; a newer keystroke aborts the request still in flight (same route as the command palette, and
+  // like it scoped to the page's league).
   useEffect(() => {
     if (!q || !showInput) return;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        const res = await fetch(leagueRouteHref(searchSrc(q), league), { signal: ctrl.signal });
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { players: SearchPlayer[] };
-        setResult({ q, players: body.players, failed: false });
+        setResult({ key, players: body.players, failed: false });
         setActive(body.players.length > 0 ? 0 : -1);
       } catch {
-        if (!ctrl.signal.aborted) setResult({ q, players: [], failed: true });
+        if (!ctrl.signal.aborted) setResult({ key, players: [], failed: true });
       }
     }, DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q, showInput]);
+  }, [q, showInput, league, key]);
 
   useEffect(() => {
     if (editing) input.current?.focus();
@@ -140,14 +156,14 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
   return (
     <div
       ref={box}
-      className={cx(styles.slot, side === "a" ? styles.sideA : styles.sideB)}
+      className={cx(styles.slot, side === "a" && styles.sideA, side === "b" && styles.sideB, !side && styles.slotPlain)}
       onBlur={(e) => {
         if (!box.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}
     >
       {showInput
-        ? <label className={styles.slotLabel} htmlFor={inputId}>Player {letter}</label>
-        : <span className={styles.slotLabel}>Player {letter}</span>}
+        ? <label className={styles.slotLabel} htmlFor={inputId}>{name}</label>
+        : <span className={styles.slotLabel}>{name}</span>}
 
       {showInput ? (
         <div className={styles.combo}>
@@ -164,7 +180,8 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
             autoComplete="off"
             spellCheck={false}
             autoFocus={autoFocus}
-            placeholder={`Search a player to be ${letter}`}
+            disabled={disabled}
+            placeholder={placeholder ?? `Search a player to be ${letter}`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -181,7 +198,7 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
           )}
           {open && q && !pendingSearch && (
             players.length > 0 ? (
-              <ul id={listId} role="listbox" aria-label={`Player ${letter} search results`} className={styles.popover}>
+              <ul id={listId} role="listbox" aria-label={`${name} search results`} className={styles.popover}>
                 {players.map((p, i) => (
                   <li
                     key={p.id}
@@ -212,12 +229,12 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
         <div className={styles.picked}>
           <PlayerPhoto id={selected.id} name={selected.name} size={32} />
           <span className={styles.pickedText}>
-            <span className={styles.pickedName}>{selected.name ?? `ESPN #${selected.id}`}</span>
+            <span className={styles.pickedName}>{selected.name ?? `Player #${selected.id}`}</span>
             {(selected.position || selected.team) && (
               <span className={styles.optionMeta}><Pos value={selected.position} /> {selected.team ?? "FA"}</span>
             )}
           </span>
-          <button type="button" className={styles.ghost} onClick={() => setEditing(true)} aria-label={`Change player ${letter}`}>
+          <button type="button" className={styles.ghost} onClick={() => setEditing(true)} aria-label={label ? `Change ${label.toLowerCase()}` : `Change player ${letter}`}>
             Change
           </button>
         </div>

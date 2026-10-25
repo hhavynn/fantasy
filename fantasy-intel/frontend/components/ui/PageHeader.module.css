@@ -15,6 +15,7 @@
 .eyebrow::before { content: ""; width: 14px; height: 2px; border-radius: 2px; background: currentColor; }
 .title { margin: 0; overflow-wrap: anywhere; }
 .meta { margin: 6px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; max-width: 90ch; }
+.provenance { margin-top: 8px; min-width: 0; max-width: 100%; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .extra { flex: 1 0 100%; min-width: 0; max-width: 100%; }
 
@@ -23,3 +24,4 @@
   .actions { flex: 1 0 100%; }
   .meta { font-size: 13px; }
 }
+.provenance:empty { display: none; }

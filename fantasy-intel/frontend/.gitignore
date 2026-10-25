@@ -43,4 +43,14 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+/test-results-sleeper/
+/playwright-report-sleeper/
+/test-results-multileague/
+/playwright-report-multileague/
+/test-results-visual/
+/playwright-report-visual/
+/test-results-signup/
+/playwright-report-signup/
+/test-results-attribution/
+/playwright-report-attribution/
 /blob-report/

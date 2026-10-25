@@ -13,3 +13,11 @@ test("every glossary term has a plain sentence definition", () => {
 test("the dash is defined as missing, never zero", () => {
   assert.match(GLOSSARY["—"], /never zero/);
 });
+
+test("projection terms do not promise ESPN numbers where the provider has none", async () => {
+  const { glossaryText } = await import("./glossary.ts");
+  assert.equal(glossaryText("Projected points"), GLOSSARY["Projected points"]);
+  assert.equal(glossaryText("PPR", false), GLOSSARY.PPR);
+  assert.doesNotMatch(glossaryText("Projected points", false), /ESPN|switch/);
+  assert.doesNotMatch(glossaryText("Ours", false), /ESPN/);
+});

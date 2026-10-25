@@ -3,6 +3,8 @@ registry follows the flags, errors are sanitized, and nothing here touches the n
 
 import inspect
 
+from types import SimpleNamespace
+
 import pytest
 import requests
 
@@ -49,8 +51,8 @@ def test_every_interface_method_is_covered_by_the_matrix_below():
 @pytest.mark.parametrize("make", [
     lambda: SleeperProvider(source="disabled"), lambda: SleeperProvider(source="fixture"),
     lambda: SleeperProvider(source="live"),
-    lambda: EspnProvider(public_import_enabled=False, owner_credentials_configured=False),
-    lambda: EspnProvider(public_import_enabled=True, owner_credentials_configured=True),
+    lambda: EspnProvider(public_import_enabled=False, private_access_enabled=False),
+    lambda: EspnProvider(public_import_enabled=True, private_access_enabled=True),
     lambda: YahooProvider(client_id=None, _use_settings=False), lambda: YahooProvider(client_id="abc"),
 ])
 def test_every_provider_declares_every_capability(make):
@@ -65,7 +67,7 @@ def test_every_provider_declares_every_capability(make):
 
 @pytest.mark.parametrize("make", [
     lambda: SleeperProvider(source="disabled"),
-    lambda: EspnProvider(public_import_enabled=False, owner_credentials_configured=False),
+    lambda: EspnProvider(public_import_enabled=False, private_access_enabled=False),
     lambda: YahooProvider(client_id=None, _use_settings=False), lambda: YahooProvider(client_id="abc"),
 ])
 def test_disabled_providers_raise_capability_unavailable_on_every_method(make):
@@ -88,7 +90,7 @@ def test_unsupported_capabilities_raise_even_when_the_adapter_is_enabled():
             with pytest.raises(CapabilityUnavailable) as e:
                 call()
             assert e.value.state.support is Support.UNSUPPORTED
-    espn = EspnProvider(public_import_enabled=True, owner_credentials_configured=False)
+    espn = EspnProvider(public_import_enabled=True, private_access_enabled=False)
     with pytest.raises(CapabilityUnavailable) as e:
         espn.discover_leagues(PUBLIC, user_handle="x", season=SEASON)
     assert e.value.state.support is Support.UNSUPPORTED
@@ -104,10 +106,10 @@ def test_sleeper_declares_derived_and_unsupported_honestly():
     assert st[Capability.DISCOVER_LEAGUES].support is Support.SUPPORTED
 
 
-def test_espn_private_leagues_require_auth_and_owner_only():
-    st = EspnProvider(public_import_enabled=False, owner_credentials_configured=True).capabilities().states
+def test_espn_private_leagues_require_member_cookies():
+    st = EspnProvider(public_import_enabled=False, private_access_enabled=True).capabilities().states
     assert st[Capability.PRIVATE_LEAGUES].support is Support.REQUIRES_AUTH
-    assert "owner deployment only" in st[Capability.PRIVATE_LEAGUES].note
+    assert "sync jobs" in st[Capability.PRIVATE_LEAGUES].note and "encrypted" in st[Capability.PRIVATE_LEAGUES].note
 
 
 def test_yahoo_reasons_differ_by_client_id():
@@ -135,6 +137,17 @@ def test_registry_defaults_are_all_disabled(clean_env):
     assert registry.data_origin(Provider.SLEEPER) is None
 
 
+def test_no_disabled_reason_names_a_setting(clean_env):
+    """STATUS 1s (and 1q for ESPN, #284): a disabled provider's reason is shown to visitors verbatim on the /leagues host
+    card, so it names no environment setting, value or key version; operators find those in the code comments."""
+    import re
+    caps = registry.all_capabilities()
+    assert all(not c.enabled for c in caps)
+    for c in caps:
+        assert c.reason, c.provider
+        assert not re.search(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|=|\.env|_V<", c.reason), (c.provider, c.reason)
+
+
 def test_registry_follows_environment_flags(clean_env):
     clean_env.setenv("SLEEPER_SOURCE", "fixture")
     assert registry.get_provider(Provider.SLEEPER).capabilities().enabled
@@ -150,7 +163,11 @@ def test_registry_follows_environment_flags(clean_env):
     assert not registry.get_provider(Provider.ESPN).capabilities().enabled
     clean_env.setenv("ESPN_S2", "x" * 20)
     clean_env.setenv("SWID", "{abc}")
-    assert registry.get_provider(Provider.ESPN).capabilities().enabled, "owner deployment with ESPN cookies"
+    assert not registry.get_provider(Provider.ESPN).capabilities().enabled, \
+        "the legacy server-owned ESPN cookies do not enable the multi-league adapter"
+    from app.control_plane.credential_crypto import generate_keypair
+    clean_env.setenv("CREDENTIALS_PUBKEY_V1", generate_keypair()[1])
+    assert registry.get_provider(Provider.ESPN).capabilities().enabled, "the encrypted-credential path enables private ESPN"
 
     clean_env.setenv("YAHOO_CLIENT_ID", "client")
     yahoo = registry.get_provider(Provider.YAHOO).capabilities()
@@ -277,7 +294,7 @@ class _FakeEspn:
 
 def _espn_with(exc):
     return EspnProvider(lambda key, access: _FakeEspn(exc), public_import_enabled=True,
-                        owner_credentials_configured=True)
+                        private_access_enabled=True)
 
 
 ESPN_KEY = LeagueKey(Provider.ESPN, "999", SEASON)
@@ -315,7 +332,7 @@ def test_espn_wrong_league_or_season_in_payload_is_not_found():
             return {**league_payload(), **self.over}
 
     for over in ({"id": 1234}, {"seasonId": 2019}):
-        p = EspnProvider(lambda k, a, o=over: C(**o), public_import_enabled=True, owner_credentials_configured=False)
+        p = EspnProvider(lambda k, a, o=over: C(**o), public_import_enabled=True, private_access_enabled=False)
         with pytest.raises(LeagueNotFound):
             p.fetch_settings(ESPN_KEY, PUBLIC)
 
@@ -323,11 +340,14 @@ def test_espn_wrong_league_or_season_in_payload_is_not_found():
 def test_espn_access_methods_are_gated():
     called = []
     factory = lambda k, a: called.append(a) or _FakeEspn(RuntimeError())     # noqa: E731
-    off = EspnProvider(factory, public_import_enabled=False, owner_credentials_configured=True)
+    off = EspnProvider(factory, public_import_enabled=False, private_access_enabled=True)
     with pytest.raises(ProviderUnavailable, match="public-league import is not enabled"):
         off.fetch_settings(ESPN_KEY, PUBLIC)
-    with pytest.raises(ProviderUnavailable, match="owner's ESPN session is not configured"):
-        off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.OWNER_ENV, None))
+    with pytest.raises(ProviderUnavailable, match="No ESPN cookie credential was supplied"):
+        off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.COOKIES, None))
+    private_off = EspnProvider(factory, public_import_enabled=True, private_access_enabled=False)
+    with pytest.raises(ProviderUnavailable, match="Private ESPN leagues are not enabled"):
+        private_off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.COOKIES, SimpleNamespace(espn_s2="s2", swid="{x}")))
     with pytest.raises(ProviderUnavailable, match="no OAuth"):
         off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.OAUTH, "token"))
     assert called == [], "the raw client is never built for a refused access method"
@@ -337,7 +357,7 @@ def test_access_repr_hides_the_credential_everywhere():
     a = owner_access()
     assert S2_SECRET not in repr(a) and SWID_SECRET not in repr(a)
     p = EspnProvider(lambda k, x: _FakeEspn(RuntimeError()), public_import_enabled=False,
-                     owner_credentials_configured=True)
+                     private_access_enabled=True)
     assert S2_SECRET not in repr(vars(p)) + repr(p.capabilities())
 
 

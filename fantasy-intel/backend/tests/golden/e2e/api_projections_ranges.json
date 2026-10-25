@@ -1,0 +1,49 @@
+// /api/projections/ranges
+{
+ "body": {
+  "artifact": null,
+  "available": false,
+  "conditional_on": "appears",
+  "coverage": 0.8,
+  "definition": "floor = 10th percentile, median = 50th, ceiling = 90th percentile of his points if he plays: 80% of outcomes land between floor and ceiling. The projection is the distribution's mean.",
+  "levels": {
+   "ceiling": 0.9,
+   "floor": 0.1,
+   "median": 0.5
+  },
+  "positions": {
+   "D/ST": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   },
+   "K": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   },
+   "QB": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   },
+   "RB": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   },
+   "TE": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   },
+   "WR": {
+    "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+    "served": false
+   }
+  },
+  "ranges": {},
+  "reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+  "run": null,
+  "schema_version": "projection-ranges/v1",
+  "season": 2026,
+  "version": "ifpd-0.1.0",
+  "week": 3
+ },
+ "status": 200
+}

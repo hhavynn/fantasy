@@ -131,6 +131,12 @@ CREATE TABLE IF NOT EXISTS espn_player_weekly_points (
 -- projected_points holds ESPN's projection for that week (statSourceId 1), including future
 -- weeks current..final fantasy period. It is ESPN's number, not ours. Future projections never
 -- touch actual_points; see docs/espn_ros_projections.md for the replacement semantics.
+-- actual_source (#254 S3): who supplied actual_points, per row. 'provider' = the provider's own league-scored points
+-- (Sleeper players_points), and 'box_score' = Fantasy Intel's nflverse box score scored with the league's skill rules
+-- (app/sleeper/write.py, a Sleeper player-week no roster scored; events the box score does not record are not in it).
+-- NULL when actual_points is NULL, and on every row of a writer that does not record it: the ESPN sync writes only
+-- ESPN's appliedTotal (provider points).
+ALTER TABLE espn_player_weekly_points ADD COLUMN IF NOT EXISTS actual_source VARCHAR;
 
 -- One ESPN projection snapshot per day per player-week (latest sync of the day wins), kept
 -- for future calibration / backtesting only. Not used by any score or recommendation.
@@ -734,6 +740,51 @@ CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
 );
 ALTER TABLE team_waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
+-- Append-only, as-of-time archive of each team's top waiver recommendations (issue #346, app/analytics/waiver_archive.py):
+-- one capture per analytics run whose content changed, carried forward across league builds like every league table.
+-- Graded by app/analytics/waiver_feedback.py only from captures taken before the week's waiver cutoff. Create-only.
+CREATE TABLE IF NOT EXISTS waiver_recommendation_snapshots (
+    league_id              BIGINT,
+    season                 INTEGER,
+    week                   INTEGER,   -- leagues.current_week when captured: the scoring period the claim is for
+    team_id                INTEGER,   -- the roster the recommendation was evaluated from
+    captured_at            TIMESTAMP, -- UTC: the analytics run's computed_at (one value per capture)
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    rank                   INTEGER,   -- by waiver_score within (capture, team), ties by player id; 1 = top
+    recommendation         VARCHAR,   -- CLAIM | WAIT | IGNORE
+    waiver_score           DOUBLE,
+    opportunity_score      DOUBLE,
+    roster_fit_score       DOUBLE,
+    availability_status    VARCHAR,
+    suggested_drop_id      BIGINT,    -- no components/reasons JSON: about 4.6 KB a row the grading never reads
+    snapshot_id            VARCHAR,   -- '<league>:<season>:<week>:<team>:<captured_at iso>'
+    projection_source      VARCHAR,   -- the waiver run's projection source (projection_source.normalize)
+    projection_version     VARCHAR,   -- the newest projection stamp the run read
+    scoring_fingerprint    VARCHAR,   -- sha256[:16] of the league's scoring items
+    rule_version           VARCHAR,   -- the archive rule (waiver_archive.RULE_VERSION)
+    archive_k              INTEGER,   -- candidates kept per team in this capture
+    horizon_weeks          INTEGER,   -- the grading horizon this capture was archived for
+    roster_synced_at       TIMESTAMP, -- the newest roster snapshot the evaluation used
+    content_sha256         VARCHAR,   -- canonical JSON of this (capture, team)'s rows, without captured_at/snapshot_id
+    PRIMARY KEY (league_id, season, week, team_id, captured_at, espn_player_id)
+);
+
+-- The roster each capture above was evaluated from (lineup_snapshots of its week), appended with that capture only and
+-- covered by its content hash: graded against this, never against roster_history, whose day's snapshot a later sync
+-- that day replaces (Codex #353). Create-only.
+CREATE TABLE IF NOT EXISTS waiver_roster_snapshots (
+    league_id              BIGINT,
+    season                 INTEGER,
+    week                   INTEGER,
+    team_id                INTEGER,
+    captured_at            TIMESTAMP, -- the capture's captured_at
+    espn_player_id         BIGINT,
+    lineup_slot_id         INTEGER,
+    snapshot_id            VARCHAR,   -- the capture's snapshot_id
+    PRIMARY KEY (league_id, season, week, team_id, captured_at, espn_player_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
     gsis_id         VARCHAR,
@@ -966,6 +1017,44 @@ CREATE TABLE IF NOT EXISTS independent_projection_rows (
     participation        JSON,
     kickoff              TIMESTAMP,   -- the player's own team kickoff (naive UTC); NULL = unknown
     pregame              BOOLEAN,     -- run created_at < kickoff; unknown kickoff = FALSE
+    PRIMARY KEY (run_id, espn_player_id)
+);
+
+-- Forecast inputs (#225, create-only, no version bump): the full point-model inputs of a projected row and the model
+-- they went through, so a forecast change can be split exactly between inputs and model across a retrain
+-- (production_forecasts "forecast inputs", projection_attribution). Write-once and sealed by their own digests;
+-- never part of a run's content_sha256. Runs stored before these tables existed have none (never backfilled).
+-- NEVER list them in a connection._REBUILD entry (that list DROPS tables).
+CREATE TABLE IF NOT EXISTS independent_projection_models (
+    artifact_id          VARCHAR NOT NULL,   -- == independent_projection_runs.artifact_id of the runs it made
+    position             VARCHAR NOT NULL,
+    model_kind           VARCHAR NOT NULL,   -- main | fallback (ifp-2.2.0 QB without a start candidate)
+    model_version        VARCHAR,
+    columns              VARCHAR[],          -- design columns ("<f>__missing" = null indicator of f)
+    means                DOUBLE[],           -- training means (imputation + centering)
+    stds                 DOUBLE[],
+    coef                 DOUBLE[],           -- per standardized column
+    intercept            DOUBLE,
+    model_sha256         VARCHAR,
+    PRIMARY KEY (artifact_id, position, model_kind)
+);
+
+CREATE TABLE IF NOT EXISTS independent_projection_row_inputs (
+    run_id               VARCHAR NOT NULL,
+    espn_player_id       BIGINT NOT NULL,
+    artifact_id          VARCHAR,
+    position             VARCHAR,
+    model_kind           VARCHAR,
+    base_run_id          VARCHAR,            -- NULL: the whole row is here; else the cycle run whose row this differs from
+    changed              INTEGER[],          -- with base_run_id: the column positions that differ from it
+    input_values         DOUBLE[],           -- raw design row aligned with the model's columns (imputed = training mean),
+                                             -- or the values at `changed`
+    imputed              BOOLEAN[],          -- TRUE: the input was unknown and filled with the training mean
+    mixture_column       VARCHAR,            -- QB start/no-start mixture: the start-share column (its value = the share)
+    scale                DOUBLE,             -- league re-score factor applied to the reference point (rescore.py)
+    shift                DOUBLE,             -- league re-score shift instead of a factor (rescore.py)
+    inputs_version       VARCHAR,
+    inputs_digest        UBIGINT,            -- first 64 bits of a sha256 over the row as stored
     PRIMARY KEY (run_id, espn_player_id)
 );
 

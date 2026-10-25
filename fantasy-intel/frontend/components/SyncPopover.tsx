@@ -1,13 +1,13 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { type ReactNode, useCallback, useRef, useState } from "react";
+import { useAppPathname } from "./useAppPathname";
 import type { SyncState } from "@/lib/sync-status";
 import { useDismiss } from "./useDismiss";
 
 /** The pill button and its details popover; the details are rendered on the server and passed in. */
 export function SyncPopover({ state, text, children }: { state: SyncState; text: string; children: ReactNode }) {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const [open, setOpen] = useState(false);
   const [shownFor, setShownFor] = useState(pathname);
   if (shownFor !== pathname) {

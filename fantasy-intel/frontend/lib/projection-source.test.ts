@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { horizonCaution, modelStatusLine, parseProjectionSource, showingOurs, withSource } from "./projection-source.ts";
+import { ESPN_PROFILE, SLEEPER_PROFILE } from "./league-profile.ts";
+import {
+  effectiveProjectionSource, horizonCaution, modelStatusLine, parseProjectionSource, projectionSwitchVisible, showingOurs, withSource,
+  noProjection,
+} from "./projection-source.ts";
+
+test("effectiveProjectionSource: the cookie decides for ESPN leagues, Sleeper is always Ours", () => {
+  assert.equal(effectiveProjectionSource("espn", ESPN_PROFILE), "espn");
+  assert.equal(effectiveProjectionSource("ours", ESPN_PROFILE), "ours");
+  assert.equal(effectiveProjectionSource("espn", SLEEPER_PROFILE), "ours");
+  assert.equal(effectiveProjectionSource("ours", SLEEPER_PROFILE), "ours");
+  assert.equal(effectiveProjectionSource("espn", null), "espn");
+  assert.equal(withSource("/api/matchup", effectiveProjectionSource("espn", SLEEPER_PROFILE)), "/api/matchup?source=independent");
+});
+
+test("the ESPN / Ours switch shows only where the provider has projections", () => {
+  assert.equal(projectionSwitchVisible(ESPN_PROFILE), true);
+  assert.equal(projectionSwitchVisible(SLEEPER_PROFILE), false);
+  assert.equal(projectionSwitchVisible(undefined), true);
+});
 
 test("parseProjectionSource defaults to ESPN for anything but 'ours'", () => {
   assert.equal(parseProjectionSource("ours"), "ours");
@@ -54,4 +73,10 @@ test("horizonCaution notes a rest-of-season run only when it is shown as ours", 
   assert.equal(horizonCaution({ ...later, source: "espn" }), null);
   assert.equal(horizonCaution({ ...later, available: false }), null);
   assert.equal(horizonCaution(null), null);
+});
+
+test("noProjection names players with no number, never as ESPN's (#254)", () => {
+  assert.equal(noProjection({ unavailable: 2 }), ", 2 with no projection");
+  assert.equal(noProjection({}), "");
+  assert.equal(noProjection({ unavailable: 0 }), "");
 });

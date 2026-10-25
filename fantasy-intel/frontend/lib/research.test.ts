@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  apiQuery, formatMetric, heatBucket, hiddenSentence, keyIds, parseResearchState, researchHref, shortName, sortValue,
+  apiQuery, formatMetric, heatBucket, hiddenSentence, keyIds, noSeasonData, parseResearchState, researchHref, shortName, sortValue,
   stateParams, symmetricDomain, tradeHref, waiverHref, weekList, zeroDomain,
 } from "./research.ts";
 import type { ResearchPlayer } from "./research-types.ts";
@@ -89,4 +89,13 @@ test("trade and waiver actions only where the league supports them", () => {
   assert.equal(tradeHref({ availability_status: "FREEAGENT", on_team_id: null, my_team_id: 2, is_mine: false }, 5), null);
   assert.equal(waiverHref({ availability_status: "WAIVERS", on_team_id: null, my_team_id: 2, is_mine: false }, "TE"), "/waivers?pos=TE&view=ALL");
   assert.equal(waiverHref({ availability_status: "ONTEAM", on_team_id: 1, my_team_id: 2, is_mine: false }, "TE"), null);
+});
+
+test("a season with no stored usage reads as no data, not as filters to lower; the list's cap is said", () => {
+  assert.equal(noSeasonData({ status: "empty", data: { latest_week: null } as never }), true);
+  assert.equal(noSeasonData({ status: "empty", data: null }), true);
+  assert.equal(noSeasonData({ status: "empty", data: { latest_week: 6 } as never }), false);   // filters hid everyone
+  assert.equal(noSeasonData({ status: "ok", data: { latest_week: null } as never }), false);
+  assert.match(hiddenSentence({ min_volume: 0, min_games: 0, team: 0, no_qualifying_games: 0, limit: 37 }),
+    /^37 past the list's limit .* is hidden\.$|^37 past the list's limit .* are hidden\.$/);
 });

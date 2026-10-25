@@ -208,7 +208,9 @@ def test_api_serves_the_published_snapshot(fake, synced_db, monkeypatch, tmp_pat
     client = TestClient(app)
     assert client.get("/api/overview").status_code == 200
     assert client.get("/api/managers").status_code == 200
-    assert _gets(fake, m.key) == 1
+    # downloaded once: one GET, or one set of ranged GETs tiling the file (r2.download goes parallel at 16 MiB, which
+    # this fixture's snapshot crosses as the schema grows)
+    assert _gets(fake, m.key) == (len(fake.ranges) or 1) and sum(e - s + 1 for s, e in fake.ranges) in (0, m.bytes)
     with deps.db() as cur:
         assert deps.data_version(cur) == f"snapshot:{m.published_at}"
         with pytest.raises(duckdb.Error):                        # the API's connection is read-only
@@ -254,7 +256,7 @@ def test_api_keeps_its_open_snapshot_when_a_new_one_cannot_be_opened(fake, synce
     assert client.get("/api/overview").status_code == 200      # still served from the open connection
     monkeypatch.setattr(deps, "_SNAP", {})                      # a fresh instance has nothing to fall back to
     r = client.get("/api/overview")
-    assert r.status_code == 503 and "Cannot open the published snapshot" in r.json()["detail"]
+    assert r.status_code == 503 and r.json()["detail"] == "Cannot open the published snapshot."   # no file or driver text
 
 
 def test_api_without_a_reachable_snapshot_answers_503(fake, monkeypatch, tmp_path):
@@ -266,5 +268,6 @@ def test_api_without_a_reachable_snapshot_answers_503(fake, monkeypatch, tmp_pat
     monkeypatch.setattr(deps, "_SNAP", {})
     from app.main import app
     r = TestClient(app).get("/api/overview")
-    assert r.status_code == 503 and "Cannot load the published snapshot" in r.json()["detail"]
+    assert r.status_code == 503 and r.json()["detail"] == "Cannot load the published snapshot."
     assert "secret-test-key" not in json.dumps(r.json())
+    assert fake.bucket not in json.dumps(r.json()) and "manifest" not in r.json()["detail"]   # visitors see no keys

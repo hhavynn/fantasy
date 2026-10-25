@@ -1,14 +1,20 @@
 import { Method } from "@/components/ui";
+import { providerName, type Provider } from "@/lib/labels";
 import { DEFAULT_THRESHOLDS, type MoversResponse } from "@/lib/projection-movers";
 
-/** The rules in plain words. Thresholds come from the response, so the text never drifts from the backend. */
-export function MoversMethod({ d }: { d: MoversResponse }) {
+/**
+ * The rules in plain words. Thresholds come from the response, so the text never drifts from the backend. A league
+ * whose provider publishes no projections (Sleeper) has no ESPN snapshots, so their paragraph is left out.
+ */
+export function MoversMethod({ d, provider = "espn", providerProjections = true }: {
+  d: MoversResponse; provider?: Provider; providerProjections?: boolean;
+}) {
   const t = d.thresholds ?? DEFAULT_THRESHOLDS;
   return (
     <Method title="How movement is calculated">
       <p>
-        <b>What is compared.</b> Two stored forecasts of the same remaining weeks. ESPN&apos;s projections are saved once a day, so each
-        day is one snapshot. Fantasy Intel&apos;s own forecasts are compared run by run, and only runs made before the week&apos;s first
+        <b>What is compared.</b> Two stored forecasts of the same remaining weeks.{providerProjections && <> ESPN&apos;s projections are saved once a day, so each
+        day is one snapshot.</>} Fantasy Intel&apos;s own forecasts are compared run by run, and only runs made before the week&apos;s first
         kickoff, under the league&apos;s current scoring, are used. Missing history is never reconstructed, and with fewer than two
         stored forecasts there is nothing to compare.
       </p>
@@ -36,13 +42,24 @@ export function MoversMethod({ d }: { d: MoversResponse }) {
       <p>
         <b>Evidence.</b> For the biggest risers and fallers, the page shows what the data recorded between the two forecasts: usage,
         availability, role and schedule, with the weeks and source behind each value. Only games that kicked off between the two forecasts and were over
-        by the latest one (at least three and a half hours before it) are read, and nothing from the compared weeks. ESPN keeps no
+        by the latest one (at least three and a half hours before it) are read, and nothing from the compared weeks. {providerName(provider)} keeps no
         history of its injury status, so that status is shown as it stood at the latest check, never as a change. These are observations made over the same period as the change. They are not shown to be its cause, and a
         player with no recorded change shows none.
       </p>
       <p>
         <b>Fantasy Intel&apos;s own forecasts.</b> The change splits exactly into an availability part (the chance the player appears) and a
         per-game part (the points expected when the player plays); the two add up to the change.
+      </p>
+      <p>
+        <b>Why it changed.</b> For Fantasy Intel&apos;s forecasts of the listed risers and fallers and the selected player, the change is split
+        into parts that add up to it: a change of status stored with a forecast (a bye, or withheld as unavailable, with the stored reason),
+        the availability part, and, when both forecasts come from the same model artifact, each input whose term both forecasts stored (the
+        change in that term times the latest chance he plays; the model adds one term per input before its floor at 0, so this share is
+        exact, and approximate for quarterbacks). When the model was retrained, re-scored or replaced in between, the per-game part is shown
+        as a model change and never assigned to inputs. Everything else, including inputs a forecast did not store and the rounding of stored
+        numbers, is the residual, with its reasons. Only the two stored forecasts are read, and a week is split only when both were made
+        before its first kickoff and their data ran through an earlier week. These are measured parts of the model&apos;s arithmetic, not
+        football causes. ESPN publishes no inputs, so its changes are not split.
       </p>
       <p>
         <b>Not shown.</b> No confidence scores, grades or probabilities, and no advice to add, drop, start, sit or trade anyone.

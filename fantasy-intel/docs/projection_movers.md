@@ -12,6 +12,7 @@ model beats ESPN: it describes how a projection moved, never whether it was righ
 GET /api/projections/movers?source=espn|independent&view=ros|week&position=QB|RB|WR|TE&baseline=<id>&limit=15&season=
   app/analytics/projection_movers.py   movement(): which two snapshots, the window, per-player movement
   app/analytics/mover_evidence.py      attach(): signals recorded over the same period, for listed risers and fallers
+  app/analytics/projection_attribution.py  attach(): why a Fantasy Intel forecast changed (risers, fallers, &player=)
 page /movers                            app/movers/*, lib/projection-movers.ts
 ```
 
@@ -83,6 +84,66 @@ the game was over when that forecast was made), against the player's last up to 
 
 Nothing at or after the latest snapshot and nothing from a window week is read. Signals are labeled as observed over
 the same period, not as causes; no football interpretation is generated. Only high-confidence NFL ID links are used.
+
+## Why it changed (attribution, #225)
+
+`projection_attribution.attach` adds `attribution` (contract `projection-attribution/v1`) to every listed riser and
+faller and to the player named by `player=<espn id>` (the page passes the selected player). Everyone else keeps `null`.
+SQL + stdlib, two queries for the rows and run metadata whatever the number of movers, nothing written.
+
+**What the production model is and what each run stores.** `ifp-2.2.0` (and every earlier `ifp-*`) predicts points if
+he plays as `x = max(intercept + sum_i coef_i * (value_i - mean_i) / std_i, 0)` per position (QB: a start/no-start blend
+weighted by the chance he starts), and expected points `e = p * x` with the participation model's `p`. A stored run row
+keeps `p`, `x`, `e` (2 decimals), its coverage status and reasons, its missing inputs and `explanation`: the four
+largest input terms `coef_i * (value_i - mean_i) / std_i` (at least 0.05 points) with each input's value (null when it
+was unknown and imputed). Run metadata keeps the model version, the artifact sha, the participation version, creation
+time, data cutoff (`data_through_*`), cutoff week and horizon, and `evaluation.rescored_from` for a run re-scored to a
+league's scoring. The full input vector, the intercept and the coefficients are **not** stored, the model is retrained
+every week, and nothing here rebuilds a feature.
+
+**The split of a compared week**, adding up to the mover's change to the cent:
+
+| part | when | exactness |
+|---|---|---|
+| status | one forecast projected him, the other did not (bye, withheld) | measured; cites only the reason stored on the row |
+| availability | `(p1 - p0) * x0` | exact (the movers' split) |
+| input `f` | same model version and artifact, neither re-scored, neither floored at 0, `f` stored in both rows | `p1 * (c1 - c0)`, exact for RB/WR/TE (linear before the floor); QB labelled approximate |
+| model changed | different model version, retrained artifact, unknown artifact, re-scored; or a different participation model/method, including a stored modifier on one side only (QB calibration map, availability news, a borrowed median) (availability) | the whole per-game (or availability) change, never split between inputs; the inputs both rows stored are listed with values only |
+| residual | inputs stored in one row or neither, a floored row, a missing row or chance, a failed as-of check, and the rounding of stored 2-decimal values | each reason with its points |
+
+A requested `player=` is kept in `players` even beyond the 300 largest changes; `requested_player` (present only when
+`player` is given) says whether he is listed, filtered out by the position filter or not comparable (with the reason),
+so a stale link never silently shows someone else.
+
+`status` is `explained` (residual within `tolerance`: 0.005 per stored rounded number used), `partial`, `model_changed`,
+`not_decomposed` (nothing measured) or `unavailable` (ESPN: one total per week and no inputs, labelled "ESPN", never as
+Fantasy Intel's). Missing inputs are listed per forecast with their stored reasons; an imputed input shows no value and
+says it was unknown, never 0.
+
+**As-of guarantee.** Only the two stored runs are read, never a game outcome. A week is split only when both runs were
+created strictly before the week's first kickoff (and before the player's own kickoff when the row stores it) and, where
+a run records its data cutoff, that cutoff is before both the compared week and the run's own cutoff week. Otherwise the
+week is residual ("as-of check failed") and listed in `as_of.refused`.
+
+**Full stored inputs (`projection-attribution/v2`).** The model is retrained weekly, so week-over-week comparisons
+under v1 normally show "model changed". Runs stored with their forecast inputs (docs/independent_projection_engine.md,
+"Forecast inputs") keep every projected row's whole design row and the model it went through. When both compared rows
+have inputs that verify, the per-game change is split exactly across a retrain or a league re-score by the two-factor
+midpoint (Shapley) convention: an input's part is its change times the average of the two models' weights (times the
+latest chance he plays and the average re-score factor); the model's own part ("Model retrained", measured) is the
+change in weights and intercept at the average of the two forecasts' inputs; a changed league re-score factor is its
+own measured part. Swapping the two forecasts negates every part. An input unknown in either forecast (imputed with the
+training average) is residual ("imputed"), never a measured change; a floored row is not split; full-input parts under
+0.05 points are shown as one line. The block then has `contract = projection-attribution/v2`, `method =
+exact_midpoint` and `full_inputs = {weeks, convention}`; every v1 field keeps its meaning. A week without verified inputs
+on both sides is split exactly as under v1, and a block that used no inputs is byte-identical to v1 (tested: a failed
+digest, inputs on one side only, a missing model, inputs naming another artifact).
+
+**On the player profile.** The Outlook tab of a QB, RB, WR or TE profile (`app/players/ProjectionChange.tsx`) asks the
+same route for Fantasy Intel's rest-of-season change of that one player (`source=independent&view=ros&limit=1&player=`)
+and shows the same "Why it changed" block, with a link to the player on `/movers`. It shows only an exact match: a
+player the route cannot compare (no comparison point, no forecast in either run, outside the comparison) is said in
+words with the route's reason, never as a zero change or as another player's change (`lib/profile-attribution.ts`).
 
 ## Safeguards
 

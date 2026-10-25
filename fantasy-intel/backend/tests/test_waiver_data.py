@@ -101,3 +101,46 @@ def test_malformed_kickoff_is_unknown_not_a_failed_build(tmp_path):
     assert ctx["actionable"] is None and any("kickoff" in r.lower() for r in ctx["warnings"])
     assert build_waivers(con)["candidates"] > 0
     con.close()
+
+
+# ---- #253 S2: the PPR-basis warning covers every known scoring difference, not only reception points ----
+
+def test_ppr_basis_differences_name_pass_td_and_te_premium():
+    from app.analytics.waiver_data import ppr_basis_differences
+    ppr = [{"statId": 3, "points": 0.04}, {"statId": 4, "points": 4}, {"statId": 53, "points": 1},
+           {"statId": 25, "points": 6}, {"statId": 72, "points": -2}]
+    assert ppr_basis_differences(ppr) == []
+    assert ppr_basis_differences(json.dumps(ppr)) == []
+    assert ppr_basis_differences(None) == [] and ppr_basis_differences([]) == []
+    six = [{**i, "points": 6} if i["statId"] == 4 else i for i in ppr]
+    assert ppr_basis_differences(six) == ["6 per passing TD (basis 4)"]
+    te_slot = [{**i, "pointsOverrides": {"6": 1.5}} if i["statId"] == 53 else i for i in ppr]   # ESPN: TE slot
+    assert ppr_basis_differences(te_slot) == ["reception scored differently by lineup slot (such as a TE premium)"]
+    te_pos = [{**i, "positionPoints": {"TE": 0.5}} if i["statId"] == 53 else i for i in ppr]    # translated items
+    assert ppr_basis_differences(te_pos) == ["+0.5 per reception for TE"]
+    extra = ppr + [{"statId": 2002, "points": 0.5}, {"statId": 74, "points": 3},             # 74: a kicker rule
+                   {"statId": 99, "points": 0, "pointsOverrides": {"16": 1}},                # D/ST-only override
+                   {"statId": 63, "points": 6}]                                              # fumble-recovery TD
+    assert ppr_basis_differences(extra) == ["0.5 per rushing first down (basis 0)"]
+    # Other offensive rules outside the basis are counted: ESPN completions (1) and a 300-yard passing bonus (17), and
+    # Sleeper's translated unimplemented skill rule (bonus_pass_yd_300 -> 2999). A zero-point rule is not.
+    bonuses = ppr + [{"statId": 1, "points": 0.5}, {"statId": 17, "points": 3}, {"statId": 2999, "points": 2},
+                     {"statId": 0, "points": 0}]
+    assert ppr_basis_differences(bonuses) == ["plus 3 other offensive rules (see League rules)"]
+    assert ppr_basis_differences(six + [{"statId": 17, "points": 3}]) == [
+        "6 per passing TD (basis 4)", "plus 1 other offensive rule (see League rules)"]
+
+
+def test_waiver_warning_fires_for_a_full_ppr_league_with_six_point_pass_tds(tmp_path):
+    path = tmp_path / "s2.duckdb"
+    run_espn_sync(lambda: open_db(path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
+                  client=FakeEspnClient(), save_raw_payloads=False)
+    con = connect(path)
+    league = fetch_dicts(con, "SELECT * FROM leagues")[0]
+    assert league["reception_points"] == 1
+    basis = [w for w in load_waiver_context(con, league)["warnings"] if "PPR-based" in w]
+    assert basis == []                                         # the fixture scores only receptions, at 1 each
+    league["scoring_items"] = json.dumps([{"statId": 53, "points": 1.0}, {"statId": 4, "points": 6.0}])
+    basis = [w for w in load_waiver_context(con, league)["warnings"] if "PPR-based" in w]
+    assert len(basis) == 1 and "6 per passing TD (basis 4)" in basis[0]
+    con.close()

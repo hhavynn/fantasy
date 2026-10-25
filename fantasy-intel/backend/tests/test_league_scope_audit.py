@@ -18,6 +18,7 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent / "app"
 LEAGUES_PKG = APP / "leagues"
+CONTROL_PLANE_PKG = APP / "control_plane"
 
 # `ORDER BY synced_at DESC` with an optional table alias, any whitespace (SQL is often wrapped over lines).
 _GLOBAL_LATEST = re.compile(r"ORDER\s+BY\s+(?:\w+\.)?synced_at\s+DESC", re.IGNORECASE)
@@ -112,7 +113,7 @@ def test_the_tenancy_layer_never_reads_the_analytics_leagues_table():
     """app/leagues/** has its own tables; reading analytics `leagues` (one row per synced ESPN/Sleeper league,
     no tenant column) from there would be a global selector by another name."""
     pattern = re.compile(r"\b(?:FROM|JOIN)\s+leagues\b", re.IGNORECASE)
-    offenders = [p.relative_to(APP).as_posix() for p in LEAGUES_PKG.rglob("*.py")
+    offenders = [p.relative_to(APP).as_posix() for pkg in (LEAGUES_PKG, CONTROL_PLANE_PKG) for p in pkg.rglob("*.py")
                  if pattern.search(_source(p))]
     assert not offenders, f"{HOW_TO_FIX}\n  found in: {offenders}"
 
@@ -121,34 +122,46 @@ def test_the_tenancy_layer_does_not_open_the_analytics_database():
     """The analytics file (Settings.db_path / MotherDuck) is not a tenancy boundary; only tenancy_db_path is."""
     pattern = re.compile(r"(?<!tenancy_)\bdb_path\b|connect_motherduck|motherduck_database|api\.deps")
     offenders = {}
-    for p in LEAGUES_PKG.rglob("*.py"):
+    for p in [*LEAGUES_PKG.rglob("*.py"), *CONTROL_PLANE_PKG.rglob("*.py")]:
         hits = sorted(set(pattern.findall(_source(p))))
         if hits:
             offenders[p.relative_to(APP).as_posix()] = hits
     assert not offenders, f"the tenancy layer must not touch the analytics database: {offenders}"
 
 
-def test_league_contexts_are_issued_only_by_the_tenancy_store():
-    """`issue_context` skips no checks itself: it is the *caller's* duty to have authorized. Pin who calls it."""
+def test_league_access_is_decided_only_by_the_control_plane_authorizer():
+    """`Access` carries a verified authorization decision and the snapshot pointer. Only app/control_plane/authz.py may
+    build one, and only it and the /v2 router may call the authorizer (which runs inside the request's transaction)."""
+    builders = sorted(p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
+                      if re.search(r"\bAccess\(", p.read_text("utf-8")))
+    assert builders == ["control_plane/authz.py"], f"only authz.py may construct an Access; got {builders}"
     callers = sorted(p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
-                     if p.name != "context.py" and re.search(r"\bissue_context\b|\b_ISSUER\b", p.read_text("utf-8")))
-    assert callers == ["leagues/store.py"], (
-        f"only app/leagues/store.py (after verifying an active connection) may issue a LeagueContext; got {callers}")
+                     if re.search(r"\bauthorize_league(?:_in)?\(", p.read_text("utf-8")))
+    # api/league_scope.py authorizes the legacy routers mounted under /v2/leagues/{league_id} (Phase 2).
+    assert callers == ["api/league_scope.py", "api/leagues_v2.py", "control_plane/authz.py"], callers
 
 
-def test_tenancy_store_is_only_constructed_by_the_api_dependency_and_itself():
+def test_the_control_plane_pool_is_only_constructed_by_get_control_plane():
     callers = sorted(p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
-                     if re.search(r"\bTenancyStore\(", p.read_text("utf-8")))
-    assert callers == ["api/leagues_v2.py"], f"construct stores through get_tenancy_store(); got {callers}"
+                     if re.search(r"\bControlPlane\(", p.read_text("utf-8")))
+    assert callers == ["control_plane/pg.py"], f"construct pools through get_control_plane(); got {callers}"
 
 
-def test_legacy_routes_do_not_import_the_league_layer():
-    """The single-owner endpoints must not start depending on app.leagues (Phase 1: foundation only)."""
+def test_legacy_routes_do_not_import_the_league_layer_or_the_control_plane():
+    """The single-owner endpoints must not start depending on app.leagues or app.control_plane (they are only reached
+    through the flag-gated /v2 router)."""
     offenders = []
     for p in sorted(APP.rglob("*.py")):
         rel = p.relative_to(APP).as_posix()
-        if rel.startswith("leagues/") or rel in ("api/leagues_v2.py", "main.py", "config.py"):
+        # sync/: the GitHub Actions workers (Phase 3), which talk to the control plane and are never imported by a route
+        if rel.startswith(("leagues/", "control_plane/", "sync/")) or rel in ("api/leagues_v2.py", "api/league_scope.py",
+                                                                                "api/connect.py", "main.py", "config.py"):
             continue
-        if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*leagues(?:\.|\s|$)", p.read_text("utf-8"), re.M):
+        text = p.read_text("utf-8")
+        if rel == "api/portfolio.py":
+            # The cross-league portfolio (#209), reached only through GET /v2/portfolio, may read the cross-provider
+            # identity rules (app.leagues.identity) and nothing else of the league layer, never the control plane.
+            text = re.sub(r"^\s*from\s+\.\.leagues\.identity\s+import\s+[\w, ]+$", "", text, flags=re.M)
+        if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*(?:leagues|control_plane)(?:\.|\s|$)", text, re.M):
             offenders.append(rel)
-    assert not offenders, f"legacy modules import app.leagues: {offenders}"
+    assert not offenders, f"legacy modules import app.leagues / app.control_plane: {offenders}"

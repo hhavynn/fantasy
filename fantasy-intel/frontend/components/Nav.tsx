@@ -1,35 +1,41 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import Link from "@/components/LeagueLink";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAppPathname, useLeagueHref, useLeagueId } from "./useAppPathname";
 import {
-  type CSSProperties, type FocusEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  type ChangeEvent, type CSSProperties, type FocusEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState,
+  useSyncExternalStore, useTransition,
 } from "react";
 import {
-  NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget, type TabMemoryEntry,
+  NAV_GROUPS, RAIL_KEY, getActiveRoute, navClusters, parseRail, parseTabMemory, tabMemoryEntry, tabTarget,
+  type NavGroup, type RailState, type TabMemoryEntry,
 } from "@/lib/navigation";
 import type { ProjectionSource } from "@/lib/projection-source";
 import type { SyncState } from "@/lib/sync-status";
-import { withTeam } from "@/lib/team-perspective";
+import { isTeamScopedView, perspectiveHref, teamOptionLabel, withTeam } from "@/lib/team-perspective";
+import { useNavGroups } from "./NavVisibility";
 import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { ScrollToActive } from "./ui/ScrollToActive";
 import { useDismiss } from "./useDismiss";
-import { useTeam } from "./useTeam";
+import { rememberTeam, useTeam } from "./useTeam";
 
 /** The wordmark: home is the Overview, so it keeps the analyzed team like every other link to a team-scoped page. */
 export function BrandLink({ children }: { children: ReactNode }) {
   const team = useTeam();
-  return <Link href={withTeam("/", team)} className="brand" aria-label="Fantasy Intel home">{children}</Link>;
+  const leagueHref = useLeagueHref();
+  return <Link href={leagueHref(withTeam("/", team))} className="brand" aria-label="Fantasy Intel home">{children}</Link>;
 }
 
 export function NavGroups() {
-  const { activeGroup } = getActiveRoute(usePathname());
+  const { activeGroup } = getActiveRoute(useAppPathname());
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   return (
     <nav className="nav-groups" aria-label="Sections">
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={withTeam(g.pages[0].href, team)} aria-current={g === activeGroup ? "true" : undefined}>
+        <Link key={g.label} href={leagueHref(withTeam(g.pages[0].href, team))} aria-current={g === activeGroup ? "true" : undefined}>
           {g.label}
         </Link>
       ))}
@@ -37,9 +43,22 @@ export function NavGroups() {
   );
 }
 
+/** The current route's group as this visitor sees it (owner research hidden on league pages), and its current page. */
+function useActiveGroup(): { activeHref: string | null; activeGroup: NavGroup | null } {
+  const { activeHref, activeGroup: found } = getActiveRoute(useAppPathname());
+  const groups = useNavGroups();
+  return { activeHref, activeGroup: found ? groups.find((g) => g.label === found.label) ?? found : null };
+}
+
+/**
+ * The active group's pages as a sideways band under the app bar: tablets and narrow desktops, phones (scrolling away
+ * with the page) and wide desktops with the workflow rail collapsed. Wide desktops with the rail open list the same
+ * pages in the rail instead (globals.css hides one or the other, so exactly one "<group> pages" nav is visible).
+ */
 export function SubNav() {
-  const { activeHref, activeGroup } = getActiveRoute(usePathname());
+  const { activeHref, activeGroup } = useActiveGroup();
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   if (!activeGroup) return null;
   return (
     <div className="subnav-wrap">
@@ -49,7 +68,7 @@ export function SubNav() {
           <span key={c.title ?? ""} className="subnav-cluster">
             {c.title && <span className="subnav-section">{c.title}</span>}
             {c.pages.map((p) => (
-              <Link key={p.href} href={withTeam(p.href, team)} title={p.summary}
+              <Link key={p.href} href={leagueHref(withTeam(p.href, team))} title={p.summary}
                     aria-current={p.href === activeHref ? "page" : undefined}>
                 {p.label}
               </Link>
@@ -59,6 +78,139 @@ export function SubNav() {
         <ScrollToActive current={activeHref} />
       </nav>
     </div>
+  );
+}
+
+// ---------- Desktop workflow rail ----------
+// The rail state is the `data-rail` attribute on <html> (set before paint by RAIL_INIT_SCRIPT in the root layout), so
+// CSS lays out the right width from the first frame; this store reads and writes it. Storage can be blocked: the
+// choice then lasts for this visit.
+const railListeners = new Set<() => void>();
+const subscribeRail = (cb: () => void) => {
+  railListeners.add(cb);
+  return () => { railListeners.delete(cb); };
+};
+const readRail = (): RailState => parseRail(document.documentElement.getAttribute("data-rail"));
+function setRail(state: RailState) {
+  const root = document.documentElement;
+  if (state === "collapsed") root.setAttribute("data-rail", "collapsed");
+  else root.removeAttribute("data-rail");
+  try {
+    if (state === "collapsed") window.localStorage.setItem(RAIL_KEY, state);
+    else window.localStorage.removeItem(RAIL_KEY);
+  } catch {
+    // Blocked storage: the rail still collapses for this visit.
+  }
+  railListeners.forEach((l) => l());
+}
+
+/** The league's teams for the rail's picker, tagged with the league they were read for (null = the classic site). */
+export type RailTeams = {
+  league: string | null;
+  defaultId: number | null;
+  teams: { id: number; name: string; isDefault: boolean }[];
+};
+
+/**
+ * The persistent team picker. On a team-scoped page a pick reloads the page for that team (the same URL the page's
+ * own "Analyzing" picker builds, so back works and the link can be shared); on a league-wide page it changes the team
+ * the nav links carry, without leaving the page. Read-only either way: nothing is sent to the provider. A list read for
+ * another league (the moment between a league switch and the layout's refresh) is never offered.
+ */
+function RailTeamPicker({ teams }: { teams: RailTeams }) {
+  const league = useLeagueId();
+  const pathname = useAppPathname();
+  const search = useSearchParams();
+  const team = useTeam();
+  const leagueHref = useLeagueHref();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  if (teams.league !== league || teams.teams.length === 0) return null;
+  const wanted = team ?? (teams.defaultId === null ? "" : String(teams.defaultId));
+  const value = teams.teams.some((t) => String(t.id) === wanted) ? wanted : "";
+  const onChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const id = Number(e.target.value);
+    const next = id === teams.defaultId ? null : id;
+    if (isTeamScopedView(pathname, search)) start(() => router.push(leagueHref(perspectiveHref(pathname, search, next))));
+    else rememberTeam(league, next === null ? null : String(next));
+  };
+  return (
+    <label className="rail-field">
+      <span className="rail-field-label">Team</span>
+      <select value={value} onChange={onChange} aria-busy={pending || undefined}>
+        {value === "" && <option value="" disabled>Pick a team</option>}
+        {teams.teams.map((t) => (
+          <option key={t.id} value={String(t.id)}>{teamOptionLabel({ name: t.name, is_owner_default: t.isDefault })}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Wide desktops: the workspace rail beside the page. The league week and the analyzed team on top, the five decision
+ * groups with the job each is for (all visible, nothing to open), then the current group's pages. Collapsing it keeps
+ * the group icons and returns the page list to the sub-nav band. Hidden below the rail breakpoint (globals.css), where
+ * the app bar and the phone tab bar take over unchanged.
+ */
+export function WorkspaceRail({ teams, week }: { teams: RailTeams | null; week: number | null }) {
+  const { activeHref, activeGroup } = useActiveGroup();
+  const team = useTeam();
+  const leagueHref = useLeagueHref();
+  const rail = useSyncExternalStore(subscribeRail, readRail, () => "expanded" as const);
+  const collapsed = rail === "collapsed";
+  return (
+    <aside id="workspace-rail" className="rail" aria-label="Workspace">
+      {(teams || week !== null) && (
+        <div className="rail-context">
+          {week !== null && <p className="rail-week">Week {week}</p>}
+          {teams && <RailTeamPicker teams={teams} />}
+        </div>
+      )}
+      <nav className="rail-groups" aria-label="Sections">
+        <ul>
+          {NAV_GROUPS.map((g, i) => (
+            <li key={g.label}>
+              <Link href={leagueHref(withTeam(g.pages[0].href, team))} title={g.label}
+                    aria-current={g.label === activeGroup?.label ? "true" : undefined}
+                    aria-describedby={g.task ? `rail-task-${i}` : undefined}>
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {GROUP_ICONS[g.label] ?? <circle cx="9" cy="9" r="3" />}
+                </svg>
+                <span className="rail-label">{g.label}</span>
+                {g.task && <span id={`rail-task-${i}`} className="rail-task" aria-hidden="true">{g.task}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {activeGroup && (
+        <nav className="rail-pages" aria-label={`${activeGroup.label} pages`}>
+          <span className="rail-pages-title" aria-hidden="true">{activeGroup.label}</span>
+          {navClusters(activeGroup).map((c) => (
+            <div key={c.title ?? ""} className="rail-cluster">
+              {c.title && <span className="rail-section">{c.title}</span>}
+              {c.pages.map((p) => (
+                <Link key={p.href} href={leagueHref(withTeam(p.href, team))} title={p.summary}
+                      aria-current={p.href === activeHref ? "page" : undefined}>
+                  {p.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+      <button type="button" className="rail-toggle" aria-controls="workspace-rail" aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand navigation" : "Collapse navigation"}
+              onClick={() => setRail(collapsed ? "expanded" : "collapsed")}>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+          <path d={collapsed ? "M5.5 2.75v10.5M8.5 6l2 2-2 2" : "M5.5 2.75v10.5M10.5 6l-2 2 2 2"} fill="none" stroke="currentColor"
+                strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="rail-toggle-text" aria-hidden="true">Collapse</span>
+      </button>
+    </aside>
   );
 }
 
@@ -103,9 +255,10 @@ function rememberPage(group: string, entry: TabMemoryEntry) {
  * team); the tab of the current group goes back to the group's first page. The sub-nav lists the group's pages.
  */
 export function TabBar() {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   const query = search.toString();
   const { activeGroup } = getActiveRoute(pathname);
   const raw = useSyncExternalStore(subscribeMemory, readMemory, () => null);
@@ -119,7 +272,7 @@ export function TabBar() {
   return (
     <nav className="tabbar" aria-label="Sections" style={{ "--tabs": NAV_GROUPS.length } as CSSProperties}>
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={withTeam(tabTarget(g, g === activeGroup, memory[g.label], team), team)}
+        <Link key={g.label} href={leagueHref(withTeam(tabTarget(g, g === activeGroup, memory[g.label], team), team))}
               aria-current={g === activeGroup ? "true" : undefined}>
           <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             {GROUP_ICONS[g.label] ?? <circle cx="9" cy="9" r="3" />}
@@ -143,10 +296,12 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 
 /** Phones: the section row collapses into a menu button with every group's pages, the switches and data freshness. */
 export function MobileNav({ projection, sync }: { projection?: ProjectionSource; sync?: { state: SyncState; text: string } } = {}) {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const { activeHref } = getActiveRoute(pathname);
+  const groups = useNavGroups();
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   const [open, setOpen] = useState(false);
   // The layout persists across navigation, so the menu closes whenever the URL changes, including back/forward and
   // query-only changes (a team switch), not only after a click inside it. Adjusting state during render on a changed
@@ -180,19 +335,19 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
       {open && (
         <nav id="mobile-nav-panel" className="mobile-nav-panel" aria-label="All pages">
           {sync && (
-            <Link href="/data" className="mobile-nav-sync" data-state={sync.state} onClick={close}>
+            <Link href={leagueHref("/data")} className="mobile-nav-sync" data-state={sync.state} onClick={close}>
               <span><b>Data</b> · {sync.text}</span>
               <span aria-hidden="true">→</span>
             </Link>
           )}
-          {NAV_GROUPS.map((g) => (
+          {groups.map((g) => (
             <div key={g.label} className="mobile-nav-group" role="group" aria-labelledby={`mnav-${g.label}`}>
               <span id={`mnav-${g.label}`} className="mobile-nav-title">{g.label}</span>
               {navClusters(g).map((c) => (
                 <div key={c.title ?? ""} className="mobile-nav-cluster">
                   {c.title && <span className="mobile-nav-section">{c.title}</span>}
                   {c.pages.map((p) => (
-                    <Link key={p.href} href={withTeam(p.href, team)} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
+                    <Link key={p.href} href={leagueHref(withTeam(p.href, team))} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
                       {p.label}
                     </Link>
                   ))}
@@ -211,7 +366,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
             </div>
           )}
           <div className="mobile-nav-foot">
-            <Link href="/data" aria-current={pathname === "/data" ? "page" : undefined} onClick={close}>Data quality</Link>
+            <Link href={leagueHref("/data")} aria-current={pathname === "/data" ? "page" : undefined} onClick={close}>Data quality</Link>
           </div>
         </nav>
       )}

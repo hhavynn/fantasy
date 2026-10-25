@@ -12,8 +12,13 @@ const TREND_WORD: Record<string, string> = { UP: "Rising", FLAT: "Flat", DOWN: "
  * right, then opponent, rating, trend and roster on a second line). It keeps players comparable down the screen
  * instead of one tall card each. Shown instead of the table at 720px and below (CSS only).
  */
-export function RankingsCards({ rows, showOurs, basis }: { rows: RankingRow[]; showOurs: boolean; basis: "espn" | "ours" }) {
-  const ptsLabel = basis === "ours" ? "Ours" : "ESPN";
+export function RankingsCards({ rows, showOurs, basis, espnColumn = true }: {
+  rows: RankingRow[]; showOurs: boolean; basis: "espn" | "ours";
+  /** False for a league whose provider publishes no projections (Sleeper): only Ours is shown. */
+  espnColumn?: boolean;
+}) {
+  const onOurs = basis === "ours" || !espnColumn;
+  const ptsLabel = onOurs ? "Ours" : "ESPN";
   return (
     <ol className={styles.cardView} aria-label="Player rankings">
       {rows.map((r) => {
@@ -30,10 +35,10 @@ export function RankingsCards({ rows, showOurs, basis }: { rows: RankingRow[]; s
               meta={<AvailabilityBadge row={r} />} className={styles.cardWho} />
             <span className={styles.cardPts}>
               <span className={styles.keyFact}>
-                <Points value={basis === "ours" ? r.projection.ours : r.projection.espn} status={r.projection.status} />
+                <Points value={onOurs ? r.projection.ours : r.projection.espn} status={r.projection.status} />
               </span>
               <span className={styles.cardPtsLabel}>{ptsLabel} pts</span>
-              {showOurs && (
+              {showOurs && espnColumn && (
                 <span className={styles.cardPtsLabel}>ESPN <Points value={r.projection.espn} status={r.projection.status} /></span>
               )}
             </span>

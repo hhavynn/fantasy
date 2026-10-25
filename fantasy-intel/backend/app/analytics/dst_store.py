@@ -77,9 +77,12 @@ class ImmutableRunError(ValueError):
 
 _PA_TIERS = (89, 90, 91, 92, 121, 122, 123, 124, 125)
 _YA_TIERS = (128, 129, 130, 131, 132, 133, 134, 135, 136)
+_SLEEPER_PA_TIERS = (1089, 1090, 1091, 1092, 1093, 1094, 1095)     # synthetic ids of other providers' tiers
 _COUNT_STATS = (93, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 206, 209)
-MODELED = set(_COUNT_STATS) | {120, 127} | set(_PA_TIERS) | set(_YA_TIERS)
-DST_UNIVERSE = set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+_SLEEPER_FF = 1106                                                  # forced fumbles, approximated (dst_research)
+MODELED = set(_COUNT_STATS) | {120, 127, _SLEEPER_FF} | set(_PA_TIERS) | set(_YA_TIERS) | set(_SLEEPER_PA_TIERS)
+DST_UNIVERSE = (set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+                | set(_SLEEPER_PA_TIERS) | {_SLEEPER_FF})
 DST_SLOT = "16"
 
 
@@ -88,8 +91,8 @@ def _slot_value(item: Mapping) -> float:
     return float(overrides[DST_SLOT] if DST_SLOT in overrides else (item.get("points") or 0.0))
 
 
-def scoring_fingerprint(items: Sequence[Mapping] | None) -> tuple[str | None, str | None]:
-    """(the league's D/ST scoring fingerprint exactly as dst_research.DstScoring.fingerprint, why unusable)."""
+def scoring_weights(items: Sequence[Mapping] | None) -> tuple[dict[int, float] | None, str | None]:
+    """(the league's D/ST-slot points per statId exactly as dst_research.DstScoring.weights, why unusable)."""
     if not items:
         return None, "the league's scoring settings are not synced"
     weights = {}
@@ -102,8 +105,34 @@ def scoring_fingerprint(items: Sequence[Mapping] | None) -> tuple[str | None, st
         weights[sid] = value
     if not weights:
         return None, "the league scores no D/ST statistic"
+    return weights, None
+
+
+def scoring_fingerprint(items: Sequence[Mapping] | None) -> tuple[str | None, str | None]:
+    """(the league's D/ST scoring fingerprint exactly as dst_research.DstScoring.fingerprint, why unusable)."""
+    weights, why = scoring_weights(items)
+    if weights is None:
+        return None, why
     payload = json.dumps(sorted(weights.items()), separators=(",", ":"))
     return "dst:" + hashlib.sha256(payload.encode()).hexdigest()[:16], None
+
+
+def expected_points(weights: Mapping[int, float], scoring_stats: Mapping) -> float:
+    """League points of a defense's expected statistics (`stat_line.scoring_stats`, statId -> expectation), exactly as
+    dst_research.DstScoring.points scores them: the model's points are linear in these (multi-league Phase 4)."""
+    return round(sum(w * float(scoring_stats.get(str(sid), scoring_stats.get(sid)) or 0.0)
+                     for sid, w in weights.items()), 6)
+
+
+def describe_scoring(items: Sequence[Mapping]) -> dict:
+    """dst_research.DstScoring.describe() of a supported scoring (a run's `scoring` meta), numpy-free."""
+    weights, why = scoring_weights(items)
+    if weights is None:
+        raise ValueError(why)
+    ignored = sum(1 for i in items if _slot_value(i) and i.get("statId") not in DST_UNIVERSE)
+    return {"supported": True, "fingerprint": scoring_fingerprint(items)[0],
+            "weights": {str(k): v for k, v in sorted(weights.items())}, "unmodeled": [],
+            "ignored_non_dst_items": ignored}
 
 
 def league_fingerprint(con, season: int) -> tuple[str | None, str | None]:

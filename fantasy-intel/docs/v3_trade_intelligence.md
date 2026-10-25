@@ -188,9 +188,19 @@ congestion.
 * **Replacement level** is what a manager can get for free: the best currently available free agent's ESPN
   projection at that position that week. This is a streaming baseline, and it is availability-aware.
   * If no free agent at the position is projected, the league-structure level is used instead: the projection of
-    the first player beyond the league's starters at that position (teams × fixed slots).
+    the first player beyond the league's starters at that position that week (see *League starters* below).
   * The baseline used is shown for each player.
-* **Starter-caliber**: PAR ranks within the league's starters at the position (teams × fixed starting slots). Positional
+* **League starters at a position** (`league_starters_at_position`) come from one league reference assignment: every
+  team's exact optimal projected lineup each week (the same `project_team` / `lineup.assign_lineup` lineups the trade
+  evaluator scores). A fixed slot (QB, RB, WR, TE, K, D/ST) counts teams × count for its own position. Each flexible
+  slot (FLEX, RB/WR, WR/TE, OP) counts once, for the position of the player who actually fills it that team-week, and
+  not at all when empty, so a superflex OP filled by a QB adds a QB starter and one filled by an RB adds an RB starter,
+  never both. The weekly counts set the league-structure replacement level; the season count used for starter-caliber
+  is the fixed count plus the weekly flex mean rounded half up. Flex demand is dynamic (projections, byes, injuries and
+  roster moves shift it), and the package note says so. A league without flexible slots gets exactly teams × fixed
+  slots. Roster needs ("short") still compare fixed slots only; surplus reads the flex-aware starter-caliber flag and
+  counts flex starts.
+* **Starter-caliber**: PAR ranks within the league's starters at the position (above). Positional
   PAR ranks are tie-aware (standard competition rank: 1 + count of players with strictly higher PAR using full-precision
   PAR with a 1e-9 tolerance). If a tie spans the starter cutoff, all tied players receive the same rank and qualify as
   starter-caliber (`rank <= starters`), even if that means more players qualify than the nominal starter count. Display
@@ -303,6 +313,13 @@ proof is claimed. Per opponent:
 5. Deduplicate by sorted player sets. Skip padding: an added player that changes neither team's effects or drops.
    Illegal rosters are rejected by the shared forced-drop rules. Packages that qualify become rows marked
    `search_method: heuristic_beam`.
+6. Work budget (`BEAM_WORK_PER_OPPONENT`, 15,000 lineup totals per opponent: each side of an exact package and each
+   forced-drop set it solves). The 1-for-1 seeds are always evaluated. Once an opponent's share is spent, the rest of
+   that expansion step is counted as generated but not evaluated, and later steps do not run for that opponent. A
+   cached package is charged what it cost when first solved, so the cut is the same however warm the cache is. Standard
+   leagues stay well below it (at most ~7,400 per opponent in the synthetic 16-player 1-FLEX and IDP leagues), so their
+   results are unchanged; a deep league (FX-17: 27 active players, up to ~56,000) reaches it. See
+   [`v2_trade_discovery.md`](v2_trade_discovery.md#deep-leagues-fx-17-and-the-beams-work-budget).
 
 Every displayed row, exact or heuristic, is re-run through `evaluate_trade` and carries
 `consistent_with_manual_evaluator`.
@@ -319,6 +336,12 @@ The API returns `coverage.exact` (the V2 search block, which is exhaustive withi
 * per-opponent seeds, pools and evaluations;
 * timing;
 * a note that it is not a proven top list.
+
+Only when the work budget stopped the beam, `coverage.heuristic.work_budget` (the budget, the opponents cut, packages
+evaluated of packages generated, and a note appended to the coverage note) and a `work_budget` entry on each opponent
+cut (packages generated, not evaluated, and expansion steps not run). The page adds one sentence to its "not a proven
+top list" notice and to the larger-shapes tile. A beam that stays within its budget returns exactly the fields it
+always did.
 
 The page shows both as separate tiles, and marks heuristic shapes with `*` in the controls and with a
 "heuristic search" badge on each row. There is also an "exact search only" option.

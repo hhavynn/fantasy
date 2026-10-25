@@ -1,0 +1,590 @@
+// /api/my-team/value/marginal?ids=502&team_id=2
+{
+ "body": {
+  "asset_ids": [
+   502
+  ],
+  "baseline": {
+   "evaluation_start_week": 3,
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "missing_players": [],
+   "missing_weeks": [],
+   "playoff_known_starting_points": 274.2,
+   "playoff_projected_starting_points": 274.2,
+   "projection_complete": true,
+   "regular_season_known_starting_points": 1015.8,
+   "regular_season_projected_starting_points": 1015.8,
+   "ros_known_starting_points": 1290.0,
+   "ros_projected_starting_points": 1290.0,
+   "ros_weeks_complete": 15,
+   "ros_weeks_expected": 15
+  },
+  "change": {
+   "known_ros_delta": -165.0,
+   "playoff_delta": -34.8,
+   "projection_complete": true,
+   "regular_season_delta": -130.2,
+   "ros_delta": -165.0,
+   "weeks": [
+    {
+     "after": 69.4,
+     "before": 79.7,
+     "delta": -10.3,
+     "entered_lineup": [],
+     "known_after": 69.4,
+     "known_before": 79.7,
+     "known_delta": -10.3,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 3
+    },
+    {
+     "after": 70.2,
+     "before": 80.6,
+     "delta": -10.4,
+     "entered_lineup": [],
+     "known_after": 70.2,
+     "known_before": 80.6,
+     "known_delta": -10.4,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 4
+    },
+    {
+     "after": 71.0,
+     "before": 81.5,
+     "delta": -10.5,
+     "entered_lineup": [],
+     "known_after": 71.0,
+     "known_before": 81.5,
+     "known_delta": -10.5,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 5
+    },
+    {
+     "after": 71.8,
+     "before": 82.4,
+     "delta": -10.6,
+     "entered_lineup": [],
+     "known_after": 71.8,
+     "known_before": 82.4,
+     "known_delta": -10.6,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 6
+    },
+    {
+     "after": 72.6,
+     "before": 83.3,
+     "delta": -10.7,
+     "entered_lineup": [],
+     "known_after": 72.6,
+     "known_before": 83.3,
+     "known_delta": -10.7,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 7
+    },
+    {
+     "after": 73.4,
+     "before": 84.2,
+     "delta": -10.8,
+     "entered_lineup": [],
+     "known_after": 73.4,
+     "known_before": 84.2,
+     "known_delta": -10.8,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 8
+    },
+    {
+     "after": 74.2,
+     "before": 85.1,
+     "delta": -10.9,
+     "entered_lineup": [],
+     "known_after": 74.2,
+     "known_before": 85.1,
+     "known_delta": -10.9,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 9
+    },
+    {
+     "after": 75.0,
+     "before": 86.0,
+     "delta": -11.0,
+     "entered_lineup": [],
+     "known_after": 75.0,
+     "known_before": 86.0,
+     "known_delta": -11.0,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 10
+    },
+    {
+     "after": 75.8,
+     "before": 86.9,
+     "delta": -11.1,
+     "entered_lineup": [],
+     "known_after": 75.8,
+     "known_before": 86.9,
+     "known_delta": -11.1,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 11
+    },
+    {
+     "after": 76.6,
+     "before": 87.8,
+     "delta": -11.2,
+     "entered_lineup": [],
+     "known_after": 76.6,
+     "known_before": 87.8,
+     "known_delta": -11.2,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 12
+    },
+    {
+     "after": 77.4,
+     "before": 88.7,
+     "delta": -11.3,
+     "entered_lineup": [],
+     "known_after": 77.4,
+     "known_before": 88.7,
+     "known_delta": -11.3,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 13
+    },
+    {
+     "after": 78.2,
+     "before": 89.6,
+     "delta": -11.4,
+     "entered_lineup": [],
+     "known_after": 78.2,
+     "known_before": 89.6,
+     "known_delta": -11.4,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 14
+    },
+    {
+     "after": 79.0,
+     "before": 90.5,
+     "delta": -11.5,
+     "entered_lineup": [],
+     "known_after": 79.0,
+     "known_before": 90.5,
+     "known_delta": -11.5,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 15
+    },
+    {
+     "after": 79.8,
+     "before": 91.4,
+     "delta": -11.6,
+     "entered_lineup": [],
+     "known_after": 79.8,
+     "known_before": 91.4,
+     "known_delta": -11.6,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 16
+    },
+    {
+     "after": 80.6,
+     "before": 92.3,
+     "delta": -11.7,
+     "entered_lineup": [],
+     "known_after": 80.6,
+     "known_before": 92.3,
+     "known_delta": -11.7,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 17
+    }
+   ],
+   "weeks_incomplete": []
+  },
+  "contract": "roster-utility/v1",
+  "horizon": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "note": "Evaluated weeks only: lineup locks and weeks after the final fantasy week are not modelled.",
+   "start_week": 3,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "names": {
+   "502": {
+    "name": "Zulu K",
+    "position": "K",
+    "pro_team": "BUF"
+   }
+  },
+  "pool": "bench",
+  "pools": [
+   "bench",
+   "waiver"
+  ],
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 27,
+      "label": "rostered players with a projection",
+      "total": 27
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "reason": null,
+  "removal": {
+   "known_ros_delta": -165.0,
+   "playoff_delta": -34.8,
+   "projection_complete": true,
+   "regular_season_delta": -130.2,
+   "ros_delta": -165.0,
+   "weeks": [
+    {
+     "after": 69.4,
+     "before": 79.7,
+     "delta": -10.3,
+     "entered_lineup": [],
+     "known_after": 69.4,
+     "known_before": 79.7,
+     "known_delta": -10.3,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 3
+    },
+    {
+     "after": 70.2,
+     "before": 80.6,
+     "delta": -10.4,
+     "entered_lineup": [],
+     "known_after": 70.2,
+     "known_before": 80.6,
+     "known_delta": -10.4,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 4
+    },
+    {
+     "after": 71.0,
+     "before": 81.5,
+     "delta": -10.5,
+     "entered_lineup": [],
+     "known_after": 71.0,
+     "known_before": 81.5,
+     "known_delta": -10.5,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 5
+    },
+    {
+     "after": 71.8,
+     "before": 82.4,
+     "delta": -10.6,
+     "entered_lineup": [],
+     "known_after": 71.8,
+     "known_before": 82.4,
+     "known_delta": -10.6,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 6
+    },
+    {
+     "after": 72.6,
+     "before": 83.3,
+     "delta": -10.7,
+     "entered_lineup": [],
+     "known_after": 72.6,
+     "known_before": 83.3,
+     "known_delta": -10.7,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 7
+    },
+    {
+     "after": 73.4,
+     "before": 84.2,
+     "delta": -10.8,
+     "entered_lineup": [],
+     "known_after": 73.4,
+     "known_before": 84.2,
+     "known_delta": -10.8,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 8
+    },
+    {
+     "after": 74.2,
+     "before": 85.1,
+     "delta": -10.9,
+     "entered_lineup": [],
+     "known_after": 74.2,
+     "known_before": 85.1,
+     "known_delta": -10.9,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 9
+    },
+    {
+     "after": 75.0,
+     "before": 86.0,
+     "delta": -11.0,
+     "entered_lineup": [],
+     "known_after": 75.0,
+     "known_before": 86.0,
+     "known_delta": -11.0,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 10
+    },
+    {
+     "after": 75.8,
+     "before": 86.9,
+     "delta": -11.1,
+     "entered_lineup": [],
+     "known_after": 75.8,
+     "known_before": 86.9,
+     "known_delta": -11.1,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 11
+    },
+    {
+     "after": 76.6,
+     "before": 87.8,
+     "delta": -11.2,
+     "entered_lineup": [],
+     "known_after": 76.6,
+     "known_before": 87.8,
+     "known_delta": -11.2,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 12
+    },
+    {
+     "after": 77.4,
+     "before": 88.7,
+     "delta": -11.3,
+     "entered_lineup": [],
+     "known_after": 77.4,
+     "known_before": 88.7,
+     "known_delta": -11.3,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 13
+    },
+    {
+     "after": 78.2,
+     "before": 89.6,
+     "delta": -11.4,
+     "entered_lineup": [],
+     "known_after": 78.2,
+     "known_before": 89.6,
+     "known_delta": -11.4,
+     "left_lineup": [
+      502
+     ],
+     "phase": "regular",
+     "projection_complete": true,
+     "week": 14
+    },
+    {
+     "after": 79.0,
+     "before": 90.5,
+     "delta": -11.5,
+     "entered_lineup": [],
+     "known_after": 79.0,
+     "known_before": 90.5,
+     "known_delta": -11.5,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 15
+    },
+    {
+     "after": 79.8,
+     "before": 91.4,
+     "delta": -11.6,
+     "entered_lineup": [],
+     "known_after": 79.8,
+     "known_before": 91.4,
+     "known_delta": -11.6,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 16
+    },
+    {
+     "after": 80.6,
+     "before": 92.3,
+     "delta": -11.7,
+     "entered_lineup": [],
+     "known_after": 80.6,
+     "known_before": 92.3,
+     "known_delta": -11.7,
+     "left_lineup": [
+      502
+     ],
+     "phase": "playoff",
+     "projection_complete": true,
+     "week": 17
+    }
+   ],
+   "weeks_incomplete": []
+  },
+  "replacement": null,
+  "reserved": [],
+  "status": "evaluated",
+  "streaming": {
+   "enabled": true,
+   "note": "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "positions": [],
+   "rank": 3
+  },
+  "team": {
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "unit": "projected starting-lineup points (exact optimal lineup with the change minus without it)"
+ },
+ "status": 200
+}

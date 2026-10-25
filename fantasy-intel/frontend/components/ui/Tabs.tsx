@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { cx } from "@/lib/cx";
 import { ScrollToActive } from "./ScrollToActive";
 import styles from "./Tabs.module.css";

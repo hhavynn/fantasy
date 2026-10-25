@@ -145,7 +145,7 @@ def test_hosted_mode_reads_motherduck_through_one_shared_connection(api_db, monk
     deps._MD_CONS["fantasy_intel"].close()
 
 
-def test_hosted_mode_without_token_fails_fast(monkeypatch):
+def test_hosted_mode_without_token_fails_fast(monkeypatch, caplog):
     from app.api import deps
     monkeypatch.setattr(deps, "_MD_CONS", {})
     monkeypatch.setenv("MOTHERDUCK_DATABASE", "fantasy_intel")
@@ -153,8 +153,43 @@ def test_hosted_mode_without_token_fails_fast(monkeypatch):
     monkeypatch.delenv("motherduck_token", raising=False)
     monkeypatch.delenv("FANTASY_API_KEY", raising=False)
     from app.main import app
-    r = TestClient(app).get("/api/overview")
-    assert r.status_code == 503 and "MOTHERDUCK_TOKEN is not set" in r.json()["detail"]
+    with caplog.at_level("WARNING", logger="app.api.deps"):
+        r = TestClient(app).get("/api/overview")
+    # Visitors get a fixed 503 that names no setting or database; the operator reason goes to the server log only.
+    assert r.status_code == 503 and r.json()["detail"] == "Cannot reach the hosted database."
+    assert "MOTHERDUCK" not in r.text and "fantasy_intel" not in r.text
+    assert "MOTHERDUCK_TOKEN is not set" in caplog.text
+
+
+def test_a_hosted_stale_schema_names_no_command_and_logs_the_fix(api_db, monkeypatch, caplog):
+    """STATUS 1s: a hosted visitor can see a 503 detail printed inline by a page, so the stale-schema answer names no
+    sync command there (the operator's fix goes to the log); it keeps "Database schema", which the frontend
+    classifies by. A local run still tells the developer the command."""
+    import duckdb
+    from app.api import deps
+    from app.db.connection import SCHEMA_VERSION
+
+    con = connect(api_db)
+    con.execute("UPDATE schema_meta SET value = '1' WHERE key = 'schema_version'")
+    con.close()
+    monkeypatch.setattr(deps, "connect_motherduck", lambda database: duckdb.connect(str(api_db), read_only=True))
+    monkeypatch.setattr(deps, "_MD_CONS", {})
+    monkeypatch.setenv("FANTASY_DB_PATH", "/nonexistent/fantasy.duckdb")
+    monkeypatch.setenv("MOTHERDUCK_DATABASE", "fantasy_intel")
+    monkeypatch.delenv("FANTASY_API_KEY", raising=False)
+    from app.main import app
+    with caplog.at_level("ERROR", logger="app.api.deps"):
+        r = TestClient(app).get("/api/overview")
+    detail = r.json()["detail"]
+    assert r.status_code == 503 and detail.startswith("Database schema v1 is older than v")
+    assert "uv run" not in detail and "sync_" not in detail and "scripts" not in detail
+    assert "sync_nfl.py" in caplog.text
+    deps._MD_CONS["fantasy_intel"].close()
+
+    monkeypatch.delenv("MOTHERDUCK_DATABASE")
+    monkeypatch.setenv("FANTASY_DB_PATH", str(api_db))
+    local = TestClient(app).get("/api/overview").json()["detail"]
+    assert f"older than v{SCHEMA_VERSION}" in local and "sync_nfl.py" in local
 
 
 def test_motherduck_connect_supplies_home_when_empty(monkeypatch, tmp_path):
@@ -238,3 +273,43 @@ def test_hosted_request_reads_one_snapshot(api_db, monkeypatch):
     with deps.db() as cur:
         assert deps.data_version(cur) == "md:fantasy_intel:v2"
     shared.close()
+
+
+
+def test_the_legacy_app_does_not_load_the_control_plane_libraries():
+    """app.main imports the /v2 router unconditionally; its Postgres, JWT and crypto libraries load only when a /v2
+    request needs them, so legacy cold starts do not pay for them."""
+    probe = ("import sys, app.main; "
+             "print(','.join(sorted(m for m in ('psycopg', 'psycopg_pool', 'jwt', 'cryptography') if m in sys.modules)))")
+    out = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, capture_output=True, text=True,
+                         env={"PATH": "/usr/bin:/bin", "TZ": "UTC"})
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "", f"loaded at import: {out.stdout.strip()}"
+
+
+def test_hosted_deployments_serve_no_interactive_docs_or_openapi_schema():
+    """FastAPI's /docs, /redoc and /openapi.json show every route's docstring, and those name settings and operator
+    steps (SLEEPER_SOURCE, SIGNUPS_ENABLED, sync scripts). A hosted deployment serves none of them; a local run keeps
+    them for the developer."""
+    from app.main import docs_urls
+    off = {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    local = SimpleNamespace(api_key=None, motherduck_database=None, snapshot_enabled=False)
+    assert docs_urls(local, env={}) == {}
+    for hosted in (SimpleNamespace(api_key="k", motherduck_database=None, snapshot_enabled=False),
+                   SimpleNamespace(api_key=None, motherduck_database="fantasy_intel", snapshot_enabled=False),
+                   SimpleNamespace(api_key=None, motherduck_database=None, snapshot_enabled=True)):
+        assert docs_urls(hosted, env={}) == off
+    assert docs_urls(local, env={"VERCEL": "1"}) == off
+
+
+def test_the_app_wires_the_docs_switch_at_import():
+    """In a fresh process (the shared test app may have been imported under a hosted environment): a local run serves
+    the docs and the schema, an API-keyed (hosted) one serves neither."""
+    probe = ("from fastapi.testclient import TestClient; from app.main import app; "
+             "c = TestClient(app, headers={'x-api-key': 'test-key'}); "     # past the API-key check: is the route there?
+             "print(c.get('/openapi.json').status_code, c.get('/docs').status_code)")
+    base = {"PATH": "/usr/bin:/bin", "TZ": "UTC"}
+    for env, expected in ((base, "200 200"), ({**base, "FANTASY_API_KEY": "test-key"}, "404 404")):
+        out = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, capture_output=True, text=True, env=env)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().splitlines()[-1] == expected, (env.keys(), out.stdout)

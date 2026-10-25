@@ -1,0 +1,21 @@
+/* Counteroffers (#214): up to three small changes to the evaluated offer, each with both teams' exact change. */
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.item { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
+.list > li:first-child { border-top: 0; padding-top: 0; }
+.edits { margin: 0; padding: 0; list-style: none; font-weight: 600; overflow-wrap: anywhere; }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px 16px; margin: 0; }
+.side { min-width: 0; padding-left: 10px; border-left: 3px solid var(--side-color, var(--line)); }
+.sideA { --side-color: var(--chart-1); }
+.sideB { --side-color: var(--chart-2); }
+.side dt { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side dd { margin: 2px 0 0; font-size: 14px; line-height: 20px; }
+.muted { color: var(--ink-faint); font-size: 13px; line-height: 19px; }
+.locks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 12px; padding: 0; list-style: none; font-size: 13px; }
+.lock { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--ink-faint); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lock:hover { background: var(--surface-hover); color: var(--ink); }
+.kept { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.action { margin: 0; }
+/* a link beside running text is underlined (axe link-in-text-block), not told apart by colour alone */
+.action a { text-decoration: underline; text-underline-offset: 2px; }

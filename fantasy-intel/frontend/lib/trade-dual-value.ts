@@ -19,6 +19,7 @@ export const LENSES: readonly LensTab[] = [
   { mode: "upside", label: "Maximum upside", hint: "exploratory" },
   { mode: "consolidation", label: "Consolidation deals" },
   { mode: "playoff", label: "Playoff-focused trades" },
+  { mode: "targeted", label: "Targeted search" },
   { mode: "all", label: "All candidates", hint: "advanced" },
 ];
 
@@ -30,7 +31,7 @@ export const LEGACY_LENSES: Record<string, LensTab> = {
 
 export const isLegacyMode = (mode: string | null | undefined): boolean => !!mode && Object.hasOwn(LEGACY_LENSES, mode);
 
-/** The tabs to render for the active mode: the six lenses, plus the classic tab when a legacy mode is active. */
+/** The tabs to render for the active mode: the seven lenses, plus the classic tab when a legacy mode is active. */
 export function lensTabs(current: string | null | undefined): LensTab[] {
   return isLegacyMode(current) ? [...LENSES, LEGACY_LENSES[current as string]] : [...LENSES];
 }

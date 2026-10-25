@@ -10,6 +10,17 @@ export function Missing({ why = "No data available" }: { why?: string }) {
   );
 }
 
+/** Marks a value shown from its known parts only; `why` names what is unknown (null: complete, renders nothing).
+ * Text, so status is never colour alone. */
+export function PartialMark({ why }: { why: string | null }) {
+  if (!why) return null;
+  return (
+    <span className="missing" title={why}>
+      {" "}partial
+    </span>
+  );
+}
+
 type Num = number | null | undefined;
 
 export function num(v: Num, digits = 1, why?: string): ReactNode {
@@ -39,8 +50,9 @@ export function when(v: string | null | undefined): ReactNode {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function date(v: string | null | undefined): ReactNode {
-  if (!v) return <Missing why="No timestamp from ESPN" />;
+/** A short date; `provider` names who left it out when it is missing ("ESPN" unless the league is from elsewhere). */
+export function date(v: string | null | undefined, provider: string = "ESPN"): ReactNode {
+  if (!v) return <Missing why={`No timestamp from ${provider}`} />;
   const d = new Date(v.endsWith("Z") || v.includes("+") ? v : `${v}Z`);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

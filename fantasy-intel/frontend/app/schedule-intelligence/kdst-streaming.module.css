@@ -1,0 +1,38 @@
+.controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; margin: 0 0 12px; font-size: 13px; }
+.controls label { display: grid; gap: 2px; color: var(--ink-muted); }
+.controls input { width: 5.5em; }
+
+.positions { display: grid; gap: 20px; }
+.position { display: grid; gap: 6px; min-width: 0; }
+.posTitle { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.advice, .best, .summary, .excluded { margin: 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+.advice a { margin-left: 4px; }
+.summary, .excluded { color: var(--ink-muted); }
+.conflict { color: var(--caution); }
+
+/* The timeline: weeks across on wide screens, one compact row per week on phones. */
+.timeline { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.week { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); min-width: 0; display: grid; gap: 4px; align-content: start; scroll-margin-top: calc(var(--appbar-h) + 16px); }
+.capped { border-style: dashed; background: transparent; }
+.gapWeek { border-color: var(--caution); }
+.weekHead { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; }
+.weekHead small { color: var(--ink-faint); }
+.pts { margin-left: auto; font-family: var(--font-display); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.action { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.move { color: var(--positive); font-weight: 700; }
+.why, .gap { margin: 0; font-size: 12px; color: var(--ink-muted); overflow-wrap: anywhere; }
+.gap { color: var(--caution); }
+.foot { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 12px; }
+.more { font-size: 12px; }
+.more[open] { flex-basis: 100%; order: 2; }
+.more summary { cursor: pointer; color: var(--accent); min-height: 28px; display: flex; align-items: center; }
+.reasons, .alts { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.pageLink { font-size: 12px; display: inline-flex; align-items: center; min-height: 28px; }
+.notes { font-size: 13px; color: var(--ink-muted); }
+.notes summary { cursor: pointer; }
+
+@media (max-width: 720px) {
+  .timeline { grid-template-columns: 1fr; gap: 6px; }
+  .week { padding: 6px 8px; gap: 2px; }
+  .more summary, .pageLink { min-height: var(--tap); }
+}

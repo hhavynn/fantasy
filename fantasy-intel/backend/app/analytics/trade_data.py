@@ -11,9 +11,10 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import DEFAULT_POSITION_MAP, FANTASY_POSITIONS, IR_SLOT
-from .lineup import lineup_slots
+from .lineup import lineup_slots, parse_eligible_slots
 from .player_availability import AVAILABLE, load_availability
 from .projections import league_window
+from .reserve_slots import active_capacity, is_taxi
 from .team_lineups import FA_STATUSES, RosterPlayer, project_team, public_weeks
 from .trades import LeagueState, weeks_label
 
@@ -199,8 +200,13 @@ def _position_limits(settings: dict) -> dict[str, int]:
     return out
 
 
-def load_league_state(con, season: int | None = None, now: datetime | None = None) -> LeagueState | None:
-    """`now` (timezone-aware; default the current UTC time) decides which weeks have kicked off."""
+def load_league_state(con, season: int | None = None, now: datetime | None = None,
+                      source: str | None = None, projection_detail: dict | None = None) -> LeagueState | None:
+    """`now` (timezone-aware; default the current UTC time) decides which weeks have kicked off. `source`: the
+    projections the state carries; None = the league's default (projection_source.default_source: ESPN's for an ESPN
+    league, Ours for a league without provider projections). `projection_detail` (optional): filled with
+    projection_source.league_projections' per-week origin and version for an independent state, over exactly the weeks
+    loaded (left empty for ESPN projections); the state is the same with or without it."""
     lg = fetch_dicts(con, "SELECT * FROM leagues" + (" WHERE season = ?" if season else "") +
                      " ORDER BY synced_at DESC LIMIT 1", [season] if season else [])
     if not lg:
@@ -216,30 +222,48 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     start = evaluation_start_week(con, season, int(lg["current_week"]), window.final, now)
     rosters: dict[int, list[RosterPlayer]] = {}
     for row in fetch_dicts(con, """
-        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position, fp.pro_team,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, fp.full_name, fp.position, fp.pro_team,
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, fp.eligible_slots
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
         ORDER BY l.team_id, l.espn_player_id""", [lg["league_id"], season, window.current]):
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"]))
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row),
+            eligible_slots=parse_eligible_slots(row["eligible_slots"], row["position"])))
     teams = fetch_dicts(con, "SELECT team_id, name FROM fantasy_teams WHERE league_id = ? AND season = ?",
                         [lg["league_id"], season])
     for t in teams:
         rosters.setdefault(t["team_id"], [])
+    # Rostered players the join above leaves out (no player data: Sleeper stores no individual defensive players).
+    # They still hold roster spots, so roster legality cannot be verified for their teams (trades.roster_legality).
+    # 0 for a team whose every rostered player is counted; no entry for a team without lineup rows (no count at all).
+    players_missing = {row["team_id"]: int(row["n"]) for row in fetch_dicts(con, """
+        SELECT l.team_id, sum(CASE WHEN fp.espn_player_id IS NULL THEN 1 ELSE 0 END) AS n
+        FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
+        WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
+        GROUP BY l.team_id""", [lg["league_id"], season, window.current])}
     rostered = {p.espn_player_id for ps in rosters.values() for p in ps}
     fa_rows = [f for f in fetch_dicts(con, f"""
-                   SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status
+                   SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status,
+                          eligible_slots
                    FROM fantasy_players WHERE availability_status IN {FA_STATUSES} ORDER BY espn_player_id""")
                if f["espn_player_id"] not in rostered]
-    free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"])
+    free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"],
+                                eligible_slots=parse_eligible_slots(f["eligible_slots"], f["position"]))
                    for f in fa_rows]
+    from .projection_source import league_projections, normalize
+    source = normalize(source, con, season)
     proj: dict[int, dict[int, float]] = {}
-    for p in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points FROM espn_player_weekly_points
-                                 WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
-                         [season, window.current, window.final]):
-        proj.setdefault(p["espn_player_id"], {})[p["scoring_period"]] = float(p["projected_points"])
+    if source == "espn":
+        for p in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points FROM espn_player_weekly_points
+                                     WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
+                             [season, window.current, window.final]):
+            proj.setdefault(p["espn_player_id"], {})[p["scoring_period"]] = float(p["projected_points"])
+    else:
+        for pid, by_week in league_projections(con, season, range(window.current, window.final + 1), source,
+                                               detail=projection_detail).items():
+            proj[pid] = {w: v for w, (v, _) in by_week.items()}
     # NFL availability (reserve-list eligibility) is applied once here, so every consumer of the
     # league state (evaluator, discovery, team value, playoff race) uses the same weeks.
     weeks = tuple(range(window.current, window.final + 1))
@@ -254,7 +278,7 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     rostered_ids = {p.espn_player_id for ps in rosters.values() for p in ps}
     availability = {pid: rec for pid, rec in avail.items()
                     if pid in rostered_ids or rec["status"] != AVAILABLE or rec["nfl_designation"]}
-    capacity = sum(int(v) for k, v in roster_slots.items() if k != "IR")
+    capacity = active_capacity(roster_slots)    # IR and Sleeper taxi slots are outside the active roster
     return LeagueState(
         season=season, slots=lineup_slots(roster_slots), final_week=window.final, last_regular=window.last_regular,
         start_week=start["evaluation_start_week"], rosters=rosters, free_agents=free_agents, projections=proj,
@@ -262,7 +286,8 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         team_names={t["team_id"]: t["name"] for t in teams}, league_id=lg["league_id"], start_week_reason=start,
         undroppable_list_in_use=((settings.get("rosterSettings") or {}).get("isUsingUndroppableList")),
         first_projection_week=window.current, availability=availability,
-        free_agent_status={f["espn_player_id"]: f["availability_status"] for f in fa_rows})
+        free_agent_status={f["espn_player_id"]: f["availability_status"] for f in fa_rows}, projection_source=source,
+        players_missing=players_missing)
 
 
 # ---------------------------------------------------------------------- context (display) --
@@ -329,6 +354,8 @@ def named_weeks(weeks: list[dict], names: dict[int, dict]) -> list[dict]:
                            for a in w["assignment"]]
         w["bench"] = [{**b, "name": (names.get(b["player_id"]) or {}).get("full_name")} for b in w["bench"]]
         w["ir"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w.get("ir", [])]
+        if "taxi" in w:
+            w["taxi"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w["taxi"]]
         w["unavailable"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")}
                             for x in w.get("unavailable", [])]
         out.append(w)

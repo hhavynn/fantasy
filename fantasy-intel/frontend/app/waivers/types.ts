@@ -1,4 +1,5 @@
 import type { Perspective } from "@/lib/team-perspective";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 export type Coverage = { eligible: number; evaluated: number; excluded_by_limit: number; limitation: string };
 type Drop = { espn_player_id: number; name: string; position: string; sacrifice: string[] };
@@ -25,11 +26,16 @@ export type WaiverRow = {
   competitors: Competitor[];
   /** Whether the suggested drop is still on the team's latest synced roster (null: no drop). */
   drop_on_roster?: boolean | null;
-  components: { player: { basis: string; basis_description?: string; value: number | null; value_100?: number | null }; decision?: Decision };
+  components: { player: { basis: string; basis_description?: string; value: number | null; value_100?: number | null }; decision?: Decision;
+    /** fit_status "partial": the lineup gain is unknown (a player has no historical value), so waiver_score lacks a term. */
+    roster?: { fit_status?: "complete" | "partial"; value_status?: "complete" | "partial";
+      value_unknown?: { espn_player_id: number; name: string | null }[] } | null };
 };
 export type WaiversResponse = {
   players: WaiverRow[]; computed_at: string | null; coverage: Coverage | null; total: number;
   perspective?: Perspective | null;
   /** The team's roster was re-synced after these suggestions were computed. */
   roster_newer_than_analysis?: boolean;
+  /** signal-provenance.v1: league data and the waiver analysis (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
 };

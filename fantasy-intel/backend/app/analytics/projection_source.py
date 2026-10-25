@@ -56,6 +56,10 @@ from . import production_forecasts as pf
 
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
+UNAVAILABLE = "unavailable"   # a counts key only: an ESPN-origin player with no number
+# Origins of numbers Fantasy Intel's own models made (league_projections' detail tags included); any other value shown
+# under source=independent is the provider's, used where the models abstain, and is never named "Ours" (#254 L2).
+MODEL_ORIGINS = frozenset({OURS, OURS_ZERO, "kicker_model", "dst_model", "dst_carried"})
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
 POSITIONS = ("QB", "RB", "WR", "TE")
 MODEL_VERSION = "ifp-2.2.0"     # approved production (registry manifest); app.analytics.context_model.MODEL_VERSION
@@ -85,11 +89,125 @@ GOVERNANCE = {
 OVERRIDE_STATUS = "owner_override"
 
 
-def normalize(source: str | None) -> str:
-    s = (source or "espn").lower()
+def normalize(source: str | None, con=None, season: int | None = None) -> str:
+    """An explicit source, validated; no source: the league's default (`default_source`) when a connection is given,
+    else "espn"."""
+    if not source:
+        return default_source(con, season) if con is not None else "espn"
+    s = source.lower()
     if s not in SOURCES:
         raise ValueError(f"source must be one of {', '.join(SOURCES)}")
     return s
+
+
+def default_source(con, season: int | None = None) -> str:
+    """The league's default projection source (multi-league Phase 4b): "espn" for an ESPN league, "independent" for a
+    league whose provider publishes no projections (Sleeper: app/sleeper/write.py marks `settings_raw.provider`), so
+    Fantasy Intel's own are the only ones. An explicit `source=` always wins."""
+    from .legacy_league import latest_league
+
+    if con is None:
+        return "espn"
+    row = latest_league(con, ["settings_raw"], season=season or None)
+    raw = row["settings_raw"] if row else None
+    settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    return "independent" if isinstance(settings, dict) and settings.get("provider") == "sleeper" else "espn"
+
+
+def league_projections(con, season: int, weeks, source: str,
+                       detail: dict | None = None) -> dict[int, dict[int, tuple[float, object]]]:
+    """{player: {week: (points, stamp)}} for the league's weeks from `source`: "espn" reads the provider's stored
+    weekly projections (stamp = synced_at), "independent" exactly what `weekly(..., "independent")` shows for each week
+    (Ours, its K and D/ST overlays, the provider's number where the models abstain; stamp = the run's created_at).
+
+    `detail` (optional, independent only): filled with {week: {pid: (origin, version)}} for every value returned, where
+    origin is "espn" (the provider's number: no run, or the models abstain), "ours" / "ours_zero" (the weekly model),
+    "kicker_model", "dst_model" or "dst_carried" (a D/ST's latest model projection carried to a later week), and
+    version names what produced it ("ESPN" or the run's model_version). The values are unchanged by it."""
+    out: dict[int, dict[int, tuple[float, object]]] = {}
+    weeks = list(weeks)
+    if not weeks:
+        return out
+    if source == "espn":
+        for r in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points, synced_at
+                                     FROM espn_player_weekly_points WHERE season = ? AND scoring_period BETWEEN ? AND ?
+                                     AND projected_points IS NOT NULL""", [season, min(weeks), max(weeks)]):
+            out.setdefault(r["espn_player_id"], {})[r["scoring_period"]] = (float(r["projected_points"]), r["synced_at"])
+        return out
+    from .forward_ours import _select_batch     # one runs query for every week (forward_ours imports this module)
+
+    batch, _ = _select_batch(con, season, weeks)
+    for w in weeks:
+        # exactly `weekly(con, season, w, "independent")["values"]`, with the week's run already selected
+        values = dict(_espn(con, season, w))
+        sel = batch.get(w) or {}
+        stamp = None
+        tags: dict[int, tuple[str, str | None]] = {pid: (ESPN, "ESPN") for pid in values}
+        if sel.get("run") is not None:
+            stamp = sel["run"]["created_at"]
+            origin = {pid: ESPN for pid in values}
+            for r in sel["rows"]:
+                pid = r["espn_player_id"]
+                if r["coverage_status"] == "projected" and r["expected_points"] is not None:
+                    values[pid], origin[pid] = float(r["expected_points"]), OURS
+                elif r["coverage_status"] in ZERO_STATUSES:
+                    values[pid], origin[pid] = 0.0, OURS_ZERO
+            tags.update({pid: (o, sel["run"]["model_version"]) for pid, o in origin.items() if o != ESPN})
+            before = dict(origin)
+            k_run = _kicker_overlay(con, season, w, values, origin)
+            tags.update({pid: ("kicker_model", (k_run or {}).get("model_version"))
+                         for pid, o in origin.items() if before.get(pid, ESPN) == ESPN and o != ESPN})
+            before = dict(origin)
+            d_run = _dst_overlay(con, season, w, values, origin)
+            tags.update({pid: ("dst_model", (d_run or {}).get("model_version"))
+                         for pid, o in origin.items() if before.get(pid, ESPN) == ESPN and o != ESPN})
+        for pid, v in values.items():
+            if v is not None:
+                out.setdefault(pid, {})[w] = (float(v), stamp)
+                if detail is not None:
+                    detail.setdefault(w, {})[pid] = tags.get(pid, (ESPN, "ESPN"))
+    carried: dict | None = {} if detail is not None else None
+    _carry_dst_forward(con, season, weeks, out, carried)
+    for (pid, w), src in (carried or {}).items():
+        version = (detail.get(src) or {}).get(pid, (None, None))[1]
+        detail.setdefault(w, {})[pid] = ("dst_carried", version)
+    return out
+
+
+def served_label(origins) -> str:
+    """The source a set of shown numbers is named by, from their origins (one per non-null value): "Ours" when the
+    models made every one, "ESPN" when every one is the provider's fallback, "Ours and ESPN" when they mix, and
+    "Unavailable" when there is none. A source is never named over numbers it did not supply (#254 L2, D-14 item 2)."""
+    seen = set(origins)
+    ours, provider = bool(seen & MODEL_ORIGINS), bool(seen - MODEL_ORIGINS)
+    if ours and provider:
+        return "Ours and ESPN"
+    return "Ours" if ours else "ESPN" if provider else "Unavailable"
+
+
+def _carry_dst_forward(con, season: int, weeks: list[int], out: dict, carried: dict | None = None) -> None:
+    """The D/ST model projects the coming week only. For the weeks after it, a defense keeps its latest projection
+    (flat, labeled by the stamp of the run it came from) in every week its NFL team plays; a bye stays empty. Without
+    this every lineup with a D/ST would be incomplete beyond next week in a league with no provider projections."""
+    dsts = {pid for pid in out if -17000 < pid <= -16000}
+    if not dsts or not table_exists(con, "nfl_schedules") or not table_exists(con, "fantasy_players"):
+        return
+    teams = {r["espn_player_id"]: r["pro_team"] for r in fetch_dicts(
+        con, "SELECT espn_player_id, pro_team FROM fantasy_players WHERE espn_player_id BETWEEN -16999 AND -16000")}
+    plays: dict[str, set[int]] = {}
+    for r in fetch_dicts(con, "SELECT week, home_team, away_team FROM nfl_schedules WHERE season = ? AND "
+                              "coalesce(game_type, 'REG') = 'REG'", [season]):
+        for t in (r["home_team"], r["away_team"]):
+            plays.setdefault(t, set()).add(int(r["week"]))
+    for pid in dsts:
+        by_week, last, src = out[pid], None, None
+        for w in weeks:
+            if w in by_week:
+                last, src = by_week[w], w
+            elif last is not None and w in plays.get(teams.get(pid), set()):
+                by_week[w] = last
+                if carried is not None:
+                    carried[(pid, w)] = src       # (pid, week) -> the week whose projection was carried
 
 
 def _espn(con, season: int, week: int) -> dict[int, float | None]:
@@ -230,8 +348,13 @@ def weekly(con, season: int, week: int, source: str) -> dict:
             values[pid], origin[pid] = 0.0, OURS_ZERO
     kicker_run = _kicker_overlay(con, season, week, values, origin)
     dst_run = _dst_overlay(con, season, week, values, origin)
-    for o in origin.values():
-        counts[o] += 1
+    # An ESPN-origin player with no ESPN number is counted as unavailable, never as ESPN (#254 phase 3); the key appears
+    # only when there is one, so a response whose every player has a number keeps its shape.
+    for pid, o in origin.items():
+        if o == ESPN and values.get(pid) is None:
+            counts[UNAVAILABLE] = counts.get(UNAVAILABLE, 0) + 1
+        else:
+            counts[o] += 1
     reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
     # forecast_horizon k = week - projected_from_week (NULL on a run stored before rest-of-season projections reads 0);
     # horizon_note is the experimental label of a rest-of-season run (None at horizon 0, the validated next-week forecast)

@@ -2,6 +2,7 @@
 // `sort` parameter, and the value each column sorts by. Unit-tested in lib/trade-discovery.test.ts.
 
 import type { SearchParams, SortState } from "./sort.ts";
+import type { BeamWorkBudget } from "./trade-types.ts";
 
 // Lib modules import each other only for types (node's test runner and tsc disagree about ".ts" import paths), so these two
 // constants repeat lib/trade-dual-value.ts's `DEFAULT_MODE` and `VERDICT_ORDER`; lib/trade-dual-value.test.ts asserts they agree.
@@ -101,12 +102,63 @@ export function discoverQuery(sp: SearchParams): URLSearchParams {
   if (first(sp.exact) === "1") q.set("heuristic", "false");
   const shapes = sp.shape === undefined ? [] : Array.isArray(sp.shape) ? sp.shape : [sp.shape];
   if (shapes.length) q.set("shapes", shapes.join(","));
+  for (const [k, v] of Object.entries(targetQuery(sp, q.get("mode") ?? PAGE_DEFAULT_MODE))) q.set(k, v);
   return q;
+}
+
+// --------------------------------------------------------------------------------- targeted discovery --
+
+/** The page's URL keys for a targeted search (issue #182) and the API parameters they become. */
+export const TARGET_URL_KEYS = { target: "target_player", pos: "target_position", need: "need", weeks: "weeks" } as const;
+
+/**
+ * The API's target parameters from a page URL. A roster need chooses for itself, so it wins over the matching manual
+ * field: `need=weakest` drops `pos`, `need=bye` drops `weeks`. A horizon (`weeks`, `need=bye`) is only sent in the
+ * targeted mode, the one that ranks by it; a player or position target filters any mode. A blank form field is no
+ * target. The backend validates every value (an unknown player or week answers 422).
+ */
+export function targetQuery(sp: SearchParams, mode: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const v = (k: string) => { const x = first(sp[k])?.trim(); return x ? x : undefined; };
+  const need = v("need");
+  const targeted = mode === "targeted";
+  if (v("target")) out.target_player = v("target")!;
+  if (need && (need !== "bye" || targeted)) out.need = need;
+  if (v("pos") && need !== "weakest") out.target_position = v("pos")!;
+  if (targeted && v("weeks") && need !== "bye") out.weeks = v("weeks")!;
+  return out;
+}
+
+/** The URL entries that keep a view's target when a link changes something else (from the API's query echo). */
+export function targetHrefParams(query: { target_player?: number | null; target_position?: string | null; need?: string | null;
+  weeks?: string | null }): Record<string, string | undefined> {
+  return {
+    target: query.target_player == null ? undefined : String(query.target_player),
+    pos: query.target_position ?? undefined, need: query.need ?? undefined, weeks: query.weeks ?? undefined,
+  };
+}
+
+/** Horizon choices for the targeted search: the phase (rest of season unless changed), next week, the next three. */
+export function horizonOptions(start: number | null, final: number | null): { value: string; label: string }[] {
+  const out = [{ value: "", label: "Season phase (rest of season unless set below)" }];
+  if (start === null || final === null || final < start) return out;
+  out.push({ value: String(start), label: `Next week (week ${start})` });
+  const end = Math.min(start + 2, final);
+  if (end > start) out.push({ value: `${start}-${end}`, label: `Next ${end - start + 1} weeks (weeks ${start}–${end})` });
+  return out;
+}
+
+/** The analyzer URL that reproduces one discovered trade: both teams and both packages, nothing else. */
+export function analyzerHref(r: { anchor_team_id: number; opponent_team_id: number; sends: number[]; receives: number[] }): string {
+  const q = new URLSearchParams({ ta: String(r.anchor_team_id), tb: String(r.opponent_team_id) });
+  r.sends.forEach((id) => q.append("a", String(id)));
+  r.receives.forEach((id) => q.append("b", String(id)));
+  return `/trades?${q.toString()}`;
 }
 
 /** Backend query parameters a row's evidence request may carry (everything `discoverQuery` sets, plus `key`). */
 const EVIDENCE_PARAMS = ["team_id", "mode", "phase", "strictness", "opponent", "category", "limit", "sort", "include_kdst",
-  "heuristic", "shapes", "key"] as const;
+  "heuristic", "shapes", "target_player", "target_position", "need", "weeks", "key"] as const;
 
 /** Backend path for one row's evidence, from the browser's `/api/trade-evidence?…` query; `null` without a row key. */
 export function evidencePath(params: URLSearchParams): string | null {
@@ -124,4 +176,19 @@ export function evidenceSrc(query: string, key: string): string {
   const q = new URLSearchParams(query);
   q.set("key", key);
   return `/api/trade-evidence?${q.toString()}`;
+}
+
+/** The words that disclose a larger-shape search the work budget stopped early (`coverage.heuristic.work_budget`): a
+ *  sentence for the "not a proven top list" notice and a note for the coverage tile. Null when the search ran to the
+ *  end (the API then sends no `work_budget`). */
+export function beamBudgetText(wb: BeamWorkBudget | null | undefined): { notice: string; tile: string } | null {
+  if (!wb) return null;
+  const cut = wb.opponents_cut.length;
+  const evaluated = wb.packages_evaluated.toLocaleString("en-US");
+  const generated = wb.packages_generated.toLocaleString("en-US");
+  return {
+    notice: `A work limit stopped it early for ${cut} of ${wb.opponents} ${wb.opponents === 1 ? "manager" : "managers"}: `
+      + `${evaluated} of the ${generated} packages it generated were evaluated, so a better package may exist. `,
+    tile: `work limit reached · ${evaluated} of ${generated} packages evaluated exactly`,
+  };
 }

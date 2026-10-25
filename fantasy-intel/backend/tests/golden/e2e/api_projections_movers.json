@@ -1,0 +1,52 @@
+// /api/projections/movers
+{
+ "body": {
+  "available": false,
+  "baseline": null,
+  "baselines": [],
+  "contract": "projection-movers/v1",
+  "current": {
+   "cycle_week": 3,
+   "id": "2026-10-20",
+   "label": "Oct 20 (before week 3)",
+   "model_version": null,
+   "run_ids": null,
+   "taken_at": "<masked>"
+  },
+  "excluded_runs": [],
+  "experimental": false,
+  "fallers": [],
+  "governance": null,
+  "label": "ESPN projections",
+  "notes": [],
+  "players": [],
+  "position": null,
+  "reason": "Only one ESPN projection snapshot is stored (Oct 20). Movement needs two, and a missing snapshot is never reconstructed.",
+  "risers": [],
+  "season": 2026,
+  "skipped": [],
+  "source": "espn",
+  "summary": {
+   "compared": 0,
+   "fallers": 0,
+   "not_comparable": 0,
+   "not_comparable_reasons": {},
+   "risers": 0,
+   "unchanged": 0
+  },
+  "thresholds": {
+   "flat": 0.05,
+   "min_delta": 0.5,
+   "pct_floor": 1.0,
+   "relevant_per_week": 3.0
+  },
+  "view": "ros",
+  "window": {
+   "excluded_weeks": [],
+   "scoring_note": "ESPN does not store the league scoring with each snapshot, so a scoring change between the two snapshots could not be told apart from a change in the projections.",
+   "scoring_verified": false,
+   "weeks": []
+  }
+ },
+ "status": 200
+}

@@ -145,7 +145,7 @@ def live(tmp_path):
                     "on_team_id) VALUES (?, ?, ?, ?, ?, 1)", [pid, name, pos, tm, inj])
         con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) VALUES "
                     "(?, ?, ?, ?)", [pid, g, "espn_id:nfl_players" if conf == "high" else "name_position_team", conf])
-        con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, ?, '2026-10-13 12:00:00')",
+        con.execute("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, 6, NULL, ?, '2026-10-13 12:00:00')",
                     [pid, 0.0 if pid in ESPN_ZERO else 10.0 + pid])
         con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, "
                     "lineup_slot_id, is_starter) VALUES (99, 2026, 6, 1, ?, ?, false)", [pid, 21 if pid == 6 else 20])
@@ -358,6 +358,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     default), which only weekly Start/Sit, weekly Matchup and the opt-in player forward view
     (analytics/forward_ours.py) import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
+               "league_split.py",   # multi-league file split: names the tables to classify them, never reads them
+               "rescore.py",   # multi-league builds: writes a league's run tables from the global references (copies or
+                               # re-scores sealed runs); consumers still reach them only through projection_source
                "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
@@ -388,11 +391,16 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "situational_usage.py",   # research-only situational usage splits ifp-su (never imported by the app)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
                "kicker_scoring.py",
+               # read-only League rules page: names the league's scoring rules and reports whether Ours supports them
+               # (league_scoring's labels and support check only; it never reads a projection)
+               "league_rules.py",
                # local-only writer of the final-designation re-projection run (never imported by the app, see
                # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
                "final_reprojection.py"}
+    # by path: sleeper/write.py scores free agents' actual points as box scores in the league's scoring
+    allowed_paths = {"sleeper/write.py"}
     for f in APP.rglob("*"):
-        if f.suffix not in (".py", ".sql") or f.name in allowed:
+        if f.suffix not in (".py", ".sql") or f.name in allowed or f.relative_to(APP).as_posix() in allowed_paths:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",
@@ -403,7 +411,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
 
 def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     """Weekly Start/Sit, weekly Matchup and the opt-in player forward view (analytics/forward_ours.py) are the
-    only consumers of the switch. Trades, waivers, team value and the playoff race stay ESPN."""
+    only consumers of the switch's weekly view. The source defaults to the league's own (multi-league Phase 4b):
+    ESPN's for an ESPN league, Ours only for a league without provider projections; the trade and waiver engines
+    read that default through projection_source.league_projections, never weekly() directly."""
     import inspect
 
     from app.analytics import forward_ours, matchup, projection_source, start_sit
@@ -418,12 +428,12 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     assert projection_source.FALLBACK_VERSION == INJURY_VERSION == "ifp-2.1.0"
     assert projection_source.RETIRED_WEEKLY_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
     assert projection_source.RETIRED_VERSION == MODEL_VERSION == "ifp-1.0.0"
-    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
-    assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
-    # the forward view's entry point requires an explicit source (no default), and the route defaults to ESPN
+    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default is None
+    assert inspect.signature(matchup.load_matchup).parameters["source"].default is None
+    # the forward view's entry point requires an explicit source (no default); the route takes the league's default
     from app.api import routes
     assert inspect.signature(forward_ours.ours_forward).parameters["source"].default is inspect.Parameter.empty
-    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default == "espn"
+    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default is None
     import re
     imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
     users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
@@ -435,8 +445,27 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "analytics/espn_benchmark.py",   # benchmarks the production model: its version constant only
                "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
                "analytics/rankings.py",   # opt-in Rankings (source=independent): the switch's selection via forward_ours
-               "analytics/projection_ranges.py"}   # floor / ceiling ranges around the switch's run (select_run only)
-    assert switch <= users <= switch | readers
+               "analytics/projection_ranges.py",   # floor / ceiling ranges around the switch's run (select_run only)
+               # the source comparison (#189): the league's default source (default_source) and the served model's
+               # governance note only; its Ours values come from rankings.rank_pool, and it never feeds a lineup
+               "analytics/projection_compare.py",
+               # the trade values board (#184): names the version each served projection came from
+               # (league_projections' detail, the engines' own selection) and its movers baseline; no lineup
+               "analytics/trade_values.py",
+               # decision feedback (#194): the league's default source, the consumer versions and the scoring
+               # fingerprint, to read archived PREGAME rows through production_forecasts; never weekly(), no lineup
+               "analytics/decision_feedback.py"}
+    # engines that read the league's default source (Ours only for a league without provider projections)
+    engines = {"analytics/trade_data.py", "analytics/waiver_data.py",
+               "api/routes.py",   # GET /api/league-profile names the league's default source (default_source only)
+               "api/signal_provenance.py",   # labels which projections a page shows (default_source only)
+               # the compatibility diagnostic: counts who the engines' projections cover (league_projections and
+               # select_run, never weekly()); it never feeds a lineup
+               "analytics/league_compatibility.py",
+               # the cross-league portfolio (#209): each rostered player's number this week from the league's default
+               # source (default_source + league_projections, never weekly()); shown per league, never summed or ranked
+               "api/portfolio.py"}
+    assert switch <= users <= switch | readers | engines
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 
 

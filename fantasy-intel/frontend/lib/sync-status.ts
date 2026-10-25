@@ -1,4 +1,5 @@
 import type { SyncInfo } from "./types.ts";
+import { normalizeProvider, providerName, type Provider } from "./labels.ts";
 
 export type StatusPayload = {
   sync: SyncInfo;
@@ -11,6 +12,12 @@ export const FEEDS = [
   { key: "nfl", label: "NFL stats" },
   { key: "analytics", label: "Analytics" },
 ] as const;
+/** The feeds of a league from `provider`: its league sync is recorded under the provider's own source key. */
+export function feedsFor(provider: Provider | string | null | undefined = "espn"): readonly { key: string; label: string }[] {
+  const p = normalizeProvider(provider);
+  if (p === "espn") return FEEDS;
+  return [{ key: p, label: `${providerName(p)} league` }, ...FEEDS.slice(1)];
+}
 export const STALE_HOURS = 36;
 
 /** The pill's dot: ok (green), stale (amber: old, failed or missing data), offline (red). */
@@ -23,7 +30,18 @@ export type SyncSummary = {
   feeds: FeedStatus[];
   activeFailures: SyncFailure[];
   nflLatestWeek: number | null;
+  /** The status read itself was served from the league's previous files (`ApiResult.stale`): the data may be older. */
+  degraded: boolean;
+  /** The league has no published data yet (the API's 409 "first sync in progress"): the backend is up, not offline. */
+  firstSync?: true;
 };
+
+/** The pill's text for a league with no published data yet. The API's 409 comes whether its first sync is queued, running
+ *  or has failed, so the pill says only what is true in every case; the progress steps say which. */
+export const FIRST_SYNC_TEXT = "No league data yet";
+
+/** The pill's text when the backend served older files and nothing else is wrong. */
+export const DEGRADED_TEXT = "Showing older data";
 
 const OK = new Set(["ok", "success"]);
 
@@ -40,22 +58,30 @@ export function ago(hours: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const feedLabel = (source: string) => FEEDS.find((f) => f.key === source)?.label ?? source;
+const feedLabel = (source: string) => [...FEEDS, ...feedsFor("sleeper")].find((f) => f.key === source)?.label ?? source;
 
 /**
  * One conservative health summary for the /api/status payload.
- * - null (backend unreachable) is offline.
+ * - null (backend unreachable) is offline, unless the read answered "first sync in progress" (`firstSync`): a league
+ *   that has no data yet, with the backend up.
  * - A failure counts only when it is its source's latest run and no newer success cleared it.
  * - Any feed never synced, or the oldest feed older than STALE_HOURS, is stale.
+ * - `degraded` (the backend answered from the league's previous files) is stale too; a more specific problem keeps
+ *   its own text, and the popover says why either way.
  */
-export function computeSyncSummary(data: StatusPayload, now: number = Date.now()): SyncSummary {
+export function computeSyncSummary(data: StatusPayload, now: number = Date.now(), provider: Provider = "espn",
+                                   degraded = false, firstSync = false): SyncSummary {
+  if (!data && firstSync) {
+    return { state: "stale", text: FIRST_SYNC_TEXT, feeds: [], activeFailures: [], nflLatestWeek: null, degraded: false,
+      firstSync: true };
+  }
   if (!data) {
-    return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null };
+    return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null, degraded: false };
   }
   const lastSuccess = data.sync?.last_success ?? {};
   const runs = data.sync?.latest_runs ?? [];
 
-  const feeds: FeedStatus[] = FEEDS.map((f) => {
+  const feeds: FeedStatus[] = feedsFor(provider).map((f) => {
     const timestamp = lastSuccess[f.key] ?? null;
     const t = parseTimestamp(timestamp);
     return { key: f.key, label: f.label, timestamp, hours: t === null ? null : Math.max(0, (now - t) / 36e5) };
@@ -77,7 +103,7 @@ export function computeSyncSummary(data: StatusPayload, now: number = Date.now()
                           message: run.message ?? null, finished_at: run.finished_at ?? null });
   }
 
-  const base = { feeds, activeFailures, nflLatestWeek: data.nfl_latest_week ?? null };
+  const base = { feeds, activeFailures, nflLatestWeek: data.nfl_latest_week ?? null, degraded };
   const missing = feeds.find((f) => f.hours === null);
   if (feeds.every((f) => f.hours === null) && runs.length === 0) return { ...base, state: "stale", text: "Not synced" };
   if (activeFailures.length) {
@@ -87,5 +113,6 @@ export function computeSyncSummary(data: StatusPayload, now: number = Date.now()
   if (missing) return { ...base, state: "stale", text: `${missing.label} never synced` };
   const oldest = feeds.reduce((m, f) => (f.hours! > m.hours! ? f : m));
   if (oldest.hours! > STALE_HOURS) return { ...base, state: "stale", text: `${oldest.label} ${ago(oldest.hours!)}` };
+  if (degraded) return { ...base, state: "stale", text: DEGRADED_TEXT };
   return { ...base, state: "ok", text: `Synced ${ago(oldest.hours!)}` };
 }

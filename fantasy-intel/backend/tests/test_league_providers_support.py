@@ -20,7 +20,7 @@ SWID_SECRET = "{11111111-SECRET-SWID-2222}"
 
 
 def owner_access() -> LeagueAccess:
-    return LeagueAccess(AccessMethod.OWNER_ENV, SimpleNamespace(espn_s2=S2_SECRET, swid=SWID_SECRET))
+    return LeagueAccess(AccessMethod.COOKIES, SimpleNamespace(espn_s2=S2_SECRET, swid=SWID_SECRET))
 
 
 def skey(league_id: str = SLEEPER_L1, season: int = SEASON) -> LeagueKey:
@@ -41,8 +41,10 @@ def no_network(monkeypatch):
 @pytest.fixture
 def clean_env(monkeypatch):
     """No provider flags or ESPN credentials from the developer's environment / .env file."""
+    import os
     for name in ("SLEEPER_SOURCE", "ESPN_PUBLIC_IMPORT_ENABLED", "YAHOO_CLIENT_ID", "ESPN_S2", "SWID",
-                 "MULTILEAGUE_ENABLED"):
+                 "MULTILEAGUE_ENABLED", "CREDENTIALS_WRAP_KEY_VERSION",
+                 *[k for k in os.environ if k.startswith("CREDENTIALS_PUBKEY_V")]):
         monkeypatch.delenv(name, raising=False)
     from app.leagues.providers.registry import reset_providers
     reset_providers()

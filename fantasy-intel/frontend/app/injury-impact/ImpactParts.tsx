@@ -2,14 +2,18 @@ import type { ReactNode } from "react";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, VisuallyHidden } from "@/components/ui";
 import { Missing, num } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { rosterText, type Roster } from "@/lib/injury-impact";
 import styles from "./injury-impact.module.css";
 
-/** Marks a number's kind. Observed = counted from games; estimate = a rule or a model (dashed, never solid). */
-export function Kind({ kind }: { kind: "observed" | "estimate" | "espn" }) {
-  const text = kind === "observed" ? "Observed" : kind === "estimate" ? "Estimate" : "ESPN model";
+/** Marks a number's kind. Observed = counted from games; estimate = a rule or a model; hypothesis = a depth chart or a
+ *  rule with no observed games behind it (both dashed, never solid). */
+export function Kind({ kind }: { kind: "observed" | "estimate" | "espn" | "hypothesis" }) {
+  const text = kind === "observed" ? "Observed" : kind === "estimate" ? "Estimate" : kind === "hypothesis" ? "Hypothesis" : "ESPN model";
   const title = kind === "observed" ? "Counted from this season's games"
-    : kind === "estimate" ? "Pro-rata split estimate" : "ESPN's own weekly projection";
+    : kind === "estimate" ? "Pro-rata split estimate"
+      : kind === "hypothesis" ? "Not observed: a depth chart or a pro-rata rule, not a confirmed role change" : "ESPN's own weekly projection";
   return <span className={kind === "observed" ? styles.kindObserved : styles.kindEstimate} title={title}>{text}</span>;
 }
 
@@ -21,12 +25,13 @@ export function RosterBadge({ roster }: { roster: Roster }) {
   return <Badge value={text} tone={tone} title={roster.fantasy_team ?? owned} />;
 }
 
-/** The player cell: identity with photo and profile link when ESPN knows him, else his name. */
-export function Who({ id, name, position, team, meta }: {
+/** The player cell: identity with photo and profile link when the league's provider knows him, else his name. */
+export async function Who({ id, name, position, team, meta }: {
   id: number | null; name: string; position?: string | null; team?: string | null; meta?: ReactNode;
 }) {
   if (id === null) {
-    return <span className={styles.plainName} title="Not in this league's ESPN player pool">{name}</span>;
+    const provider = providerName((await getLeagueProfile()).provider);
+    return <span className={styles.plainName} title={`Not in this league's ${provider} player pool`}>{name}</span>;
   }
   return <PlayerIdentity id={id} name={name} position={position} team={team} meta={meta} />;
 }

@@ -7,6 +7,9 @@ Read-only shaping of rows that already exist; nothing here computes a new analyt
     the optimal-lineup solver, see analytics/team_lineups.py). That table only holds the remaining
     weeks, so past weeks have no projection. A team-week whose projection is incomplete keeps
     `projected_points` NULL and exposes only `known_points`; no NULL is ever filled with a zero.
+  * Starting slots no engine fills (IDP, punter, head coach) are left out of every projected lineup, so in such a
+    league every projected total is partial: `projection_complete` False, only `known_points`, and the slots named in
+    `unsupported_slots` and a note (issue #253 G3).
   * The lineup a manager actually set comes from `lineup_snapshots` (`actual_lineup`/`actual_bench`),
     when a snapshot exists for that week. Its `points` are NULL until the matchup has started: a
     pre-game 0.0 is "not played yet", not a measured zero.
@@ -30,6 +33,7 @@ import json
 from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
+from .lineup import unsupported_slots
 from .playoff_race import period_weeks
 
 DECIDED = ("HOME", "AWAY", "TIE")
@@ -186,17 +190,18 @@ def independent_lineups(con, season: int, week: int, team_ids: list[int]) -> tup
     return w, rows
 
 
-def load_matchup(con, team_id: int | None = None, week: int | None = None, source: str = "espn") -> dict:
+def load_matchup(con, team_id: int | None = None, week: int | None = None, source: str | None = None) -> dict:
     """`source`: "espn" (default, the stored lineups) or "independent" (analytics/projection_source.py)."""
     from .projection_source import describe, normalize, weekly
 
-    source = normalize(source)
+    source = normalize(source, con)
     lgs = fetch_dicts(con, "SELECT league_id, season, name, current_week, final_scoring_period, reg_season_matchups, "
-                           "settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
+                           "settings_raw, roster_slots FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lgs:
         raise LeagueNotSynced("ESPN league not synced yet. Run scripts/sync_espn.py.")
     lg = lgs[0]
     sched = (_json(lg.pop("settings_raw"), {}) or {}).get("scheduleSettings") or {}
+    unsupported = unsupported_slots(_json(lg.pop("roster_slots"), {}) or {})
     league_id, season = lg["league_id"], lg["season"]
     current = int(lg["current_week"] or 1)
 
@@ -311,7 +316,7 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None, sourc
             proj["phase"] = stored_phase
         if not proj["lineup"] and not proj["bench"] and proj["known_points"] is None:
             unprojected.append(t["name"])
-        elif not proj["projection_complete"]:
+        elif not proj["projection_complete"] and (proj["missing_ids"] or not unsupported):
             missing = [players_by_id.get(i, {}).get("full_name") or f"player {i}" for i in proj["missing_ids"]]
             notes.append(f"{t['name']}: projection incomplete"
                          + (f" ({len(missing)} rostered without {'a' if alt_rows else 'an ESPN'} projection: "
@@ -340,6 +345,10 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None, sourc
         notes.append(f"No stored projection for {who} in week {week}"
                      + (" (projections are kept only for weeks that have not been played)." if week < current
                         else "."))
+    if unsupported:
+        notes.append(f"{', '.join(unsupported)}: no engine fills these slots, so projected lineups and totals cover the "
+                     "other starting slots only. Each total shown is partial (known points), not a full-lineup "
+                     "projection.")
     if phase is None:
         tier = row and row.get("playoff_tier")
         reg = lg["reg_season_matchups"]
@@ -354,5 +363,6 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None, sourc
         "matchup_period": period, "period_weeks": span if len(span) > 1 else None,
         "is_bye_week": is_bye, "weeks_available": weeks_available,
         "me": me, "opponent": opponent, "status": status, "notes": notes,
+        **({"unsupported_slots": list(unsupported)} if unsupported else {}),
         "projection_source": describe({**src, "available": bool(alt_rows)} if source == "independent" else src),
     }

@@ -1,17 +1,22 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { RulesLink } from "@/components/RulesLink";
 import { CompareLink } from "@/components/CompareLink";
-import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { ChooseTeam, needsTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { RangeLine } from "@/components/RangeLine";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, SkeletonTable, SortableTh, Verdict,
+  VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { showingOurs, withSource } from "@/lib/projection-source";
 import { EMPTY_RANGES, RANGE_FOOTNOTE, rangeFor, type RangeMap } from "@/lib/projection-ranges";
 import { getRanges } from "@/lib/projection-ranges.server";
@@ -20,13 +25,21 @@ import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import {
   actionabilityBadge,
   emptyStartingSlots,
-  lineupTotal,
+  NO_PROJECTIONS_TEXT,
+  noProjections,
+  projectedTotal,
+  projectionsMeta,
   lockStatusBadge,
   slotChange,
   startSitVerdict,
+  strengthBadge,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
-import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
+import { WhatIf } from "./WhatIf";
+import { readWhatIf, whatIfHref } from "@/lib/what-if";
+import { signalsOf } from "@/lib/signal-provenance";
+import { partialSlotsNote, unsupportedSlotsTitle } from "@/lib/lineup-coverage";
+import type { BenchPlayer, DecisionPlayer, LineupPlayer, SlotAlternatives, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
 export const metadata = { title: "Start/Sit" };
@@ -47,6 +60,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const sp: SP = await searchParams;
   const qs = new URLSearchParams();
   const sel = readTeamSelection(sp);
+  const whatIf = readWhatIf(sp);
   const week = one(sp.week);
   if (week) qs.set("week", week);
   if (sel.kind === "invalid") {
@@ -58,7 +72,11 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     );
   }
 
-  const res = await api<StartSitResponse>(withTeamId(withSource(`/api/start-sit?${qs.toString()}`, await getProjectionSource()), sel));
+  const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const res = await api<StartSitResponse>(withTeamId(withSource(`/api/start-sit?${qs.toString()}`, source), sel));
+  // Where lineups are submitted, and whether ESPN projections exist at all (not for a Sleeper league: all Ours).
+  const provider = providerName(profile.provider);
+  const espnProjections = profile.providerProjections;
   if (isUnknownTeam(res, sel)) {
     return (
       <div className="stack">
@@ -68,10 +86,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     );
   }
   if (!res.ok) {
+    // No team in view (an anonymous visitor or a member with no saved team, no ?team=): the picker, never another
+    // manager's lineup as a fallback (#348)
     return (
       <div className="stack">
         <PageHeader title="Start/Sit" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {needsTeam(res) ? <ChooseTeam path="/start-sit" sp={sp} what="its lineup against the best projected one" />
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
       </div>
     );
   }
@@ -81,7 +102,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const ours = showingOurs(d.projection_source_detail);
   const ranges = ours ? await getRanges(d.scoring_period) : EMPTY_RANGES;
   const rangeNote = ranges.size > 0 ? ` ${RANGE_FOOTNOTE}` : "";
-  const projLabel = ours ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
+  const projLabel = ours || !espnProjections ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
   const moves = decisions.filter((x) => x.action !== "NO_CHANGE");
   const actionable = moves.filter((x) => x.actionability === "ACTIONABLE").length;
   const hasLineup = summary.starters_count > 0;
@@ -99,16 +120,25 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     actionableMoves: actionable,
     emptySlots,
   });
-  const actual = lineupTotal(hasLineup, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
-  const recommended = lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
-  const gainKnown = summary.projection_complete && summary.projected_gain !== null;
+  // A week without any projection has no submitted or recommended total at all, never a measured or partial 0.0.
+  const noProj = noProjections(d.projection_source, recommended_lineup);
+  const actual = projectedTotal(hasLineup, noProj, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
+  const recommended = projectedTotal(true, noProj, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
+  // With slots no engine fills the totals are partial (projection_complete false), yet the gain needs only every
+  // projection it compares (`projections_complete`).
+  const projectionsComplete = summary.projections_complete ?? summary.projection_complete;
+  const gainKnown = projectionsComplete && summary.projected_gain !== null;
+  // Slots no engine fills: both totals leave them out (partial); the gain compares the other slots, exactly (#253).
+  const coverage = summary.lineup_coverage;
+  const slotsNote = partialSlotsNote(coverage?.unsupported_slots);
 
   return (
     <div className="stack">
       <PageHeader
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
-        meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        meta={`${team.name} (${team.abbrev}) · ${projectionsMeta(d.projection_source, noProj)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
             <StartSitControls
@@ -132,13 +162,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
           <>
             <VerdictFigure
               label="Submitted (proj)"
-              value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "Current ESPN starters, projected pts"}
+              value={actual.value === null ? <Missing why={hasLineup ? NO_PROJECTIONS_TEXT : "No submitted lineup for this week"} /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
+              note={!hasLineup ? "No submitted lineup" : noProj ? NO_PROJECTIONS_TEXT : actual.partial ? (slotsNote ?? "*Partial: some starters lack a projection") : `Current ${provider} starters, projected pts`}
             />
             <VerdictFigure
               label="Recommended (proj)"
-              value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
-              note={recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
+              value={recommended.value === null ? <Missing why={NO_PROJECTIONS_TEXT} /> : <>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
+              note={noProj ? NO_PROJECTIONS_TEXT : recommended.partial ? (slotsNote ?? "*Partial: some players lack a projection") : "Best lineup under kickoff locks, projected pts"}
             />
             <VerdictFigure
               label="Projected gain"
@@ -147,7 +177,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
               value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
               note={
                 !hasLineup ? "Needs a submitted lineup"
-                  : !summary.projection_complete ? "Needs every starter projected"
+                  : !projectionsComplete ? "Needs every starter projected"
+                  : coverage ? "Over the submitted lineup, in the slots the engines fill"
                   : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
                   : "Submitted lineup is already the best"
               }
@@ -161,6 +192,9 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         }
       >
         {verdict.detail}
+        {moves.length === 0 && summary.recommendation_strength && !d.is_future_preview ? (
+          <span className={styles.strengthLine}> {summary.recommendation_strength.reason}</span>
+        ) : null}
         {emptySlots.map((slot) => (
           <span key={slot}> <Link href={withTeam(WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers", sel.kind === "team" ? String(sel.id) : null)}>Find a {slot} on waivers</Link>.</span>
         ))}
@@ -168,7 +202,17 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       {d.is_future_preview && (
         <Notice tone="info" title={`Future week preview (week ${d.scoring_period})`}>
-          Lineup assignments are an informational projection based on current roster assets. ESPN does not accept lineup submissions for a future scoring period until the current week concludes.
+          Lineup assignments are an informational projection based on current roster assets.
+          {profile.provider === "espn" ? " ESPN does not accept lineup submissions for a future scoring period until the current week concludes." : null}
+        </Notice>
+      )}
+
+      {coverage && (
+        <Notice tone="caution" title={unsupportedSlotsTitle(coverage.unsupported_slots)}>
+          {coverage.reason}
+          {coverage.held_starters.length > 0 && (
+            <> Kept as set: {coverage.held_starters.map((h) => `${h.name ?? `Player ${h.player_id}`} (${h.slot ?? h.position ?? "?"})`).join(", ")}.</>
+          )}
         </Notice>
       )}
 
@@ -198,6 +242,22 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       >
         <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} ranges={ranges} />
       </Section>
+
+      {(d.alternatives?.length ?? 0) > 0 && <Alternatives alternatives={d.alternatives!} sp={sp} />}
+
+      {/* The what-if builder streams in: it re-reads the evaluation with the scenario applied. */}
+      <Suspense fallback={
+        <Section title="What-if lineup" subtitle="Loading the what-if builder" flush><SkeletonTable rows={9} cols={4} /></Section>
+      }>
+        <WhatIf
+          apiPath={withTeamId(withSource(`/api/start-sit/what-if?${qs.toString()}`, source), sel)}
+          whatif={whatIf.kind === "value" ? whatIf.value : null}
+          invalidParam={whatIf.kind === "invalid"}
+          sp={sp}
+          provider={provider}
+          ours={ours}
+        />
+      </Suspense>
 
       {d.injury_warnings.length > 0 || d.schedule_warnings.length > 0 ? (
         <Section title="Availability alerts" flush={d.injury_warnings.length > 0}>
@@ -235,15 +295,18 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       <Benchmark
         summary={summary}
+        noProj={noProj}
         recommended={recommended_lineup}
         unconstrained={unconstrained_lineup}
       />
 
-      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} />
+      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How this is calculated">
         <p className={styles.prose}>
-          Three lineups are compared for the week: the submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
-          and an unconstrained optimum used only as a benchmark. {ours
+          Three lineups are compared for the week: the submitted {provider} lineup, the best lineup under kickoff locks (the one recommended here),
+          and an unconstrained optimum used only as a benchmark. {!espnProjections
+            ? "Projections are Fantasy Intel's independent expected points."
+            : ours
             ? "Projections are Fantasy Intel's independent expected points (switch in the header); players marked ESPN keep ESPN's number."
             : "Projections are unmodified ESPN weekly projections."} Players whose games
           have kicked off keep their slots, and fantasy IR or NFL-ineligible players are never promoted.
@@ -255,10 +318,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <ul className={`reasons ${styles.limits}`}>
           {d.limitations.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
+        <p>
+          <RulesLink section="roster">Slots, eligibility and lock rules used here</RulesLink>
+        </p>
       </Method>
 
       <p className={styles.fresh}>
-        Lineup synced {when(d.freshness.lineup_synced_at)} · ESPN projections synced {when(d.freshness.projection_synced_at)} · NFL schedule synced {when(d.freshness.nfl_schedule_synced_at)}
+        Lineup synced {when(d.freshness.lineup_synced_at)} · {espnProjections ? "ESPN projections" : "Projections"} synced {when(d.freshness.projection_synced_at)} · NFL schedule synced {when(d.freshness.nfl_schedule_synced_at)}
       </p>
     </div>
   );
@@ -283,6 +349,7 @@ function MovePlayer({ p, ours, dir, ranges }: { p: DecisionPlayer; ours: boolean
 
 function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; ranges: RangeMap }) {
   const badge = actionabilityBadge(move.actionability);
+  const strength = strengthBadge(move.recommendation_strength);
   // A plain 1-for-1 swap has an obvious pair to compare; a multi-player cascade does not.
   const pair = move.start_players.length === 1 && move.bench_players.length === 1 ? [move.start_players[0], move.bench_players[0]] : null;
   return (
@@ -300,12 +367,14 @@ function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; r
       <div className={styles.moveMeta}>
         <span className={styles.gain}><Delta value={move.projected_net_gain} suffix=" pts" /></span>
         <span className={styles.tags}>
+          {strength && <Badge value={strength.label} tone={strength.tone} />}
           <Badge value={badge.label} tone={badge.tone} />
           <Badge value={move.action === "COORDINATED_SWAP" ? "FLEX cascade" : "1-for-1 swap"} tone="" />
         </span>
         {move.target_slot && <span className={styles.slotNote}>Slot: {move.target_slot}</span>}
         {pair && <CompareLink a={pair[0].id} b={pair[1].id} aName={pair[0].name} bName={pair[1].name} />}
       </div>
+      {move.recommendation_strength && <p className={styles.strengthLine}>{move.recommendation_strength.reason}</p>}
       {move.warnings.length > 0 && (
         <ul className={styles.cautions}>
           {move.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -316,6 +385,31 @@ function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; r
         <p className={styles.reason}>{move.explanation}</p>
       </details>
     </li>
+  );
+}
+
+/** The legal single moves into each recommended starting slot (issue #172), closest first, each a what-if to try. */
+function Alternatives({ alternatives, sp }: { alternatives: SlotAlternatives[]; sp: Record<string, string | string[] | undefined> }) {
+  return (
+    <Section title="Other options" subtitle="The closest legal changes to each recommended slot, one at a time"
+      footnote="Each change is checked like a what-if move: eligibility, kickoff locks and IR. The change is the projected lineup total against the recommendation; unknown when a projection is missing.">
+      <ul className={styles.alternatives}>
+        {alternatives.map((a) => (
+          <li key={a.slot_id} className={styles.altSlot}>
+            <span className={styles.altLabel}>{a.label}</span>
+            <ul className={styles.altOptions}>
+              {a.options.map((o) => (
+                <li key={o.player_id}>
+                  <PlayerLink id={o.player_id} name={o.name} /> {o.position && <Pos value={o.position} />}{" "}
+                  {o.delta === null ? <Missing why="A projection in this lineup is missing" /> : <Delta value={o.delta} suffix=" pts" />}{" "}
+                  <Link href={whatIfHref("/start-sit", sp, o.whatif)} scroll={false} aria-label={`Try ${o.name} at ${a.label}`}>Try it</Link>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
@@ -428,6 +522,7 @@ function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { ben
                     <Pos value={b.position} />
                     <span className="faint">{b.pro_team ?? "FA"}</span>
                     {b.on_ir && <Badge value="IR slot" tone="bad" />}
+                    {b.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: rostered, but cannot start" />}
                     {b.nfl_ineligible && <Badge value="NFL out" tone="bad" />}
                     {b.injury_status && !HEALTHY.includes(b.injury_status) && <Badge value={b.injury_status} />}
                   </span>
@@ -446,8 +541,9 @@ function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { ben
 
 // --------------------------------------------------------------- benchmark --
 
-function Benchmark({ summary, recommended, unconstrained }: {
+function Benchmark({ summary, noProj, recommended, unconstrained }: {
   summary: StartSitResponse["summary"];
+  noProj: boolean;
   recommended: LineupPlayer[];
   unconstrained: LineupPlayer[];
 }) {
@@ -461,14 +557,14 @@ function Benchmark({ summary, recommended, unconstrained }: {
       <dl className={styles.figures}>
         <div>
           <dt>Unconstrained optimum</dt>
-          <dd>{total !== null ? num(total, 1) : <>{num(summary.known_unconstrained_total, 1)}*</>}</dd>
+          <dd>{noProj ? <Missing why={NO_PROJECTIONS_TEXT} /> : total !== null ? num(total, 1) : <>{num(summary.known_unconstrained_total, 1)}*</>}</dd>
         </div>
         <div>
           <dt title="Unconstrained optimum minus the lock-constrained recommendation">Lock drag</dt>
           <dd>{drag !== null ? num(drag, 1) : <Missing why="Needs complete projections" />}</dd>
         </div>
       </dl>
-      {total === null && <p className={styles.prose}>*Partial total: some players lack a projection.</p>}
+      {total === null && !noProj && <p className={styles.prose}>*Partial total: some players lack a projection.</p>}
       {drag !== null && drag > 0 ? (
         <p className={styles.prose}>
           Kickoff locks cost {num(drag, 1)} projected points. Without locks the lineup would also start{" "}

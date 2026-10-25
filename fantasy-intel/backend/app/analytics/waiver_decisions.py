@@ -1,26 +1,37 @@
 """Explainable acquisition decisions; all thresholds are heuristics, never probabilities.
 
-Meaningful historical lineup improvement: >=1 on the existing 0–10 player-value scale.
+Meaningful historical lineup improvement: >=1 on the existing 0–10 player-value scale. That scale is a
+within-position percentile, not fantasy points, so a FLEX or OP comparison across positions compares percentiles.
 Meaningful forward gain: >=1 ESPN point per covered week. Stashes need value >=6,
 an improvement over same-position depth >=1, and an observed need or rising role.
 These are decision thresholds, not changes to the shared player scoring model.
 """
 from __future__ import annotations
 
-from .lineup import assign_lineup, eligible, lineup_total
-from .waiver_roster import forward_effect
+from .lineup import assign_lineup, positions_of
+from .waiver_roster import competing_positions, forward_effect, group_total, player_names, unknown_value_players
+
+VALUE_SCALE = "0-10 position percentile, not fantasy points"
+VALUE_SCALE_TEXT = "0-10 position-percentile scale, not fantasy points"
 
 
-def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float, opportunity: float | None) -> dict:
+def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float, opportunity: float | None,
+                        need_status: str = "complete") -> dict:
+    """`need_status` "partial": the need omits its unknown starter-quality term (a lower bound), said in the summary."""
     players, slots = state["players"], state["slots"]
     drop = move.get("drop")
     after = [p for p in players if not drop or p["espn_player_id"] != drop["espn_player_id"]] + [candidate]
-    comparable = candidate.get("raw_value") is not None and all(
-        p.get("raw_value") is not None for p in players if p.get("available") and any(eligible(s, p.get("position")) for s in slots))
-    gain = round(lineup_total(assign_lineup(after, slots)) - lineup_total(state["lineup"]), 3) if comparable else None
+    cand_raw = candidate.get("raw_value")
+    # The add (and the drop) move only their slot groups, so only an unknown player there makes the gain unknown.
+    group = competing_positions(slots, positions_of(candidate) | (positions_of(drop) if drop else frozenset()),
+                                players + [candidate])
+    unknown = ([candidate] if cand_raw is None else []) + unknown_value_players(players, slots, group)
+    comparable = not unknown
+    before, after_total = group_total(state["lineup"], group), group_total(assign_lineup(after, slots), group)
+    gain = round(after_total - before, 3) if comparable and before is not None and after_total is not None else None
     depth = [p["raw_value"] for p in players if p["position"] == candidate["position"] and p.get("raw_value") is not None]
     depth_unknown = any(p.get("raw_value") is None for p in players if p["position"] == candidate["position"])
-    depth_gain = None if depth_unknown else (candidate.get("raw_value") or 0) - min(depth) if depth else candidate.get("raw_value")
+    depth_gain = None if depth_unknown or cand_raw is None else cand_raw - min(depth) if depth else cand_raw
     forward = forward_effect(players, after, slots, state.get("weeks", []), state.get("stream"))
     forward_mean = (forward["total_gain"] / len(state["weeks"]) if forward["total_gain"] is not None and state.get("weeks") else None)
     starter = (gain is not None and gain >= 1) or (forward_mean is not None and forward_mean >= 1)
@@ -28,14 +39,23 @@ def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float
              and depth_gain is not None and depth_gain >= 1 and (need >= 0.35 or candidate.get("rising")))
     if drop and candidate.get("raw_value") is not None and candidate["raw_value"] < drop["value"] and not starter:
         stash = False
-    summary = (f"Improves your current lineup by {gain:.1f} historical value points." if gain is not None and gain >= 1 else
+    summary = (f"Improves your current lineup by {gain:.1f} historical value ({VALUE_SCALE_TEXT})."
+               if gain is not None and gain >= 1 else
                f"Improves covered future lineups by {forward_mean:.1f} projected points per week." if starter else
                "Potential bench stash: stronger depth with an observed need or rising role." if stash else
-               "Roster comparison is incomplete: unknown player value is not treated as zero." if not comparable else
+               f"Roster comparison is incomplete: no historical value for {player_names(unknown)}; unknown is not zero."
+               if not comparable else
                "No meaningful improvement over your current starters or positional depth is demonstrated.")
+    if need_status == "partial":
+        summary += f" The {candidate['position']} need is a lower bound: starter quality there is unknown."
     return {"meaningful": bool(starter or stash), "starter_gain": gain, "depth_gain": depth_gain,
+            "unknown_value_ids": [p["espn_player_id"] for p in unknown],
             "stash": bool(stash and not starter), "forward": forward, "summary": summary,
-            "ranking_utility": round(max(0, gain or 0, forward_mean or 0) + (2 * need if starter or stash else 0) + (1 if stash else 0), 3)}
+            # None when no evidence exists (no historical gain, no forward gain, no stash): an unknown benefit ranks
+            # after every known one (api/routes.py WAIVER_ORDER), never among real ~0 gains.
+            "ranking_utility": (None if gain is None and forward_mean is None and not stash else
+                                round(max(0, gain or 0, forward_mean or 0) + (2 * need if starter or stash else 0)
+                                      + (1 if stash else 0), 3))}
 
 
 def resource_diagnostics(status: str, league: dict, team: dict, *, meaningful: bool, alternative: dict | None = None) -> dict:

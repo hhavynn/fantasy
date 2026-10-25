@@ -1,0 +1,4086 @@
+// /api/schedule-intelligence/bye-planner
+{
+ "body": {
+  "contract": "bye-planner.v1",
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "last_regular_season_week": 14,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "nfl_rosters": {
+   "available": false,
+   "latest_week": null,
+   "players_counted": 11,
+   "players_found": 0,
+   "season": 2026
+  },
+  "notes": [
+   "Coverage counts only players on the roster today: future trades, signings, waiver claims and returns are not predicted. A player in an IR or taxi slot never counts.",
+   "Player teams are the current snapshot, applied to every remaining week.",
+   "A covered slot means a rostered player who can legally start it has a game that week and no open designation; it says nothing about how many points he will score.",
+   "An injury designation (out, doubtful, injured reserve, suspended) has no published length, so the player is unknown in every remaining week rather than assumed back or assumed out.",
+   "The plan starts at the first week whose NFL games have not kicked off; weeks already under way are not planned."
+  ],
+  "players": [
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "QB"
+    ],
+    "espn_player_id": 102,
+    "injury_status": "ACTIVE",
+    "name": "Bravo QB",
+    "position": "QB",
+    "pro_team": "BUF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "RB",
+     "FLEX"
+    ],
+    "espn_player_id": 204,
+    "injury_status": "ACTIVE",
+    "name": "Hotel RB",
+    "position": "RB",
+    "pro_team": "PHI",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NO",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "RB",
+     "FLEX"
+    ],
+    "espn_player_id": 205,
+    "injury_status": "ACTIVE",
+    "name": "India RB",
+    "position": "RB",
+    "pro_team": "SF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "ATL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "WAS",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "SEA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "BUF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PIT",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NYG",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "LV",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "LA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "IND",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "GB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "DAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CIN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CAR",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "RB",
+     "FLEX"
+    ],
+    "espn_player_id": 206,
+    "injury_status": "ACTIVE",
+    "name": "Juliet RB",
+    "position": "RB",
+    "pro_team": "SEA",
+    "slot": "bench",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NO",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "WR",
+     "FLEX"
+    ],
+    "espn_player_id": 304,
+    "injury_status": "ACTIVE",
+    "name": "Papa WR",
+    "position": "WR",
+    "pro_team": "PHI",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NO",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "WR",
+     "FLEX"
+    ],
+    "espn_player_id": 305,
+    "injury_status": "ACTIVE",
+    "name": "Quebec WR",
+    "position": "WR",
+    "pro_team": "SF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "ATL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "WAS",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "SEA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "BUF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PIT",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NYG",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "LV",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "LA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "IND",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "GB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "DAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CIN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CAR",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "WR",
+     "FLEX"
+    ],
+    "espn_player_id": 306,
+    "injury_status": "ACTIVE",
+    "name": "Romeo WR",
+    "position": "WR",
+    "pro_team": "SEA",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NO",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "WR",
+     "FLEX"
+    ],
+    "espn_player_id": 307,
+    "injury_status": "ACTIVE",
+    "name": "Sierra WR",
+    "position": "WR",
+    "pro_team": "TB",
+    "slot": "bench",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "WAS",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "SEA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "BUF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "PIT",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NYG",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "LA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "IND",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "GB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "DAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CIN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "CAR",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": true,
+      "kickoff": "<masked>",
+      "opponent": "ATL",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "TE",
+     "FLEX"
+    ],
+    "espn_player_id": 402,
+    "injury_status": "ACTIVE",
+    "name": "Victor TE",
+    "position": "TE",
+    "pro_team": "BUF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "K"
+    ],
+    "espn_player_id": 502,
+    "injury_status": "ACTIVE",
+    "name": "Zulu K",
+    "position": "K",
+    "pro_team": "BUF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": true,
+    "eligible_slots": [
+     "D/ST"
+    ],
+    "espn_player_id": -16002,
+    "injury_status": "ACTIVE",
+    "name": "Bills D/ST",
+    "position": "D/ST",
+    "pro_team": "BUF",
+    "slot": "starter",
+    "weeks": {
+     "10": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CHI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "11": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "BAL",
+      "source": "schedule",
+      "state": "available"
+     },
+     "12": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "ARI",
+      "source": "schedule",
+      "state": "available"
+     },
+     "13": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TB",
+      "source": "schedule",
+      "state": "available"
+     },
+     "14": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "SF",
+      "source": "schedule",
+      "state": "available"
+     },
+     "15": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DET",
+      "source": "schedule",
+      "state": "available"
+     },
+     "16": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "TEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "17": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NYJ",
+      "source": "schedule",
+      "state": "available"
+     },
+     "3": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "NE",
+      "source": "schedule",
+      "state": "available"
+     },
+     "4": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "MIA",
+      "source": "schedule",
+      "state": "available"
+     },
+     "5": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "LAC",
+      "source": "schedule",
+      "state": "available"
+     },
+     "6": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "JAX",
+      "source": "schedule",
+      "state": "available"
+     },
+     "7": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "HOU",
+      "source": "schedule",
+      "state": "available"
+     },
+     "8": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "DEN",
+      "source": "schedule",
+      "state": "available"
+     },
+     "9": {
+      "code": "scheduled",
+      "detail": null,
+      "home": false,
+      "kickoff": "<masked>",
+      "opponent": "CLE",
+      "source": "schedule",
+      "state": "available"
+     }
+    }
+   },
+   {
+    "availability": {
+     "earliest_eligible_week": null,
+     "eligibility_basis": null,
+     "nfl_designation_label": null,
+     "status": "available"
+    },
+    "bye_week": null,
+    "counts": false,
+    "eligible_slots": [
+     "RB",
+     "FLEX"
+    ],
+    "espn_player_id": 207,
+    "injury_status": "ACTIVE",
+    "name": "Kilo RB",
+    "position": "RB",
+    "pro_team": "TB",
+    "slot": "ir",
+    "weeks": {}
+   }
+  ],
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 15,
+      "label": "planned weeks with a loaded NFL schedule",
+      "total": 15
+     },
+     "label": "NFL schedule and byes (nflverse)",
+     "reason_unavailable": null,
+     "signal": "schedule",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 0,
+      "label": "lineup players found in this season's NFL weekly rosters",
+      "total": 11
+     },
+     "label": "NFL reserve lists (nflverse weekly rosters)",
+     "reason_unavailable": "No 2026 NFL weekly rosters are stored, so no reserve-list absence can be verified.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "query": {
+   "team_id": 2
+  },
+  "rules": {
+   "bye_cluster_min": 2,
+   "sources": {
+    "availability": "Verified: the NFL weekly roster puts the player on a reserve list whose minimum-games rule has not been met by that week.",
+    "schedule": "Exact: the NFL schedule lists the team's game, or its bye, for the week (a bye only when the team's whole regular-season schedule is loaded).",
+    "unknown": "Not established: no NFL team, no schedule for the week or the team, a reserve list with no rule, a return that is allowed but not confirmed, or an injury designation of unknown length."
+   },
+   "statuses": {
+    "covered": "Covered",
+    "short": "Short",
+    "unconfirmed": "Not confirmed"
+   },
+   "unknown_reasons": {
+    "availability_unknown": "on an NFL reserve list with no known return rule",
+    "injury_designation": "injury designation of unknown length",
+    "no_team": "no current NFL team",
+    "return_unconfirmed": "eligible to return, but no activation is confirmed",
+    "schedule_missing": "no NFL schedule loaded for the week",
+    "team_schedule_incomplete": "the team's NFL schedule is incomplete, so a missing game is not a confirmed bye"
+   }
+  },
+  "schedule": {
+   "available": true,
+   "incomplete_teams": [],
+   "weeks_loaded": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ],
+   "weeks_missing": []
+  },
+  "slots": {
+   "known": true,
+   "starting": [
+    {
+     "count": 1,
+     "eligible_positions": [
+      "QB"
+     ],
+     "slot": "QB"
+    },
+    {
+     "count": 2,
+     "eligible_positions": [
+      "RB"
+     ],
+     "slot": "RB"
+    },
+    {
+     "count": 2,
+     "eligible_positions": [
+      "WR"
+     ],
+     "slot": "WR"
+    },
+    {
+     "count": 1,
+     "eligible_positions": [
+      "TE"
+     ],
+     "slot": "TE"
+    },
+    {
+     "count": 1,
+     "eligible_positions": [
+      "K"
+     ],
+     "slot": "K"
+    },
+    {
+     "count": 1,
+     "eligible_positions": [
+      "D/ST"
+     ],
+     "slot": "D/ST"
+    },
+    {
+     "count": 1,
+     "eligible_positions": [
+      "RB",
+      "WR",
+      "TE"
+     ],
+     "slot": "FLEX"
+    }
+   ],
+   "unresolved": []
+  },
+  "summary": {
+   "bye_cluster_weeks": [],
+   "conflict_weeks": [],
+   "covered": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ],
+   "first_conflict_week": null,
+   "most_byes": null,
+   "short": [],
+   "unconfirmed": [],
+   "weeks": 15
+  },
+  "team": {
+   "abbrev": "T2",
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_mine": false,
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_mine": true,
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_mine": false,
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_mine": false,
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ],
+  "weeks": [
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 3,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 3
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 4,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 4
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 5,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 5
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 6,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 6
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 7,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 7
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 8,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 8
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 9,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 9
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 10,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 10
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 11,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 11
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 12,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 12
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 13,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 13
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 14,
+    "out": [],
+    "phase": "regular",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 14
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 15,
+    "out": [],
+    "phase": "playoffs",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 15
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 16,
+    "out": [],
+    "phase": "playoffs",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 16
+   },
+   {
+    "bench_alternatives": [
+     {
+      "espn_player_id": 206,
+      "slots": [
+       "RB",
+       "FLEX"
+      ]
+     },
+     {
+      "espn_player_id": 307,
+      "slots": [
+       "WR",
+       "FLEX"
+      ]
+     }
+    ],
+    "bye_cluster": false,
+    "byes": [],
+    "conflict": false,
+    "covered": 9,
+    "matchup_period": 17,
+    "out": [],
+    "phase": "playoffs",
+    "required": 9,
+    "short_slots": [],
+    "slots": [
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "QB"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "QB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 3,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "RB"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "RB",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 4,
+      "bye": 0,
+      "covered": 2,
+      "eligible_positions": [
+       "WR"
+      ],
+      "out": 0,
+      "required": 2,
+      "slot": "WR",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "TE",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "K"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "K",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 1,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "D/ST"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "D/ST",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     },
+     {
+      "available": 8,
+      "bye": 0,
+      "covered": 1,
+      "eligible_positions": [
+       "RB",
+       "WR",
+       "TE"
+      ],
+      "out": 0,
+      "required": 1,
+      "slot": "FLEX",
+      "uncertain": 0,
+      "uncovered": 0,
+      "unknown": 0
+     }
+    ],
+    "starters_on_bye": [],
+    "status": "covered",
+    "status_text": "Covered",
+    "uncertain": [],
+    "unconfirmed_slots": [],
+    "uncovered": 0,
+    "unknown": 0,
+    "unresolved": 0,
+    "week": 17
+   }
+  ],
+  "window": {
+   "espn_current_week": 3,
+   "first_actionable_week": 3,
+   "playoff_weeks": [
+    15,
+    16,
+    17
+   ],
+   "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+   "regular_season_through": 14,
+   "remaining_weeks": true,
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  }
+ },
+ "status": 200
+}

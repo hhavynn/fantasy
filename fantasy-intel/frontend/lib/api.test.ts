@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, apiRequest, classifyHttpError, formatDetail, isFirstRun } from "./api.ts";
+import { api, apiRequest, classifyHttpError, formatDetail, isFirstRun, requestHeaders } from "./api.ts";
+import { isFirstSync } from "./api-errors.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -106,4 +107,34 @@ test("a missing database is a first run, not an error", () => {
   assert.equal(isFirstRun("No database yet. Run scripts/sync_espn.py and scripts/sync_nfl.py first."), true);
   assert.equal(isFirstRun("database is busy"), false);
   assert.equal(isFirstRun(null), false);
+});
+
+test("api: a response the backend served from a league's previous files is marked stale", async () => {
+  globalThis.fetch = (async () => new Response('{"a":1}', { status: 200, headers: { "X-FI-Degraded": "stale-files" } })) as typeof fetch;
+  assert.deepEqual(await api("/x"), { ok: true, data: { a: 1 }, error: null, stale: true });
+});
+
+test("a league still in its first sync (the API's 409) is a step of adding it, not an error", () => {
+  assert.equal(isFirstSync(409, "First sync in progress."), true);
+  assert.equal(isFirstSync(409, "Another member's cookies already sync this league."), false);
+  assert.equal(isFirstSync(503, "First sync in progress."), false);
+  assert.equal(isFirstSync(undefined, null), false);
+});
+
+test("apiRequest keeps a caller's own Authorization header over the visitor's cookie token", async () => {
+  // The email callback holds a fresh session its cookies may not carry yet, and must ask /v2/me as that session.
+  assert.deepEqual(requestHeaders({ Authorization: "Bearer fresh" }, { Authorization: "Bearer cookie" }, {}, false), { Authorization: "Bearer fresh" });
+  assert.deepEqual(requestHeaders({ authorization: "Bearer fresh" }, { Authorization: "Bearer cookie" }, {}, false), { authorization: "Bearer fresh" });
+  // Without one, the visitor's token is added; the service key always wins; a body adds its content type.
+  assert.deepEqual(requestHeaders({ "X-Extra": "1" }, { Authorization: "Bearer cookie" }, { "X-API-Key": "k" }, true),
+    { "X-Extra": "1", Authorization: "Bearer cookie", "X-API-Key": "k", "Content-Type": "application/json" });
+  assert.deepEqual(requestHeaders({ "X-API-Key": "forged" }, {}, { "X-API-Key": "k" }, false), { "X-API-Key": "k" });
+
+  let sent: Record<string, string> = {};
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    sent = init.headers as Record<string, string>;
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  await apiRequest("/v2/me", { headers: { Authorization: "Bearer fresh" } });
+  assert.equal(sent.Authorization, "Bearer fresh");
 });

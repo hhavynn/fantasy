@@ -38,13 +38,14 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from ..db.connection import fetch_dicts, table_exists
+from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
 from . import production_forecasts as pf
-from .lineup import FIXED_SLOTS
+from .lineup import FIXED_SLOTS, parse_eligible_slots, slots_left_out, unsupported_of
 from .playoff_race import NotSynced, RaceData, all_play, classify_matchups, load_race_data
 from .projection_backtest import _utc
-from .team_lineups import (STREAM_POSITIONS, RosterPlayer, project_team, r, replacement_market,
+from .reserve_slots import is_taxi
+from .team_lineups import (STREAM_POSITIONS, RosterPlayer, project_team, r, replacement_market, source_label,
                            roster_marginal_value, starters)
 from .team_value import NotFound, league_ranks, load_extras, position_strength
 from .trades import LeagueState, with_streaming
@@ -155,7 +156,7 @@ def depth_cover(roster: list[RosterPlayer], base: dict, slots: list[str], window
     players = []
     for pid in sorted({q for w in by_week.values() for q in starters(w)}):
         p = rostered.get(pid)
-        if p is None or p.on_ir or p.position in SKIP_POSITIONS:   # streamers and K/D/ST are not depth
+        if p is None or p.reserved or p.position in SKIP_POSITIONS:   # streamers and K/D/ST are not depth
             continue
         mv = roster_marginal_value(roster, pid, slots, window, proj, base)
         rec = pts = 0.0
@@ -216,7 +217,9 @@ def edition(state: LeagueState, regular: list[dict], team_ids: list[int], team_n
     ranks = league_ranks(projections, window, team_names) if window.weeks else None
     comparable = ranks["phases"]["all"]["weeks"] if ranks else []
     strength = {x["team_id"]: x["average_weekly"] for x in ranks["phases"]["all"]["teams"]} if ranks else {}
-    market = replacement_market(state.free_agents, slots, window, proj, top_n=1) if comparable else None
+    market = replacement_market(state.free_agents, slots, window, proj, top_n=1,
+                                projection_source=source_label(state.projection_source, state.projections)) \
+        if comparable else None
     ap = all_play_before(regular, team_ids, all_play_before_week)
     teams = {}
     for t in team_ids:
@@ -229,11 +232,14 @@ def edition(state: LeagueState, regular: list[dict], team_ids: list[int], team_n
                     "replacement": repl["value"] if repl else None, "all_play": ap[t]["pct"] if g else None,
                     "all_play_record": {k: ap[t][k] for k in ("wins", "losses", "ties")}, "all_play_periods": ap[t]["periods"],
                     "unranked_reason": None if ranked else ("no roster snapshot" if base is None else
+                                                            f"no comparable week: {slots_left_out(unsupported_of(slots))}"
+                                                            if unsupported_of(slots) else
                                                             "no comparable week with a complete projection"),
                     **({"_depth": depth, "_replacement": repl} if detail else {})}
     pos = position_strength(projections, slots, window, {"all": comparable}) if detail and comparable else None
     return {"weeks": list(window.weeks), "comparable_weeks": comparable,
             "excluded_weeks": ranks["excluded_weeks"] if ranks else [], "teams": teams, "positions": pos,
+            **({"unsupported_slots": list(unsupported_of(slots))} if unsupported_of(slots) else {}),
             "all_play_periods": sorted({p for x in ap.values() for p in x["periods"]})}
 
 
@@ -318,13 +324,18 @@ def _history_roster(con, st: LeagueState, week: int, kickoff: datetime) -> tuple
                  and (floor is None or t > floor)), None)
     if pick is None:
         return [], None
-    rows = fetch_dicts(con, """SELECT h.team_id, h.espn_player_id, h.lineup_slot_id, fp.full_name, fp.position,
-                                      fp.pro_team, fp.injury_status
+    rows = fetch_dicts(con, f"""SELECT h.team_id, h.espn_player_id, h.lineup_slot_id, fp.full_name, fp.position,
+                                      fp.pro_team, fp.injury_status, {_eligible_slots(con)}
                                FROM roster_history h JOIN fantasy_players fp USING (espn_player_id)
                                WHERE h.snapshot_date = ? AND h.league_id = ? AND h.season = ?
                                ORDER BY h.team_id, h.espn_player_id""",
                        [pick["snapshot_date"], st.league_id, st.season])
     return rows, pick["synced_at"]
+
+
+def _eligible_slots(con) -> str:
+    """The provider slot list a player may fill (lineup.positions_of, #253 G11); absent = primary position only."""
+    return "fp.eligible_slots" if "eligible_slots" in table_columns(con, "fantasy_players") else "NULL AS eligible_slots"
 
 
 def load_previous(con, race: RaceData) -> Previous:
@@ -340,13 +351,16 @@ def load_previous(con, race: RaceData) -> Previous:
     kickoff = pf.first_kickoffs(con, st.season).get(week)
     if kickoff is None:
         return Previous(week, None, f"week {week}'s first kickoff time is unknown")
-    period = fetch_dicts(con, """SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position,
-                                        fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
-                                        l.acquisition_date, l.synced_at
-                                 FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
-                                 WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
-                                 ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
-        if table_exists(con, "lineup_snapshots") else None
+    snapshots = table_exists(con, "lineup_snapshots")
+    label = "l.lineup_slot" if snapshots and "lineup_slot" in table_columns(con, "lineup_snapshots") else \
+        "NULL AS lineup_slot"      # the taxi label (reserve_slots.is_taxi); absent = read as before
+    period = fetch_dicts(con, f"""SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, {label}, fp.full_name,
+                                         fp.position, fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
+                                         l.acquisition_date, l.synced_at, {_eligible_slots(con)}
+                                  FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
+                                  WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
+                                  ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
+        if snapshots else None
     rows, synced_at = _history_roster(con, st, week, kickoff)
     gap = history_roster_problem(period or [], week, _utc(synced_at), kickoff) if rows else None
     if rows and not gap:
@@ -365,14 +379,15 @@ def load_previous(con, race: RaceData) -> Previous:
     for row in rows:
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"]))
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row),     # roster_history: no label
+            eligible_slots=parse_eligible_slots(row.get("eligible_slots"), row["position"])))
     proj, snap, synced, reason = _prior_projections(con, st.season, week, st.final_week, kickoff)
     if reason:
         return Previous(week, None, reason)
     then = {p.espn_player_id for ps in rosters.values() for p in ps}
     universe = {p.espn_player_id: p for p in st.free_agents}
     universe.update({p.espn_player_id: p for ps in st.rosters.values() for p in ps})
-    free_agents = [replace(p, unavailable_weeks=frozenset(), on_ir=False) for pid, p in sorted(universe.items())
+    free_agents = [replace(p, unavailable_weeks=frozenset(), on_ir=False, on_taxi=False) for pid, p in sorted(universe.items())
                    if pid not in then]
     prior = replace(st, rosters=rosters, free_agents=free_agents, projections=proj, start_week=week,
                     availability={}, first_projection_week=week)
@@ -481,11 +496,15 @@ def build_power_rankings(race: RaceData, previous: Previous | None, extras: dict
     window_note = None
     if cur["excluded_weeks"]:
         n = len(cur["excluded_weeks"])
+        why = (f"{slots_left_out(cur['unsupported_slots'])}, so no lineup total is complete"
+               if cur.get("unsupported_slots") else "some team's projection is incomplete there")
         window_note = (f"{n} remaining {'week is' if n == 1 else 'weeks are'} left out of lineup strength, depth and "
-                       "replacement because some team's projection is incomplete there.")
+                       f"replacement because {why}.")
     return {**out, "week": week, "empty": not sc["ranks"], "teams": rows, "weights": sc["weights"],
             "window": {"weeks": cur["weeks"], "comparable_weeks": cur["comparable_weeks"],
                        "excluded_weeks": cur["excluded_weeks"], "note": window_note,
                        "all_play_periods": cur["all_play_periods"]},
             "previous": prev_info,
-            "message": None if sc["ranks"] else "No team has a complete lineup projection to rank."}
+            "message": None if sc["ranks"] else
+            (f"No team can be ranked: {slots_left_out(cur['unsupported_slots'])}, so no lineup total is complete."
+             if cur.get("unsupported_slots") else "No team has a complete lineup projection to rank.")}

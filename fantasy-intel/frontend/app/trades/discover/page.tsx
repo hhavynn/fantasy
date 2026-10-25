@@ -1,28 +1,36 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Fragment, Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { ChooseTeam, needsTeam } from "@/components/TeamPerspective";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
+  Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
 } from "@/components/ui";
-import { api, type ApiResult } from "@/lib/api";
+import { api, requestLeague, type ApiResult } from "@/lib/api";
+import { withLeague } from "@/lib/league-scope";
 import { signed } from "@/lib/format";
+import { projectionName, projectionWord } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
-import { discoverQuery, evidenceSrc, resolveSort, sortValue } from "@/lib/trade-discovery";
+import { analyzerHref, beamBudgetText, discoverQuery, evidenceSrc, resolveSort, sortValue, targetHrefParams } from "@/lib/trade-discovery";
 import {
   beforeAfterText, favoursText, excludedText, lensTabText, lensTabs, modeUsesPhase, modeUsesStrictness, sectionsAreVerdicts,
 } from "@/lib/trade-dual-value";
 import { signedText } from "@/lib/trade-format";
-import type { DSummaryRow, DVSideSummary, DiscoveryContext, DiscoverySummary, NeedRow } from "@/lib/trade-types";
+import type { DSummaryRow, DVSideSummary, DiscoveryContext, DiscoverySummary, DiscoveryTargets, NeedRow } from "@/lib/trade-types";
 import type { TradeDeltas } from "@/lib/types";
+import { signalsOf } from "@/lib/signal-provenance";
 import { CheckChips, MainConcern, VerdictBadge } from "./DualValueParts";
+import { TargetFitNotes, TargetGoal, TargetSummary, targetSentence } from "./TargetGoal";
 import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
 import { TeamLink } from "@/components/TeamLink";
+import { SavedViews } from "@/components/SavedViews";
 
 export const metadata = { title: "Discover trades" };
 
-// Trade Discovery 2.0. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
+// Trade Discovery 2.0. Every number is the exact weekly optimal-lineup simulation on the league's default projections
+// (ESPN's; Fantasy Intel's own for a league whose provider publishes none)
 // (the manual analyzer's computation). A lens (mode) decides which exact trades are shown; each trade is judged
 // on two things kept apart, asset quality (points above replacement) and lineup benefit (starters only), plus
 // plausibility checks and a verdict that describes how they fit (docs/trade_discovery_dual_value.md).
@@ -44,7 +52,9 @@ const PHONE_SORTS: [string, string][] = [
   ["verdict", "Verdict"], ["my_gain", "Team Δ"], ["their_gain", "Partner Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
   ["partner", "Partner"], ["shape", "Shape"],
 ];
-const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
+const whyFor = (proj: string) => `Incomplete: a rostered player with an NFL team has no ${projectionWord(proj)}projection in some week (never treated as 0)`;
+/** The projections a payload was computed on, as it says ("espn" / "independent"); `fallback` when it does not. */
+const projOf = (d: { projection_source?: { used: string } | null }, fallback = "espn") => projectionName(d.projection_source?.used ?? fallback);
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -55,26 +65,38 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
   const q = discoverQuery(sp).toString();
   // Start the search now; the header only waits for the light context call, the results stream in below it.
   const summary = api<DiscoverySummary>(`/api/trades/discover/summary?${q}`);
-  const res = await api<DiscoveryContext>(`/api/trades/discover/context?${q}`);
+  // The targeted lens's goal form lists the other rosters and how the roster needs resolve (no search is run).
+  const targeted = new URLSearchParams(q).get("mode") === "targeted";
+  const team = new URLSearchParams(q).get("team_id");
+  const targets = targeted ? api<DiscoveryTargets>(`/api/trades/discover/targets${team ? `?team_id=${encodeURIComponent(team)}` : ""}`) : null;
+  const [res, profile, league] = await Promise.all([api<DiscoveryContext>(`/api/trades/discover/context?${q}`), getLeagueProfile(),
+    requestLeague()]);
+  // Forms submit to this league's page, never through the last-viewed-league cookie (another tab may hold another league).
+  const action = withLeague("/trades/discover", league);
   return (
     <div className="stack">
       {!res.ok ? (
         <>
           <PageHeader title="Trade discovery" actions={<TeamLink href="/trades">Trade analyzer</TeamLink>} />
-          <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+          {needsTeam(res) ? <ChooseTeam path="/trades/discover" sp={sp} what="trade ideas for its roster" />
+            : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
         </>
-      ) : <Body c={res.data} summary={summary} q={q} sp={sp} />}
+      ) : <Body c={res.data} summary={summary} targets={targets} q={q} sp={sp} defaultSource={profile.defaultSource} action={action} />}
     </div>
   );
 }
 
-/** Link to this page with the current query overridden by `over` (undefined removes a key). Sorting is dropped. */
+/** No target: what a lens tab other than the targeted one links with (each lens opens on its whole search). */
+const NO_TARGET = { target: undefined, pos: undefined, need: undefined, weeks: undefined };
+
+/** Link to this page with the current query overridden by `over` (undefined removes a key). Sorting is dropped; the
+ *  view's target (player, position, need, horizon) is kept unless `over` removes it. */
 function hrefFor(d: Pick<DiscoveryContext, "query">, over: Record<string, string | undefined>) {
   const base: Record<string, string | undefined> = {
     team: String(d.query.team_id), mode: d.query.mode, phase: d.query.phase, strictness: d.query.strictness,
     opponent: d.query.opponent === null ? undefined : String(d.query.opponent),
     kdst: d.query.include_kdst ? "1" : undefined, exact: d.query.heuristic ? undefined : "1",
-    limit: String(d.query.limit), ...over,
+    limit: String(d.query.limit), ...targetHrefParams(d.query), ...over,
   };
   const p = new URLSearchParams();
   Object.entries(base).forEach(([k, v]) => { if (v) p.set(k, v); });
@@ -82,24 +104,21 @@ function hrefFor(d: Pick<DiscoveryContext, "query">, over: Record<string, string
   return `/trades/discover?${p.toString()}`;
 }
 
-function analyzerHref(r: DSummaryRow) {
-  const q = new URLSearchParams({ ta: String(r.anchor_team_id), tb: String(r.opponent_team_id) });
-  r.sends.forEach((id) => q.append("a", String(id)));
-  r.receives.forEach((id) => q.append("b", String(id)));
-  return `/trades?${q.toString()}`;
-}
-
-function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
+function Body({ c: d, summary, targets, q, sp, defaultSource, action }: {
+  c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; targets: Promise<ApiResult<DiscoveryTargets>> | null; q: string;
+  sp: Params; defaultSource: string; action: string;
+}) {
   const ev = d.evaluation;
-  const modeHref = (m: string) => hrefFor(d, { mode: m });
+  const modeHref = (m: string) => hrefFor(d, m === "targeted" ? { mode: m } : { mode: m, ...NO_TARGET });
   const tabs = lensTabs(d.query.mode);
   return (
     <>
       <PageHeader
         eyebrow="Trades"
         title="Trade discovery"
-        meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
+        meta={<>Projected points: <b>{projOf(d, defaultSource)}</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}
+        provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={<TeamLink href="/trades">Trade analyzer</TeamLink>}
       >
         <Tabs label="Discovery lens" current={modeHref(d.query.mode)}
@@ -109,7 +128,14 @@ function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<
       <p className={styles.modeNote}>{d.mode_text}</p>
       {ev.uncertain && ev.warning && <Notice tone="caution">{ev.warning}</Notice>}
 
-      <Filters d={d} />
+      {targets && (
+        <Suspense fallback={<Skeleton w="100%" h={120} />}>
+          <TargetGoal c={d} targets={targets} action={action} />
+        </Suspense>
+      )}
+
+      <Filters d={d} action={action} />
+      <SavedViews tool="discover" />
 
       <Suspense key={q} fallback={<ResultsSkeleton />}>
         <Discovered summary={summary} q={q} sp={sp} />
@@ -133,7 +159,7 @@ function ResultsSkeleton() {
 
 /** Everything that needs the search: coverage, the trades, the per-manager view and the method notes. */
 async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
-  const res = await summary;
+  const [res, { providerProjections }] = await Promise.all([summary, getLeagueProfile()]);
   if (!res.ok) return <BackendProblem error={res.error} kind={res.kind} status={res.status} />;
   const d = res.data;
   const ev = d.evaluation;
@@ -148,10 +174,12 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         </Notice>
       )}
       {d.lens_note && <Notice tone="info">{d.lens_note}</Notice>}
+      <TargetSummary target={d.target} horizonLabel={d.horizon?.label ?? null} />
       {(d.coverage.exact && !d.coverage.exact.exhaustive) || d.coverage.heuristic ? (
         <Notice tone="caution" title="This list is not a proven top list">
           {d.coverage.exact && !d.coverage.exact.exhaustive ? "The exact search reached its evaluation cap. " : ""}
           {d.coverage.heuristic ? `Larger shapes (${d.coverage.heuristic_shapes.join(", ")}) come from a bounded heuristic search. ` : ""}
+          {beamBudgetText(d.coverage.heuristic?.work_budget)?.notice ?? ""}
           Every listed trade is still evaluated exactly; see About this search below.
         </Notice>
       ) : null}
@@ -164,7 +192,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         <Coverage d={d} />
       </Method>
 
-      <Glossary terms={["Lineup points", "ROS", "Projected points", "—"]} />
+      <Glossary terms={["Lineup points", "ROS", "Projected points", "—"]} providerProjections={providerProjections} />
       <Method title="Method, assumptions and limitations">
         <p>{ev.start_week_reason}</p>
         <p>{d.note}</p>
@@ -185,7 +213,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
 
 // ---------------------------------------------------------------------------------- filters --
 
-function Filters({ d }: { d: DiscoveryContext }) {
+function Filters({ d, action }: { d: DiscoveryContext; action: string }) {
   const qy = d.query;
   const allMode = qy.mode === "all";
   return (
@@ -196,8 +224,10 @@ function Filters({ d }: { d: DiscoveryContext }) {
         {qy.opponent === null ? "All managers" : d.teams.find((t) => t.team_id === qy.opponent)?.name ?? "One manager"} · {qy.shapes.join(", ") || "No shapes"}
       </span>
     </summary>
-    <form action="/trades/discover" className={`panel ${styles.filters}`} aria-label="Discovery filters">
+    <form action={action} className={`panel ${styles.filters}`} aria-label="Discovery filters">
       <input type="hidden" name="mode" value={qy.mode} />
+      {Object.entries(targetHrefParams(qy)).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
+      {qy.mode === "targeted" && <input type="hidden" name="phase" value={qy.phase} />}
       <div className={styles.row}>
         <label className={styles.field}>Partner
           <select name="opponent" defaultValue={qy.opponent ?? ""}>
@@ -238,7 +268,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
                 {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
               </select>
             </label>
-            {modeUsesPhase(qy.mode) && (
+            {modeUsesPhase(qy.mode) && qy.mode !== "targeted" && (
               <label className={styles.field}>Phase
                 <select name="phase" defaultValue={qy.phase}>
                   {d.phases.map((p) => <option key={p} value={p}>{PHASE_LABEL[p] ?? p}</option>)}
@@ -290,6 +320,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
 
 function Coverage({ d }: { d: DiscoverySummary }) {
   const ex = d.coverage.exact, he = d.coverage.heuristic;
+  const budget = beamBudgetText(he?.work_budget);
   return (
     <StatStrip>
       <Stat label={<span title={d.pool_rule}>Pool for this view</span>} value={d.pool_size.toLocaleString()} note={d.pool_rule} />
@@ -301,7 +332,7 @@ function Coverage({ d }: { d: DiscoverySummary }) {
       <Stat
         label={<span title={he?.note}>Larger shapes ({d.coverage.heuristic_shapes.join(", ") || "off"})</span>}
         value={he ? "Heuristic" : "Off"}
-        note={he ? `not exhaustive · ${he.packages_evaluated.toLocaleString()} packages evaluated exactly (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
+        note={he ? `not exhaustive · ${budget ? budget.tile : `${he.packages_evaluated.toLocaleString()} packages evaluated exactly`} (beam ${he.beam.width}, ${he.beam.seeds} seeds/manager)` : "not searched"}
       />
       <Stat
         label="Checked against the analyzer"
@@ -324,6 +355,7 @@ function Players({ ids, d }: { ids: number[]; d: DiscoverySummary }) {
           <li key={id}>
             <PlayerLink id={id} name={n?.name ?? `#${id}`} /> <Pos value={n?.position} />
             {n?.on_ir && <Badge value="fantasy IR" tone="bad" />}
+            {n?.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />}
             {n?.nfl_ineligible_weeks?.length ? <Badge value={`NFL-ineligible wk ${n.nfl_ineligible_weeks[0]}–${n.nfl_ineligible_weeks[n.nfl_ineligible_weeks.length - 1]}`} tone="bad" /> : null}
           </li>
         );
@@ -337,7 +369,7 @@ function SeenFromThem({ label, ids, d }: { label: string; ids: number[]; d: Disc
   return <span className={styles.subline}><b>{label}</b> {ids.map((id) => d.names[id]?.name ?? `#${id}`).join(", ")}</span>;
 }
 
-function DeltaCell({ v, side }: { v: TradeDeltas; side?: DVSideSummary }) {
+function DeltaCell({ v, side, why }: { v: TradeDeltas; side?: DVSideSummary; why: string }) {
   return (
     <>
       {v.ros_delta === null
@@ -397,6 +429,7 @@ function Results({ d, rows, total, excluded, q, sp }: {
         <EmptyState title="No trade matches these settings"
           action={d.query.mode === "practical" && excluded > 0 ? <Link href={href(d, { mode: "upside" })}>Try Maximum upside</Link> : undefined}>
           No trade matches these settings{d.query.opponent !== null ? " with this manager" : ""}.
+          {targetSentence(d.target, d.horizon?.label ?? null) && <>{" "}Searched: {targetSentence(d.target, d.horizon?.label ?? null)}</>}
           {d.query.mode === "practical" && excluded > 0 && <>
             {" "}{d.excluded.lopsided} lopsided and {d.excluded.one_sided} one-sided candidates were left out.</>}
           {d.query.mode !== "practical" && left && <>{" "}Left out of this view: {left}.</>}
@@ -483,8 +516,8 @@ function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
                 <div><p className={styles.cardLabel}>Gets</p><Players ids={r.receives} d={d} /></div>
               </div>
               <dl className={styles.cardDeltas}>
-                <div><dt>Team Δ</dt><dd><DeltaCell v={r.mine} side={dv?.lineup.you} /></dd></div>
-                <div><dt>Partner Δ</dt><dd><DeltaCell v={r.theirs} side={dv?.lineup.them} /></dd></div>
+                <div><dt>Team Δ</dt><dd><DeltaCell v={r.mine} side={dv?.lineup.you} why={whyFor(projOf(d))} /></dd></div>
+                <div><dt>Partner Δ</dt><dd><DeltaCell v={r.theirs} side={dv?.lineup.them} why={whyFor(projOf(d))} /></dd></div>
               </dl>
               <div className={styles.tags}>
                 {dv && <VerdictBadge verdict={dv.verdict} text={dv.verdict_text} />}
@@ -493,6 +526,7 @@ function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
                 {!r.consistent_with_manual_evaluator && <Badge value="analyzer mismatch" tone="bad" />}
               </div>
               {dv && <MainConcern text={dv.main_concern} checks={dv.checks} />}
+              <TargetFitNotes fit={r.target_fit} />
               <details className={styles.cardMore}>
                 <summary>Lineup change, asset balance and checks</summary>
                 <div className={styles.cardMoreBody}>
@@ -514,7 +548,7 @@ function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
                   <span className={styles.subline}>{r.rationale.trade_type.text} · smaller side {r.min_side_ros_delta === null ? "—" : signedText(r.min_side_ros_delta)}</span>
                 </div>
               </details>
-              <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
+              <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} projLabel={projOf(d)} />
             </li>
           </Fragment>
         );
@@ -579,9 +613,9 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
             : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
           {fav && <span className={styles.subline}><b>{fav}</b></span>}
         </td>
-        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
-        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
-        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
+        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} why={whyFor(projOf(d))} /></td>
+        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} why={whyFor(projOf(d))} /></td>
+        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={whyFor(projOf(d))}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
         <td className={styles.changeCell} data-label="Lineup change">
           {dv?.you_change
             ? <>
@@ -589,6 +623,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
               {dv.them_change && <span className={styles.subline}><b>Partner:</b> {dv.them_change}</span>}
             </>
             : <span className="missing" title="No lineup-change summary for this trade (older backend or classic view)">—</span>}
+          <TargetFitNotes fit={r.target_fit} />
         </td>
         <td className={styles.typeCell} data-label="Verdict & checks">
           <div className={styles.tags}>
@@ -605,7 +640,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
       </tr>
       <tr className={styles.detailRow}>
         <td colSpan={10}>
-          <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
+          <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} projLabel={projOf(d)} />
         </td>
       </tr>
     </tbody>
@@ -666,7 +701,7 @@ function Managers({ d }: { d: DiscoverySummary }) {
                   {o.best ? <>{nm(o.best.sends)} → {nm(o.best.receives)} <span className="faint">{o.best.shape}</span></> : <span className="faint">none in this view</span>}
                 </td>
                 <td className="num">{o.best ? <>{signed(o.best.mine.ros_delta)} / {signed(o.best.theirs.ros_delta)}</> : null}</td>
-                <td><Link href={hrefFor(d, { opponent: String(o.opponent_team_id) })}>Filter</Link></td>
+                <td><Link href={hrefFor(d, { opponent: String(o.opponent_team_id), target: undefined })}>Filter</Link></td>
               </tr>
             ))}
           </tbody>

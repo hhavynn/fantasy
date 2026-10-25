@@ -52,10 +52,12 @@ from .base import (FreeAgent, LeagueAccess, LeagueNotFound, LeagueProvider, Leag
                    ProviderUnavailable, Standing, Transaction)
 from .fixtures import fixture_transport, load_fixture_id_map
 
+# Shown to visitors verbatim (the /leagues host card), so it names no settings or values. For operators: Sleeper is
+# enabled by SLEEPER_SOURCE=live (the real API, once its terms for this use are confirmed and the deployment approved)
+# or SLEEPER_SOURCE=fixture (recorded demo data only); see the module docstring and app/config.py.
 DISABLED_REASON = (
-    "Live Sleeper import is off: Sleeper's API terms for this use have not been confirmed and the "
-    "deployment has not been approved for it. Set SLEEPER_SOURCE=live once both are done "
-    "(SLEEPER_SOURCE=fixture serves recorded demo data only).")
+    "Live Sleeper import is off: Sleeper's API terms for this use have not been confirmed and this deployment has "
+    "not been approved for it yet.")
 
 T = TypeVar("T")
 _SOURCES = ("disabled", "fixture", "live")

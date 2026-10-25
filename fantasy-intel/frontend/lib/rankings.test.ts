@@ -207,6 +207,14 @@ test("parseRankingsFilters: invalid values fall back to the defaults", () => {
   assert.equal(parseRankingsFilters({ offset: "abc" }, undefined).offset, 0);
 });
 
+test("parseRankingsFilters: a league without provider projections is always on Ours and never asks for ESPN", () => {
+  assert.equal(parseRankingsFilters({}, "espn", false).source, "ours");
+  assert.equal(parseRankingsFilters({ source: "espn" }, "espn", false).source, "ours");
+  assert.equal(parseRankingsFilters({ source: "espn" }, undefined, true).source, "espn");
+  assert.match(rankingsApiPath(parseRankingsFilters({ source: "espn" }, "espn", false)), /source=independent/);
+  assert.doesNotMatch(rankingsApiPath(parseRankingsFilters({}, undefined, false)), /source=espn/);
+});
+
 test("parseRankingsFilters: a column sort without dir uses the column default (desc for numbers, asc for rank, name and consistency)", () => {
   assert.deepEqual(parseRankingsFilters({ sort: "rating" }, undefined).sort, { key: "rating", dir: "desc" });
   assert.deepEqual(parseRankingsFilters({ sort: "consistency" }, undefined).sort, { key: "consistency", dir: "asc" });

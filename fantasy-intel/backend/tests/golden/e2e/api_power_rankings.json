@@ -1,0 +1,684 @@
+// /api/power-rankings
+{
+ "body": {
+  "components": [
+   {
+    "description": "Average projected points of the team's optimal starting lineup per remaining week (ESPN weekly projections, the league's slots, re-optimized every week). Comparable weeks only.",
+    "key": "strength",
+    "label": "Lineup strength",
+    "unit": "projected points per week",
+    "weight": 0.45
+   },
+   {
+    "description": "Remove one starter at a time and re-optimize the rest of the roster: the projected points the remaining players recover, averaged over every week that starter would have started. Own roster only.",
+    "key": "depth",
+    "label": "Depth and injury cover",
+    "unit": "points recovered per lost starter-week",
+    "weight": 0.15
+   },
+   {
+    "description": "At each starting position (QB, RB, WR, TE), how many points per week the best bench player projects above the best free agent, never below 0, summed over positions.",
+    "key": "replacement",
+    "label": "Replacement options",
+    "unit": "points per week above the waiver wire",
+    "weight": 0.1
+   },
+   {
+    "description": "Every completed regular-season week, each team's score against every other team's score that week.",
+    "key": "all_play",
+    "label": "All-play",
+    "unit": "winning percentage",
+    "weight": 0.3
+   }
+  ],
+  "contract": "power-rankings/v1",
+  "empty": false,
+  "focus_team_id": 2,
+  "freshness": {
+   "league_synced_at": "<masked>",
+   "projections_synced_at": "<masked>"
+  },
+  "kdst_streaming": true,
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "last_regular_season_week": 14,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "message": null,
+  "method": [
+   "Each component is scaled within the league: the best ranked team scores 100, the worst 0 (all equal: 50).",
+   "Power score = 45% lineup strength + 30% all-play + 15% depth and injury cover + 10% replacement options. A component no team has yet (no completed weeks) is left out and the other weights are scaled up.",
+   "Equal power scores share a rank; lineup strength breaks the tie only for display order.",
+   "Last week's ranks are recomputed from what was known before last week's first kickoff: that week's rosters, the last ESPN projection snapshot stored before kickoff and the all-play record up to then.",
+   "These are rankings, not win probabilities or playoff odds."
+  ],
+  "previous": {
+   "available": false,
+   "reason": "no ESPN projection snapshot was stored before week 2's first kickoff (history starts 2026-10-20)",
+   "week": 2
+  },
+  "teams": [
+   {
+    "abbrev": "T2",
+    "all_play": {
+     "losses": 5,
+     "pct": 0.1667,
+     "ties": 0,
+     "wins": 1
+    },
+    "components": {
+     "all_play": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 4,
+      "score": 0.0,
+      "value": 0.1667
+     },
+     "depth": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 1,
+      "score": 100.0,
+      "value": 5.86
+     },
+     "replacement": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 1,
+      "score": 100.0,
+      "value": 2.0
+     },
+     "strength": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 1,
+      "score": 100.0,
+      "value": 86.0
+     }
+    },
+    "depth": {
+     "key_players": [
+      {
+       "espn_player_id": 102,
+       "marginal": 150.0,
+       "name": "Bravo QB",
+       "position": "QB",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 402,
+       "marginal": 135.0,
+       "name": "Victor TE",
+       "position": "TE",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 307,
+       "marginal": 45.0,
+       "name": "Sierra WR",
+       "position": "WR",
+       "recovered": 135.0,
+       "weeks_started": 15
+      }
+     ],
+     "share": 0.5942,
+     "starter_weeks": 105
+    },
+    "is_mine": true,
+    "movement": null,
+    "name": "Team 2",
+    "points_for": 300.0,
+    "positions": {
+     "strongest": [
+      {
+       "average": 23.0,
+       "rank": 1,
+       "slot": "WR"
+      },
+      {
+       "average": 11.0,
+       "rank": 1,
+       "slot": "K"
+      }
+     ],
+     "weakest": [
+      {
+       "average": 9.0,
+       "rank": 3,
+       "slot": "TE"
+      },
+      {
+       "average": 10.0,
+       "rank": 3,
+       "slot": "QB"
+      }
+     ]
+    },
+    "power_score": 70.0,
+    "previous_power_score": null,
+    "previous_rank": null,
+    "rank": 1,
+    "record": {
+     "losses": 1,
+     "ties": 0,
+     "wins": 2
+    },
+    "replacement": {
+     "covered": 1,
+     "of": 4,
+     "positions": [
+      {
+       "best_bench": null,
+       "best_free_agent": 6.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "QB"
+      },
+      {
+       "best_bench": 7.0,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": true,
+       "position": "RB"
+      },
+      {
+       "best_bench": 9.0,
+       "best_free_agent": 7.0,
+       "edge": 2.0,
+       "has_backup": true,
+       "position": "WR"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "TE"
+      }
+     ]
+    },
+    "team_id": 2,
+    "unranked_reason": null
+   },
+   {
+    "abbrev": "T1",
+    "all_play": {
+     "losses": 4,
+     "pct": 0.3333,
+     "ties": 0,
+     "wins": 2
+    },
+    "components": {
+     "all_play": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 3,
+      "score": 25.0,
+      "value": 0.3333
+     },
+     "depth": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 73.2,
+      "value": 4.29
+     },
+     "replacement": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 0.0,
+      "value": 0.0
+     },
+     "strength": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 90.5,
+      "value": 80.0
+     }
+    },
+    "depth": {
+     "key_players": [
+      {
+       "espn_player_id": 101,
+       "marginal": 135.0,
+       "name": "Alpha QB",
+       "position": "QB",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 401,
+       "marginal": 120.0,
+       "name": "Uniform TE",
+       "position": "TE",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 202,
+       "marginal": 90.0,
+       "name": "Foxtrot RB",
+       "position": "RB",
+       "recovered": 90.0,
+       "weeks_started": 15
+      }
+     ],
+     "share": 0.4918,
+     "starter_weeks": 105
+    },
+    "is_mine": false,
+    "movement": null,
+    "name": "Team 1",
+    "points_for": 400.0,
+    "positions": {
+     "strongest": [
+      {
+       "average": 23.0,
+       "rank": 1,
+       "slot": "RB"
+      },
+      {
+       "average": 9.0,
+       "rank": 1,
+       "slot": "D/ST"
+      }
+     ],
+     "weakest": [
+      {
+       "average": 8.0,
+       "rank": 4,
+       "slot": "TE"
+      },
+      {
+       "average": 9.0,
+       "rank": 4,
+       "slot": "QB"
+      }
+     ]
+    },
+    "power_score": 59.2,
+    "previous_power_score": null,
+    "previous_rank": null,
+    "rank": 2,
+    "record": {
+     "losses": 0,
+     "ties": 0,
+     "wins": 3
+    },
+    "replacement": {
+     "covered": 0,
+     "of": 4,
+     "positions": [
+      {
+       "best_bench": null,
+       "best_free_agent": 6.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "QB"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "RB"
+      },
+      {
+       "best_bench": 6.0,
+       "best_free_agent": 7.0,
+       "edge": 0.0,
+       "has_backup": true,
+       "position": "WR"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "TE"
+      }
+     ]
+    },
+    "team_id": 1,
+    "unranked_reason": null
+   },
+   {
+    "abbrev": "T3",
+    "all_play": {
+     "losses": 1,
+     "pct": 0.8333,
+     "ties": 0,
+     "wins": 5
+    },
+    "components": {
+     "all_play": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 1,
+      "score": 100.0,
+      "value": 0.8333
+     },
+     "depth": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 3,
+      "score": 0.0,
+      "value": 0.0
+     },
+     "replacement": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 0.0,
+      "value": 0.0
+     },
+     "strength": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 3,
+      "score": 23.8,
+      "value": 38.0
+     }
+    },
+    "depth": {
+     "key_players": [
+      {
+       "espn_player_id": 103,
+       "marginal": 165.0,
+       "name": "Charlie QB",
+       "position": "QB",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 208,
+       "marginal": 165.0,
+       "name": "Lima RB",
+       "position": "RB",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 403,
+       "marginal": 150.0,
+       "name": "Whiskey TE",
+       "position": "TE",
+       "recovered": 0.0,
+       "weeks_started": 15
+      }
+     ],
+     "share": 0.0,
+     "starter_weeks": 60
+    },
+    "is_mine": false,
+    "movement": null,
+    "name": "Team 3",
+    "points_for": 200.0,
+    "positions": {
+     "strongest": [
+      {
+       "average": 11.0,
+       "rank": 2,
+       "slot": "QB"
+      },
+      {
+       "average": 10.0,
+       "rank": 2,
+       "slot": "TE"
+      }
+     ],
+     "weakest": [
+      {
+       "average": 0.0,
+       "rank": 3,
+       "slot": "FLEX"
+      },
+      {
+       "average": 0.0,
+       "rank": 3,
+       "slot": "D/ST"
+      }
+     ]
+    },
+    "power_score": 40.7,
+    "previous_power_score": null,
+    "previous_rank": null,
+    "rank": 3,
+    "record": {
+     "losses": 2,
+     "ties": 0,
+     "wins": 1
+    },
+    "replacement": {
+     "covered": 0,
+     "of": 4,
+     "positions": [
+      {
+       "best_bench": null,
+       "best_free_agent": 6.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "QB"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "RB"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 7.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "WR"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "TE"
+      }
+     ]
+    },
+    "team_id": 3,
+    "unranked_reason": null
+   },
+   {
+    "abbrev": "T4",
+    "all_play": {
+     "losses": 2,
+     "pct": 0.6667,
+     "ties": 0,
+     "wins": 4
+    },
+    "components": {
+     "all_play": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 75.0,
+      "value": 0.6667
+     },
+     "depth": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 3,
+      "score": 0.0,
+      "value": 0.0
+     },
+     "replacement": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 2,
+      "score": 0.0,
+      "value": 0.0
+     },
+     "strength": {
+      "previous_score": null,
+      "previous_value": null,
+      "rank": 4,
+      "score": 0.0,
+      "value": 23.0
+     }
+    },
+    "depth": {
+     "key_players": [
+      {
+       "espn_player_id": 104,
+       "marginal": 180.0,
+       "name": "Delta QB",
+       "position": "QB",
+       "recovered": 0.0,
+       "weeks_started": 15
+      },
+      {
+       "espn_player_id": 404,
+       "marginal": 165.0,
+       "name": "Xray TE",
+       "position": "TE",
+       "recovered": 0.0,
+       "weeks_started": 15
+      }
+     ],
+     "share": 0.0,
+     "starter_weeks": 30
+    },
+    "is_mine": false,
+    "movement": null,
+    "name": "Team 4",
+    "points_for": 100.0,
+    "positions": {
+     "strongest": [
+      {
+       "average": 12.0,
+       "rank": 1,
+       "slot": "QB"
+      },
+      {
+       "average": 11.0,
+       "rank": 1,
+       "slot": "TE"
+      }
+     ],
+     "weakest": [
+      {
+       "average": 0.0,
+       "rank": 4,
+       "slot": "WR"
+      },
+      {
+       "average": 0.0,
+       "rank": 4,
+       "slot": "RB"
+      }
+     ]
+    },
+    "power_score": 22.5,
+    "previous_power_score": null,
+    "previous_rank": null,
+    "rank": 4,
+    "record": {
+     "losses": 3,
+     "ties": 0,
+     "wins": 0
+    },
+    "replacement": {
+     "covered": 0,
+     "of": 4,
+     "positions": [
+      {
+       "best_bench": null,
+       "best_free_agent": 6.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "QB"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "RB"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 7.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "WR"
+      },
+      {
+       "best_bench": null,
+       "best_free_agent": 12.0,
+       "edge": 0.0,
+       "has_backup": false,
+       "position": "TE"
+      }
+     ]
+    },
+    "team_id": 4,
+    "unranked_reason": null
+   }
+  ],
+  "week": 3,
+  "weights": {
+   "all_play": 0.3,
+   "depth": 0.15,
+   "replacement": 0.1,
+   "strength": 0.45
+  },
+  "window": {
+   "all_play_periods": [
+    1,
+    2
+   ],
+   "comparable_weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ],
+   "excluded_weeks": [],
+   "note": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  }
+ },
+ "status": 200
+}

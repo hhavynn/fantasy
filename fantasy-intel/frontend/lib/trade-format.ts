@@ -1,16 +1,21 @@
 // Pure text helpers for the trade pages (no React), unit-tested in lib/trade-format.test.ts.
 
+import { projectionWord } from "./labels.ts";
+
 const FIXED: Record<string, string> = {
   MUTUAL_PROJECTED_GAIN: "Both lineups project to gain",
   BOTH_LOSE: "Both lineups project to lose",
   NO_PROJECTED_CHANGE: "Neither lineup changes",
-  INCOMPLETE_DATA: "Incomplete ESPN projections: no canonical total",
 };
 
 const VERB: Record<string, string> = { GAIN: "gains", LOSS: "loses", UNCHANGED: "is unchanged" };
 
-/** Human sentence for a backend result label (`MUTUAL_PROJECTED_GAIN`, `TEAM_A_GAIN_TEAM_B_LOSS`, ...). */
-export function resultText(code: string, a: string, b: string): string {
+/**
+ * Human sentence for a backend result label (`MUTUAL_PROJECTED_GAIN`, `TEAM_A_GAIN_TEAM_B_LOSS`, ...). `proj` names
+ * the projections the evaluation ran on ("ESPN" unless the league is on Ours).
+ */
+export function resultText(code: string, a: string, b: string, proj: string = "ESPN"): string {
+  if (code === "INCOMPLETE_DATA") return `Incomplete ${projectionWord(proj)}projections: no canonical total`;
   if (FIXED[code]) return FIXED[code];
   const m = code.match(/^TEAM_A_(\w+?)_TEAM_B_(\w+)$/);
   if (!m) return code;

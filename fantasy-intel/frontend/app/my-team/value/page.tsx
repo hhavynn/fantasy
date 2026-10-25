@@ -1,7 +1,11 @@
 import { BackendProblem } from "@/components/BackendProblem";
 import { Missing, num } from "@/lib/format";
 import { Notice, PageHeader, Stat, StatStrip, Tabs } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, requestLeague } from "@/lib/api";
+import { projectionName, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
+import { withLeague } from "@/lib/league-scope";
+import { adjustments, effectivePool, parseAssets, parsePool, utilityQuery, type RosterUtility } from "@/lib/roster-utility";
 import { parseSort, type SortState } from "@/lib/sort";
 import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
@@ -9,15 +13,17 @@ import {
   BenchSection, MARGINAL_SORT_KEYS, MarginalTable, RaceContext, SlotGaps, SlotStrength, Summary, TopContributors,
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
 } from "./sections";
+import { RosterUtilitySection } from "./RosterUtility";
 import styles from "./value.module.css";
-import { TeamPerspective } from "@/components/TeamPerspective";
+import { ChooseTeam, TeamPerspective, needsTeam } from "@/components/TeamPerspective";
 import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Team value" };
 
 // My Team Value: roster strength vs the league, who really moves the starting lineup, unused bench
 // projection, upgrades and the playoff-race context. Every number comes from the canonical engine
-// (ESPN weekly projections + the exact weekly lineup optimizer); nothing here is a probability.
+// (the league's default weekly projections: ESPN's, or Ours for a league whose provider publishes none, + the exact
+// weekly lineup optimizer); nothing here is a probability.
 
 const PATH = "/my-team/value";
 const MARGINAL_DEFAULT: SortState = { key: "marginal", dir: "desc" };
@@ -25,6 +31,8 @@ const PHASES: TvPhase[] = ["all", "regular", "playoff"];
 const TAB_TEXT: Record<TvPhase, string> = { all: "Rest of season", regular: "Regular", playoff: "Playoffs" };
 
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+const ids = (v: string | string[] | undefined): number[] =>
+  (v === undefined ? [] : Array.isArray(v) ? v : [v]).map(Number).filter((n) => Number.isInteger(n));
 
 /** A phase's projected total; its known partial sum marked with an asterisk; or a dash when no weeks are left. */
 function total(s: TvPhaseSplit) {
@@ -52,7 +60,8 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
     return (
       <div className="stack">
         <PageHeader title="My team value" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {needsTeam(res) ? <ChooseTeam path={PATH} sp={sp} what="its roster value and lineup strength" />
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
       </div>
     );
   }
@@ -94,23 +103,33 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
   );
 }
 
-function Dashboard({ d, phase, trades, sort, sp }: {
+async function Dashboard({ d, phase, trades, sort, sp }: {
   d: TeamValue;
   phase: TvPhase;
   trades: boolean;
   sort: SortState;
   sp: Record<string, string | string[] | undefined>;
 }) {
+  const profile = await getLeagueProfile();
+  const words = { proj: projectionName(profile.defaultSource), pv: providerName(profile.provider) };
   const ov = d.overview!;
   const split = ov.phases[phase];
   const ranks = ov.league_ranks.phases[phase];
   const unused = [...d.bench!.players].sort((a, b) => b.unused_projected_points - a.unused_projected_points)[0];
   const partial = [ov.phases.regular, ov.phases.playoff].some((s) => phaseState(s) === "incomplete");
+  // Roster utility (#216): asked only when players are chosen (`mu`), for exactly the team this page shows.
+  const chosen = parseAssets(ids(sp.mu), d.players!.map((p) => p.espn_player_id));
+  const asked = { ids: new Set(ids(sp.mu)).size, pool: parsePool(one(sp.pool)) };
+  const pool = effectivePool(chosen, asked.pool);
+  const utility = chosen.length > 0
+    ? api<RosterUtility>(`/api/my-team/value/marginal?${utilityQuery(chosen, pool, String(d.team.team_id))}`)
+    : null;
+  const action = withLeague(PATH, await requestLeague());
   return (
     <>
       <StatStrip>
         <Stat
-          label="Record (ESPN)"
+          label={`Record (${words.pv})`}
           value={recordText(d.standing.record)}
           note={<>Seed {d.standing.espn_seed ?? "—"} · PF {num(d.standing.points_for, 1)} · PA {num(d.standing.points_against, 1)}</>}
         />
@@ -157,13 +176,15 @@ function Dashboard({ d, phase, trades, sort, sp }: {
       </div>
 
       <SlotStrength d={d} phase={phase} />
-      <MarginalTable d={d} phase={phase} sort={sort} sp={sp} />
-      <BenchSection d={d} />
+      <MarginalTable d={d} phase={phase} sort={sort} sp={sp} words={words} />
+      <RosterUtilitySection players={d.players!} sp={sp} action={action} chosen={chosen} pool={pool} result={utility}
+        notices={adjustments(asked, { ids: chosen.length, pool })} />
+      <BenchSection d={d} words={words} />
       <SlotGaps d={d} />
-      <WaiverMoves d={d} />
+      <WaiverMoves d={d} words={words} />
       <TradePreview d={d} trades={trades} sp={sp} />
       <RaceContext d={d} />
-      <ValueMethod d={d} />
+      <ValueMethod d={d} words={words} />
     </>
   );
 }

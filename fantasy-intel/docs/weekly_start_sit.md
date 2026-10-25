@@ -94,7 +94,7 @@ When viewing a future scoring period (`week > current_week`):
 ### `GET /api/start-sit`
 
 **Parameters:**
-- `team_id` (optional, integer): Defaults to the authenticated user's fantasy team (`is_mine = true`).
+- `team_id` (optional, integer): Defaults to the authenticated user's fantasy team (`is_mine = true`). With no such team (a multi-league viewer with no saved team and no `?team_id=`) the response is 404 "No team is marked as yours", never another team's lineup (#348).
 - `week` (optional, integer): Scoring period / NFL week. Defaults to `league.current_week`.
 
 **Response Payload Schema:**
@@ -134,6 +134,7 @@ When viewing a future scoring period (`week > current_week`):
     "bench_count": 6,
     "ir_count": 1,
     "locked_players_count": 2,
+    "all_locked": false,
     "status": "upgrade_available"
   },
   "recommended_lineup": [ ... ],

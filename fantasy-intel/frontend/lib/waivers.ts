@@ -62,3 +62,26 @@ export function withParams(sp: Params, updates: Record<string, string | null>): 
   const s = qs.toString();
   return s ? `?${s}` : "?";
 }
+
+type ScoreRow = {
+  waiver_score: number | null;
+  components?: { roster?: { fit_status?: string; value_unknown?: { name: string | null }[] } | null } | null;
+};
+
+/** The waiver score as a measured value, or null when it lacks a term: an unknown lineup gain (a player without a
+ * historical value) is `roster.fit_status` "partial", and the score must not read as if that term were 0. */
+export function knownWaiverScore(row: ScoreRow): number | null {
+  return row.components?.roster?.fit_status === "partial" ? null : row.waiver_score;
+}
+
+/** Why a waiver score is not shown (for the Missing tooltip). */
+export function waiverScoreGap(row: ScoreRow): string {
+  const names = (row.components?.roster?.value_unknown ?? []).map((u) => u.name).filter(Boolean);
+  return `Partial score: lineup gain unknown${names.length ? ` (no historical value for ${names.join(", ")})` : ""}; unknown is not zero.`;
+}
+
+/** A stored positional need computed without its starter-quality term (`details.value_status` "partial"). */
+export function needPartialReason(details: { value_status?: string; value_note?: string | null } | null | undefined): string | null {
+  if (details?.value_status !== "partial") return null;
+  return details.value_note ?? "Starter quality unknown; this need uses roster shortage only.";
+}

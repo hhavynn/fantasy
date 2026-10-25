@@ -65,3 +65,29 @@
 .method p { margin: 0 0 10px; }
 .method ol { margin: 0 0 10px; padding-left: 20px; }
 .method li { margin: 4px 0; }
+
+/* Device-local shortlist shares the page's existing tokens and compact row vocabulary. */
+.save {
+  min-height: 44px;
+  min-width: 64px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-control);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.save:hover, .save[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.save:disabled { opacity: .6; cursor: default; }
+.save:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.who .save { margin-top: 8px; }
+
+/* Claim card actions: save to the shortlist, or load the move in the add/drop simulator. */
+.claimButtons { display: flex; flex-wrap: wrap; gap: 8px; }
+.simulate {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 64px; padding: 8px 12px;
+  border: 1px solid var(--line-control); border-radius: 6px; color: var(--ink); font-size: inherit;
+}
+.simulate:hover { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+.simulate:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

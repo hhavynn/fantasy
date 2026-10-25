@@ -22,6 +22,14 @@ and the Trade Discovery 2.0 lenses (docs/trade_discovery_dual_value.md, "Lenses"
                    A lens only orders and filters a pool: the ranking is never fed back into the
                    best-first search, so the exact search's guarantees are untouched.
 
+and targeted discovery (issue #182, docs/v2_trade_discovery.md "Targeted discovery"):
+
+  targeted         trades that bring in what the manager asked for (a named player, a position, a roster need
+                   resolved to one of those, a short horizon or a bye week), ranked like a lens by verdict, Pareto
+                   front and then the anchor's gain over the chosen horizon; the partner's change, the horizon versus
+                   rest-of-season trade-off, lost depth and roster fit are stated beside every row (`target_fit`).
+                   A target also filters every other mode's pool; it never re-weights a trade.
+
 Every assessed row in every mode also carries `dual_value` as additional evidence; the legacy modes keep
 their rows, sections and order exactly. Ordering is always by canonical deltas or the stated policy
 (no hidden bonus points for names, positions or player counts), and no row carries an acceptance
@@ -36,8 +44,8 @@ from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT,
 from .team_lineups import compare
 from . import trade_dual_value as dual
 from .trade_assets import AGAINST_THEM, NOTE as ASSET_NOTE, AssetBoard, league_needs
-from .trade_discovery import TradeSearch, _rank_key, detail
-from .trades import TradeError
+from .trade_discovery import TradeSearch, TradeTarget, _rank_key, detail
+from .trades import EvaluationUnavailable, TradeError
 
 MODES = {
     "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete "
@@ -53,6 +61,8 @@ MODES = {
                      "assessed.",
     "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, "
                "then the smaller side's playoff gain.",
+    "targeted": "Targeted search: trades that bring in the player or position you asked for; ordered by verdict, then "
+                "Pareto front, then your gain over the chosen horizon, with the partner's change beside it.",
 }
 # The discovery lenses. `sections`: verdicts shown, in order; `excluded`: the stable keys of rows the lens filters
 # out (plus similar_variants); `measure`: the within-front ordering (trade_dual_value.rank's `primary`).
@@ -67,7 +77,19 @@ LENSES = {
                       "excluded": ("no_consolidating_gain",), "measure": "lineup_min_side"},
     "playoff": {"label": "Playoff-focused trades", "sections": (*SENSIBLE, "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete"),
                 "excluded": ("no_playoff_gain",), "measure": "lineup_min_side"},
+    "targeted": {"label": "Targeted search",
+                 "sections": (*SENSIBLE, "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete"),
+                 "excluded": ("no_gain_in_horizon",), "measure": "anchor_horizon"},
 }
+# The anchor-side sort a targeted search ranks its pool by, per phase. Focus weeks use focus_gain, and so does the
+# regular-season horizon, which is searched as focus weeks (regular_season_weeks): stage A screens and the search
+# qualifies on rest-of-season, playoff and focus gains, so a regular-season-only gain needs the focus to be found.
+TARGET_PHASE_SORT = {"ros": "my_gain", "playoff": "playoff_gain"}
+
+
+def regular_season_weeks(window) -> tuple[int, ...]:
+    """The evaluation window's regular-season weeks: the focus weeks of a targeted regular-season horizon."""
+    return tuple(w for w in window.weeks if window.phase(w) == "regular")
 LENS_LABELS = {"practical": "Practical trades", "mutual": "Mutual improvement", "upside": "Maximum upside",
                "all": "All candidates", **{k: v["label"] for k, v in LENSES.items()}}
 SECTION_TEXT = {v: t.format(who="one side's") for v, t in dual.VERDICTS.items()}
@@ -76,7 +98,18 @@ PROJECTION_SOURCE = {
     "note": "ESPN is the only canonical projection source for trade evaluation. The independent model (ifp-2) is not "
             "wired into the trade state for long horizons and is unvalidated there, so it is never mixed into a "
             "scenario and never the default; no comparison is shown."}
+# a league without provider projections (Sleeper): Fantasy Intel's own are the only ones (multi-league Phase 4b)
+OURS_PROJECTION_SOURCE = {
+    "used": "independent", "experimental_comparison": None,
+    "note": "This league's provider publishes no projections, so trades are evaluated with Fantasy Intel's own "
+            "projections (Ours, re-scored to this league's scoring): weekly forecasts for the coming weeks and "
+            "experimental rest-of-season forecasts beyond them. Nothing is mixed with another source."}
+
+
+def projection_source_for(state) -> dict:
+    return OURS_PROJECTION_SOURCE if getattr(state, "projection_source", "espn") == "independent" else PROJECTION_SOURCE
 PHASE_TEXT = {"ros": "rest-of-season", "regular": "regular-season", "playoff": "fantasy-playoff"}
+PHASE_PHRASE = {"ros": "the rest of the season", "regular": "the regular season", "playoff": "the fantasy playoffs"}
 PHASES = {"ros": ("min_side", "ros_delta"), "regular": ("min_side_regular", "regular_season_delta"),
           "playoff": ("min_side_playoff", "playoff_delta")}
 STRICTNESS = {
@@ -134,7 +167,7 @@ def _anchor_opportunity_cost(board, anchor: int, row: dict, alt: dict, fa,
         return {"has_concern": False, "trade_advantage": g, "available_without_trade": 0.0, "lead": None}
     # Incoming players are active after the trade (as in trades.side_lineups), even if they sat in a
     # fantasy IR slot on their old team; otherwise scenario E would leave them out of the lineup.
-    incoming = [replace(names[x], on_ir=False) for x in row["receives"] if x in names]
+    incoming = [replace(names[x], on_ir=False, on_taxi=False) for x in row["receives"] if x in names]
     c_team = alt["_team"]
     try:
         combined = board.trade_with(anchor, [p for p in board.state.rosters[anchor] if p.espn_player_id not in row["sends"]] + incoming,
@@ -302,15 +335,125 @@ def trade_type(d: dict, names: dict, n: int) -> dict:
     return {"kind": kind, "text": text}
 
 
+# ------------------------------------------------------------------------ targeted discovery --
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def weeks_label(weeks) -> str:
+    weeks = sorted(weeks)
+    if len(weeks) == 1:
+        return f"week {weeks[0]}"
+    if weeks == list(range(weeks[0], weeks[-1] + 1)):
+        return f"weeks {weeks[0]}\u2013{weeks[-1]}"
+    return "weeks " + ", ".join(map(str, weeks))
+
+
+def horizon_info(ts: TradeSearch, phase: str) -> dict:
+    """The horizon a targeted view judges the anchor's gain over: the focus weeks, else the phase's weeks. A
+    regular-season view whose focus weeks are exactly the regular season keeps its phase label."""
+    if ts.focus and not (phase == "regular" and ts.focus_weeks == regular_season_weeks(ts.window)):
+        weeks = list(ts.focus_weeks)
+        return {"kind": "weeks", "phase": None, "weeks": weeks, "label": weeks_label(weeks),
+                "phrase": weeks_label(weeks)}
+    want = {"regular": "regular", "playoff": "playoff"}.get(phase)
+    weeks = [w for w in ts.weeks if want is None or ts.window.phase(w) == want]
+    return {"kind": "phase", "phase": phase, "weeks": weeks, "label": PHASE_TEXT[phase], "phrase": PHASE_PHRASE[phase]}
+
+
+def target_text(target: TradeTarget | None, names: dict) -> str:
+    if target is None or (target.player is None and target.position is None):
+        return ""
+    if target.player is not None:
+        n = names.get(target.player) or {}
+        return f" among trades in which you receive {n.get('name') or f'#{target.player}'}"
+    return f" among trades in which you receive at least one {target.position}"
+
+
+def target_fit(d: dict, target: TradeTarget | None, horizon: dict, names: dict, n: int) -> dict:
+    """Plain trade-off statements for one fully evaluated row of a targeted view (issue #182): the horizon against
+    the rest of the season, how the incoming target would be used, the depth and roster spots given up, roster fit
+    (forced drops, empty slots) and the partner's change. Every number is a canonical delta or a count from the
+    manual evaluator's lineups; nothing predicts what the other manager will do."""
+    me, them = d["mine_detail"], d["theirs_detail"]
+    focus = horizon["kind"] == "weeks"
+    phase = horizon["phase"] or "ros"
+    mh, th = horizon_delta(d["mine"], phase, focus), horizon_delta(d["theirs"], phase, focus)
+    ros = d["mine"]["ros_delta"]
+    label, over, hw = horizon["label"], horizon["phrase"], set(horizon["weeks"])
+    partner = d["opponent_name"] or "The partner"
+    pos = lambda pid: (names.get(pid) or {}).get("position")    # noqa: E731
+    matched = [pid for pid in d["receives"] if target is not None and target.matches((pid,), pos)] \
+        if target is not None and (target.player is not None or target.position is not None) else []
+    out = []
+    if horizon["phase"] != "ros":
+        if mh is None:
+            text = f"Over {over} your change is unknown (a missing projection)."
+        else:
+            text = f"Over {over} you change {mh:+.1f}."
+            if ros is None:
+                text += " Rest of season: unknown (a missing projection)."
+            elif ros < 0 < mh:
+                text += f" Over the rest of the season you change {ros:+.1f}, so the gain is short-term."
+            elif mh <= 0 < ros:
+                text += f" Over the rest of the season you change {ros:+.1f}; the gain comes outside this horizon."
+            else:
+                text += f" Over the rest of the season you change {ros:+.1f}."
+        out.append({"kind": "horizon", "text": text})
+    span = "remaining weeks" if horizon["phase"] == "ros" else f"{label} weeks"
+    for u in me["incoming_usage"]:
+        if matched and u["espn_player_id"] not in matched:
+            continue
+        k = len(set(u["weeks_started"]) & hw)
+        who = f"{u['name'] or '#' + str(u['espn_player_id'])} ({u['position']})"
+        if not k:
+            out.append({"kind": "target", "text": f"{who} would not start for you in {span if focus else 'any of the ' + span}."})
+        elif focus and len(hw) == 1:
+            out.append({"kind": "target", "text": f"{who} would start for you in {label}."})
+        else:
+            out.append({"kind": "target", "text": f"{who} would start {k} of {len(hw)} {'weeks in ' + label if focus else span} for you."})
+    bench = [u for u in me["outgoing_usage"] if len(u["weeks_started"]) * 2 <= n]
+    if bench:
+        out.append({"kind": "depth", "text": "You give up depth: " + ", ".join(
+            f"{u['name'] or '#' + str(u['espn_player_id'])} ({u['position']}, starts {len(u['weeks_started'])} of {n} "
+            "remaining weeks for you)" for u in bench) + "."})
+    fewer = len(d["sends"]) - len(d["receives"])
+    if fewer > 0:
+        out.append({"kind": "depth", "text": f"You send {len(d['sends'])} players for {len(d['receives'])}: "
+                                             f"{_plural(fewer, 'fewer rostered player')} after the trade."})
+    if me["forced_drops"]:
+        out.append({"kind": "roster_fit", "text": "Your roster does not fit as it stands: you must drop "
+                    + ", ".join(x["name"] or str(x["espn_player_id"]) for x in me["forced_drops"])
+                    + " to stay within roster limits."})
+    holes = me.get("empty_slots_after") or []
+    if holes:
+        out.append({"kind": "roster_fit", "text": f"Your {'/'.join(sorted({h['slot'] for h in holes}))} slot would be "
+                                                  f"empty in {weeks_label({h['week'] for h in holes})} after the trade "
+                                                  "(no eligible player left)."})
+    if th is None:
+        out.append({"kind": "partner", "text": f"{partner}'s change over {over} is unknown (a missing projection)."})
+    elif th < 0:
+        out.append({"kind": "partner", "text": f"{partner}'s projected starting lineup loses {abs(th):.1f} over {over}: "
+                                               "they give up more lineup points than they get."})
+    elif th == 0:
+        out.append({"kind": "partner", "text": f"{partner}'s projected starting lineup is unchanged over {over}."})
+    else:
+        out.append({"kind": "partner", "text": f"{partner}'s projected starting lineup gains {th:.1f} over {over}."})
+    return {"matched": matched, "horizon": {"label": label, "weeks": horizon["weeks"], "mine_delta": mh,
+                                            "theirs_delta": th},
+            "tradeoffs": out}
+
+
 # ---------------------------------------------------------------------------- the modes --
 
 def _pool(ts: TradeSearch, sort: str, category: str | None, opponent: int | None, limit: int,
-          heuristic: bool) -> tuple[list[dict], dict, dict | None]:
-    exact = ts.top(sort, category, opponent, limit)
+          heuristic: bool, target: TradeTarget | None = None) -> tuple[list[dict], dict, dict | None]:
+    exact = ts.top(sort, category, opponent, limit, target=target)
     rows = list(exact["results"])
     heur = None
     if heuristic and ts.heuristic_shapes:
-        heur = ts.heuristic_top(sort, category, opponent, limit)
+        heur = ts.heuristic_top(sort, category, opponent, limit, target=target)
         keys = {r["key"] for r in rows}
         rows += [r for r in heur["results"] if r["key"] not in keys]
     rows.sort(key=_rank_key(sort))
@@ -329,13 +472,31 @@ def _detail(ts: TradeSearch, row: dict) -> dict:
     return dict(cache[row["key"]])
 
 
+def _detail_or_none(ts: TradeSearch, row: dict) -> dict | None:
+    """_detail, or None when the manual evaluator abstains on this one trade (EvaluationUnavailable: its exact forced-drop
+    resolution is over a budget). The view then leaves that row out and counts it (`excluded.evaluation_unavailable`);
+    one abstaining row never fails the whole response, and it is never shown without the evaluator's check."""
+    try:
+        return _detail(ts, row)
+    except EvaluationUnavailable:
+        return None
+
+
 def _phase_pair(x: dict, phase: str) -> tuple:
     return _phase_delta(x["mine"], phase), _phase_delta(x["theirs"], phase)
 
 
-def _lens_exclusion(mode: str, x: dict, phase: str) -> str | None:
+def horizon_delta(side: dict, phase: str, focus: bool) -> float | None:
+    """One side's delta over the targeted horizon: the focus weeks when the search has them, else the phase."""
+    return side.get("focus_delta") if focus else _phase_delta(side, phase)
+
+
+def _lens_exclusion(mode: str, x: dict, phase: str, focus: bool = False) -> str | None:
     """The `excluded` key when the lens's own filter drops this assessed row, else None (the verdict filter
     follows: a verdict that is not one of the lens's sections is counted under its own name)."""
+    if mode == "targeted":
+        h = horizon_delta(x["mine"], phase, focus)          # unknown is kept (incomplete), never read as 0
+        return "no_gain_in_horizon" if h is not None and h <= 0 else None
     m, t = _phase_pair(x, phase)
     imbalance = x["dual_value"]["asset"]["imbalance"]
     if mode == "mutual_upgrades":
@@ -374,12 +535,15 @@ def _lens_sections(mode: str, ranked: list[dict], limit: int, excluded: dict) ->
 
 def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", opponent: int | None = None,
              limit: int = 10, strictness: str = "standard", sort: str | None = None, category: str | None = None,
-             heuristic: bool = True, board: FreeAgencyBoard | None = None, anchor_label: str = "You") -> dict:
+             heuristic: bool = True, board: FreeAgencyBoard | None = None, anchor_label: str = "You",
+             target: TradeTarget | None = None) -> dict:
     """Rows for one mode, assessed and explained. `anchor_label` names the anchor team in dual-value text: "You"
     only for the owner's team, its name when another team is being analyzed (league-wide perspective). Every shown row is re-run through the manual
     evaluator (detail) and carries consistent_with_manual_evaluator and its `dual_value`. The lenses
     assess their whole candidate pool with the full evaluator first; the legacy modes only assess the
-    rows they show."""
+    rows they show. A `target` (named player and/or position received) filters every mode's pool; the targeted mode
+    ranks by the anchor's gain over the horizon (the search's focus weeks, else the phase) and every row of a targeted
+    view carries `target_fit`."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
     if phase not in PHASES:
@@ -392,17 +556,32 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     names = {p.espn_player_id: {"name": p.name, "position": p.position} for ps in state.rosters.values() for p in ps}
     n = len(window.weeks)
     lens = LENSES.get(mode)
+    lens_note = None
+    focus = bool(ts.focus)
     if mode == "playoff":
         phase = "playoff"                        # this lens is the playoff phase, whatever phase was requested
+    elif mode == "targeted" and not focus and phase != "ros" and not (ts.po if phase == "playoff" else ts.reg):
+        lens_note = (f"No {PHASE_TEXT[phase]} week remains in the evaluation window"
+                     + ("" if ts.split else " (this league has no fantasy-playoff split)")
+                     + ", so the targeted search uses the rest-of-season horizon.")
+        phase = "ros"
     phase_sort = PHASES[phase][0]
+    if mode == "targeted" and phase == "regular" and not focus:
+        raise ValueError("the targeted regular-season horizon is searched as focus weeks: build the TradeSearch with "
+                         "focus_weeks=regular_season_weeks(window)")
+    target_sort = ("focus_gain" if focus else TARGET_PHASE_SORT[phase]) if mode == "targeted" else None
+    horizon = horizon_info(ts, phase)
     mutual = "MUTUAL_PROJECTED_IMPROVEMENT"
-    lens_note = None
     heur_text = lambda h: " plus the heuristic larger-shape rows" if h else ""   # noqa: E731
     if mode == "practical":
         rows, exact_search, heur_search = _pool(ts, phase_sort, mutual if phase == "ros" else None, opponent,
-                                                PRACTICAL_POOL, heuristic)
+                                                PRACTICAL_POOL, heuristic, target)
         pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {phase} gain"
                      + (" among mutual-improvement trades" if phase == "ros" else "") + heur_text(heur_search))
+    elif mode == "targeted":
+        rows, exact_search, heur_search = _pool(ts, target_sort, None, opponent, PRACTICAL_POOL, heuristic, target)
+        pool_rule = (f"the exact top {PRACTICAL_POOL} by your {horizon['label']} gain{target_text(target, names)}"
+                     + heur_text(heur_search) + f"; kept when your {horizon['label']} delta is positive or unknown")
     elif lens:
         pool_category = {"mutual_upgrades": mutual if phase == "ros" else None, "consolidation": "CONSOLIDATION"}.get(mode)
         pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {PHASE_TEXT[phase]} gain"
@@ -414,7 +593,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
             lens_note = ("This league has no fantasy-playoff split, so there is no playoff lens." if not ts.split else
                          "No fantasy-playoff week remains in the evaluation window, so there is no playoff lens.")
         else:
-            rows, exact_search, heur_search = _pool(ts, phase_sort, pool_category, opponent, PRACTICAL_POOL, heuristic)
+            rows, exact_search, heur_search = _pool(ts, phase_sort, pool_category, opponent, PRACTICAL_POOL, heuristic, target)
         pool_rule += heur_text(heur_search) + {
             "mutual_upgrades": f"; kept when both {PHASE_TEXT[phase]} lineup deltas are positive or unknown",
             "fair": "; kept when the asset imbalance is none or moderate",
@@ -422,18 +601,18 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
             "playoff": "; kept when your playoff delta is positive"}[mode]
     elif mode == "mutual":
         if phase == "ros":
-            rows, exact_search, heur_search = _pool(ts, phase_sort, mutual, opponent, max(limit, 1), heuristic)
+            rows, exact_search, heur_search = _pool(ts, phase_sort, mutual, opponent, max(limit, 1), heuristic, target)
         else:
             # Mutual in the selected phase: both phase deltas positive, i.e. a positive smaller-side phase
             # gain. The exact top K by that sort, filtered to positive values, is the exact top K of them.
-            rows, exact_search, heur_search = _pool(ts, phase_sort, None, opponent, max(limit, 1), heuristic)
+            rows, exact_search, heur_search = _pool(ts, phase_sort, None, opponent, max(limit, 1), heuristic, target)
             rows = [x for x in rows if (_phase_delta(x["mine"], phase) or 0) > 0 and (_phase_delta(x["theirs"], phase) or 0) > 0]
         pool_rule = f"exact smaller-side {phase} gain among trades in which both lineups improve in that phase"
     elif mode == "upside":
-        rows, exact_search, heur_search = _pool(ts, "my_gain", None, opponent, max(limit, 1), heuristic)
+        rows, exact_search, heur_search = _pool(ts, "my_gain", None, opponent, max(limit, 1), heuristic, target)
         pool_rule = "exact largest rest-of-season gain for you"
     else:
-        rows, exact_search, heur_search = _pool(ts, sort or "my_gain", category, opponent, max(limit, 1), heuristic)
+        rows, exact_search, heur_search = _pool(ts, sort or "my_gain", category, opponent, max(limit, 1), heuristic, target)
         pool_rule = f"exact {sort or 'my_gain'} order" + (f" in {category}" if category else "")
 
     fa_board = board
@@ -445,13 +624,16 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         state, window, ts.anchor, d["sends"], d["receives"], d["mine_detail"], d["theirs_detail"], phase=phase,
         asset_board=asset_board, fa_board=fa_board, fa_context=ctx, labels=(anchor_label, d["opponent_name"] or "They"))
 
-    assessed, raw = [], {}
+    assessed, raw, unavailable = [], {}, set()          # unavailable: keys of rows the evaluator abstained on
     for row in rows:
         bal = asset_board.package(row["sends"], row["receives"])
         inj = injury_flags(state, row["sends"] + row["receives"])
         if lens:
             # The verdict needs both sides' full evaluator views, so the whole pool is evaluated (cached per row).
-            d = _detail(ts, row)
+            d = _detail_or_none(ts, row)
+            if d is None:
+                unavailable.add(row["key"])
+                continue
             d.update(asset_balance=bal, injury_flags=inj, opp_cost_advantage=None)
             d["dual_value"] = dual_value(d)
             v = d["dual_value"]["plausibility"]
@@ -470,16 +652,17 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         excluded = {k: 0 for k in (*lens["excluded"], "similar_variants")}
         kept = []
         for x in assessed:
-            why = _lens_exclusion(mode, x, phase) or (x["tier"] if x["tier"] not in lens["sections"] else None)
+            why = _lens_exclusion(mode, x, phase, focus) or (x["tier"] if x["tier"] not in lens["sections"] else None)
             if why:
                 excluded[why] = excluded.get(why, 0) + 1
             else:
                 kept.append(x)
         measure = {"lineup_min_side": lambda x: x["dual_value"]["rank_axes"]["lineup_min_side"],
-                   "asset_ratio": lambda x: x["dual_value"]["asset"]["ratio"]}[lens["measure"]]
+                   "asset_ratio": lambda x: x["dual_value"]["asset"]["ratio"],
+                   "anchor_horizon": lambda x: horizon_delta(x["mine"], phase, focus)}[lens["measure"]]
         # trade_dual_value.rank: verdict tier first, the Pareto front within the verdict, then the lens's measure,
         # then the exact search order. The ranking only orders this pool; it never reaches the search.
-        assessed = dual.rank(kept, measure, _rank_key(phase_sort))
+        assessed = dual.rank(kept, measure, _rank_key(target_sort or phase_sort))
         sections = _lens_sections(mode, assessed, limit, excluded)
     elif mode == "practical":
         def _practical_sort_key(x):
@@ -520,15 +703,23 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
             if lens:
                 d = x                              # already the full evaluation, with its dual_value
             else:
-                d = {**_detail(ts, raw[x["key"]]), **x}
+                base = _detail_or_none(ts, raw[x["key"]])
+                if base is None:
+                    unavailable.add(x["key"])
+                    continue
+                d = {**base, **x}
                 d["dual_value"] = dual_value(d)
             d["rationale"] = rationale(d, needs, asset_board, names, n)
+            if mode == "targeted" or target is not None or focus:
+                d["target_fit"] = target_fit(d, target, horizon, names, n)
             full.append(d)
         sections[k] = full
         shown += full
+    if unavailable:                                # present only when it happened: other views are unchanged
+        excluded["evaluation_unavailable"] = len(unavailable)
     per_opp = []
     for opp in ts.opponents:
-        best = next((x for x in assessed if x["opponent_team_id"] == opp and
+        best = next((x for x in assessed if x["opponent_team_id"] == opp and x["key"] not in unavailable and
                      (mode != "practical" or x["tier"] == "practical")), None)
         per_opp.append({"opponent_team_id": opp, "team_name": state.team_names.get(opp),
                         "best": None if best is None else {k: best[k] for k in ("key", "shape", "sends", "receives",
@@ -539,6 +730,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     return {
         "mode": mode, "mode_text": MODES[mode], "phase": phase, "strictness": strictness,
         "lens": {"mode": mode, "label": LENS_LABELS[mode], "pool_rule": pool_rule}, "lens_note": lens_note,
+        "horizon": horizon,
         "sections": sections,
         "tiers": TIERS if mode == "practical" else {v: SECTION_TEXT[v] for v in lens["sections"]} if lens
         else {"results": MODES[mode]},
@@ -549,7 +741,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         (f"Sensible sections: at most {PER_IDEA} variants per manager and set of players received, and {PER_MANAGER} "
          "per manager in each; similar variants are counted, not re-ranked.") if lens else None,
         "ranking_policy": dual.RANKING_POLICY, "verdicts": dual.VERDICTS, "criteria": dual.CRITERIA,
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": projection_source_for(ts.state),
         "coverage": {"exact": exact_search, "heuristic": heur_search,
                      "exact_shapes": ts.shapes, "heuristic_shapes": ts.heuristic_shapes,
                      "positions": list(ts.positions) if ts.positions else None},

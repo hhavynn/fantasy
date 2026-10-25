@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
-from .lineup import FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
+from .lineup import assign_lineup, eligible, is_flex, lineup_slots
+from .reserve_slots import TAXI
 
 UTC = timezone.utc
 SKILL = ("QB", "RB", "WR", "TE")
@@ -203,6 +204,8 @@ def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping
         for c in roster:
             if c.get("slot") == "IR":
                 ex["candidates"]["ir_slot"] += 1
+            elif c.get("slot") == TAXI:          # Sleeper taxi squad: rostered, never a start/sit choice
+                ex["candidates"]["taxi_slot"] += 1
             elif c.get("position") not in SKILL:
                 ex["candidates"]["not_skill_position"] += 1
             else:
@@ -216,7 +219,7 @@ def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping
                 kind = "same_position" if ci["position"] == cj["position"] else "flex"
                 if kind == "flex" and not (slots_cfg and any(
                         eligible(s, ci["position"]) and eligible(s, cj["position"])
-                        for s, n in slots_cfg.items() if s in FLEX_ELIGIBILITY and n)):
+                        for s, n in slots_cfg.items() if is_flex(s) and n)):
                     continue                      # no flex slot both could fill: not a decision
                 bad = next((st["reason"] for st in (states[id(ci)], states[id(cj)]) if not st["ok"]), None)
                 if bad:
@@ -289,7 +292,7 @@ def _lineup_row(live, states, models, slots_cfg, key, basis, config, excl: Count
     for m in models:
         _, pts = total(lambda c, m=m: states[id(c)]["values"][m])
         row["points"][m], row["regret"][m] = pts, max(0.0, hind - pts)
-    starters = [c for c in live if c.get("is_starter") and c.get("slot") not in ("BE", "IR")]
+    starters = [c for c in live if c.get("is_starter") and c.get("slot") not in ("BE", "IR", TAXI)]
     if len(starters) == len(slots) and all(states[id(c)]["ok"] for c in starters):
         row["manager_points"] = sum(states[id(c)]["actual"] for c in starters)
     return row

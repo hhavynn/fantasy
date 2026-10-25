@@ -46,7 +46,8 @@ def synthetic_league(n_teams: int = 12, weeks: range = range(6, 18), last_regula
     return LeagueState(season=2026, slots=slots or SLOTS, final_week=weeks[-1], last_regular=last_regular,
                        start_week=weeks[0], rosters=rosters, free_agents=[], projections=proj,
                        active_capacity=capacity, position_limits={},
-                       team_names={t: f"Team {t}" for t in rosters}, first_projection_week=weeks[0])
+                       team_names={t: f"Team {t}" for t in rosters}, first_projection_week=weeks[0],
+                       players_missing={t: 0 for t in rosters})
 
 
 def add_free_agents(state: LeagueState, n: int = 60, seed: int = 11, start_id: int = 50000,

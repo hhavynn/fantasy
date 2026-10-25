@@ -1,5 +1,9 @@
 """Read-only trade opportunity discovery endpoint (hypothetical; nothing is written to the database
-or sent to ESPN). See analytics/trade_discovery.py and docs/v2_trade_discovery.md."""
+or sent to ESPN). See analytics/trade_discovery.py and docs/v2_trade_discovery.md.
+
+Targeted discovery (issue #182, docs "Targeted discovery"): every discovery endpoint also takes `target_player`,
+`target_position`, `need` (weakest | bye) and, in `mode=targeted`, `weeks`; `/discover/targets` lists what can be
+targeted and how the roster needs resolve. All optional: without them every response is what it was."""
 
 from __future__ import annotations
 
@@ -7,20 +11,27 @@ import threading
 from collections import OrderedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
+from ..analytics.bye_planner import build_bye_planner
 from ..analytics.manager_scouting import build_manager_scouting
-from ..analytics.trade_data import load_league_state
+from ..analytics.schedule_intelligence import NotFound, NotSynced
+from ..analytics.trade_assets import AssetBoard, league_needs
+from ..analytics.trade_counteroffers import MAX_ADDED, MAX_SHOWN, CounterofferConstraints, counteroffers
+from ..analytics.trade_data import load_league_state, player_names
 from ..analytics import trade_practical as practical
 from ..analytics import trade_ratings
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
-                                         TradeSearch, evaluation)
+                                         TradeSearch, TradeTarget, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
-from ..analytics.team_lineups import STREAMER_IDS, stream_summary
+from ..analytics.team_lineups import STREAMER_IDS, lineup_relevant, project_team_memo, source_label, stream_summary
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
-from .deps import data_version, db, one, rows
+from ..config import get_settings
+from .deps import data_version, db, one, release_league_files, rows
+from .signal_provenance import snapshot_versions, trade_provenance
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 
@@ -28,26 +39,46 @@ router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 # so a few searches are kept in memory; any database write (or hosted publish) changes data_version and the key.
 _CACHE: OrderedDict = OrderedDict()
 _CACHE_SIZE = 4
+_CACHE_LOCK = threading.Lock()       # concurrent discovery requests share the memo (#201)
 # The finished view (every row with its evidence) for the split page endpoints: the table summary and each
 # row's evidence come from the same computation, so the evidence a row shows is the one it was ranked with.
 _VIEWS: OrderedDict = OrderedDict()
 _VIEWS_SIZE = 8
 _VIEWS_LOCK = threading.Lock()       # rows' evidence requests arrive in parallel
 NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (analytics/manager_scouting.py)
+# Targeted discovery (issue #182).
+TARGET_POSITIONS = ("QB", "RB", "WR", "TE", "K", "D/ST")
+NEEDS = {
+    "weakest": "Upgrade your weakest starting position: the position whose starters rank lowest in the league in projected "
+               "points per slot (below the league median).",
+    "bye": "Cover your first bye or lineup-coverage conflict week (bye planner): your gain is judged over that week.",
+}
+MAX_WEEKS_PARAM = 7                  # "17-18": the longest valid `weeks` value
+_NEED_CACHE: OrderedDict = OrderedDict()      # resolved roster needs per data version, league, team and need
+_NEED_CACHE_SIZE = 16
+_NEED_LOCK = threading.Lock()
 
 
-def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
+def _search(version: str, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...],
+            focus: tuple[int, ...] | None = None) -> TradeSearch:
     reason = state.start_week_reason or {}
     # League identity and the anchor team are in every key: a search for one team is never served for another.
-    key = (data_version(con), state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
-           streaming_enabled(state))
-    if key in _CACHE:
+    key = (version, state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
+           streaming_enabled(state), focus)
+    # The memo is read, refreshed and trimmed under a lock: unlocked, another request's eviction between the lookup and
+    # move_to_end raised KeyError (a 500). The search is built outside it, so leagues never wait on one another; two
+    # requests building the same key keep the first one stored.
+    with _CACHE_LOCK:
+        ts = _CACHE.get(key)
+        if ts is not None:
+            _CACHE.move_to_end(key)
+            return ts
+    built = TradeSearch(state, anchor, shapes, positions=positions, focus_weeks=focus)
+    with _CACHE_LOCK:
+        ts = _CACHE.setdefault(key, built)
         _CACHE.move_to_end(key)
-        return _CACHE[key]
-    ts = TradeSearch(state, anchor, shapes, positions=positions)
-    _CACHE[key] = ts
-    while len(_CACHE) > _CACHE_SIZE:
-        _CACHE.popitem(last=False)
+        while len(_CACHE) > _CACHE_SIZE:
+            _CACHE.popitem(last=False)
     return ts
 
 
@@ -139,25 +170,174 @@ class DiscoverParams:
                  opponent: int | None = None,
                  limit: int = Query(10, ge=1, le=50), heuristic: bool = True,
                  kdst_streaming: bool = Query(True, description="value K and D/ST against weekly free-agent "
-                                                                "streaming (false: hold current K/D/ST all season)")):
+                                                                "streaming (false: hold current K/D/ST all season)"),
+                 target_player: int | None = Query(None, ge=1, le=2_147_483_647,
+                                                   description="receive this player (on another roster in this league)"),
+                 target_position: str | None = Query(None, max_length=4,
+                                                     description="receive at least one player at this position: "
+                                                                 + " | ".join(TARGET_POSITIONS)),
+                 need: str | None = Query(None, max_length=8, description="a roster need: " + " | ".join(NEEDS)),
+                 weeks: str | None = Query(None, max_length=MAX_WEEKS_PARAM,
+                                           description="'targeted' mode only: judge your gain over week N or weeks A-B")):
         self.team_id, self.mode, self.phase, self.strictness = team_id, mode, phase, strictness
         self.include_kdst, self.positions, self.shapes, self.sort = include_kdst, positions, shapes, sort
         self.category, self.opponent, self.limit, self.heuristic = category, opponent, limit, heuristic
         self.kdst_streaming = kdst_streaming
+        self.target_player, self.target_position, self.need, self.weeks = target_player, target_position, need, weeks
 
 
 class _Resolved:
     """Validated parameters plus the league they apply to."""
 
-    def __init__(self, lg, teams, team_id, state, shape_list, pos):
+    def __init__(self, lg, teams, team_id, state, shape_list, pos, target=None, focus=None, target_info=None):
         self.lg, self.teams, self.team_id, self.state, self.shape_list, self.pos = lg, teams, team_id, state, shape_list, pos
+        self.target: TradeTarget | None = target          # what the anchor receives (None: no target filter)
+        self.focus: tuple[int, ...] | None = focus         # focus weeks of a targeted horizon (None: the phase)
+        self.target_info: dict = target_info or _no_target()
 
 
-def _resolve(con, p: DiscoverParams) -> _Resolved:
+def _no_target() -> dict:
+    return {"active": False, "player": None, "position": None, "need": None, "weeks": None}
+
+
+def _parse_weeks(raw: str, weeks: tuple[int, ...]) -> tuple[int, ...]:
+    """'N' or 'A-B' (A <= B), every week inside the evaluation window."""
+    a, sep, b = raw.strip().partition("-")
+    try:
+        lo, hi = int(a), int(b) if sep else int(a)
+    except ValueError:
+        raise HTTPException(422, "weeks must be a week number or a range such as 7-9")
+    out = tuple(range(lo, hi + 1))
+    if not out or any(w not in weeks for w in out):
+        raise HTTPException(422, f"weeks must be inside the evaluation window (weeks {weeks[0]}-{weeks[-1]})"
+                                 if weeks else "No evaluation weeks remain.")
+    return out
+
+
+def _need_cached(con, state, team_id: int, need: str, compute):
+    # The K/D/ST streaming baseline changes every team's lineups, so the resolved need too (as in the search key).
+    key = (data_version(con), state.league_id, state.season, team_id, need, state.start_week, streaming_enabled(state))
+    with _NEED_LOCK:
+        if key in _NEED_CACHE:
+            _NEED_CACHE.move_to_end(key)
+            return _NEED_CACHE[key]
+    val = compute()
+    with _NEED_LOCK:
+        _NEED_CACHE[key] = val
+        while len(_NEED_CACHE) > _NEED_CACHE_SIZE:
+            _NEED_CACHE.popitem(last=False)
+    return val
+
+
+def _weakest(con, state, team_id: int) -> dict:
+    """need=weakest: the anchor's lowest-ranked starting position among those strictly below the league median of
+    projected points per slot (trade_assets.league_needs, the same needs the discovery rationale cites)."""
+    def compute():
+        window = state.window()
+        mine = league_needs(state, window, AssetBoard(state, window))[team_id]
+        short = [(p, n) for p, n in mine.items() if n.get("short") and n.get("league_rank") is not None]
+        if not short:
+            unknown = [p for p, n in mine.items() if n.get("incomplete")]
+            return {"kind": "weakest", "resolved": False, "position": None, "week": None,
+                    "reason": "None of your starting positions is below the league median of projected points per slot"
+                              + (f"; unknown for {', '.join(unknown)} (missing projections)" if unknown else "")
+                              + ", so no position filter is applied."}
+        order = {p: i for i, p in enumerate(TARGET_POSITIONS)}
+        pos, n = max(short, key=lambda x: (x[1]["league_rank"], -order.get(x[0], 99)))
+        return {"kind": "weakest", "resolved": True, "position": pos, "week": None,
+                "reason": f"Your {pos} starters rank {n['league_rank']} of {n['teams']} in projected points per slot "
+                          "(below the league median)."}
+    return _need_cached(con, state, team_id, "weakest", compute)
+
+
+def _bye(con, state, team_id: int) -> dict:
+    """need=bye: the anchor's first bye or coverage conflict week in the evaluation window (bye planner, bye-planner.v1)."""
+    def compute():
+        try:
+            plan = build_bye_planner(con, team_id)
+        except (NotSynced, NotFound) as err:
+            return {"kind": "bye", "resolved": False, "position": None, "week": None,
+                    "reason": f"The bye planner is unavailable ({err}), so the rest-of-season horizon is used."}
+        window = set(state.window().weeks)
+        # A week the roster cannot fill (a fact), a bye cluster or a current starter on bye; a week that is only
+        # unconfirmed (unknown availability) is not a bye problem and is never chosen.
+        week = next((w for w in plan["weeks"] if w["week"] in window
+                     and (w["status"] == "short" or w["bye_cluster"] or w["starters_on_bye"])), None)
+        if week is None:
+            return {"kind": "bye", "resolved": False, "position": None, "week": None,
+                    "reason": "The bye planner finds no short week, bye cluster or starter on bye in the remaining "
+                              "weeks, so the rest-of-season horizon is used."}
+        if week["status"] == "short":
+            k = week["uncovered"]
+            why = (f"{k} starting {'slot' if k == 1 else 'slots'} ({', '.join(week['short_slots'])}) cannot be filled "
+                   "from your roster")
+        elif week["bye_cluster"]:
+            why = f"{len(week['byes'])} of your players are on bye"
+        else:
+            k = len(week["starters_on_bye"])
+            why = "one of your current starters is on bye" if k == 1 else f"{k} of your current starters are on bye"
+        return {"kind": "bye", "resolved": True, "position": None, "week": week["week"],
+                "reason": f"Week {week['week']}: {why} (bye planner)."}
+    return _need_cached(con, state, team_id, "bye", compute)
+
+
+def _resolve_target(con, p: DiscoverParams, state, team_id: int, teams: list[dict]):
+    """Validate the targeted-discovery parameters; (target, focus weeks, echo block, extra tradeable positions)."""
+    if p.target_position is not None and p.target_position not in TARGET_POSITIONS:
+        raise HTTPException(422, f"target_position must be one of {', '.join(TARGET_POSITIONS)}")
+    if p.need is not None and p.need not in NEEDS:
+        raise HTTPException(422, f"need must be one of {', '.join(NEEDS)}")
+    if p.need == "weakest" and p.target_position is not None:
+        raise HTTPException(422, "need=weakest chooses the position itself; leave target_position out")
+    if (p.weeks is not None or p.need == "bye") and p.mode != "targeted":
+        raise HTTPException(422, "weeks and need=bye set a horizon, which only the targeted mode uses")
+    if p.need == "bye" and p.weeks is not None:
+        raise HTTPException(422, "need=bye chooses the week itself; leave weeks out")
+    if not any(x is not None for x in (p.target_player, p.target_position, p.need, p.weeks)):
+        return None, None, _no_target()
+    player = None
+    if p.target_player is not None:
+        owner = next(((t, x) for t, ps in sorted(state.rosters.items()) for x in ps
+                      if x.espn_player_id == p.target_player), None)
+        if owner is None or owner[0] == team_id:
+            raise HTTPException(422, f"Player {p.target_player} is not on another team's roster in this league.")
+        if p.opponent is not None and p.opponent != owner[0]:
+            raise HTTPException(422, "target_player is on another team than the chosen opponent")
+        x = owner[1]
+        if p.target_position is not None and x.position != p.target_position:
+            raise HTTPException(422, "target_player does not play target_position")
+        player = {"espn_player_id": x.espn_player_id, "name": x.name, "position": x.position, "pro_team": x.pro_team,
+                  "team_id": owner[0], "team_name": next((t["name"] for t in teams if t["team_id"] == owner[0]), None)}
+    position, need, focus = p.target_position, None, None
+    live = state.start_week is not None              # without a window the search answers 409 itself
+    if p.need == "weakest" and live:
+        need = _weakest(con, state, team_id)
+        position = need["position"]
+        if player is not None and position is not None and player["position"] != position:
+            raise HTTPException(422, f"{player['name'] or 'That player'} plays {player['position']}, but your weakest "
+                                     f"position is {position} (need=weakest); choose the player or the need")
+    if p.weeks is not None and live:
+        focus = _parse_weeks(p.weeks, state.window().weeks)
+    elif p.need == "bye" and live:
+        need = _bye(con, state, team_id)
+        focus = (need["week"],) if need["resolved"] else None
+    target = TradeTarget(player["espn_player_id"] if player else None, position) \
+        if player is not None or position is not None else None
+    info = {"active": target is not None or focus is not None, "player": player, "position": position, "need": need,
+            "weeks": list(focus) if focus else None}
+    return target, focus, info
+
+def _league(con) -> dict:
+    """The league this connection serves (under a /v2 scope, the scoped league's own file)."""
     lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
                   "ORDER BY synced_at DESC LIMIT 1")
     if not lg:
         raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
+    return lg
+
+
+def _resolve(con, p: DiscoverParams) -> _Resolved:
+    lg = _league(con)
     teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
                       "ORDER BY team_id", [lg["league_id"], lg["season"]])
     team_id = p.team_id
@@ -183,7 +363,16 @@ def _resolve(con, p: DiscoverParams) -> _Resolved:
         raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
     pos = tuple(sorted({x.strip() for x in p.positions.split(",") if x.strip()})) if p.positions else \
         tuple(SKILL_POSITIONS) + (("K", "D/ST") if p.include_kdst else ())
-    return _Resolved(lg, teams, team_id, state, shape_list, pos)
+    target, focus, info = _resolve_target(con, p, state, team_id, teams)
+    if p.mode == "targeted" and p.phase == "regular" and focus is None and state.start_week is not None:
+        # The regular-season horizon is searched as focus weeks (trade_practical.regular_season_weeks), so a trade
+        # whose only gain is in the regular season is screened, bounded and qualified like any other.
+        focus = practical.regular_season_weeks(state.window()) or None
+    if target is not None:
+        # A target's position is always tradeable (e.g. a kicker without include_kdst).
+        wanted = {target.position} | ({info["player"]["position"]} if info["player"] else set())
+        pos = tuple(sorted(set(pos) | {x for x in wanted if x}))
+    return _Resolved(lg, teams, team_id, state, shape_list, pos, target, focus, info)
 
 
 def _context(r: _Resolved, p: DiscoverParams, ev: dict) -> dict:
@@ -194,7 +383,10 @@ def _context(r: _Resolved, p: DiscoverParams, ev: dict) -> dict:
         "query": {"team_id": r.team_id, "mode": p.mode, "phase": p.phase, "strictness": p.strictness,
                   "positions": list(r.pos), "include_kdst": any(x in r.pos for x in ("K", "D/ST")),
                   "shapes": list(r.shape_list), "sort": p.sort, "category": p.category, "opponent": p.opponent,
-                  "limit": p.limit, "heuristic": p.heuristic, "kdst_streaming": p.kdst_streaming},
+                  "limit": p.limit, "heuristic": p.heuristic, "kdst_streaming": p.kdst_streaming,
+                  "target_player": p.target_player, "target_position": p.target_position, "need": p.need,
+                  "weeks": p.weeks},
+        "target": r.target_info, "target_positions": list(TARGET_POSITIONS), "needs": NEEDS,
         "mode_text": MODES[p.mode],
         "modes": MODES, "phases": list(PHASES), "strictness_options": STRICTNESS,
         "categories": CATEGORIES, "sorts": list(SORTS), "exact_shapes": list(SHAPES),
@@ -216,25 +408,45 @@ def _kdst_policy(traded: bool, streaming: bool) -> str:
             "agent at the position each week. " + stream)
 
 
-def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
+class _Read:
+    """Everything the discovery build reads from the league's files, read up front (issue #331): the build itself is
+    an in-memory computation, so a request can let its files go (deps.release_league_files) before it starts."""
+
+    def __init__(self, con, r: _Resolved):
+        self.version = data_version(con)
+        # Every possible opponent's manager context: the rows shown are only known after the search.
+        self.manager_context = {t["team_id"]: _manager_context(con, t["team_id"])
+                                for t in r.teams if t["team_id"] != r.team_id}
+
+
+def _build(read: _Read, r: _Resolved, p: DiscoverParams) -> dict:
+    # One scan repeats about 3 in 4 lineup projections (#331): they are computed once per scan.
+    with project_team_memo(r.state.projections, (read.version, streaming_enabled(r.state))) as memo:
+        return _build_view(read, r, p, memo)
+
+
+def _build_view(read: _Read, r: _Resolved, p: DiscoverParams, memo=None) -> dict:
     state, team_id, pos = r.state, r.team_id, r.pos
     board = FreeAgencyBoard(state, state.window())
     try:
-        ts = _search(con, state, team_id, r.shape_list, pos)
+        ts = _search(read.version, state, team_id, r.shape_list, pos, r.focus)
+        if memo is not None:       # a search cached by an earlier request (same version and streaming) has its own state
+            memo.admit(ts.state.projections)
         anchor = next(t for t in r.teams if t["team_id"] == team_id)
         anchor_label = "You" if anchor.get("is_mine") else (anchor.get("name") or f"Team {team_id}")
-        out = practical.discover(ts, p.mode, p.phase, p.opponent, p.limit, p.strictness, p.sort, p.category or None,
-                                 p.heuristic, board=board, anchor_label=anchor_label)
+        opponent = p.opponent if p.opponent is not None or not r.target_info["player"] else r.target_info["player"]["team_id"]
+        out = practical.discover(ts, p.mode, p.phase, opponent, p.limit, p.strictness, p.sort, p.category or None,
+                                 p.heuristic, board=board, anchor_label=anchor_label, target=r.target)
     except NoRemainingWeeksError as err:
         raise HTTPException(409, str(err))
     except (TradeError, ValueError) as err:
         raise HTTPException(422, str(err))
     names = {pl.espn_player_id: {"name": pl.name, "position": pl.position, "pro_team": pl.pro_team,
-                                 "on_ir": pl.on_ir, "injury_status": pl.injury_status,
-                                 "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
+                                 "on_ir": pl.on_ir, **({"on_taxi": True} if pl.on_taxi else {}),
+                                 "injury_status": pl.injury_status, "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
              for ps in state.rosters.values() for pl in ps}
     shown = [x for items in out["sections"].values() for x in items]
-    ctx = {opp: _manager_context(con, opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
+    ctx = {opp: read.manager_context.get(opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
     for x in shown:
         x["manager_context"] = ctx.get(x["opponent_team_id"])
         x["need_notes"] = _need_notes(x, x["manager_context"], names)
@@ -250,7 +462,7 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
         **_context(r, p, ts.evaluation()),
         **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
                                "opponents", "my_needs", "asset_note", "asset_thresholds", "lens", "lens_note",
-                               "ranking_policy", "verdicts", "criteria", "projection_source")},
+                               "ranking_policy", "verdicts", "criteria", "projection_source", "horizon")},
         "results": shown, "search": search, "names": names,
         "kdst_policy": _kdst_policy(kdst, streaming_enabled(state)),
         "kdst_streaming": stream_summary(state.projections, state.window()),
@@ -260,28 +472,43 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
             "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
             "are not searched.",
             "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+            "A target (player, position, roster need or horizon) only narrows which trades are searched and shown; it "
+            "never changes how a trade is valued.",
             "Lenses rank a labelled candidate pool drawn from the exact search; the ranking does not change which "
             "trades the exact search proves.",
         ],
     }
 
 
-def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
-    """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
+def _view_key(version: str, r: _Resolved, p: DiscoverParams) -> tuple:
     reason = r.state.start_week_reason or {}
-    key = (data_version(con), r.lg["league_id"], r.lg["season"], r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
-           reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness, p.sort, p.category, p.opponent,
-           p.limit, p.heuristic, p.kdst_streaming)
+    return (version, r.lg["league_id"], r.lg["season"], r.team_id, r.shape_list, r.pos, r.state.start_week,
+            bool(reason.get("uncertain")), reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness,
+            p.sort, p.category, p.opponent, p.limit, p.heuristic, p.kdst_streaming, p.target_player, p.target_position,
+            p.need, p.weeks, None if r.target is None else r.target.key, r.focus)
+
+
+def _view_cached(key: tuple) -> dict | None:
     with _VIEWS_LOCK:
         if key in _VIEWS:
             _VIEWS.move_to_end(key)
             return _VIEWS[key]
-    view = _build(con, r, p)
+    return None
+
+
+def _view_store(key: tuple, view: dict) -> dict:
     with _VIEWS_LOCK:
         _VIEWS[key] = view
         while len(_VIEWS) > _VIEWS_SIZE:
             _VIEWS.popitem(last=False)
     return view
+
+
+def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
+    """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
+    key = _view_key(data_version(con), r, p)
+    view = _view_cached(key)
+    return view if view is not None else _view_store(key, _build(_Read(con, r), r, p))
 
 
 def _dual_value_summary(dv: dict) -> dict:
@@ -315,7 +542,8 @@ def _weekly_names(dv: dict, names: dict[int, dict], traded: tuple = ()) -> dict[
 
 def _summary_row(x: dict) -> dict:
     mc = x.get("manager_context")
-    return {**{k: x[k] for k in SUMMARY_FIELDS}, "dual_value_summary": _dual_value_summary(x["dual_value"]),
+    return {**{k: x[k] for k in SUMMARY_FIELDS}, **({"target_fit": x["target_fit"]} if "target_fit" in x else {}),
+            "dual_value_summary": _dual_value_summary(x["dual_value"]),
             "asset_balance": {k: x["asset_balance"][k] for k in SUMMARY_ASSET_FIELDS},
             "rationale": {"trade_type": x["rationale"]["trade_type"], "concerns": x["rationale"]["concerns"]},
             "manager_context": None if mc is None else {"trade_history": {
@@ -339,7 +567,9 @@ def discover(p: DiscoverParams = Depends()):
     simulation for both teams; modes only decide which rows are shown and how they are explained."""
     with db() as con:
         r = _resolve(con, p)
-        return _build(con, r, p)
+        read = _Read(con, r)
+    release_league_files()                     # the build is in memory: the files may be evicted meanwhile (#331)
+    return _build(read, r, p)
 
 
 @router.get("/discover/context")
@@ -351,7 +581,8 @@ def discover_context(p: DiscoverParams = Depends()):
         if r.state.start_week is None:       # the same 409 the search raises (analytics/trade_discovery.py)
             reason = (r.state.start_week_reason or {}).get("reason") or "no actionable week"
             raise HTTPException(409, f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
-        return _context(r, p, evaluation(r.state, r.state.window()))
+        return {**_context(r, p, evaluation(r.state, r.state.window())),
+                "provenance": trade_provenance(con, r.lg, r.state)}
 
 
 @router.get("/discover/summary")
@@ -360,7 +591,12 @@ def discover_summary(p: DiscoverParams = Depends()):
     same computation; a row's evidence comes from /discover/evidence. `names` covers only the players shown."""
     with db() as con:
         r = _resolve(con, p)
-        view = _view(con, r, p)
+        key = _view_key(data_version(con), r, p)
+        view = _view_cached(key)
+        read = None if view is not None else _Read(con, r)
+    if view is None:
+        release_league_files()                 # the build is in memory: the files may be evicted meanwhile (#331)
+        view = _view_store(key, _build(read, r, p))
     sections = {k: [_summary_row(x) for x in items] for k, items in view["sections"].items()}
     shown = {pid for items in view["sections"].values() for x in items for pid in x["sends"] + x["receives"]}
     shown |= {pid for o in view["opponents"] if o["best"] for pid in o["best"]["sends"] + o["best"]["receives"]}
@@ -381,3 +617,101 @@ def discover_evidence(key: str, p: DiscoverParams = Depends()):
             raise HTTPException(404, "That trade is not in this discovery view")
         ratings = trade_ratings.load_ratings(con, r.lg["season"], row["sends"] + row["receives"])
     return _evidence(row, ratings, view["names"])
+
+
+@router.get("/discover/targets")
+def discover_targets(p: DiscoverParams = Depends()):
+    """What targeted discovery can aim at for one team, without running a search: every player on another roster in
+    this league (with his team and position), the positions this league starts, and how the two roster needs resolve
+    right now (`weakest`: the lowest-ranked starting position below the league median; `bye`: the first bye or
+    coverage conflict week from the bye planner). Unresolved needs say why; nothing is inferred."""
+    with db() as con:
+        r = _resolve(con, p)
+        state = r.state
+        if state.start_week is None:
+            reason = (state.start_week_reason or {}).get("reason") or "no actionable week"
+            raise HTTPException(409, f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
+        names = {t["team_id"]: t["name"] for t in r.teams}
+        order = {pos: i for i, pos in enumerate(TARGET_POSITIONS)}
+        players = sorted(({"espn_player_id": x.espn_player_id, "name": x.name, "position": x.position,
+                           "pro_team": x.pro_team, "team_id": t, "team_name": names.get(t), "on_ir": x.on_ir,
+                           **({"on_taxi": True} if x.on_taxi else {}), "injury_status": x.injury_status}
+                          for t, ps in state.rosters.items() if t != r.team_id for x in ps
+                          if x.position in TARGET_POSITIONS and lineup_relevant(x.position, state.slots)),
+                         key=lambda x: (x["team_id"], order.get(x["position"], 99), x["name"] or "", x["espn_player_id"]))
+        return {**_context(r, p, evaluation(state, state.window())),
+                "players": players,
+                "positions": [x for x in TARGET_POSITIONS if lineup_relevant(x, state.slots)],
+                "need_resolution": {"weakest": _weakest(con, state, r.team_id), "bye": _bye(con, state, r.team_id)},
+                "provenance": trade_provenance(con, r.lg, state)}
+
+COUNTER_SLOTS = 2                    # concurrent counteroffer searches per process
+COUNTER_WAIT_SECONDS = 1.0
+_COUNTER_SLOTS = threading.BoundedSemaphore(COUNTER_SLOTS)
+
+
+class CounterofferRequest(BaseModel):
+    """An offer to repair (#214) and what a counteroffer may change. Every list is short and capped, so a request
+    cannot widen the search."""
+    team_a_id: int
+    team_b_id: int
+    team_a_sends: list[int] = Field(max_length=10)
+    team_b_sends: list[int] = Field(max_length=10)
+    locked: list[int] = Field(default_factory=list, max_length=20)        # stay in the deal
+    excluded: list[int] = Field(default_factory=list, max_length=60)      # never added
+    positions: list[str] | None = Field(None, max_length=len(TARGET_POSITIONS))
+    max_added_per_side: int = Field(1, ge=0, le=MAX_ADDED)
+    limit: int = Field(MAX_SHOWN, ge=1, le=MAX_SHOWN)
+    kdst_streaming: bool = True
+    # The data version the offer was evaluated on (signal-provenance.v1 league snapshot_version); when it is given and
+    # the data has changed since, the answer is a 409 instead of counteroffers to an offer evaluated on other data.
+    data_version: str | None = Field(None, max_length=200)
+
+
+@router.post("/counteroffers")
+def trade_counteroffers(body: CounterofferRequest):
+    """Up to three bounded counteroffers to one offer (analytics/trade_counteroffers.py): small edits of the offer,
+    each exactly evaluated for both teams and re-checked by the manual evaluator, listed when the team the offer treats
+    worse does better. Read-only and hypothetical; no acceptance estimate."""
+    if body.positions is not None and set(body.positions) - set(TARGET_POSITIONS):
+        raise HTTPException(422, f"positions must be among {', '.join(TARGET_POSITIONS)}")
+    with db() as con:
+        lg = _league(con)
+        current = snapshot_versions(con)[0]
+        if body.data_version is not None and body.data_version != current:
+            raise HTTPException(409, "The league data changed after this offer was evaluated. Evaluate it again, "
+                                     "then ask for counteroffers.")
+        state = load_league_state(con, lg["season"])
+        if state is None:
+            raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+        if body.kdst_streaming:
+            state = with_streaming(state)
+        c = CounterofferConstraints(
+            locked=frozenset(body.locked), excluded=frozenset(body.excluded), max_added_per_side=body.max_added_per_side,
+            limit=body.limit, **({"positions": tuple(sorted(set(body.positions)))} if body.positions is not None else {}))
+        # Each request is a fresh CPU-bound search (a POST is never response-cached): a few run at once per process,
+        # and one that cannot get a slot quickly is a 503 instead of a queue.
+        if not _COUNTER_SLOTS.acquire(timeout=COUNTER_WAIT_SECONDS):
+            raise HTTPException(503, "Counteroffer searches are busy right now. Try again in a moment.")
+        try:
+            res = counteroffers(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends, c,
+                                max_per_side=get_settings().trade_max_players_per_side)
+        except NoRemainingWeeksError as err:
+            raise HTTPException(409, str(err))
+        except TradeError as err:
+            raise HTTPException(422, str(err))
+        finally:
+            _COUNTER_SLOTS.release()
+        ids = set(res["original"]["team_a_sends"]) | set(res["original"]["team_b_sends"])
+        for x in [res["original"], *res["results"]]:
+            for side in ("team_a", "team_b"):
+                ids |= set(x.get(side, {}).get("forced_drops", []))
+            ids |= set(x["team_a_sends"]) | set(x["team_b_sends"])
+        names = player_names(con, ids)
+        return {**res, "contract": "trade-counteroffers/v1", "data_version": current,
+                "team_names": {t: state.team_names.get(t) for t in (body.team_a_id, body.team_b_id)},
+                "names": {pid: {"name": n["full_name"], "position": n["position"], "pro_team": n["pro_team"]}
+                          for pid, n in names.items()},
+                "projection_source": source_label(state.projection_source, state.projections),
+                "kdst_streaming": stream_summary(state.projections, state.window()),
+                "provenance": trade_provenance(con, lg, state)}

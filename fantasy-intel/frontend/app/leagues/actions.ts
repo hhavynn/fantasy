@@ -1,84 +1,208 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { apiRequest, type ApiResult } from "@/lib/api";
+import { authConfig } from "@/lib/auth-config";
 import {
-  NO_SIGNING_REASON, NOT_ENABLED_REASON, SIGNED_OUT_REASON, isInternalLeagueId, isProviderId, multileagueUiEnabled,
-  parseLeague, validTeamId, validateConnect,
-} from "@/lib/leagues";
-import { currentUserId, userAssertionHeaders } from "@/lib/user-assertion.server";
-import type { ActionState } from "./state";
+  cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, parseMyLeagues, parseProviderChoice,
+  parseSleeperLeagueInput, validSeason,
+} from "@/lib/my-leagues";
+import { canSkipImport, connectProblem, findExisting, privateHref, progressHref, type Host, type NextAction } from "@/lib/onboarding";
+import { actionErrorMessage } from "@/lib/route-error";
+import { currentUser } from "@/lib/supabase/server";
 
-// Server actions are public POST endpoints: every one re-checks the flag and the user itself and takes
-// the user from the server, never from the form. The assertion header is built here and sent straight
-// to the backend; it is never returned to the browser.
+// Server actions are public POST endpoints: each re-checks the flag and the signed-in user on the server, and the
+// backend authorizes again with the user's own token (lib/api.ts forwards it). Cookies are passed straight to the
+// backend and never returned, logged or kept in state. Each step of adding a league is its own URL (lib/onboarding.ts):
+// success redirects to the next one, so a reload resumes where the visitor was. A failed backend call shows only
+// `actionErrorMessage`'s words (lib/route-error.ts): the backend's own 4xx message or fixed text, never the internal
+// API_URL, a start-the-server hint or a server error.
 
-type Guard = { ok: true; headers: Record<string, string> } | { ok: false; state: ActionState };
+/** The add-league forms' state. Success never lands here: it redirects to the next step's URL (lib/onboarding.ts). */
+export type AddState = {
+  status: "idle" | "error";
+  message: string | null;
+  title?: string;
+  hint?: string | null;
+  next?: NextAction;
+  /** What was typed, so a correctable mistake is fixed in place rather than retyped. Never the cookies. */
+  input?: string;
+  season?: string;
+};
 
-async function guard(): Promise<Guard> {
-  if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) return fail(NOT_ENABLED_REASON);
-  const userId = await currentUserId();
-  if (!userId) return fail(SIGNED_OUT_REASON);
-  const headers = userAssertionHeaders(userId);
-  if (!headers) return fail(NO_SIGNING_REASON);
-  return { ok: true, headers };
+export type ActionResult = { ok: boolean; message: string | null };
+
+const SIGN_IN = "Sign in to add or change leagues.";
+const NOT_ADDED = "The league could not be added right now.";
+const NOT_CONNECTED = "The league could not be connected right now.";
+const NOT_DONE = "That could not be done right now. Try again in a few minutes.";
+
+async function gate(): Promise<string | null> {
+  if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) return NOT_ENABLED_REASON;
+  if (!authConfig(process.env) || !(await currentUser())) return SIGN_IN;
+  return null;
 }
 
-function fail(message: string): { ok: false; state: ActionState } {
-  return { ok: false, state: { status: "error", message } };
+function typed(form: FormData): Pick<AddState, "input" | "season"> {
+  return { input: String(form.get("league") ?? "").slice(0, 300), season: String(form.get("season") ?? "").slice(0, 8) };
 }
 
-/** The backend's own `detail`; an unreachable backend is described without its address. */
-function backendMessage(res: Extract<ApiResult<unknown>, { ok: false }>): string {
-  return res.kind === "offline" ? "The backend did not answer." : res.error;
+function invalid(form: FormData, message: string): AddState {
+  return { status: "error", title: "Check what you entered", message, next: "fix_input", hint: null, ...typed(form) };
 }
 
-export async function connectLeague(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const g = await guard();
-  if (!g.ok) return g.state;
-  const provider = formData.get("provider");
-  if (!isProviderId(provider)) return { status: "error", message: "Choose a provider." };
-  const checked = validateConnect({
-    leagueId: String(formData.get("external_league_id") ?? ""),
-    season: String(formData.get("season") ?? ""),
-  });
-  if (!checked.ok) return { status: "error", message: "Check the highlighted fields.", fieldErrors: checked.errors };
+/** A failed add or connect: `res` is the backend's answer (ok but empty counts as a 500 with `fallback`). */
+function failed(form: FormData, host: Host, res: ApiResult<unknown>, fallback: string): AddState {
+  const status = res.ok ? 500 : res.status;
+  const p = connectProblem(status, res.ok ? fallback : actionErrorMessage(res, fallback), host);
+  return { status: "error", title: p.title, message: p.message, hint: p.hint, next: p.next, ...typed(form) };
+}
 
-  const res = await apiRequest("/v2/leagues", {
-    method: "POST",
-    headers: g.headers,
-    body: { provider, external_league_id: checked.leagueId, season: checked.season },
-  });
-  if (!res.ok) return { status: "error", message: backendMessage(res) };
+function blockedState(form: FormData, reason: string): AddState {
+  return { status: "error", title: reason === SIGN_IN ? "Sign in first" : "Not available", message: reason,
+    next: reason === SIGN_IN ? "sign_in" : "none", hint: null, ...typed(form) };
+}
+
+function readLeague(form: FormData): { league: string; season: number } | { error: string } {
+  const parsed = parseLeagueInput(String(form.get("league") ?? ""));
+  if (!parsed) return { error: "Enter the league id (the number after leagueId= in the ESPN address) or paste the address." };
+  const season = parsed.season ?? validSeason(String(form.get("season") ?? ""));
+  if (!season) return { error: "Enter the season as a year, for example 2026." };
+  return { league: parsed.leagueId, season };
+}
+
+/** The visitor's own list, to find a league they already follow before registering it again. Best effort. */
+async function alreadyFollowed(host: Host, externalId: string, season: number | null): Promise<string | null> {
+  const res = await apiRequest("/v2/leagues");
+  const found = res.ok ? findExisting(parseMyLeagues(res.data), host, externalId, season) : null;
+  return found && canSkipImport(found) ? found.id : null;
+}
+
+/** A Sleeper league: always public, so one step with no cookies. */
+async function addSleeperLeague(form: FormData): Promise<AddState> {
+  const parsed = parseSleeperLeagueInput(String(form.get("league") ?? ""));
+  if (!parsed) return invalid(form, "Enter the Sleeper league id (the long number in the sleeper.com/leagues/… address) or paste the address.");
+  const existing = await alreadyFollowed("sleeper", parsed.leagueId, null);
+  if (existing) redirect(progressHref(existing, "already"));
+  const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: { provider: "sleeper", league: parsed.leagueId } });
+  if (!res.ok || !res.data) return failed(form, "sleeper", res, NOT_ADDED);
   revalidatePath("/leagues");
-  const name = parseLeague(res.data)?.name;
-  return { status: "ok", message: name ? `Connected ${name}.` : "League connected." };
+  redirect(progressHref(res.data.league_id));
 }
 
-export async function setMyTeam(leagueId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const g = await guard();
-  if (!g.ok) return g.state;
-  if (!isInternalLeagueId(leagueId)) return { status: "error", message: "Unknown league." };
-  const teamId = formData.get("external_team_id");
-  if (!validTeamId(teamId)) return { status: "error", message: "Choose a team." };
-
-  const res = await apiRequest(`/v2/leagues/${encodeURIComponent(leagueId)}/my-team`, {
-    method: "PUT",
-    headers: g.headers,
-    body: { external_team_id: teamId },
-  });
-  if (!res.ok) return { status: "error", message: backendMessage(res) };
-  revalidatePath("/leagues");
-  return { status: "ok", message: "Saved as your team." };
+/** Step 2: try the league as a public one. ESPN saying "private" moves to the cookie step (its own URL). */
+export async function addLeague(_prev: AddState, form: FormData): Promise<AddState> {
+  const blocked = await gate();
+  if (blocked) return blockedState(form, blocked);
+  if (parseProviderChoice(form.get("provider")) === "sleeper") return addSleeperLeague(form);
+  const input = readLeague(form);
+  if ("error" in input) return invalid(form, input.error);
+  const existing = await alreadyFollowed("espn", input.league, input.season);
+  if (existing) redirect(progressHref(existing, "already"));
+  const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: input });
+  if (res.ok && res.data) {
+    revalidatePath("/leagues");
+    redirect(progressHref(res.data.league_id));
+  }
+  // 409 with ESPN's "private" answer: the league exists but needs a member's cookies (the next step asks, with consent).
+  if (!res.ok && res.status === 409 && /private/i.test(res.error)) redirect(privateHref(input.league, input.season));
+  return failed(form, "espn", res, NOT_ADDED);
 }
 
-export async function removeLeague(leagueId: string): Promise<ActionState> {
-  const g = await guard();
-  if (!g.ok) return g.state;
-  if (!isInternalLeagueId(leagueId)) return { status: "error", message: "Unknown league." };
-
-  const res = await apiRequest(`/v2/leagues/${encodeURIComponent(leagueId)}`, { method: "DELETE", headers: g.headers });
-  if (!res.ok) return { status: "error", message: backendMessage(res) };
+/** The cookie step: a private ESPN league, with the visitor's own ESPN cookies and their explicit consent. */
+export async function connectPrivate(_prev: AddState, form: FormData): Promise<AddState> {
+  const blocked = await gate();
+  if (blocked) return blockedState(form, blocked);
+  const input = readLeague(form);
+  if ("error" in input) return invalid(form, input.error);
+  // Already following it: the cookies are never sent anywhere.
+  const existing = await alreadyFollowed("espn", input.league, input.season);
+  if (existing) redirect(progressHref(existing, "already"));
+  if (form.get("consent") !== "on") return invalid(form, "Tick the box to confirm you understand what the cookies give access to.");
+  const cookies = cleanCookies(String(form.get("espn_s2") ?? ""), String(form.get("swid") ?? ""));
+  if (!cookies) return invalid(form, "Paste both cookies: espn_s2 (a long value) and SWID (in braces).");
+  const res = await apiRequest<{ league_id: string; cookies: string }>("/v2/leagues/connect",
+    { body: { ...input, ...cookies, consent: true } });
+  if (!res.ok || !res.data) return failed(form, "espn", res, NOT_CONNECTED);
   revalidatePath("/leagues");
-  return { status: "ok", message: "Connection removed." };
+  redirect(progressHref(res.data.league_id, res.data.cookies === "existing" ? "joined" : null));
+}
+
+async function leagueCall(leagueId: string, path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<ActionResult> {
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!isLeagueRef(leagueId)) return { ok: false, message: "Unknown league." };
+  const res = await apiRequest(`/v2/leagues/${leagueId}${path}`, { method, body });
+  revalidatePath("/leagues");
+  revalidatePath(`/leagues/${leagueId}`);
+  return res.ok ? { ok: true, message: null } : { ok: false, message: actionErrorMessage(res, NOT_DONE) };
+}
+
+export async function refreshLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/sync", "POST", {});
+}
+
+export async function unpinLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/pin", "DELETE");
+}
+
+export async function pinLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/pin", "PUT", {});
+}
+
+export async function saveTeam(leagueId: string, _prev: ActionResult, form: FormData): Promise<ActionResult> {
+  const team = String(form.get("team") ?? "");
+  if (!team) return leagueCall(leagueId, "/perspective", "DELETE");
+  if (!/^\d{1,9}$/.test(team)) return { ok: false, message: "Pick a team." };
+  return leagueCall(leagueId, "/perspective", "PUT", { team_external_id: team });
+}
+
+export async function replaceCookies(leagueId: string, _prev: ActionResult, form: FormData): Promise<ActionResult> {
+  if (form.get("consent") !== "on") return { ok: false, message: "Tick the box to confirm you understand what the cookies give access to." };
+  const cookies = cleanCookies(String(form.get("espn_s2") ?? ""), String(form.get("swid") ?? ""));
+  if (!cookies) return { ok: false, message: "Paste both cookies: espn_s2 (a long value) and SWID (in braces)." };
+  return leagueCall(leagueId, "/credential", "PUT", { ...cookies, consent: true });
+}
+
+export async function removeCookies(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/credential", "DELETE");
+}
+
+export type InviteState = ActionResult & { link?: string };
+
+export async function createInvite(leagueId: string, _prev: InviteState, _form: FormData): Promise<InviteState> {
+  void _form;
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!isLeagueRef(leagueId)) return { ok: false, message: "Unknown league." };
+  const res = await apiRequest<{ token: string }>(`/v2/leagues/${leagueId}/invites`, { method: "POST", body: {} });
+  revalidatePath(`/leagues/${leagueId}`);
+  if (!res.ok || !res.data) {
+    return { ok: false, message: res.ok ? "No invite was created." : actionErrorMessage(res, "No invite was created. Try again in a few minutes.") };
+  }
+  // The token travels in the fragment: browsers never send it to a server, so it stays out of logs.
+  return { ok: true, message: null, link: `/invite#${res.data.token}` };
+}
+
+export async function revokeInvite(leagueId: string, inviteId: string): Promise<ActionResult> {
+  if (!/^[0-9a-f-]{36}$/.test(inviteId)) return { ok: false, message: "Unknown invite." };
+  return leagueCall(leagueId, `/invites/${inviteId}`, "DELETE");
+}
+
+export async function deleteLeague(leagueId: string): Promise<ActionResult> {
+  const result = await leagueCall(leagueId, "", "DELETE");
+  if (result.ok) redirect("/leagues");
+  return result;
+}
+
+export async function redeemInvite(token: string): Promise<ActionResult> {
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return { ok: false, message: "This invite link is not complete." };
+  const res = await apiRequest<{ league_id: string }>("/v2/invites/redeem", { body: { token } });
+  if (!res.ok || !res.data) {
+    return { ok: false, message: res.ok ? "This invite is not valid." : actionErrorMessage(res, "The invite could not be used right now. Try again in a few minutes.") };
+  }
+  redirect(`/l/${res.data.league_id}`);
 }

@@ -94,6 +94,87 @@ Schedule Intelligence.
     games the scenario already gives it, then the closest projected margins;
   * results elsewhere whose flip improves its rank or status, each with an "apply" link.
 
+## What-if (issue #192)
+
+A what-if is the scenario with at least one result set by you (`override=`). With no result set the answer is
+exactly the scenario-off answer (the default goldens are unchanged); with one, it adds a `whatif` block:
+
+* `inputs`: the baseline (`projected` or `actual`), the first projectable week and every set result with the
+  baseline result it replaced (`changes_baseline` false when you set what the baseline already had).
+* `assumptions` and `method`, and `sampling`: `deterministic`, 1 exact scenario, 0 random samples, no seed and no
+  probability. Probabilistic season simulation is separate, calibration-gated work and is not done here.
+* `completeness`: `partial` when any remaining game is unresolved, with counts per reason (`projection_incomplete`,
+  `equal_projection`, `in_progress`, `unmapped`, `actual_baseline`, `set_unresolved`, and `no_period` for an undecided
+  regular-season game sent without a matchup period, which can be neither placed nor set). Unresolved games count for
+  nobody; a missing projection never decides a game and is never scored as 0.
+* `baseline_standings` (the same baseline without your results) and `changes` (each team's baseline and what-if
+  rank, record and status, the rank change and whether the status changed). Both are labelled hypothetical; the
+  actual standings are `scenario.current_standings`.
+* `conclusions`: a gate. `blocked_by` names every rule a clinch or elimination conclusion would need that is not
+  mapped: the tiebreak and seeding settings (`MAPPED_TIEBREAK_RULES` is empty, so any reported value stays
+  unmapped and is listed raw), the standings order (assumed), divisions (more than one: not modeled), seeds that
+  disagree with record order, and unknown playoff spots. `claims` is always empty.
+* `conclusions.record_bounds`: each team's record if it wins, and if it loses, every open game, with your set results
+  fixed and every other remaining game open (projections are not used). `record_order` is `above_line` when, even
+  losing out, fewer other teams than there are spots can match its winning percentage; `below_line` when, even winning
+  out, at least that many finish strictly ahead in every outcome; otherwise `open`. It is never turned into a claim
+  (`claim` is always null). It is exact (tests check it against every outcome) only under these conditions; when any
+  fails, the bounds abstain (`record_order` and the counts null, each reason listed in `abstain`; the records
+  themselves are still shown):
+  * the assumed winning-percentage order decides the spots: one division, and the provider's seeds follow record
+    order;
+  * every team's record is known and matches the stored final matchups (`record_check` is empty), so the remaining
+    schedule explains every future result;
+  * no median game: a Sleeper league with `league_average_match` adds a result against the league median each week;
+  * the schedule is complete: the regular-season length is known, no team is missing a regular-season matchup, and no
+    undecided matchup lacks a period.
+
+The page shows the what-if section only when a result is set: the method line with the sample count, the set
+results (each with a link to the Matchup page for its week and a remove link), a partial notice, the baseline vs
+what-if standings table, the blocked conclusions, the record bounds ("Not claimed"), the assumptions, a "Copy
+scenario link" button (the league-scoped URL with every set result) and "Reset to the baseline". Every standing on
+the page is labelled actual or hypothetical.
+
+## Rooting guide (issue #217)
+
+`scenario.rooting` answers "which other games this week do I want to go one way?" for the spotlight team, from the
+same deterministic evaluator as the what-if. It is present whenever there is a spotlight team, with or without set
+results, and it needs no new parameter.
+
+* **Which games.** Every open regular-season game of the next matchup period (the earliest period with an open
+  game, under way included) that the spotlight team does not play. Its own game is named (`own_game`) and left to
+  the leverage table. Final games, byes and later periods are not evaluated; `later_open_games` counts the later
+  ones that can still change everything.
+* **One game at a time.** `evaluate_outcome` sets one game's result (home win, then away win) without changing the
+  scenario or the fixtures, and reports two things:
+  * `scenario`: the spotlight team's rank, tie flag, cutline status and record, every other result as in the
+    scenario (hypothetical; the projected baseline plus your set results), plus `places`, the span its rank group
+    covers (rank to rank + tied teams − 1; no tiebreak is applied).
+  * `range`: its record bounds with that result fixed (plus your set results) and every other game open, with no
+    projections. It is null when the bounds abstain (`range_abstain` gives the reasons, the same as the what-if's).
+* **Which side.** `prefer` names a side only when it is no worse on both comparisons and better on at least one.
+  The scenario compares cutline status first; with the same status, the `places` span must be no worse at both ends
+  and better at one, so "#3 in a five-way tie" (3rd to 7th) is never called better than "#4 in a three-way tie" (4th
+  to 6th). The range compares record order only (above the line in every
+  outcome, open, below it in every outcome). The team counts are reported but never decide: a team locked ahead of
+  you can be irrelevant to your spot. When the two comparisons point to different sides, the game is a `conflict`
+  and no side is named. `basis` lists which comparison decided.
+* **Order.** Games with a preference come first, then cutline status swings, then record-order swings, then the size
+  of the rank swing. Games where neither side is better are listed apart (`no_effect`).
+* **Never a claim.** `probabilities` is null, `conclusions.claims` is always `[]`, and the conclusion gate's status
+  is carried as-is. The page words the range as counts ("fewer teams than there are spots can match your record
+  even if you lose every open game") and says "record order assumed; not a clinch or elimination". A tied result is
+  not evaluated.
+
+The page shows a "Rooting guide: wk N" section labelled Hypothetical. It has one row per game: the side to root for
+(or Mixed), the spotlight team's place either way, the reason in words from `rootingReason()`
+(`lib/playoff-view.ts`), and links that set the result as a what-if. Every row reproduces the deterministic
+simulation: `test_every_rooting_outcome_reproduces_the_deterministic_simulation` sets each result as an override
+and checks the standings and the what-if's record bounds against the row.
+
+Cost: roughly 10 to 30 ms more for a 14-team league (two standings and two bounds evaluations per game; 13 ms and
+28 ms measured on two runs). The block is about 5 KB.
+
 ## Page
 
 `/playoff-race` (nav "Playoff race") has these sections:
@@ -134,10 +215,13 @@ Latency on synthetic leagues:
   games are flagged rather than weighted.
 * Rosters are ESPN's current snapshot for every remaining week. No waiver, trade or lineup change is modeled, and
   injured players follow ESPN's projections and the IR rule.
-* No tiebreaks, division rules, clinching or elimination. A tie across the cutline stays unresolved.
+* No tiebreaks, division rules, clinching or elimination. A tie across the cutline stays unresolved. The what-if's
+  record bounds are reported as counts behind a gate that keeps every clinch or elimination claim blocked.
 * Standings ordering by winning percentage is assumed, not read from a setting. If ESPN's current seeds disagree
   with it, a warning is shown.
 * Live points of a matchup in progress are ESPN's totals as of the last sync and never count as a result.
 * Future playoff matchups and opponents are not modeled. Byes or one-team rows in the regular season produce no
   result.
 * The fewest-wins search is exhaustive only up to 12 open games.
+* The rooting guide evaluates one game at a time, for the next period only. Combinations of results and later weeks
+  are left to the what-if. A preference is about this scenario and the record order; it is not a chance.

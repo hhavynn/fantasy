@@ -136,7 +136,7 @@ Rank axes (never summed): lineup gain of the smaller side +0.0, asset ratio 0.77
 
 ## 4. A 2-for-1 consolidation that forces a drop
 
-Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at WR and thin at RB, takes two starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop a bench RB who still has asset value, so the depth check raises a concern.
+Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at WR and thin at RB, takes two starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop RB 203, its RB2 before the trade and still one of the league's starting RBs (each FLEX counts for the position that fills it), so the depth check fails and the verdict carries that concern.
 
 - **You send:** RB 103 (RB, #103), WR 106 (WR, #106)
 - **You receive:** Ember (WR, #204) (from Team 2)
@@ -150,7 +150,7 @@ Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at W
   - WR 106 (WR) You -> Team 2: PAR 16.0, starter-caliber True, starts 4 of 4 weeks before / 0 after, bench asset True
   - Ember (WR) Team 2 -> You: PAR 52.0, starter-caliber True, starts 4 of 4 weeks before / 4 after, bench asset False
   - depth, You: consolidates (net -1 players)
-  - depth, Team 2: adds depth (net +1 players); forced drop RB 203 (PAR 4.0, starter-caliber False, lineup cost +0.0)
+  - depth, Team 2: adds depth (net +1 players); forced drop RB 203 (PAR 4.0, starter-caliber True, lineup cost +0.0)
 
 **Lineup benefit** (starters only; bench points never count)
 
@@ -166,13 +166,13 @@ Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at W
 | `lineup_gain` | pass | Both starting lineups improve (rest of season: You +16.0, Team 2 +12.0). |
 | `asset_balance` | pass | Asset packages appear relatively balanced. |
 | `positional_fit` | pass | Each side receives a player who starts at least half the remaining weeks. |
-| `depth_cost` | concern | Team 2 must drop RB 203 (RB) (4.0 above replacement). |
+| `depth_cost` | fail | Team 2 must drop RB 203 (RB), a starter-caliber player (4.0 above replacement). |
 | `free_agent_alternative` | pass | Even after the best free-agent move, the trade still adds +16.0 for you. |
 | `uncertainty` | pass | No injury, eligibility or projection gaps on the traded players. |
 
 **Verdict:** `sensible_with_concerns`. Both starting lineups improve, with concerns to weigh.
 
-**Main concern:** Team 2 must drop RB 203 (RB) (4.0 above replacement).
+**Main concern:** Team 2 must drop RB 203 (RB), a starter-caliber player (4.0 above replacement).
 
 Rank axes (never summed): lineup gain of the smaller side +12.0, asset ratio 1.0, certainty 0.
 

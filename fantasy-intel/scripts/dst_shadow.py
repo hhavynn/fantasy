@@ -322,6 +322,7 @@ def forecast(rows: list[dict], scoring: dr.DstScoring, season: int, week: int, o
             "pred": _r(m["pred"]), "pred_line_only": _r(lo["pred"]), "pred_ratings_only": _r(ro["pred"]),
             **{k: _r(m[k]) for k in ("e_sacks", "e_ints", "e_fr", "e_blk", "e_saf", "e_ret_td", "e_pa", "e_ya",
                                      "lambda_td", "p_any_td", "pred_td_points")},
+            "scoring_stats": {k: _r(v, 9) for k, v in m["scoring_stats"].items()},
             "history_games": f["history_games"]})
     multi = []
     for h in range(1, MAX_HORIZON + 1):

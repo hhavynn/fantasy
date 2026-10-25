@@ -1,21 +1,40 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { when } from "@/lib/format";
+import type { Provider } from "@/lib/labels";
+import { isLocalRun } from "@/lib/deployment.server";
 import { type StatusPayload, computeSyncSummary } from "@/lib/sync-status";
 import { SyncPopover } from "./SyncPopover";
 
 /** One health dot for every feed; the details (and Data quality) open from it. Rendered per request
- * (the root layout is force-dynamic), so the ages are as of this request. */
-export function SyncPill({ status }: { status: StatusPayload }) {
-  const s = computeSyncSummary(status);
+ * (the root layout is force-dynamic), so the ages are as of this request. `degraded`: the status read came back
+ * `stale` (lib/api.ts), the backend serving the league's previous files. `firstSync`: the status read answered the
+ * API's 409 "first sync in progress", so the league has no data yet and the backend is up (never "offline"). */
+export function SyncPill({ status, provider = "espn", degraded = false, firstSync = false }:
+  { status: StatusPayload; provider?: Provider; degraded?: boolean; firstSync?: boolean }) {
+  const s = computeSyncSummary(status, undefined, provider, degraded, firstSync);
   return (
     <SyncPopover state={s.state} text={s.text}>
-      {s.state === "offline" ? (
+      {s.firstSync ? (
+        <div className="sync-callout warn">
+          <b>This league has no synced data yet.</b> Its pages fill in once its first sync finishes.{" "}
+          <Link href="/leagues" prefetch={false}>See where its sync stands</Link>
+        </div>
+      ) : s.state === "offline" && isLocalRun() ? (
         <div className="sync-callout bad">
           <b>Cannot reach the local API.</b> Start it from <code>fantasy-intel/backend</code>:
           <code className="block">uv run uvicorn app.main:app --reload</code>
         </div>
+      ) : s.state === "offline" ? (
+        // A hosted deployment's visitors get no server command (lib/deployment.server.ts decides on the server).
+        <div className="sync-callout bad"><b>The league data is not answering.</b> Try again in a minute.</div>
       ) : (
         <>
+          {s.degraded && (
+            <div className="sync-callout warn">
+              <b>Showing older data.</b> The newest league files could not be loaded in time, so this page may use the
+              previous ones. Reload in a moment for the latest.
+            </div>
+          )}
           {s.activeFailures.map((f) => (
             <div key={f.source} className="sync-callout warn">
               <b>{f.label} sync {f.status}</b>

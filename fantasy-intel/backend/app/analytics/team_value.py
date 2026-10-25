@@ -27,13 +27,18 @@ from dataclasses import replace
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_exists
-from .lineup import FLEX_ELIGIBILITY, eligible
+from .lineup import eligible, is_flex, slots_left_out
 from .playoff_race import RaceData, build_playoff_race, load_race_data
 from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_addition, compare, project_team,
-                           projection, r, replacement_market, roster_marginal_value, slot_filled, starters,
-                           stream_summary, without)
+                           projection, r, replacement_market, roster_marginal_value, slot_filled, slot_flags, source_label,
+                           starters, stream_summary, without)
 from .trade_discovery import TradeSearch, detail
-from .trades import TradeError, with_streaming
+from .trades import TradeError, roster_legality, with_streaming
+
+# A waiver score missing its lineup-gain term (components.roster.fit_status "partial": a player without a value) is not
+# a measured score: shown as unknown and ranked after the known ones (#253 G5).
+KNOWN_WAIVER_SCORE = ("CASE WHEN components->'roster'->>'fit_status' = 'partial' THEN NULL "
+                      "ELSE waiver_score END")
 
 PHASES = ("all", "regular", "playoff")
 DROP_CANDIDATES = 3          # add/drop search: the active players whose removal costs the least
@@ -76,17 +81,19 @@ def load_extras(con, race: RaceData) -> dict:
     # never shown for another team.
     waivers_by_team: dict[int, list[dict]] = {}
     if table_exists(con, "team_waiver_recommendations"):
-        for w in fetch_dicts(con, """SELECT team_id, espn_player_id, position, recommendation, waiver_score, suggested_drop_id
-                                     FROM (SELECT *, row_number() OVER (PARTITION BY team_id
-                                                   ORDER BY waiver_score DESC NULLS LAST, espn_player_id) AS rn
+        for w in fetch_dicts(con, f"""SELECT team_id, espn_player_id, position, recommendation, waiver_score, suggested_drop_id
+                                     FROM (SELECT * REPLACE ({KNOWN_WAIVER_SCORE} AS waiver_score),
+                                                  row_number() OVER (PARTITION BY team_id
+                                                   ORDER BY {KNOWN_WAIVER_SCORE} DESC NULLS LAST, espn_player_id) AS rn
                                            FROM team_waiver_recommendations WHERE league_id = ? AND season = ?
                                              AND recommendation IN ('CLAIM', 'WAIT'))
                                      WHERE rn <= ? ORDER BY team_id, rn""", [st.league_id, season, WAIVER_ROWS]):
             waivers_by_team.setdefault(w.pop("team_id"), []).append(w)
-    waivers = fetch_dicts(con, """SELECT espn_player_id, position, recommendation, waiver_score, suggested_drop_id
+    waivers = fetch_dicts(con, f"""SELECT espn_player_id, position, recommendation,
+                                         {KNOWN_WAIVER_SCORE} AS waiver_score, suggested_drop_id
                                   FROM waiver_recommendations WHERE league_id = ? AND season = ?
                                     AND recommendation IN ('CLAIM', 'WAIT')
-                                  ORDER BY waiver_score DESC NULLS LAST, espn_player_id LIMIT ?""",
+                                  ORDER BY {KNOWN_WAIVER_SCORE} DESC NULLS LAST, espn_player_id LIMIT ?""",
                           [st.league_id, season, WAIVER_ROWS]) if table_exists(con, "waiver_recommendations") else []
     if not waivers_by_team:
         owner = next((t["team_id"] for t in race.teams if t["is_mine"]), None)
@@ -176,9 +183,13 @@ def league_ranks(teams: dict[int, dict | None], window, team_names: dict[int, st
                             if not next(x for x in p["weeks"] if x["week"] == w)["projection_complete"])
                   for w in window.weeks}
     comparable = [w for w in window.weeks if not incomplete[w]]
+    unsupported = next((x["unsupported_slots"] for p in ranked.values() for x in p["weeks"]
+                        if x.get("unsupported_slots")), None)
     out = {"rule": RANK_RULE, "teams_ranked": sorted(ranked), "teams_unranked": sorted(t for t, p in teams.items()
                                                                                      if p is None),
-           "excluded_weeks": [{"week": w, "incomplete_teams": [team_names.get(t, str(t)) for t in ts]}
+           "excluded_weeks": [{"week": w, "incomplete_teams": [team_names.get(t, str(t)) for t in ts],
+                               # slots no engine fills: no total is complete, not a missing projection (#253 G3)
+                               **({"reason": slots_left_out(unsupported)} if unsupported else {})}
                               for w, ts in incomplete.items() if ts],
            "phases": {}}
     for phase in PHASES:
@@ -222,15 +233,17 @@ def bench_reason(p: RosterPlayer, week: dict, proj, byes: list[int] | None, name
     v = projection(proj, p.espn_player_id, w)
     if p.on_ir:
         return {"code": "ir", "text": "in an IR slot: inactive under the canonical model"}
+    if p.on_taxi:
+        return {"code": "taxi", "text": "on the taxi squad: rostered but cannot start"}
     if v is None:
         return {"code": "no_projection", "text": "no ESPN projection this week"}
     if v == 0:
         bye = byes is not None and w in byes
         return {"code": "bye" if bye else "zero_projection",
                 "text": "NFL bye (projected 0)" if bye else "ESPN projects 0"}
-    held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p.position)]
-    fixed = [a for a in held if a["slot"] not in FLEX_ELIGIBILITY]
-    flex = [a for a in held if a["slot"] in FLEX_ELIGIBILITY]
+    held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p)]
+    fixed = [a for a in held if not is_flex(a["slot"])]
+    flex = [a for a in held if is_flex(a["slot"])]
     def who(rows):
         return ", ".join(f"{a.get('name') if a.get('streamer') else names.get(a['player_id']) or a['player_id']} "
                          f"({a['points']:.1f})" for a in sorted(rows, key=lambda a: -(a["points"] or 0)))
@@ -375,7 +388,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                        "league_ranks": ranks}
 
     # B. player marginal value -----------------------------------------------
-    open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.on_ir))
+    # An unverified roster count (players missing from the player data, #253 G4) has no known open spot.
+    legality = roster_legality(state, tid)
+    open_spots = None if legality else max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
     byes = extras.get("bye_weeks", {})
     players, rests = [], {}
     for p in sorted(roster, key=lambda p: p.espn_player_id):
@@ -388,12 +403,12 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                 continue
             bench.append({"week": w["week"], "projection": projection(proj, p.espn_player_id, w["week"]),
                           **bench_reason(p, w, proj, byes.get(p.espn_player_id), names)})
-        unused = [b["projection"] for b in bench if b["projection"] and not p.on_ir]
+        unused = [b["projection"] for b in bench if b["projection"] and not p.reserved]
         if started:
             rests[p.espn_player_id] = project_team(without(roster, [p.espn_player_id]), slots, window, proj)
         players.append({
             "espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
-            "injury_status": p.injury_status, "on_ir": p.on_ir,
+            "injury_status": p.injury_status, "on_ir": p.on_ir, **slot_flags(p),
             "espn_projected": raw,
             "marginal": {"all": mv["roster_marginal_lineup_points"], "regular": mv["regular_season_marginal_lineup_points"],
                          "playoff": mv["playoff_marginal_lineup_points"], "known_all": mv["known_marginal_lineup_points"],
@@ -465,7 +480,7 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     }
 
     # D. bench value & consolidation -----------------------------------------
-    cands = [x for x in players if not x["on_ir"] and x["unused_projected_points"] > 0]
+    cands = [x for x in players if not x["on_ir"] and not x.get("on_taxi") and x["unused_projected_points"] > 0]
     cands.sort(key=lambda x: (-x["unused_projected_points"], x["espn_player_id"]))
     out["bench"] = {"players": [{k: x[k] for k in ("espn_player_id", "name", "position", "unused_projected_points",
                                                    "started_points", "weeks_started", "weeks_benched",
@@ -478,7 +493,8 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                     "note": CONSOLIDATION_NOTE}
 
     # E. upgrades --------------------------------------------------------------
-    market = replacement_market(state.free_agents, slots, window, proj, top_n=1)
+    market = replacement_market(state.free_agents, slots, window, proj, top_n=1,
+                                projection_source=source_label(state.projection_source, state.projections))
     gaps = []
     for bw, mw in zip(base["weeks"], market["weeks"]):
         if not bw["projection_complete"]:
@@ -504,10 +520,14 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                                             "candidates", "excluded_unprojected", "projection_complete")},
                 "excluded_position_limit": len(state.free_agents) - len(addable),
                 "open_active_roster_spots": open_spots,
-                "realistic": open_spots > 0,
-                "label": ("Free addition into an open active roster spot" if open_spots > 0 else
-                          "Optimistic: no open active roster spot, so this addition would require a drop (see add/drop)")}
-    drops = sorted([x for x in players if not x["on_ir"]],
+                "realistic": bool(open_spots),
+                "label": ("Unverified: the roster count leaves players out, so whether an active roster spot is open "
+                          "is unknown (see add/drop)" if open_spots is None else
+                          "Free addition into an open active roster spot" if open_spots > 0 else
+                          "Optimistic: no open active roster spot, so this addition would require a drop (see add/drop)"),
+                **({"legality": legality} if legality else {})}
+    # an IR or taxi player frees no active roster spot, so dropping one never makes room for an addition
+    drops = sorted([x for x in players if not x["on_ir"] and not x.get("on_taxi")],
                    key=lambda x: ((x["marginal"]["known_all"] or 0), (x["espn_projected"]["all"]["known_points"] or 0),
                                   x["espn_player_id"]))[:DROP_CANDIDATES]
     add_drop = []
@@ -547,7 +567,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                 waiver_checks.append({**row, "status": f"not allowed: over ESPN's {add.position} roster limit "
                                                         f"({state.position_limits[add.position]})"})
                 continue
-            if drop is None and open_spots == 0:
+            if drop is None and open_spots is None:
+                row["status"] = "unverified: the roster count leaves players out, so an open spot is unknown"
+            elif drop is None and open_spots == 0:
                 row["status"] = "optimistic: no open active roster spot and no suggested drop"
             else:
                 row["status"] = "add/drop" if drop else "free addition into an open spot"
@@ -595,9 +617,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     if top_trade:
         opp = top_trade["opponent_team_id"]
         mine_after = [p for p in roster if p.espn_player_id not in top_trade["sends"]] + \
-            [replace(p, on_ir=False) for p in state.rosters[opp] if p.espn_player_id in top_trade["receives"]]
+            [replace(p, on_ir=False, on_taxi=False) for p in state.rosters[opp] if p.espn_player_id in top_trade["receives"]]
         opp_after = [p for p in state.rosters[opp] if p.espn_player_id not in top_trade["receives"]] + \
-            [replace(p, on_ir=False) for p in roster if p.espn_player_id in top_trade["sends"]]
+            [replace(p, on_ir=False, on_taxi=False) for p in roster if p.espn_player_id in top_trade["sends"]]
         forced = top_trade["forced_drops"]
         mine_after = without(mine_after, forced.get("mine", []))
         opp_after = without(opp_after, forced.get("theirs", []))

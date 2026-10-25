@@ -21,6 +21,8 @@
 .headline { margin: 0; color: var(--ink); font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.005em; text-wrap: balance; overflow-wrap: anywhere; }
 .body { margin-top: 4px; color: var(--ink-muted); font-size: 14px; line-height: 21px; max-width: 80ch; overflow-wrap: anywhere; }
 .body > :last-child { margin-bottom: 0; }
+/* A link in the verdict's sentence is told apart by more than colour (WCAG 1.4.1, axe link-in-text-block), as in Notice. */
+.body a { text-decoration: underline; text-underline-offset: 2px; }
 .actions { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .figures { display: flex; flex-wrap: wrap; margin: 0; border-top: 1px solid var(--line); background: var(--surface-raised); }

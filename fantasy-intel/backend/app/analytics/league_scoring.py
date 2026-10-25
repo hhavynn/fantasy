@@ -48,13 +48,30 @@ DIRECT = {
 RETURN_TD_STATS = (101, 102)
 RETURN_TD_COLUMN = "special_teams_tds"
 
-KICKER_ONLY = {74, 77, 80, 85, 86, 88, 198, 201, 214, 215, 216, 217, 218, 219, 220, 221, 222}
+KICKER_ONLY = {74, 77, 80, 85, 86, 88, 198, 201, 214, 215, 216, 217, 218, 219, 220, 221, 222,
+               # the rest of kicker_scoring's FG/PAT items, its synthetic short-range buckets and the unimplemented
+               # kicker rule of translated items (app/sleeper/scoring.py)
+               75, 76, 78, 79, 81, 82, 83, 84, 87, 199, 200, 202, 203, 1080, 1081, 1082, 1083, 1084, 1085, 1099}
 # Defensive / D/ST events with a non-zero base value. Offensive players essentially never
 # record them, and nflverse player stats cannot attribute them, so they are unmodeled.
 UNMODELED_DEFENSIVE = {93: "blocked kick return TD", 103: "interception return TD",
                        104: "fumble return TD", 206: "defensive 2-pt return", 209: "1-pt safety"}
 
 COMPONENT_COLUMNS = tuple(sorted({c for c, _ in DIRECT.values()} | {RETURN_TD_COLUMN}))
+
+# Counts ESPN has no statId for but other providers score (Sleeper: first downs, attempts, completions, carries).
+# Synthetic ids above 2000 (never an ESPN id), used only by translated scoring items (app/sleeper/scoring.py). They
+# are not in COMPONENT_COLUMNS, which the independent model's training reads: a league scoring them is re-scored
+# from the box-score mix (app/analytics/rescore.py), which reads MIX_COLUMNS.
+EXTRA_DIRECT = {
+    2001: ("passing_first_downs", "passing first down"),
+    2002: ("rushing_first_downs", "rushing first down"),
+    2003: ("receiving_first_downs", "receiving first down"),
+    2004: ("attempts", "pass attempt"),
+    2005: ("completions", "pass completion"),
+    2006: ("carries", "rush attempt"),
+}
+MIX_COLUMNS = tuple(sorted(set(COMPONENT_COLUMNS) | {c for c, _ in EXTRA_DIRECT.values()}))
 
 
 class UnsupportedScoring(ValueError):
@@ -67,6 +84,9 @@ class SkillScoring:
     unsupported: list[dict] = field(default_factory=list)
     unmodeled: list[dict] = field(default_factory=list)
     ignored: list[dict] = field(default_factory=list)
+    # position -> nflverse column -> points per unit on top of `weights` (a TE premium). ESPN never sends these
+    # (its position rules are slot overrides, unsupported); translated provider items do (`positionPoints`).
+    position_weights: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @property
     def supported(self) -> bool:
@@ -76,13 +96,27 @@ class SkillScoring:
     def fingerprint(self) -> str:
         """Stable hash of the effective weights: a model trained under one fingerprint is
         only valid for leagues with the same offensive scoring."""
-        payload = json.dumps(sorted((k, round(v, 6)) for k, v in self.weights.items() if v))
+        flat = sorted((k, round(v, 6)) for k, v in self.weights.items() if v)
+        by_pos = sorted((p, sorted((k, round(v, 6)) for k, v in w.items() if v))
+                        for p, w in self.position_weights.items() if any(w.values()))
+        # position weights enter the hash only when present, so every ESPN fingerprint is unchanged
+        payload = json.dumps([flat, by_pos] if by_pos else flat)
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
+    def weights_for(self, position: str | None) -> dict[str, float]:
+        extra = self.position_weights.get(position or "", {})
+        if not extra:
+            return self.weights
+        return {c: self.weights.get(c, 0.0) + extra.get(c, 0.0) for c in set(self.weights) | set(extra)}
+
     def describe(self) -> dict:
-        return {"supported": self.supported, "fingerprint": self.fingerprint,
-                "weights": {k: v for k, v in sorted(self.weights.items()) if v},
-                "unsupported": self.unsupported, "unmodeled": self.unmodeled}
+        out = {"supported": self.supported, "fingerprint": self.fingerprint,
+               "weights": {k: v for k, v in sorted(self.weights.items()) if v},
+               "unsupported": self.unsupported, "unmodeled": self.unmodeled}
+        if self.position_weights:
+            out["position_weights"] = {p: {k: v for k, v in sorted(w.items()) if v}
+                                       for p, w in sorted(self.position_weights.items())}
+        return out
 
     def require_supported(self) -> "SkillScoring":
         if not self.supported:
@@ -106,8 +140,10 @@ def resolve_skill_scoring(scoring_items: list[dict] | None) -> SkillScoring:
     if not scoring_items:
         return SkillScoring(weights={}, unsupported=[{"stat_id": None, "reason": "no scoring settings synced"}])
     weights: dict[str, float] = {}
+    position_weights: dict[str, dict[str, float]] = {}
     unsupported, unmodeled, ignored = [], [], []
     returns: dict[int, float] = {}
+    direct = {**DIRECT, **EXTRA_DIRECT}
     for item in scoring_items:
         sid = item.get("statId")
         if item.get("isReverseItem"):
@@ -118,8 +154,15 @@ def resolve_skill_scoring(scoring_items: list[dict] | None) -> SkillScoring:
         except UnsupportedScoring as err:
             unsupported.append({"stat_id": sid, "reason": str(err)})
             continue
-        if sid in DIRECT:
-            col = DIRECT[sid][0]
+        extra = {str(p): float(v) for p, v in (item.get("positionPoints") or {}).items() if v}
+        if extra and sid not in direct:
+            unsupported.append({"stat_id": sid, "reason": "position-specific points on a statistic not implemented"})
+            continue
+        for pos, pts in extra.items():
+            col = direct[sid][0]
+            position_weights.setdefault(pos, {})[col] = position_weights.get(pos, {}).get(col, 0.0) + pts
+        if sid in direct:
+            col = direct[sid][0]
             weights[col] = weights.get(col, 0.0) + value
         elif sid in RETURN_TD_STATS:
             returns[sid] = value
@@ -139,14 +182,15 @@ def resolve_skill_scoring(scoring_items: list[dict] | None) -> SkillScoring:
         else:
             unsupported.append({"stat_id": list(RETURN_TD_STATS),
                                 "reason": "kick and punt return TDs score differently; nflverse combines them"})
-    return SkillScoring(weights=weights, unsupported=unsupported, unmodeled=unmodeled, ignored=ignored)
+    return SkillScoring(weights=weights, unsupported=unsupported, unmodeled=unmodeled, ignored=ignored,
+                        position_weights=position_weights)
 
 
-def points(row: dict, scoring: SkillScoring) -> float | None:
-    """League points for one nflverse player-stats row. None if any weighted component is
-    missing (unknown is never treated as zero)."""
+def points(row: dict, scoring: SkillScoring, position: str | None = None) -> float | None:
+    """League points for one nflverse player-stats row (of a player at `position`, for position weights). None if
+    any weighted component is missing (unknown is never treated as zero)."""
     total = 0.0
-    for col, w in scoring.weights.items():
+    for col, w in scoring.weights_for(position).items():
         if not w:
             continue
         v = row.get(col)
@@ -156,11 +200,22 @@ def points(row: dict, scoring: SkillScoring) -> float | None:
     return round(total, 4)
 
 
-def points_sql(scoring: SkillScoring, alias: str = "") -> str:
-    """SQL expression computing league points from nflverse columns (NULL if any input is NULL)."""
+def points_sql(scoring: SkillScoring, alias: str = "", position_col: str | None = None) -> str:
+    """SQL expression computing league points from nflverse columns (NULL if any input is NULL). Position weights
+    need `position_col` (the row's position column) and refuse to be silently dropped without it."""
     prefix = f"{alias}." if alias else ""
-    terms = [f"CAST({w!r} AS DOUBLE) * {prefix}{col}" for col, w in sorted(scoring.weights.items()) if w]
-    return " + ".join(terms) if terms else "NULL::DOUBLE"
+
+    def total(weights: dict[str, float]) -> str:
+        terms = [f"CAST({w!r} AS DOUBLE) * {prefix}{col}" for col, w in sorted(weights.items()) if w]
+        return " + ".join(terms) if terms else "NULL::DOUBLE"
+
+    if not any(any(w.values()) for w in scoring.position_weights.values()):
+        return total(scoring.weights)
+    if position_col is None:
+        raise UnsupportedScoring("position-specific scoring needs the row's position column")
+    cases = " ".join(f"WHEN {prefix}{position_col} = '{p}' THEN {total(scoring.weights_for(p))}"
+                     for p in sorted(scoring.position_weights))
+    return f"(CASE {cases} ELSE {total(scoring.weights)} END)"
 
 
 def reconcile_with_espn(con, season: int, scoring: SkillScoring, tolerance: float = 0.05) -> dict:

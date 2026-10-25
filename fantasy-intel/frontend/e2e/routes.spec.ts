@@ -14,6 +14,9 @@ const ROUTES = [
   // Multi-league prototype: with MULTILEAGUE_UI_ENABLED unset (as here) it renders a "not enabled" notice
   // and disabled provider cards without calling the backend, whose /v2 routes are off in this setup.
   "/leagues",
+  // Sign in and Create account: with sign-in off here they say so (e2e/signup.spec.ts covers them switched on).
+  "/login",
+  "/signup",
   // Research lab (synthetic pool from backend/tests/synthetic_research.py): each position and chart view,
   // a selected player with a comparison, and a filter that empties the pool.
   "/research/wr",
@@ -21,6 +24,8 @@ const ROUTES = [
   "/research/te?view=momentum",
   "/research/rb?sel=00-SYNRB01&cmp=00-SYNRB02&window=last3",
   "/research/wr?vol=40",
+  // Game splits (backend/tests/synthetic_splits.py): a full split (its empty start is the nav entry above).
+  "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023",
 ];
 
 const THEMES = ["light", "dark"] as const;

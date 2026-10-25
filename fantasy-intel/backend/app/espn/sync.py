@@ -458,19 +458,27 @@ def run_espn_sync(con_factory, settings, client=None, save_raw_payloads: bool = 
 
     payloads = fetch_all(client)
     with con_factory() as con:
-        run = SyncRun(con, "espn")
-        if save_raw_payloads:
-            save_raw(payloads, run.run_id)
-        try:
-            stats = write_all(con, payloads, swid=settings.swid, my_team_id=settings.my_team_id)
-        except Exception as err:
-            run.finish("error", f"{type(err).__name__}: {err}")
-            raise
-        try:   # audit log only; the synced data above is already committed
-            stats["injury_retrievals"] = record_injury_status_retrieval(con, payloads, run.run_id)
-        except Exception as err:
-            msg = f"injury retrieval log failed: {type(err).__name__}: {err}"
-            log.warning(msg)
-            stats["warnings"].append(msg)
-        run.finish("ok", "warnings: %d" % len(stats["warnings"]), stats)
+        return write_synced(con, payloads, swid=settings.swid, my_team_id=settings.my_team_id,
+                            before_write=(lambda run_id: save_raw(payloads, run_id)) if save_raw_payloads else None)
+
+
+def write_synced(con, payloads: EspnPayloads, *, swid: str | None, my_team_id: int | None,
+                 before_write: Callable[[str], Any] | None = None) -> dict:
+    """The write half of a sync, recorded as an "espn" sync run: write_all, then the injury retrieval log. Sync jobs
+    (app/sync/build.py) call it with payloads fetched earlier."""
+    run = SyncRun(con, "espn")
+    if before_write is not None:
+        before_write(run.run_id)
+    try:
+        stats = write_all(con, payloads, swid=swid, my_team_id=my_team_id)
+    except Exception as err:
+        run.finish("error", f"{type(err).__name__}: {err}")
+        raise
+    try:   # audit log only; the synced data above is already committed
+        stats["injury_retrievals"] = record_injury_status_retrieval(con, payloads, run.run_id)
+    except Exception as err:
+        msg = f"injury retrieval log failed: {type(err).__name__}: {err}"
+        log.warning(msg)
+        stats["warnings"].append(msg)
+    run.finish("ok", "warnings: %d" % len(stats["warnings"]), stats)
     return stats

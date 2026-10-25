@@ -290,6 +290,12 @@ export const GROUP_LEGEND = [
   { production: undefined, label: "Fewer than 3 games (not grouped)" },
 ] as const;
 
+/** A season with no stored usage at all answers "empty" with no latest week: there is no data to filter, so the page
+ * says the season has no data rather than asking to lower the filters. */
+export function noSeasonData(r: Pick<OpportunityResponse, "status" | "data">): boolean {
+  return r.status === "empty" && (r.data?.latest_week ?? null) === null;
+}
+
 /** The volume a filter refers to, in words, for the pool line. */
 export function poolSentence(r: Pick<OpportunityResponse, "filters" | "pool" | "windows">): string {
   const f = r.filters;
@@ -375,6 +381,7 @@ export function hiddenSentence(excluded: Record<string, number>): string {
   if (excluded.min_games) parts.push(`${excluded.min_games} with too few games`);
   if (excluded.team) parts.push(`${excluded.team} on other teams`);
   if (excluded.no_qualifying_games) parts.push(`${excluded.no_qualifying_games} with no game that has xFP`);
+  if (excluded.limit) parts.push(`${excluded.limit} past the list's limit (the highest xFP/G are listed; raise a filter to narrow it)`);
   if (parts.length === 0) return "";
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
   const total = Object.values(excluded).reduce((a, b) => a + b, 0);

@@ -42,6 +42,10 @@ from .trends import TREND_METRICS, compute_trend
 POSITIONS = ("WR", "RB", "TE")
 WINDOWS = {"season": None, "last3": 3, "last5": 5}
 WINDOW_LABEL = {"season": "Season", "last3": "Last 3 games", "last5": "Last 5 games"}
+# Most players one opportunity response lists: the qualifying pool sorted by xFP/G is cut here (counted under
+# pool.excluded.limit), so the lowest filters (min_volume 0, min_games 1) stay a bounded response. Percentiles are
+# computed on the whole qualifying pool first, so a listed player's percentile does not depend on the cut.
+MAX_OPPORTUNITY_PLAYERS = 200
 
 # Default player-pool filters, per position. The volume measure is a per-game average over the window.
 #   WR 4+ targets/G: wide enough to keep emerging receivers in view (the reference video used 7+
@@ -531,7 +535,7 @@ def build_opportunity(con, season: int | None, position: str, window: str = "sea
     if season is None or not table_exists(con, "player_week_usage"):
         return {**base, "season": season, "status": "no_data", "data": None, "players": [], "teams": [],
                 "pool": {"at_position": 0, "shown": 0, "excluded": {}},
-                "message": "No NFL usage data is stored yet. Run scripts/sync_nfl.py."}
+                "message": "NFL usage data is not available yet."}
     by = {g: rs for g, rs in group_players(load_usage(con, season)).items() if rs[-1]["position"] == position}
     data = freshness(con, season)
     ctx = _context(con, season, list(by))
@@ -556,6 +560,9 @@ def build_opportunity(con, season: int | None, position: str, window: str = "sea
             players.append(p)
     _add_percentiles(position, players)
     players.sort(key=lambda p: (-p["window"]["xfp_pg"], p["name"]))
+    if len(players) > MAX_OPPORTUNITY_PLAYERS:
+        excluded["limit"] = len(players) - MAX_OPPORTUNITY_PLAYERS
+        players = players[:MAX_OPPORTUNITY_PLAYERS]
     at_position = len(players) + sum(excluded.values())
     return {**base, "season": season, "status": "ok" if players else "empty", "data": data,
             "players": players, "teams": sorted(teams),

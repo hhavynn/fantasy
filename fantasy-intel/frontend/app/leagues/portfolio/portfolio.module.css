@@ -1,0 +1,43 @@
+/* Cross-league player exposure (issue #209): the players table, the week table and the league list. */
+.pad { padding: 16px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px 0; min-width: 0; }
+.controls :global(.filters) { margin-bottom: 0; }
+.search { display: flex; align-items: center; gap: 8px; min-width: 0; padding-bottom: 12px; }
+.searchLabel { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.search .input { width: 240px; min-width: 0; }
+
+.players td, .weeks td { vertical-align: top; }
+.name { min-width: 150px; max-width: 220px; }
+.playerName { display: block; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.faint { color: var(--ink-faint); font-size: 12px; }
+.teams { color: var(--ink-faint); }
+.reason { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+
+.drill { text-align: left; min-width: 0; }
+.drill > summary { white-space: nowrap; color: var(--ink); }
+.drill strong { font-weight: 600; }
+.exposures { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; min-width: 220px; max-width: 320px; font-size: 12px; line-height: 17px; }
+.exposures li { display: grid; gap: 1px; padding-top: 6px; border-top: 1px solid var(--line); overflow-wrap: anywhere; white-space: normal; }
+.expFacts { color: var(--ink-muted); }
+
+.who { min-width: 160px; max-width: 360px; color: var(--ink-muted); overflow-wrap: anywhere; }
+
+.leagues { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.league { display: grid; gap: 6px; align-content: start; min-width: 0; padding: 12px 14px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.league[data-state="not_ready"], .league[data-state="needs_team"], .league[data-state="unavailable"] { border-style: dashed; }
+.league p { margin: 0; overflow-wrap: anywhere; }
+.leagueHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
+.leagueName { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.excluded { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.excluded a { overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .controls { padding: 12px 12px 0; }
+  .controls :global(.filters) { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; padding-bottom: 2px; }
+  .search { width: 100%; }
+  .search .input { flex: 1 1 auto; width: auto; }
+  .name { min-width: 128px; max-width: 150px; }
+  .drill > summary { display: flex; align-items: center; min-height: var(--tap); }
+  .excluded a { display: inline-flex; align-items: center; min-height: var(--tap); }
+}

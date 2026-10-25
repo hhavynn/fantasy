@@ -1,4 +1,6 @@
 import type { ProjectionOrigin, ProjectionSourceDetail } from "@/lib/projection-source";
+import type { LineupCoverage } from "@/lib/lineup-coverage";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 export interface LineupPlayer {
   slot_id: string;
@@ -33,6 +35,33 @@ export interface DecisionPlayer {
   lock_status: string;
 }
 
+/** How close a recommendation is (issue #172): one close rule (a gain of at most 3 projected points, the backtests'
+ *  close-call margin), unverified on any unknown. A label with its reason, never a probability. */
+export interface RecommendationStrength {
+  label: "clear" | "close" | "unverified";
+  reason: string;
+}
+
+/** A legal single move into one recommended starting slot (issue #172): the projected total's change against the
+ *  recommendation (null when unknown) and the what-if scenario that tries it. */
+export interface AlternativeOption {
+  player_id: number;
+  name: string;
+  position: string | null;
+  projection: number | null;
+  delta: number | null;
+  known_delta: number;
+  whatif: string;
+}
+
+export interface SlotAlternatives {
+  slot_id: string;
+  slot: string;
+  label: string;
+  starter_id: number | null;
+  options: AlternativeOption[];
+}
+
 export interface StartSitDecision {
   id: string;
   action: "SWAP" | "COORDINATED_SWAP" | "NO_CHANGE";
@@ -43,6 +72,8 @@ export interface StartSitDecision {
   projected_net_gain: number | null;
   explanation: string;
   warnings: string[];
+  /** Absent from an older backend: then nothing is graded. */
+  recommendation_strength?: RecommendationStrength | null;
 }
 
 export interface BenchPlayer {
@@ -59,9 +90,12 @@ export interface BenchPlayer {
   injury_status?: string | null;
   on_ir: boolean;
   nfl_ineligible: boolean;
+  /** Sleeper taxi squad: never a lineup candidate (absent for everyone else). */
+  on_taxi?: boolean;
 }
 
 export interface StartSitSummary {
+  recommendation_strength?: RecommendationStrength | null;
   actual_projected_total: number | null;
   recommended_projected_total: number | null;
   known_actual_total: number;
@@ -75,7 +109,13 @@ export interface StartSitSummary {
   bench_count: number;
   ir_count: number;
   locked_players_count: number;
+  /** Every rostered player Start/Sit can see has kicked off, whatever `status` reports first (older backends omit it). */
+  all_locked?: boolean;
   status: "optimal" | "upgrade_available" | "incomplete_data" | "all_locked" | "future_preview";
+  /** With `lineup_coverage`: whether every projection the gain compares exists (projection_complete is then false). */
+  projections_complete?: boolean;
+  /** Present when the league starts slots no engine fills: every total is partial (issue #253 G2, G3). */
+  lineup_coverage?: LineupCoverage;
 }
 
 export interface InjuryWarning {
@@ -89,6 +129,8 @@ export interface InjuryWarning {
 }
 
 export interface StartSitResponse {
+  /** signal-provenance.v1: lineup, projections and injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
   league: {
     id: number;
     name: string;
@@ -117,6 +159,8 @@ export interface StartSitResponse {
   recommended_lineup: LineupPlayer[];
   unconstrained_lineup: LineupPlayer[];
   decisions: StartSitDecision[];
+  /** Absent from an older backend. */
+  alternatives?: SlotAlternatives[];
   current_bench: BenchPlayer[];
   injury_warnings: InjuryWarning[];
   schedule_warnings: string[];

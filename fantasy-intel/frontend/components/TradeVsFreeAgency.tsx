@@ -1,6 +1,7 @@
 import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { num, signed } from "@/lib/format";
+import { projectionWord } from "@/lib/labels";
 import { signedText } from "@/lib/trade-format";
 import type { TradeVsFreeAgency as Tvf, TvfAcquisition, TvfDeltas, TvfSide } from "@/lib/trade-types";
 import styles from "./TradeVsFreeAgency.module.css";
@@ -9,7 +10,8 @@ import styles from "./TradeVsFreeAgency.module.css";
 // player gives a comparable improvement, and what the trade still adds once that move is made. Hypothetical: the
 // canonical trade delta never includes any of it.
 
-const why = "Incomplete ESPN projections (or a drop whose value is unknown): no canonical total";
+/** `proj` names the projections the evaluation ran on: "ESPN", or "Ours" for a league whose provider has none. */
+const whyFor = (proj: string) => `Incomplete ${projectionWord(proj)}projections (or a drop whose value is unknown): no canonical total`;
 const TYPE: Record<string, { text: string; tone: string }> = {
   free_agent: { text: "free agent", tone: "info" },
   waiver_claim: { text: "waiver claim · not guaranteed", tone: "warn" },
@@ -19,7 +21,7 @@ const TYPE: Record<string, { text: string; tone: string }> = {
 type DeltaKey = "ros_delta" | "regular_season_delta" | "playoff_delta";
 
 /** A delta as coloured text (tables and sentences). */
-function D({ v, k = "ros_delta" }: { v: TvfDeltas; k?: DeltaKey }) {
+function D({ v, k = "ros_delta", why }: { v: TvfDeltas; k?: DeltaKey; why: string }) {
   const x = v[k];
   if (x === null) {
     return k === "ros_delta" && v.known_ros_delta !== null
@@ -30,8 +32,8 @@ function D({ v, k = "ros_delta" }: { v: TvfDeltas; k?: DeltaKey }) {
 }
 
 /** A delta as a headline number (stat strip). */
-function BigDelta({ v }: { v: TvfDeltas }) {
-  return v.ros_delta === null ? <D v={v} /> : <Delta value={v.ros_delta} />;
+function BigDelta({ v, why }: { v: TvfDeltas; why: string }) {
+  return v.ros_delta === null ? <D v={v} why={why} /> : <Delta value={v.ros_delta} />;
 }
 
 function Who({ a }: { a: TvfAcquisition }) {
@@ -49,7 +51,7 @@ function Who({ a }: { a: TvfAcquisition }) {
   );
 }
 
-function SideSummary({ s }: { s: TvfSide }) {
+function SideSummary({ s, why }: { s: TvfSide; why: string }) {
   const c = s.comparison;
   const share = c.share_available_without_trade;
   const isInteracting =
@@ -65,17 +67,17 @@ function SideSummary({ s }: { s: TvfSide }) {
       <StatStrip>
         <Stat
           label={<span title="L(trade roster) − L(current roster): the canonical delta">What the trade adds</span>}
-          value={<BigDelta v={c.canonical_gain} />}
-          note={<>reg <D v={c.canonical_gain} k="regular_season_delta" /> · playoffs <D v={c.canonical_gain} k="playoff_delta" /></>}
+          value={<BigDelta why={why} v={c.canonical_gain} />}
+          note={<>reg <D why={why} v={c.canonical_gain} k="regular_season_delta" /> · playoffs <D why={why} v={c.canonical_gain} k="playoff_delta" /></>}
         />
         <Stat
           label={<span title="L(current roster + best available free agent − required drop) − L(current roster)">Best free-agent move instead</span>}
-          value={<BigDelta v={c.free_agent_alternative_gain} />}
+          value={<BigDelta why={why} v={c.free_agent_alternative_gain} />}
           note={<Who a={s.free_agent_alternative} />}
         />
         <Stat
           label={<span title="L(trade + the same free agent − drops) − L(current roster + that free agent − drop)">Trade beyond that move</span>}
-          value={<BigDelta v={c.trade_advantage} />}
+          value={<BigDelta why={why} v={c.trade_advantage} />}
           note={isInteracting
             ? <span title={interactionText}>Moves interact; simple % misleading</span>
             : share !== null ? `${Math.round(share * 100)}% of the trade's gain is available without trading` : "share not defined"}
@@ -102,7 +104,7 @@ const ROWS: { key: keyof TvfSide["comparison"]; text: string }[] = [
   { key: "trade_advantage_if_both_add", text: "Both worlds take their own best free agent (diagnostic)" },
 ];
 
-function Details({ t, sides }: { t: Extract<Tvf, { available: true }>; sides: TvfSide[] }) {
+function Details({ t, sides, why }: { t: Extract<Tvf, { available: true }>; sides: TvfSide[]; why: string }) {
   return (
     <Method title="Formulas, alternatives by position, streaming frontier and assumptions" className={styles.details}>
       <div className={cx("table-wrap", styles.formulaTable)}>
@@ -119,7 +121,7 @@ function Details({ t, sides }: { t: Extract<Tvf, { available: true }>; sides: Tv
                 <td className="wrap" title={t.formulas[row.key]}>{row.text}</td>
                 {sides.map((s) => {
                   const v = s.comparison[row.key] as TvfDeltas;
-                  return <td key={s.team_id} className="num"><b><D v={v} /></b> <span className="faint">· <D v={v} k="regular_season_delta" /> · <D v={v} k="playoff_delta" /></span></td>;
+                  return <td key={s.team_id} className="num"><b><D why={why} v={v} /></b> <span className="faint">· <D why={why} v={v} k="regular_season_delta" /> · <D why={why} v={v} k="playoff_delta" /></span></td>;
                 })}
               </tr>
             ))}
@@ -135,11 +137,11 @@ function Details({ t, sides }: { t: Extract<Tvf, { available: true }>; sides: Tv
           <b>{s.label}</b>
           <ul className={styles.list}>
             {s.position_alternatives.map((p) => (
-              <li key={p.position}>Best available {p.position}: <Who a={p} /> <span className="faint">→ whole lineup <D v={p.gain} />{p.slot_delta !== null ? `, ${p.position} slot ${p.slot_delta > 0 ? "+" : ""}${p.slot_delta.toFixed(1)}` : ""}</span></li>
+              <li key={p.position}>Best available {p.position}: <Who a={p} /> <span className="faint">→ whole lineup <D why={why} v={p.gain} />{p.slot_delta !== null ? `, ${p.position} slot ${p.slot_delta > 0 ? "+" : ""}${p.slot_delta.toFixed(1)}` : ""}</span></li>
             ))}
-            {s.waiver_claim_alternative && <li>Waiver claim: <Who a={s.waiver_claim_alternative} /> <span className="faint">→ <D v={s.waiver_claim_alternative.gain} /> if the claim succeeds</span></li>}
-            {s.unknown_availability_alternative && <li>Unconfirmed availability: <Who a={s.unknown_availability_alternative} /> <span className="faint">→ <D v={s.unknown_availability_alternative.gain} /> if addable</span></li>}
-            <li>After the trade, its own best free agent: <Who a={s.with_trade_alternative} /> <span className="faint">→ <D v={s.with_trade_alternative.gain} /></span></li>
+            {s.waiver_claim_alternative && <li>Waiver claim: <Who a={s.waiver_claim_alternative} /> <span className="faint">→ <D why={why} v={s.waiver_claim_alternative.gain} /> if the claim succeeds</span></li>}
+            {s.unknown_availability_alternative && <li>Unconfirmed availability: <Who a={s.unknown_availability_alternative} /> <span className="faint">→ <D why={why} v={s.unknown_availability_alternative.gain} /> if addable</span></li>}
+            <li>After the trade, its own best free agent: <Who a={s.with_trade_alternative} /> <span className="faint">→ <D why={why} v={s.with_trade_alternative.gain} /></span></li>
             {s.trade_with_free_agent && (
               <li className={styles.faintItem}>
                 {s.trade_with_free_agent.available === false ? (
@@ -203,8 +205,9 @@ function Details({ t, sides }: { t: Extract<Tvf, { available: true }>; sides: Tv
   );
 }
 
-export function TradeVsFreeAgency({ t, only }: { t?: Tvf; only?: "team_a" }) {
+export function TradeVsFreeAgency({ t, only, projLabel = "ESPN" }: { t?: Tvf; only?: "team_a"; projLabel?: string }) {
   if (!t) return null;
+  const why = whyFor(projLabel);
   if (!t.available) return <p className="faint">Trade vs. free agency unavailable: {t.reason}</p>;
   const sides = only ? [t[only]] : [t.team_a, t.team_b];
   const body = (
@@ -212,9 +215,9 @@ export function TradeVsFreeAgency({ t, only }: { t?: Tvf; only?: "team_a" }) {
       <p className={styles.note}>{t.note}{!t.consistent_with_canonical && <> <Badge value="canonical mismatch" tone="bad" /></>}</p>
       {t.contested && <Notice tone="caution" className={styles.alert}>{t.contested.note}</Notice>}
       <div className={styles.sides}>
-        {sides.map((s) => <SideSummary key={s.team_id} s={s} />)}
+        {sides.map((s) => <SideSummary key={s.team_id} s={s} why={why} />)}
       </div>
-      <Details t={t} sides={only ? [t.team_a, t.team_b] : sides} />
+      <Details t={t} sides={only ? [t.team_a, t.team_b] : sides} why={why} />
     </>
   );
   if (only) {

@@ -1,205 +1,235 @@
+import Link from "@/components/LeagueLink";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
+import { apiRequest } from "@/lib/api";
+import { authConfig } from "@/lib/auth-config";
+import { authHref } from "@/lib/auth-flow";
+import { signupGateNow } from "@/lib/email-link.server";
+import { providerName } from "@/lib/labels";
+import { leaguePath } from "@/lib/league-scope";
+import { dataAsOf } from "@/lib/league-switcher";
 import {
-  NOT_ENABLED_REASON, buildProviderCards, dataOrigin, defaultSeason, describeMissing, freshness, multileagueUiEnabled,
-  myTeamOption, providerLabel, type ProviderCard,
-} from "@/lib/leagues";
-import { loadLeaguesData, serverNow, type LeagueWithTeams, type LeaguesData } from "./load";
-import { ConnectForm } from "./ConnectForm";
-import { RemoveButton } from "./RemoveButton";
-import { TeamPicker } from "./TeamPicker";
+  defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeague, parseMyLeagues, type MyLeague,
+} from "@/lib/my-leagues";
+import { hostHref, onboardingView, parseProviders, progressHref, type OnboardingView, type ProviderInfo } from "@/lib/onboarding";
+import { MIN_LEAGUES } from "@/lib/action-center";
+import { PORTFOLIO_PATH } from "@/lib/portfolio";
+import { currentUser } from "@/lib/supabase/server";
+import { ActionCenter, ActionCenterSkeleton } from "./ActionCenter";
+import { CookieForm, EspnForm, SleeperForm } from "./AddLeague";
+import { LeagueActions } from "./LeagueActions";
+import { DemoEntry, EspnPrivateExplainer, HostCards, Stepper, SyncProgress } from "./Onboarding";
 import styles from "./leagues.module.css";
 
 export const metadata = { title: "Leagues" };
 
-const HINTS: Record<string, { hint: string; note?: string }> = {
-  sleeper: { hint: "Digits only: open the league on sleeper.com and copy the number after /leagues/ in the address bar.", note: "Public leagues by league id. No password or token is needed." },
-  espn: { hint: "Digits only: open the league on fantasy.espn.com and copy the number after leagueId= in the address bar.", note: "Public leagues by league id. Private ESPN leagues cannot be connected here, and no cookies or passwords are requested." },
-  yahoo: { hint: "", note: "Yahoo leagues need an OAuth sign-in with Yahoo." },
-};
+type SearchParams = Record<string, string | string[] | undefined>;
 
-export default async function LeaguesPage() {
+export default async function LeaguesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // The flag and the signed-in user are per request, so never prerender this page.
   await connection();
   const enabled = multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED);
-  const data = enabled ? await loadLeaguesData() : null;
-  const now = serverNow();
-
-  const cards = buildProviderCards(data?.providers ?? [], {
-    flagEnabled: enabled,
-    providersLoaded: !!data && data.providersProblem === null,
-    canConnect: !!data && data.signedOutReason === null,
-    signedOutReason: data?.signedOutReason ?? undefined,
-  });
-
+  if (!enabled) return <SwitchedOff />;
+  const view = onboardingView(await searchParams);
+  const auth = authConfig(process.env);
+  const [user, providers, signupOpen] = await Promise.all([
+    auth ? currentUser() : Promise.resolve(null),
+    // What each host can do here: public, read from the backend's capability registry (null when it cannot answer).
+    apiRequest("/v2/providers").then((r) => (r.ok ? parseProviders(r.data) : null)),
+    // Offer "Create an account" only while both launch gates are open (no API call while this app keeps them closed).
+    auth?.signupsOpen ? signupGateNow().then((g) => g.open) : Promise.resolve(false),
+  ]);
   return (
     <div className="stack">
-      <PageHeader
-        eyebrow="Connections"
-        title="Leagues"
-        meta={enabled
-          ? "Connect leagues from other providers and choose your team in each. Prototype: the existing ESPN dashboard is unchanged."
-          : "Which fantasy providers this dashboard can read, and how it gets its league today."}
-      />
-
-      {!enabled ? (
-        <>
-          <Notice tone="info" title="Connecting leagues from the browser is switched off in this deployment">
-            This page is a prototype. Nothing can be connected or listed here, so no connect controls are shown. The rest of the dashboard works as before.
-          </Notice>
-          <Section title="How this dashboard gets its league" subtitle="The one setup that works today">
-            <ol className={styles.steps}>
-              <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> (and the season, <code>ESPN_SEASON</code>) in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
-              <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file, as <code>ESPN_S2</code> and <code>SWID</code>. They are read from the environment only.</li>
-              <li>The sync scripts import the league and NFL usage data; every page then reads from that import.</li>
-            </ol>
-            <p className={styles.plain}>The provider list below shows what each provider could supply once this prototype is enabled.</p>
-          </Section>
-        </>
-      ) : null}
-      {data?.providersProblem ? <Notice tone={data.providersProblem.tone} title={data.providersProblem.title}>{data.providersProblem.body}</Notice> : null}
-
-      <Section title={enabled ? "Connect a league" : "Providers"} subtitle={enabled ? "Pick a provider. A provider that is switched off says why." : "What each provider supports, and why it is unavailable here."}>
-        <ul className={styles.cards}>
-          {cards.map((card) => <li key={card.provider}><ProviderCardView card={card} season={defaultSeason(new Date(now))} /></li>)}
-        </ul>
-      </Section>
-
-      {enabled ? (
-        <Section title="Connected leagues" subtitle="Leagues connected to your account.">
-          <ConnectedLeagues enabled={enabled} data={data} now={now} />
-        </Section>
-      ) : null}
+      <PageHeader eyebrow="Connections" title="Leagues"
+                  meta="Add an ESPN or Sleeper league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
+      {user ? <SignedIn view={view} providers={providers} /> : <Guest view={view} providers={providers} signupOpen={signupOpen} />}
     </div>
   );
 }
 
-function ProviderCardView({ card, season }: { card: ProviderCard; season: number }) {
-  const copy = HINTS[card.provider];
-  const reasonId = `reason-${card.provider}`;
+/** The URL a signed-out visitor returns to after signing in: the step they were on. */
+function stepHref(view: OnboardingView): string {
+  if (view.step === "details") return hostHref(view.host);
+  if (view.step === "progress") return progressHref(view.leagueId);
+  if (view.step === "private") return hostHref("espn");
+  return "/leagues";
+}
+
+const signIn = (next: string) => `/login?next=${encodeURIComponent(next)}`;
+
+function Guest({ view, providers, signupOpen }: { view: OnboardingView; providers: ProviderInfo[] | null; signupOpen: boolean }) {
+  const next = stepHref(view);
   return (
-    <article className={styles.card} aria-labelledby={`provider-${card.provider}`}>
-      <div className={styles.cardHead}>
-        <h3 id={`provider-${card.provider}`} className={styles.cardTitle}>{card.label}</h3>
-        <Badge value={card.state === "enabled" ? "Available" : "Unavailable"} tone={card.state === "enabled" ? "good" : ""} />
-      </div>
-      {copy?.note ? <p className={styles.desc}>{copy.note}</p> : null}
-
-      {card.state === "enabled" ? (
-        <ConnectForm provider={card.provider} label={card.label} defaultSeason={season} hint={copy?.hint ?? ""} />
+    <>
+      {signupOpen ? (
+        <Notice tone="info" title="Sign in or create an account to add leagues">
+          Viewing a public league or the demo needs no account: open its link. To add a league, save your team or
+          connect a private league, <Link href={signIn(next)} prefetch={false}>sign in</Link> or{" "}
+          <Link href={authHref("/signup", next)} prefetch={false}>create an account</Link>. Both use an emailed link, no
+          password.
+        </Notice>
       ) : (
-        <div className={styles.disabledBlock}>
-          <p id={reasonId} className={styles.reason}><span className={styles.reasonLabel}>Why unavailable:</span> {card.reason}</p>
-        </div>
+        <Notice tone="info" title="Sign in to add leagues">
+          Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
+          league, <Link href={signIn(next)} prefetch={false}>sign in</Link>. Sign-ups for new accounts are not open yet.
+        </Notice>
       )}
-
-      {card.unavailable.length > 0 ? (
-        <details className={styles.details}>
-          <summary>{card.unavailable.length} {card.unavailable.length === 1 ? "thing" : "things"} {card.label} cannot supply</summary>
-          <ul className={styles.capList}>
-            {card.unavailable.map((c) => <li key={c.name}><b>{c.label}</b>: {c.supportLabel}{c.note ? `. ${c.note}` : ""}</li>)}
-          </ul>
-        </details>
-      ) : null}
-    </article>
+      <Section title="See it before you connect" subtitle="Everything in the demo is invented, so you can look around freely.">
+        <DemoEntry />
+      </Section>
+      <Section title="Connecting a league takes three steps" subtitle="Choose the host, paste the league's address, then wait a few minutes for the first sync.">
+        <HostCards providers={providers} chooseHref={(host) => signIn(hostHref(host))} />
+      </Section>
+    </>
   );
 }
 
-function ConnectedLeagues({ enabled, data, now }: { enabled: boolean; data: LeaguesData | null; now: number }) {
-  if (!enabled || !data) {
-    return <EmptyState title="Connected leagues are unavailable">{NOT_ENABLED_REASON}</EmptyState>;
-  }
-  if (data.signedOutReason) {
+async function SignedIn({ view, providers }: { view: OnboardingView; providers: ProviderInfo[] | null }) {
+  const [res, focus] = await Promise.all([
+    apiRequest("/v2/leagues"),
+    view.step === "progress" ? apiRequest(`/v2/leagues/${view.leagueId}`) : Promise.resolve(null),
+  ]);
+  const leagues = res.ok ? parseMyLeagues(res.data) : [];
+  const focused = focus?.ok ? parseMyLeague(focus.data) : null;
+  // The all-leagues action center (issue #166) leads the page for a manager with two or more leagues, above the list
+  // that switches between them; it streams in behind its skeleton while each league is checked on the server.
+  const center = view.step === "choose" && res.ok && leagues.length >= MIN_LEAGUES;
+  return (
+    <>
+      {center ? (
+        <Suspense fallback={<ActionCenterSkeleton />}>
+          <ActionCenter />
+        </Suspense>
+      ) : null}
+      {view.step === "progress" ? (
+        <Section title="Add a league" subtitle="Step 3 of 3: the first sync. You can leave this page; the league keeps syncing.">
+          <div className={styles.flow}>
+            <Stepper current={3} />
+            {focused ? <SyncProgress league={focused} note={view.note} /> : (
+              <Notice tone="caution" title="This league is not available to you">
+                It may have been removed, or it is private and you are not a member.{" "}
+                <Link href="/leagues" prefetch={false}>Add a league</Link> or pick one of yours below.
+              </Notice>
+            )}
+          </div>
+        </Section>
+      ) : (
+        <AddSteps view={view} providers={providers} />
+      )}
+      {res.ok && leagues.length === 0 && view.step !== "progress" ? (
+        <Section title="Not ready to connect yet?" subtitle="A made-up league shows what you get.">
+          <DemoEntry />
+        </Section>
+      ) : null}
+      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to." id="your-leagues"
+               actions={res.ok && leagues.length > 0 ? <Link href={PORTFOLIO_PATH} prefetch={false}>Player exposure across leagues</Link> : undefined}>
+        {!res.ok ? (
+          <Notice tone="negative" title="Your leagues could not be loaded">{res.error}</Notice>
+        ) : leagues.length === 0 ? (
+          <EmptyState title="No leagues yet">Add one above, or open a league link someone shared.</EmptyState>
+        ) : (
+          <ul className={styles.leagues}>
+            {leagues.map((l) => <li key={l.id}><LeagueCard league={l} /></li>)}
+          </ul>
+        )}
+      </Section>
+    </>
+  );
+}
+
+function AddSteps({ view, providers }: { view: Exclude<OnboardingView, { step: "progress" }>; providers: ProviderInfo[] | null }) {
+  if (view.step === "choose") {
     return (
-      <EmptyState title="Sign-in is not available yet">
-        {data.signedOutReason} Connected leagues belong to an account, so none can be shown or added until sign-in exists.
-      </EmptyState>
+      <Section title="Add a league" subtitle="Step 1 of 3: where does your league live?">
+        <div className={styles.flow}>
+          <Stepper current={1} />
+          <HostCards providers={providers} chooseHref={hostHref} />
+        </div>
+      </Section>
     );
   }
-  if (data.leaguesProblem) {
-    return <Notice tone={data.leaguesProblem.tone} title={data.leaguesProblem.title}>{data.leaguesProblem.body}</Notice>;
+  if (view.step === "private") {
+    return (
+      <Section title="Add a league" subtitle="Step 2 of 3: a private ESPN league.">
+        <div className={styles.flow}>
+          <Stepper current={2} />
+          <EspnPrivateExplainer league={view.league} season={view.season} />
+          <CookieForm league={view.league} season={view.season} />
+        </div>
+      </Section>
+    );
   }
-  if (data.leagues.length === 0) {
-    return <EmptyState title="No leagues connected yet">Use Connect a league above to add one.</EmptyState>;
-  }
+  const info = providers?.find((p) => p.provider === view.host) ?? null;
+  const name = providerName(view.host);
   return (
-    <ul className={styles.leagues}>
-      {data.leagues.map((item) => <li key={item.league.league_id}><LeagueCard item={item} now={now} /></li>)}
-    </ul>
+    <Section title="Add a league" subtitle={`Step 2 of 3: your ${name} league.`}
+             actions={<Link href="/leagues" prefetch={false}>Change host</Link>}>
+      <div className={styles.flow}>
+        <Stepper current={2} />
+        {info && !info.enabled ? (
+          <Notice tone="caution" title={`${name} is not available in this deployment`}>
+            {info.reason ?? "It is switched off here."} <Link href="/leagues" prefetch={false}>Choose another host</Link>.
+          </Notice>
+        ) : view.host === "sleeper" ? <SleeperForm /> : <EspnForm defaultSeason={defaultSeason(new Date())} />}
+      </div>
+    </Section>
   );
 }
 
-function LeagueCard({ item, now }: { item: LeagueWithTeams; now: number }) {
-  const { league, teams, teamsProblem } = item;
-  const name = league.name?.trim() || "Unnamed league";
-  const headingId = `league-${league.league_id}`;
-  const origin = dataOrigin(league.data_origin);
-  const fresh = freshness(league.sync, now);
-  const missing = describeMissing(league.missing_capabilities, league.capabilities);
-  const mine = myTeamOption(league, teams);
-  const canPick = teams.length > 0 && !teamsProblem;
-
+function LeagueCard({ league }: { league: MyLeague }) {
+  const state = leagueState(league);
+  const asOf = dataAsOf(league.committedAt, "UTC");
+  const name = leagueName(league);
+  const headingId = `league-${league.id}`;
   return (
     <article className={styles.league} aria-labelledby={headingId}>
       <div className={styles.cardHead}>
-        <h3 id={headingId} className={styles.cardTitle}>{name}</h3>
+        <h3 id={headingId} className={styles.cardTitle}>
+          {/* Until its first sync has published, a league's pages answer "first sync in progress": link to its progress. */}
+          <Link href={league.syncState === "ready" ? leaguePath(league.id, "/") : progressHref(league.id)} prefetch={false}>{name}</Link>
+        </h3>
         <div className={styles.badges}>
-          <Badge value={providerLabel(league.provider)} tone="" />
+          {league.provider !== "espn" ? <Badge value={providerName(league.provider)} tone="" /> : null}
           <Badge value={`Season ${league.season}`} tone="" />
-          <Badge value={origin.label} tone={origin.tone === "neutral" ? "" : origin.tone} title={origin.title} />
+          <Badge value={league.visibility === "private" ? "Private" : "Public"} tone="" />
+          {league.role ? <Badge value={league.role === "admin" ? "Admin" : "Member"} tone="" /> : null}
         </div>
       </div>
-
       <dl className={styles.facts}>
         <div>
-          <dt>Data origin</dt>
-          <dd>{origin.label}. {origin.title}.</dd>
+          <dt>Status</dt>
+          <dd><Badge value={state.label} tone={state.tone === "neutral" ? "" : state.tone} /> {state.detail}</dd>
         </div>
         <div>
-          <dt>Sync</dt>
-          <dd>
-            <Badge value={fresh.statusLabel} tone={fresh.tone === "neutral" ? "" : fresh.tone} />{" "}
-            {fresh.summary}
-            {fresh.details.map((d) => <span key={d} className={styles.detailLine}>{d}</span>)}
-          </dd>
-        </div>
-        <div>
-          <dt>My team</dt>
-          <dd>
-            {mine ? mine.label : league.my_team_external_id ? `Team ${league.my_team_external_id} (not in the provider's current team list)` : "Not chosen yet"}
-          </dd>
-        </div>
-        <div>
-          <dt>League id</dt>
-          <dd className="mono">{league.external_league_id}</dd>
+          <dt>Data</dt>
+          <dd>{asOf ? `${asOf} UTC` : "Not synced yet"}</dd>
         </div>
       </dl>
-
-      <div className={styles.caps}>
-        <h4 className={styles.subhead}>Not available for this league</h4>
-        {missing.length === 0 ? (
-          <p className={styles.plain}>The backend reports no missing capabilities.</p>
-        ) : (
-          <ul className={styles.capList}>
-            {missing.map((c) => <li key={c.name}><b>{c.label}</b>: {c.supportLabel}{c.note ? `. ${c.note}` : ""}</li>)}
-          </ul>
-        )}
-      </div>
-
       <div className={styles.manage}>
-        {teamsProblem ? (
-          <Notice tone={teamsProblem.tone} title={teamsProblem.title}>{teamsProblem.body}</Notice>
-        ) : canPick ? (
-          <TeamPicker leagueId={league.league_id} teams={teams} selected={league.my_team_external_id} />
-        ) : (
-          <p className={styles.plain}>
-            {league.missing_capabilities.includes("teams")
-              ? `${providerLabel(league.provider)} cannot list teams for this league, so a team cannot be chosen.`
-              : "The provider returned no teams for this league, so a team cannot be chosen."}
-          </p>
-        )}
-        <RemoveButton leagueId={league.league_id} name={name} />
+        <LeagueActions leagueId={league.id} pinned={league.pinned} member={league.role !== null} />
+        <Link href={`/leagues/${league.id}`} prefetch={false}>Settings</Link>
       </div>
     </article>
+  );
+}
+
+function SwitchedOff() {
+  return (
+    <div className="stack">
+      <PageHeader eyebrow="Connections" title="Leagues"
+                  meta="Which fantasy providers this dashboard can read, and how it gets its league today." />
+      <Notice tone="info" title="Connecting leagues from the browser is switched off in this deployment">
+        This page is a prototype. Nothing can be connected or listed here, so no connect controls are shown. The rest of the dashboard works as before.
+      </Notice>
+      <Section title="How this dashboard gets its league" subtitle="The one setup that works today">
+        <ol className={styles.steps}>
+          <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> (and the season, <code>ESPN_SEASON</code>) in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
+          <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file, as <code>ESPN_S2</code> and <code>SWID</code>. They are read from the environment only.</li>
+          <li>The sync scripts import the league and NFL usage data; every page then reads from that import.</li>
+        </ol>
+      </Section>
+    </div>
   );
 }

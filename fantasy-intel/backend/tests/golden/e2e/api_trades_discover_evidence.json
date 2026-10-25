@@ -1,0 +1,1722 @@
+// /api/trades/discover/evidence?key=2-for-1%3A3%3A204-205%3A208
+{
+ "body": {
+  "anchor_team_id": 2,
+  "asset_balance": {
+   "caveats": [],
+   "they_send": [
+    {
+     "availability_status": "available",
+     "eligibility_unknown": false,
+     "espn_player_id": 208,
+     "espn_points_eligible_weeks": 165.0,
+     "fantasy_ir_slot": false,
+     "known_par": 0.0,
+     "league_starters_at_position": 9,
+     "missing_weeks": [],
+     "name": "Lima RB",
+     "nfl_ineligible_weeks": [],
+     "no_eligible_week": false,
+     "par": 0.0,
+     "par_playoff": 0.0,
+     "par_regular": 0.0,
+     "position": "RB",
+     "position_rank": 1,
+     "position_rank_of": 8,
+     "replacement_per_week": 12.0,
+     "replacement_source": [
+      "best available free agent"
+     ],
+     "return_unconfirmed": false,
+     "starter_caliber": true
+    }
+   ],
+   "you_send": [
+    {
+     "availability_status": "available",
+     "eligibility_unknown": false,
+     "espn_player_id": 204,
+     "espn_points_eligible_weeks": 105.0,
+     "fantasy_ir_slot": false,
+     "known_par": 0.0,
+     "league_starters_at_position": 9,
+     "missing_weeks": [],
+     "name": "Hotel RB",
+     "nfl_ineligible_weeks": [],
+     "no_eligible_week": false,
+     "par": 0.0,
+     "par_playoff": 0.0,
+     "par_regular": 0.0,
+     "position": "RB",
+     "position_rank": 1,
+     "position_rank_of": 8,
+     "replacement_per_week": 12.0,
+     "replacement_source": [
+      "best available free agent"
+     ],
+     "return_unconfirmed": false,
+     "starter_caliber": true
+    },
+    {
+     "availability_status": "available",
+     "eligibility_unknown": false,
+     "espn_player_id": 205,
+     "espn_points_eligible_weeks": 120.0,
+     "fantasy_ir_slot": false,
+     "known_par": 0.0,
+     "league_starters_at_position": 9,
+     "missing_weeks": [],
+     "name": "India RB",
+     "nfl_ineligible_weeks": [],
+     "no_eligible_week": false,
+     "par": 0.0,
+     "par_playoff": 0.0,
+     "par_regular": 0.0,
+     "position": "RB",
+     "position_rank": 1,
+     "position_rank_of": 8,
+     "replacement_per_week": 12.0,
+     "replacement_source": [
+      "best available free agent"
+     ],
+     "return_unconfirmed": false,
+     "starter_caliber": true
+    }
+   ]
+  },
+  "dual_value": {
+   "asset": {
+    "bench_assets": [],
+    "best_asset_surrendered": {
+     "them": {
+      "espn_player_id": 208,
+      "name": "Lima RB",
+      "par": 0.0,
+      "position": "RB",
+      "position_rank": 1,
+      "starter_caliber": true
+     },
+     "you": {
+      "espn_player_id": 204,
+      "name": "Hotel RB",
+      "par": 0.0,
+      "position": "RB",
+      "position_rank": 1,
+      "starter_caliber": true
+     }
+    },
+    "caveats": [],
+    "depth": {
+     "them": {
+      "empty_slots_after": [],
+      "forced_drop_lineup_cost": 0.0,
+      "forced_drop_par": 0,
+      "forced_drops": [],
+      "kind": "adds depth",
+      "net_players": 1,
+      "open_roster_spots_after": 7,
+      "outgoing_non_starter_par": 0
+     },
+     "you": {
+      "empty_slots_after": [],
+      "forced_drop_lineup_cost": 0.0,
+      "forced_drop_par": 0,
+      "forced_drops": [],
+      "kind": "consolidates",
+      "net_players": -1,
+      "open_roster_spots_after": 2,
+      "outgoing_non_starter_par": 0.0
+     }
+    },
+    "favours": null,
+    "imbalance": "none",
+    "label": "replacement_level",
+    "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
+    "per_week": {
+     "they_send": 0.0,
+     "you_send": 0.0
+    },
+    "ratio": 1.0,
+    "text": "Replacement-level package (little value above free agents on either side)",
+    "they_send_par": 0.0,
+    "you_receive": [
+     {
+      "bench_asset": false,
+      "espn_player_id": 208,
+      "from_side": "Team 3",
+      "known_par": 0.0,
+      "league_starters_at_position": 9,
+      "missing_weeks": [],
+      "name": "Lima RB",
+      "nfl_ineligible_weeks": [],
+      "par": 0.0,
+      "par_playoff": 0.0,
+      "par_regular": 0.0,
+      "position": "RB",
+      "position_rank": 1,
+      "position_rank_of": 8,
+      "replacement_per_week": 12.0,
+      "role_after": "starter",
+      "role_before": "starter",
+      "starter_caliber": true,
+      "starts_after": 15,
+      "starts_before": 15,
+      "to_side": "You",
+      "weeks": 15
+     }
+    ],
+    "you_send": [
+     {
+      "bench_asset": false,
+      "espn_player_id": 204,
+      "from_side": "You",
+      "known_par": 0.0,
+      "league_starters_at_position": 9,
+      "missing_weeks": [],
+      "name": "Hotel RB",
+      "nfl_ineligible_weeks": [],
+      "par": 0.0,
+      "par_playoff": 0.0,
+      "par_regular": 0.0,
+      "position": "RB",
+      "position_rank": 1,
+      "position_rank_of": 8,
+      "replacement_per_week": 12.0,
+      "role_after": "starter",
+      "role_before": "bench",
+      "starter_caliber": true,
+      "starts_after": 15,
+      "starts_before": 0,
+      "to_side": "Team 3",
+      "weeks": 15
+     },
+     {
+      "bench_asset": false,
+      "espn_player_id": 205,
+      "from_side": "You",
+      "known_par": 0.0,
+      "league_starters_at_position": 9,
+      "missing_weeks": [],
+      "name": "India RB",
+      "nfl_ineligible_weeks": [],
+      "par": 0.0,
+      "par_playoff": 0.0,
+      "par_regular": 0.0,
+      "position": "RB",
+      "position_rank": 1,
+      "position_rank_of": 8,
+      "replacement_per_week": 12.0,
+      "role_after": "starter",
+      "role_before": "starter",
+      "starter_caliber": true,
+      "starts_after": 15,
+      "starts_before": 15,
+      "to_side": "Team 3",
+      "weeks": 15
+     }
+    ],
+    "you_send_par": 0.0
+   },
+   "lineup": {
+    "basis": "Only projected starters count toward the lineup delta; bench players are depth and asset value, shown separately, never added as starting points.",
+    "them": {
+     "after": {
+      "playoff": 135.0,
+      "regular": 495.0,
+      "ros": 630.0
+     },
+     "average_weekly_delta": 4.0,
+     "before": {
+      "playoff": 121.2,
+      "regular": 448.8,
+      "ros": 570.0
+     },
+     "delta": {
+      "known_ros": 60.0,
+      "playoff": 13.8,
+      "regular": 46.2,
+      "ros": 60.0
+     },
+     "displaced": [],
+     "forced_drop_lineup_cost": 0.0,
+     "forced_drops": [],
+     "key_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+     "label": "Team 3",
+     "missing": {
+      "players": [],
+      "weeks": [],
+      "weeks_incomplete": []
+     },
+     "promoted": [
+      {
+       "espn_player_id": 204,
+       "incoming": true,
+       "name": "Hotel RB",
+       "position": "RB",
+       "weeks": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+       ]
+      },
+      {
+       "espn_player_id": 205,
+       "incoming": true,
+       "name": "India RB",
+       "position": "RB",
+       "weeks": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+       ]
+      }
+     ],
+     "team_id": 3,
+     "team_name": "Team 3",
+     "weekly": [
+      {
+       "delta": 3.3,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.3,
+       "phase": "regular",
+       "week": 3
+      },
+      {
+       "delta": 3.4,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.4,
+       "phase": "regular",
+       "week": 4
+      },
+      {
+       "delta": 3.5,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.5,
+       "phase": "regular",
+       "week": 5
+      },
+      {
+       "delta": 3.6,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.6,
+       "phase": "regular",
+       "week": 6
+      },
+      {
+       "delta": 3.7,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.7,
+       "phase": "regular",
+       "week": 7
+      },
+      {
+       "delta": 3.8,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.8,
+       "phase": "regular",
+       "week": 8
+      },
+      {
+       "delta": 3.9,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 3.9,
+       "phase": "regular",
+       "week": 9
+      },
+      {
+       "delta": 4.0,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.0,
+       "phase": "regular",
+       "week": 10
+      },
+      {
+       "delta": 4.1,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.1,
+       "phase": "regular",
+       "week": 11
+      },
+      {
+       "delta": 4.2,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.2,
+       "phase": "regular",
+       "week": 12
+      },
+      {
+       "delta": 4.3,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.3,
+       "phase": "regular",
+       "week": 13
+      },
+      {
+       "delta": 4.4,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.4,
+       "phase": "regular",
+       "week": 14
+      },
+      {
+       "delta": 4.5,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.5,
+       "phase": "playoff",
+       "week": 15
+      },
+      {
+       "delta": 4.6,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.6,
+       "phase": "playoff",
+       "week": 16
+      },
+      {
+       "delta": 4.7,
+       "entered": [
+        204,
+        205
+       ],
+       "exited": [
+        208
+       ],
+       "known_delta": 4.7,
+       "phase": "playoff",
+       "week": 17
+      }
+     ],
+     "weeks_improved": 15,
+     "weeks_unchanged": 0,
+     "weeks_worsened": 0
+    },
+    "weeks": 15,
+    "you": {
+     "after": {
+      "playoff": 283.2,
+      "regular": 1051.8,
+      "ros": 1335.0
+     },
+     "average_weekly_delta": 3.0,
+     "before": {
+      "playoff": 274.2,
+      "regular": 1015.8,
+      "ros": 1290.0
+     },
+     "delta": {
+      "known_ros": 45.0,
+      "playoff": 9.0,
+      "regular": 36.0,
+      "ros": 45.0
+     },
+     "displaced": [],
+     "forced_drop_lineup_cost": 0.0,
+     "forced_drops": [],
+     "key_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB).",
+     "label": "You",
+     "missing": {
+      "players": [],
+      "weeks": [],
+      "weeks_incomplete": []
+     },
+     "promoted": [
+      {
+       "espn_player_id": 208,
+       "incoming": true,
+       "name": "Lima RB",
+       "position": "RB",
+       "weeks": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+       ]
+      }
+     ],
+     "team_id": 2,
+     "team_name": "Team 2",
+     "weekly": [
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 3
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 4
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 5
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 6
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 7
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 8
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 9
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 10
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 11
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 12
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 13
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "regular",
+       "week": 14
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "playoff",
+       "week": 15
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "playoff",
+       "week": 16
+      },
+      {
+       "delta": 3.0,
+       "entered": [
+        208
+       ],
+       "exited": [
+        205
+       ],
+       "known_delta": 3.0,
+       "phase": "playoff",
+       "week": 17
+      }
+     ],
+     "weeks_improved": 15,
+     "weeks_unchanged": 0,
+     "weeks_worsened": 0
+    }
+   },
+   "most_important_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB).",
+   "phase": "ros",
+   "plausibility": {
+    "checks": [
+     {
+      "criterion": "lineup_gain",
+      "status": "pass",
+      "text": "Both starting lineups improve (rest of season: You +45.0, Team 3 +60.0)."
+     },
+     {
+      "criterion": "asset_balance",
+      "status": "pass",
+      "text": "Replacement-level package (little value above free agents on either side)."
+     },
+     {
+      "criterion": "positional_fit",
+      "status": "pass",
+      "text": "Each side receives a player who starts at least half the remaining weeks."
+     },
+     {
+      "criterion": "depth_cost",
+      "status": "pass",
+      "text": "No forced drop of a player with asset value and no empty starting slot."
+     },
+     {
+      "criterion": "free_agent_alternative",
+      "status": "pass",
+      "text": "Even after the best free-agent move, the trade still adds +30.0 for you."
+     },
+     {
+      "criterion": "uncertainty",
+      "status": "pass",
+      "text": "No injury, eligibility or projection gaps on the traded players."
+     }
+    ],
+    "criteria": {
+     "asset_balance": "The asset packages are reasonably balanced (points above replacement).",
+     "depth_cost": "No starter-caliber player is forced off a roster and no starting slot is left empty.",
+     "free_agent_alternative": "The trade adds more than the best available free agent would (your side).",
+     "lineup_gain": "Both projected starting lineups improve (starters only; bench points never count).",
+     "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
+     "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
+    },
+    "main_concern": null,
+    "verdict": "sensible",
+    "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up."
+   },
+   "projection_source": "espn",
+   "rank_axes": {
+    "asset_ratio": 1.0,
+    "certainty": 0,
+    "lineup_min_side": 45.0
+   }
+  },
+  "injury_scenarios": [],
+  "key": "2-for-1:3:204-205:208",
+  "manager_context": {
+   "headlines": [
+    {
+     "category": "historical",
+     "confidence": "MEDIUM",
+     "evidence": [
+      "adds_per_week = 0.000; league mean 0.250.",
+      "Sample 3; minimum 3. League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.5; LOW if <= 0.75 SD below; zero is always LOW"
+     ],
+     "text": "Adds players less often than the league's typical manager."
+    },
+    {
+     "category": "current",
+     "confidence": "CURRENT_STATE",
+     "evidence": [
+      "Stored need score 0.738; 1 healthy of 1 rostered; effective availability 1.0.",
+      "High display band is >=0.66. The stored need formula is unchanged; this is current state, not a preference."
+     ],
+     "text": "RB need is currently high."
+    },
+    {
+     "category": "current",
+     "confidence": "CURRENT_STATE",
+     "evidence": [
+      "Stored need score 0.738; 1 healthy of 1 rostered; effective availability 1.0.",
+      "High display band is >=0.66. The stored need formula is unchanged; this is current state, not a preference."
+     ],
+     "text": "WR need is currently high."
+    },
+    {
+     "category": "trade_history",
+     "confidence": "INSUFFICIENT",
+     "evidence": [
+      "0 players sent; 0 received; 0 trades had unequal player counts.",
+      "Completed-trade sample only: <5 INSUFFICIENT; 5–9 LOW; 10–19 MEDIUM; >=20 HIGH. No trade preferences inferred."
+     ],
+     "text": "Has completed 0 observed trades; trade preference is unknown."
+    }
+   ],
+   "needs": [
+    {
+     "healthy": 1,
+     "need_score": 0.738,
+     "position": "RB",
+     "rostered": 1,
+     "starters_required": 2.0
+    },
+    {
+     "healthy": 1,
+     "need_score": 0.738,
+     "position": "WR",
+     "rostered": 1,
+     "starters_required": 2.0
+    },
+    {
+     "healthy": 0,
+     "need_score": 0.55,
+     "position": "D/ST",
+     "rostered": 0,
+     "starters_required": 1.0
+    },
+    {
+     "healthy": 0,
+     "need_score": 0.55,
+     "position": "K",
+     "rostered": 0,
+     "starters_required": 1.0
+    },
+    {
+     "healthy": 1,
+     "need_score": 0.0,
+     "position": "QB",
+     "rostered": 1,
+     "starters_required": 1.0
+    },
+    {
+     "healthy": 1,
+     "need_score": 0.0,
+     "position": "TE",
+     "rostered": 1,
+     "starters_required": 1.0
+    }
+   ],
+   "note": "Secondary context from stored manager scouting: current needs, roster construction and observed tendencies with their confidence labels. It explains why a trade may be worth raising; it does not predict acceptance.",
+   "roster_construction": [
+    {
+     "count": 1,
+     "league_average": 1,
+     "league_comparison": "AT",
+     "position": "QB"
+    },
+    {
+     "count": 1,
+     "league_average": 2,
+     "league_comparison": "BELOW",
+     "position": "RB"
+    },
+    {
+     "count": 1,
+     "league_average": 2,
+     "league_comparison": "BELOW",
+     "position": "WR"
+    },
+    {
+     "count": 1,
+     "league_average": 1,
+     "league_comparison": "AT",
+     "position": "TE"
+    },
+    {
+     "count": 0,
+     "league_average": 0.5,
+     "league_comparison": "BELOW",
+     "position": "K"
+    },
+    {
+     "count": 0,
+     "league_average": 0.5,
+     "league_comparison": "BELOW",
+     "position": "D/ST"
+    },
+    {
+     "count": 0,
+     "league_average": 0.25,
+     "league_comparison": "BELOW",
+     "position": "IR"
+    }
+   ],
+   "roster_scoring_period": 3,
+   "trade_history": {
+    "behavior": "UNKNOWN",
+    "completed_trades": 0,
+    "confidence": "INSUFFICIENT",
+    "rule": "Completed-trade sample only: <5 INSUFFICIENT; 5–9 LOW; 10–19 MEDIUM; >=20 HIGH. No trade preferences inferred.",
+    "uneven_player_count_trades": 0
+   }
+  },
+  "mine_detail": {
+   "fit_notes": [
+    "Receives Lima RB (RB) starts 15 of 15 weeks (RB1 x15)",
+    "Sends Hotel RB (RB) does not start in any of the 15 remaining weeks (before the trade)",
+    "Sends India RB (RB) starts 15 of 15 weeks (RB2 x15) (before the trade)"
+   ],
+   "team_id": 2,
+   "team_name": "Team 2"
+  },
+  "names": {
+   "204": {
+    "name": "Hotel RB",
+    "position": "RB"
+   },
+   "205": {
+    "name": "India RB",
+    "position": "RB"
+   },
+   "208": {
+    "name": "Lima RB",
+    "position": "RB"
+   }
+  },
+  "need_notes": [
+   "Team 3 has a stored RB need score of 0.74 (manager scouting's high band is >= 0.66); current roster state, not an acceptance signal.",
+   "Team 3 has a stored RB need score of 0.74 (manager scouting's high band is >= 0.66); current roster state, not an acceptance signal."
+  ],
+  "opponent_name": "Team 3",
+  "opponent_team_id": 3,
+  "ratings": {
+   "available": true,
+   "comparable_pairs": [],
+   "note": "Ratings are position-relative 0-100 percentiles of recent opportunity and production (ratings-100.v1): supporting context only. They are not projected points, not a trade price, not comparable across positions or opportunity bases, and they never change a delta, a label or the order of trades.",
+   "players": {
+    "204": null,
+    "205": null,
+    "208": null
+   },
+   "reason": null,
+   "version": "ratings-100.v1"
+  },
+  "rationale": {
+   "concerns": [
+    "They surrender a player who currently starts in most weeks: Lima RB (15 of 15)."
+   ],
+   "points": [
+    "You gain a projected RB starter: Lima RB starts 15 of 15 weeks for you.",
+    "Their RB position improves: Hotel RB starts 15 of 15 weeks for them.",
+    "Their RB position improves: India RB starts 15 of 15 weeks for them.",
+    "Both teams' projected starting-lineup totals improve (you +45.0, them +60.0).",
+    "You give up a regular starter: India RB (15 of 15 weeks).",
+    "Team 3 is short at RB: their RB starters rank 3 of 4. A roster need is not a willingness to trade.",
+    "Hotel RB is surplus for you: starter-caliber at RB but starts at most half your weeks."
+   ]
+  },
+  "receives": [
+   208
+  ],
+  "search_method": "exact",
+  "sends": [
+   204,
+   205
+  ],
+  "theirs_detail": {
+   "fit_notes": [
+    "Receives Hotel RB (RB) starts 15 of 15 weeks (RB2 x15)",
+    "Receives India RB (RB) starts 15 of 15 weeks (RB1 x15)",
+    "Sends Lima RB (RB) starts 15 of 15 weeks (RB1 x15) (before the trade)"
+   ],
+   "team_id": 3,
+   "team_name": "Team 3"
+  },
+  "trade_vs_free_agency": {
+   "assumptions": [
+    "Same engine as the trade: ESPN weekly projections, unmodified, and the exact weekly optimal lineup.",
+    "One acquisition over the whole evaluation window: a single available player added now and kept.",
+    "Only players in the synced ESPN free-agent pool; FREEAGENT players are the headline alternative, WAIVERS players are a separate claim that may fail.",
+    "A full roster drops a player by the trade evaluator's forced-drop rule; the drop's lineup cost is included.",
+    "Free agents without an ESPN projection in an eligible week are not scored (missing is unknown, not 0).",
+    "Each manager's alternative is independent; both cannot add the same player."
+   ],
+   "available": true,
+   "consistent_with_canonical": true,
+   "contested": {
+    "note": "Both managers' best alternative is Waiver RB: only one of them could add him, so the two alternatives are not simultaneously available.",
+    "player": {
+     "acquisition_type": "free_agent",
+     "espn_player_id": 209,
+     "name": "Waiver RB",
+     "position": "RB",
+     "pro_team": "KC"
+    }
+   },
+   "evaluation": {
+    "final_week": 17,
+    "last_regular_season_week": 14,
+    "start_week": 3,
+    "weeks": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   "formulas": {
+    "L(X)": "projected starting points of roster X over the evaluation window: ESPN weekly projections, the exact weekly optimal lineup, bench points never counted",
+    "available_without_trade": "canonical_gain - trade_advantage: the part of the trade's gain the free-agent move already provides",
+    "canonical_gain": "L(trade roster) - L(current roster): the canonical trade delta, unchanged",
+    "free_agent_alternative_gain": "L(current roster + best available free agent - required drop) - L(current roster); 0 when no available player improves the lineup",
+    "share_available_without_trade": "available_without_trade / canonical_gain (only when canonical_gain > 0)",
+    "trade_advantage": "L(trade + the same free agent - required drops) - L(current roster + that free agent - required drop): what the trade still adds once the free-agent move is made",
+    "trade_advantage_if_both_add": "L(trade roster + its own best free agent - drop) - L(current roster + its best free agent - drop): diagnostic, each world takes its own best acquisition",
+    "trade_instead_of_free_agent": "L(trade roster) - L(current roster + best available free agent - required drop): diagnostic, making the trade instead of the free-agent move"
+   },
+   "label": "Trade vs. free agency (hypothetical; never part of the canonical delta)",
+   "limitations": [
+    "The free-agent pool is today's synced snapshot; players can be added by other managers at any time.",
+    "Only one acquisition is modeled; real managers may make several moves or stream weekly.",
+    "A dropped player's value outside this team's lineup (as a trade asset) is not measured.",
+    "ESPN undroppable lists, game locks and transaction timing are not modeled.",
+    "The K/D/ST streaming frontier assumes perfect weekly foresight and free adds; it is an upper illustration."
+   ],
+   "majority_rule": "'Most of this gain is available without trading' means available_without_trade is more than half of the canonical gain; no other threshold is used.",
+   "note": "Trade vs. free agency compares the canonical trade delta with one hypothetical acquisition of a currently available player. The canonical delta never includes it. Availability changes, waivers may not clear, and both managers cannot add the same player.",
+   "pool": {
+    "acquisition_types": {
+     "free_agent": 3,
+     "waiver_claim": 1
+    },
+    "available_players_scored": 4,
+    "excluded_unprojected": {}
+   },
+   "projection_source": "ESPN",
+   "team_a": {
+    "comparison": {
+     "available_without_trade": {
+      "known_ros_delta": 15.0,
+      "playoff_delta": 3.0,
+      "projection_complete": true,
+      "regular_season_delta": 12.0,
+      "ros_delta": 15.0
+     },
+     "canonical_gain": {
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0
+     },
+     "free_agent_alternative_gain": {
+      "known_ros_delta": 60.0,
+      "playoff_delta": 12.0,
+      "projection_complete": true,
+      "regular_season_delta": 48.0,
+      "ros_delta": 60.0
+     },
+     "interaction_note": null,
+     "interaction_type": "ordinary_overlap",
+     "share_available_without_trade": 0.333,
+     "trade_advantage": {
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0
+     },
+     "trade_advantage_if_both_add": {
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0
+     },
+     "trade_instead_of_free_agent": {
+      "known_ros_delta": -15.0,
+      "playoff_delta": -3.0,
+      "projection_complete": true,
+      "regular_season_delta": -12.0,
+      "ros_delta": -15.0
+     },
+     "trade_plus_best_free_agent_gain": {
+      "known_ros_delta": 90.0,
+      "playoff_delta": 18.0,
+      "projection_complete": true,
+      "regular_season_delta": 72.0,
+      "ros_delta": 90.0
+     }
+    },
+    "free_agent_alternative": {
+     "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+     "acquisition_type": "free_agent",
+     "drop_cost_unknown": false,
+     "drop_lineup_cost": null,
+     "drops": [],
+     "gain": {
+      "known_ros_delta": 60.0,
+      "playoff_delta": 12.0,
+      "projection_complete": true,
+      "regular_season_delta": 48.0,
+      "ros_delta": 60.0
+     },
+     "player": {
+      "acquisition_type": "free_agent",
+      "espn_player_id": 209,
+      "name": "Waiver RB",
+      "position": "RB",
+      "pro_team": "KC"
+     },
+     "reason": null,
+     "requires_drop": false,
+     "search": {
+      "after_dominance": 3,
+      "candidates": 3,
+      "evaluation_unavailable": 0,
+      "excluded_unprojected": 0,
+      "method": "exact (branch and bound on the no-drop gain)",
+      "no_legal_roster": 0,
+      "only_by_cutting_candidate": 0,
+      "solved": 1
+     },
+     "weeks_started": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ]
+    },
+    "label": "You",
+    "position_alternatives": [
+     {
+      "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+      "acquisition_type": "free_agent",
+      "drop_cost_unknown": false,
+      "drop_lineup_cost": null,
+      "drops": [],
+      "gain": {
+       "known_ros_delta": 60.0,
+       "playoff_delta": 12.0,
+       "projection_complete": true,
+       "regular_season_delta": 48.0,
+       "ros_delta": 60.0
+      },
+      "player": {
+       "acquisition_type": "free_agent",
+       "espn_player_id": 209,
+       "name": "Waiver RB",
+       "position": "RB",
+       "pro_team": "KC"
+      },
+      "position": "RB",
+      "reason": null,
+      "requires_drop": false,
+      "same_as_headline": true,
+      "search": {
+       "after_dominance": 3,
+       "candidates": 3,
+       "evaluation_unavailable": 0,
+       "excluded_unprojected": 0,
+       "method": "exact (branch and bound on the no-drop gain)",
+       "no_legal_roster": 0,
+       "only_by_cutting_candidate": 0,
+       "solved": 1
+      },
+      "slot_delta": 60.0,
+      "weeks_started": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     }
+    ],
+    "projection_complete": true,
+    "slot_breakdown": [
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 150.0,
+      "before_empty_weeks": 0,
+      "before_points": 150.0,
+      "slot": "QB",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 150.0
+     },
+     {
+      "alternative_delta": 60.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 315.0,
+      "before_empty_weeks": 0,
+      "before_points": 255.0,
+      "slot": "RB",
+      "trade_delta": 45.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 300.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 345.0,
+      "before_empty_weeks": 0,
+      "before_points": 345.0,
+      "slot": "WR",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 345.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 135.0,
+      "before_empty_weeks": 0,
+      "before_points": 135.0,
+      "slot": "TE",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 135.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 165.0,
+      "before_empty_weeks": 0,
+      "before_points": 165.0,
+      "slot": "K",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 165.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 90.0,
+      "before_empty_weeks": 0,
+      "before_points": 90.0,
+      "slot": "D/ST",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 90.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 150.0,
+      "before_empty_weeks": 0,
+      "before_points": 150.0,
+      "slot": "FLEX",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 150.0
+     }
+    ],
+    "statements": [
+     "The trade offers an improvement beyond available replacements: +30.0 of its +45.0 remains after the best free-agent move (Waiver RB, RB: +60.0 on its own).",
+     "Adding Waiver RB is worth +60.0 with or without this trade: most of it does not overlap with the trade.",
+     "Waiver RB fits in an open active roster spot (no drop needed)."
+    ],
+    "streaming_frontier": [],
+    "team_id": 2,
+    "team_name": "Team 2",
+    "trade_with_free_agent": {
+     "available": true,
+     "drop_cost_unknown": false,
+     "drops": [],
+     "reason": null,
+     "retained_player_ids": [
+      -16002,
+      102,
+      206,
+      207,
+      304,
+      305,
+      306,
+      307,
+      402,
+      502,
+      208,
+      209
+     ]
+    },
+    "unknown_availability_alternative": null,
+    "waiver_claim_alternative": null,
+    "with_trade_alternative": {
+     "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+     "acquisition_type": "free_agent",
+     "drop_cost_unknown": false,
+     "drop_lineup_cost": null,
+     "drops": [],
+     "gain": {
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0
+     },
+     "player": {
+      "acquisition_type": "free_agent",
+      "espn_player_id": 209,
+      "name": "Waiver RB",
+      "position": "RB",
+      "pro_team": "KC"
+     },
+     "reason": null,
+     "requires_drop": false,
+     "search": {
+      "after_dominance": 3,
+      "candidates": 3,
+      "evaluation_unavailable": 0,
+      "excluded_unprojected": 0,
+      "method": "exact (branch and bound on the no-drop gain)",
+      "no_legal_roster": 0,
+      "only_by_cutting_candidate": 0,
+      "solved": 2
+     },
+     "weeks_started": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ]
+    }
+   },
+   "team_b": {
+    "comparison": {
+     "available_without_trade": {
+      "known_ros_delta": 0.0,
+      "playoff_delta": 0.0,
+      "projection_complete": true,
+      "regular_season_delta": 0.0,
+      "ros_delta": 0.0
+     },
+     "canonical_gain": {
+      "known_ros_delta": 60.0,
+      "playoff_delta": 13.8,
+      "projection_complete": true,
+      "regular_season_delta": 46.2,
+      "ros_delta": 60.0
+     },
+     "free_agent_alternative_gain": {
+      "known_ros_delta": 180.0,
+      "playoff_delta": 37.8,
+      "projection_complete": true,
+      "regular_season_delta": 142.2,
+      "ros_delta": 180.0
+     },
+     "interaction_note": null,
+     "interaction_type": "independent",
+     "share_available_without_trade": 0.0,
+     "trade_advantage": {
+      "known_ros_delta": 60.0,
+      "playoff_delta": 13.8,
+      "projection_complete": true,
+      "regular_season_delta": 46.2,
+      "ros_delta": 60.0
+     },
+     "trade_advantage_if_both_add": {
+      "known_ros_delta": 60.0,
+      "playoff_delta": 13.8,
+      "projection_complete": true,
+      "regular_season_delta": 46.2,
+      "ros_delta": 60.0
+     },
+     "trade_instead_of_free_agent": {
+      "known_ros_delta": -120.0,
+      "playoff_delta": -24.0,
+      "projection_complete": true,
+      "regular_season_delta": -96.0,
+      "ros_delta": -120.0
+     },
+     "trade_plus_best_free_agent_gain": {
+      "known_ros_delta": 240.0,
+      "playoff_delta": 51.6,
+      "projection_complete": true,
+      "regular_season_delta": 188.4,
+      "ros_delta": 240.0
+     }
+    },
+    "free_agent_alternative": {
+     "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+     "acquisition_type": "free_agent",
+     "drop_cost_unknown": false,
+     "drop_lineup_cost": null,
+     "drops": [],
+     "gain": {
+      "known_ros_delta": 180.0,
+      "playoff_delta": 37.8,
+      "projection_complete": true,
+      "regular_season_delta": 142.2,
+      "ros_delta": 180.0
+     },
+     "player": {
+      "acquisition_type": "free_agent",
+      "espn_player_id": 209,
+      "name": "Waiver RB",
+      "position": "RB",
+      "pro_team": "KC"
+     },
+     "reason": null,
+     "requires_drop": false,
+     "search": {
+      "after_dominance": 3,
+      "candidates": 3,
+      "evaluation_unavailable": 0,
+      "excluded_unprojected": 0,
+      "method": "exact (branch and bound on the no-drop gain)",
+      "no_legal_roster": 0,
+      "only_by_cutting_candidate": 0,
+      "solved": 2
+     },
+     "weeks_started": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ]
+    },
+    "label": "Team 3",
+    "position_alternatives": [
+     {
+      "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+      "acquisition_type": "free_agent",
+      "drop_cost_unknown": false,
+      "drop_lineup_cost": null,
+      "drops": [],
+      "gain": {
+       "known_ros_delta": 180.0,
+       "playoff_delta": 37.8,
+       "projection_complete": true,
+       "regular_season_delta": 142.2,
+       "ros_delta": 180.0
+      },
+      "player": {
+       "acquisition_type": "free_agent",
+       "espn_player_id": 209,
+       "name": "Waiver RB",
+       "position": "RB",
+       "pro_team": "KC"
+      },
+      "position": "RB",
+      "reason": null,
+      "requires_drop": false,
+      "same_as_headline": true,
+      "search": {
+       "after_dominance": 3,
+       "candidates": 3,
+       "evaluation_unavailable": 0,
+       "excluded_unprojected": 0,
+       "method": "exact (branch and bound on the no-drop gain)",
+       "no_legal_roster": 0,
+       "only_by_cutting_candidate": 0,
+       "solved": 2
+      },
+      "slot_delta": 180.0,
+      "weeks_started": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     }
+    ],
+    "projection_complete": true,
+    "slot_breakdown": [
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 165.0,
+      "before_empty_weeks": 0,
+      "before_points": 165.0,
+      "slot": "QB",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 165.0
+     },
+     {
+      "alternative_delta": 180.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 345.0,
+      "before_empty_weeks": 15,
+      "before_points": 165.0,
+      "slot": "RB",
+      "trade_delta": 60.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 225.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 15,
+      "alternative_points": 90.0,
+      "before_empty_weeks": 15,
+      "before_points": 90.0,
+      "slot": "WR",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 15,
+      "trade_points": 90.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 0,
+      "alternative_points": 150.0,
+      "before_empty_weeks": 0,
+      "before_points": 150.0,
+      "slot": "TE",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 0,
+      "trade_points": 150.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 15,
+      "alternative_points": 0.0,
+      "before_empty_weeks": 15,
+      "before_points": 0.0,
+      "slot": "K",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 15,
+      "trade_points": 0.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 15,
+      "alternative_points": 0.0,
+      "before_empty_weeks": 15,
+      "before_points": 0.0,
+      "slot": "D/ST",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 15,
+      "trade_points": 0.0
+     },
+     {
+      "alternative_delta": 0.0,
+      "alternative_empty_weeks": 15,
+      "alternative_points": 0.0,
+      "before_empty_weeks": 15,
+      "before_points": 0.0,
+      "slot": "FLEX",
+      "trade_delta": 0.0,
+      "trade_empty_weeks": 15,
+      "trade_points": 0.0
+     }
+    ],
+    "statements": [
+     "The trade offers an improvement beyond available replacements: +60.0 of its +60.0 remains after the best free-agent move (Waiver RB, RB: +180.0 on its own).",
+     "Adding Waiver RB is worth +180.0 with or without this trade: most of it does not overlap with the trade.",
+     "Waiver RB fits in an open active roster spot (no drop needed)."
+    ],
+    "streaming_frontier": [],
+    "team_id": 3,
+    "team_name": "Team 3",
+    "trade_with_free_agent": {
+     "available": true,
+     "drop_cost_unknown": false,
+     "drops": [],
+     "reason": null,
+     "retained_player_ids": [
+      103,
+      308,
+      403,
+      204,
+      205,
+      209
+     ]
+    },
+    "unknown_availability_alternative": null,
+    "waiver_claim_alternative": null,
+    "with_trade_alternative": {
+     "acquisition_note": "ESPN free agent: can be added without a waiver claim (check ESPN transaction timing and game locks).",
+     "acquisition_type": "free_agent",
+     "drop_cost_unknown": false,
+     "drop_lineup_cost": null,
+     "drops": [],
+     "gain": {
+      "known_ros_delta": 180.0,
+      "playoff_delta": 37.8,
+      "projection_complete": true,
+      "regular_season_delta": 142.2,
+      "ros_delta": 180.0
+     },
+     "player": {
+      "acquisition_type": "free_agent",
+      "espn_player_id": 209,
+      "name": "Waiver RB",
+      "position": "RB",
+      "pro_team": "KC"
+     },
+     "reason": null,
+     "requires_drop": false,
+     "search": {
+      "after_dominance": 3,
+      "candidates": 3,
+      "evaluation_unavailable": 0,
+      "excluded_unprojected": 0,
+      "method": "exact (branch and bound on the no-drop gain)",
+      "no_legal_roster": 0,
+      "only_by_cutting_candidate": 0,
+      "solved": 2
+     },
+     "weeks_started": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ]
+    }
+   }
+  }
+ },
+ "status": 200
+}

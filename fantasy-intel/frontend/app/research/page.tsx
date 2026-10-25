@@ -1,9 +1,9 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
-import { POSITION_NAME, POSITION_OF, SLUGS, apiQuery, parseResearchState, poolSentence } from "@/lib/research";
+import { POSITION_NAME, POSITION_OF, SLUGS, apiQuery, noSeasonData, parseResearchState, poolSentence } from "@/lib/research";
 import type { OpportunityResponse } from "@/lib/research-types";
 import { ResearchGroups } from "./Tables";
 import styles from "./research.module.css";
@@ -27,6 +27,7 @@ export default async function ResearchOverview() {
       >
         <nav className={styles.posLinks} aria-label="Positions">
           {SLUGS.map((s) => <Link key={s} href={`/research/${s}`} className={`${styles.posLink} pos-${POSITION_OF[s]}`}>{POSITION_NAME[POSITION_OF[s]]} →</Link>)}
+          <Link href="/research/splits" className={styles.posLink}>Game splits →</Link>
         </nav>
       </PageHeader>
 
@@ -47,6 +48,7 @@ export default async function ResearchOverview() {
           <Section key={slug} title={POSITION_NAME[pos]} actions={<Link href={`/research/${slug}`}>Open {pos} research</Link>}
             footnote={r.status === "ok" ? `${poolSentence(r)}. Exploratory lists, not recommendations.` : undefined}>
             {r.status === "no_data" ? <Notice tone="info">{r.message}</Notice>
+              : noSeasonData(r) ? <Notice tone="info">No NFL usage data is available for the {r.season} season yet.</Notice>
               : r.status === "empty" ? <p className={styles.noteTight}>No {pos} meets the default filters yet.</p>
                 : <ResearchGroups slug={slug} r={r} state={DEFAULT_STATE} limit={3} />}
           </Section>

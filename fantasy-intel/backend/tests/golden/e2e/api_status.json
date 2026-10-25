@@ -1,0 +1,46 @@
+// /api/status
+{
+ "body": {
+  "league": {
+   "current_week": 3,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026,
+   "synced_at": "<masked>"
+  },
+  "nfl_latest_week": null,
+  "sync": {
+   "last_success": {
+    "analytics": "<masked>",
+    "espn": "<masked>",
+    "nfl": "<masked>"
+   },
+   "latest_runs": [
+    {
+     "finished_at": "<masked>",
+     "message": "warnings: 0",
+     "source": "espn",
+     "status": "ok"
+    },
+    {
+     "finished_at": "<masked>",
+     "message": null,
+     "source": "nfl",
+     "status": "ok"
+    },
+    {
+     "finished_at": "<masked>",
+     "message": "warnings: 0",
+     "source": "analytics",
+     "status": "ok"
+    }
+   ]
+  },
+  "warnings": {
+   "analytics": null,
+   "espn": "[]",
+   "nfl": "[]"
+  }
+ },
+ "status": 200
+}

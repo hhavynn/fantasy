@@ -1,7 +1,12 @@
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamLink } from "@/components/TeamLink";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
+import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
+import { withLeague } from "@/lib/league-scope";
+import { currentLeague } from "@/lib/league-scope.server";
 import { DISTANCES, conditions, factorChips, outlook, usesBettingLine, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
@@ -12,10 +17,12 @@ const TITLE = "Kicker outlook";
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
-function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
+/** `espn` is false for a league whose provider has no projections (Sleeper): no ESPN column to compare with. */
+function Row({ p, rank, espn }: { p: KickerPlayer; rank: number; espn: boolean }) {
   const i = p.independent;
-  const s = i.stat_line;
-  const c = conditions(i.context);
+  // A run can store an empty stat line or context ({}) for a kicker it projected without detail: treat it as missing.
+  const s = i.stat_line && typeof i.stat_line.fg_made === "number" ? i.stat_line : null;
+  const c = conditions(i.context && i.context.venue ? i.context : null);
   const chips = factorChips(p);
   return (
     <tr>
@@ -31,7 +38,7 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
           {i.interval_80 ? `${i.interval_80.low.toFixed(1)}–${i.interval_80.high.toFixed(1)}` : <Missing why="No calibrated interval" />}
         </span>
       </td>
-      <td className={styles.num}>{num(p.espn.projected_points, 1)}</td>
+      {espn && <td className={styles.num}>{num(p.espn.projected_points, 1)}</td>}
       <td className={styles.num}>{s ? `${s.fg_made.toFixed(1)} / ${s.fg_att.toFixed(1)}` : <Missing />}</td>
       {DISTANCES.map((d) => (
         <td key={d.key} className={styles.num} title={s ? `${Math.round(s.p_make_by_distance[d.key] * 100)}% make chance` : undefined}>
@@ -60,7 +67,9 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
 export default async function KickersPage({ searchParams }: PageProps<"/kickers">) {
   const sp: SP = await searchParams;
   const week = Number(one(sp.week)) || undefined;
-  const res = await api<KickerResponse>(`/api/projections/kickers${week ? `?week=${week}` : ""}`);
+  const [res, profile, league] = await Promise.all([
+    api<KickerResponse>(`/api/projections/kickers${week ? `?week=${week}` : ""}`), getLeagueProfile(), currentLeague()]);
+  const espn = profile.providerProjections;
   if (!res.ok) {
     return (
       <div className="stack">
@@ -71,9 +80,10 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
   }
   const d = res.data;
   const weekForm = (
-    <form action="/kickers" className={styles.weekForm}>
+    <form action={withLeague("/kickers", league?.id)} className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
+      <TeamLink href="/schedule-intelligence#kdst-streaming" league={league?.id ?? null}>Multi-week streaming plan</TeamLink>
     </form>
   );
   const line = usesBettingLine(d.governance.model_version);
@@ -89,7 +99,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
       <div className="stack">
         <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
         <Section title="No kicker run for this week">
-          <EmptyState title="ESPN's kicker projections are shown elsewhere">{d.unavailable_reason}</EmptyState>
+          <EmptyState title={espn ? "ESPN's kicker projections are shown elsewhere" : "No kicker projections this week"}>{d.unavailable_reason}</EmptyState>
         </Section>
       </div>
     );
@@ -108,6 +118,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
           Made {d.run.forecast_horizon} week(s) ahead, before that week&apos;s injury report and weather are out.
         </Notice>
       )}
+      {!espn && <Notice tone="info" title="No projection comparison for this league">{ESPN_COMPARISON_UNAVAILABLE}</Notice>}
       <Section title={`Projected kickers (${projected.length})`}
         subtitle="Points are expected points (chance he kicks × points if he does). FG makes by distance: 0–39 / 40–49 / 50–59 / 60+. Chips show how many points each factor adds or takes away against a league-average kicker; hover one for the detail." flush>
         <div className="table-wrap">
@@ -115,17 +126,17 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
             <thead>
               <tr>
                 <th className={styles.num}>#</th><th>Kicker</th><th className={styles.num}>Ours</th>
-                <th className={styles.num}>ESPN</th><th className={styles.num}>FG made / tries</th>
+                {espn && <th className={styles.num}>ESPN</th>}<th className={styles.num}>FG made / tries</th>
                 {DISTANCES.map((x) => <th key={x.key} className={styles.num}>{x.label}</th>)}
                 <th className={styles.num}>PAT</th><th>Venue · weather</th><th>Why</th>
               </tr>
             </thead>
-            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} />)}</tbody>
+            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} espn={espn} />)}</tbody>
           </table>
         </div>
       </Section>
       {other.length > 0 && (
-        <Section title={`Not projected (${other.length})`} subtitle="Byes and unavailable kickers count as 0; the rest keep ESPN's number." flush>
+        <Section title={`Not projected (${other.length})`} subtitle={espn ? "Byes and unavailable kickers count as 0; the rest keep ESPN's number." : "Byes and unavailable kickers count as 0; the rest have no projection."} flush>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Kicker</th><th>Team</th><th>Status</th><th>Why</th></tr></thead>

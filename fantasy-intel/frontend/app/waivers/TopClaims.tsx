@@ -1,7 +1,9 @@
+import Link from "@/components/LeagueLink";
+import { SavePlayer } from "./Shortlist";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
-import { Badge, Score, Verdict } from "@/components/ui";
+import { Badge, Verdict } from "@/components/ui";
 import type { TopClaims as Top } from "@/lib/waivers";
-import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
+import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, WaiverScore, actionLabel } from "./WaiverParts";
 import { hasInjuryDesignation } from "../players/helpers";
 import styles from "./waivers.module.css";
 import type { WaiverRow } from "./types";
@@ -11,7 +13,12 @@ import type { WaiverRow } from "./types";
  * each with the same facts, side by side. Without an actionable move the band says so and shows
  * the best-ranked options that are not an outright pass, labelled as such.
  */
-export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: string }) {
+/** `provider` names the league's data source; `ownership` false (Sleeper) leaves out the % owned line. */
+export function TopClaims({ top, position, provider = "ESPN", ownership = true, simulateHref }: {
+  top: Top<WaiverRow>; position: string; provider?: string; ownership?: boolean;
+  /** The page URL with this player (and his suggested drop) loaded in the add/drop simulator. */
+  simulateHref?: (row: WaiverRow) => string;
+}) {
   const scope = position === "ALL" ? "" : ` at ${position}`;
   const heading = top.mode === "actionable" ? `Top claims${scope}` : top.mode === "watch" ? `Nothing to claim right now${scope}` : `No candidates${scope}`;
   const count = top.mode === "none" ? 0 : top.rows.length;
@@ -24,18 +31,20 @@ export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: st
       >
         {top.mode === "actionable" && "Moves the analysis calls actionable for this roster, each with the player to drop. Evidence is under each player in the list below."}
         {top.mode === "watch" && "No add clears the bar for a claim. These are the highest-ranked options that are not an outright pass; none is a recommendation to add."}
-        {top.mode === "none" && `Every evaluated player${scope} is a pass for this roster. Refresh ESPN and NFL data if the snapshot looks stale.`}
+        {top.mode === "none" && `Every evaluated player${scope} is a pass for this roster. Refresh ${provider} and NFL data if the snapshot looks stale.`}
       </Verdict>
       {top.mode !== "none" && (
         <ol className={styles.claims}>
-          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} />)}
+          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} ownership={ownership} simulate={simulateHref?.(w)} />)}
         </ol>
       )}
     </section>
   );
 }
 
-function ClaimCard({ row: w, rank, informational }: { row: WaiverRow; rank: number; informational: boolean }) {
+function ClaimCard({ row: w, rank, informational, ownership, simulate }: {
+  row: WaiverRow; rank: number; informational: boolean; ownership: boolean; simulate?: string;
+}) {
   const d = w.components.decision;
   // In the "nothing to claim" band no add is recommended, so "no drop found" is not a failed action:
   // the Give up row appears only when the analysis did name a player to drop.
@@ -50,11 +59,17 @@ function ClaimCard({ row: w, rank, informational }: { row: WaiverRow; rank: numb
           <PlayerIdentity
             id={w.espn_player_id} name={w.full_name} position={w.position} team={w.pro_team} size="lg"
             meta={<>
-              <span><OwnedDelta row={w} /> owned</span>
+              {ownership && <span><OwnedDelta row={w} /> owned</span>}
               {hasInjuryDesignation(w.injury_status) && <Badge value={w.injury_status} />}
             </>}
           />
         </h3>
+      </div>
+      <div className={styles.claimButtons}>
+        <SavePlayer id={w.espn_player_id} name={w.full_name} />
+        {simulate && (
+          <Link className={styles.simulate} href={simulate} scroll={false} aria-label={`Simulate adding ${w.full_name}`}>Simulate</Link>
+        )}
       </div>
       <div className={styles.claimAction}>
         <Badge value={w.recommendation} />
@@ -63,7 +78,7 @@ function ClaimCard({ row: w, rank, informational }: { row: WaiverRow; rank: numb
       </div>
       {summary && <p className={styles.claimSummary}>{summary}</p>}
       <dl className={styles.claimFacts}>
-        <dt>Waiver score</dt><dd><Score value={w.waiver_score} /></dd>
+        <dt>Waiver score</dt><dd><WaiverScore row={w} /></dd>
         <dt>Role trend</dt><dd><RoleTrend trend={w.role_trend} /></dd>
         <dt>Competition</dt>
         <dd>

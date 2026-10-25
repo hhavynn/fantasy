@@ -1,0 +1,27 @@
+// /api/projections/performance
+{
+ "body": {
+  "available": false,
+  "governance": {
+   "espn_superiority_established": false,
+   "fallback_version": "ifp-2.1.0",
+   "is_fallback": false,
+   "production_approval": "owner_override",
+   "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
+   "production_version": "ifp-2.2.0",
+   "served_version": "ifp-2.2.0",
+   "start_sit_ready": false,
+   "status_note": "Production model: injury-aware, with starting-QB odds, QB and teammate context and depth charts; retrained weekly."
+  },
+  "rejected": [],
+  "report": null,
+  "report_sha256": null,
+  "schema_version": "projection-performance-api/v1",
+  "season": 2026,
+  "stale": false,
+  "stale_reasons": [],
+  "status": "no_report",
+  "unavailable_reason": "No projection-performance report has been published for this season yet. It is built offline by the scheduled refresh (scripts/projection_performance.py) and published with the database."
+ },
+ "status": 200
+}

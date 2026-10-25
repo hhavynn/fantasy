@@ -125,7 +125,7 @@ def build_live(path: Path, sched, espn, scoring):
                     [[dst_id(t), f"{t} D/ST", "D/ST", t] for t in TEAMS])
     con.execute("CREATE TABLE espn_player_weekly_points (season INTEGER, espn_player_id BIGINT, scoring_period "
                 "INTEGER, actual_points DOUBLE, projected_points DOUBLE, synced_at TIMESTAMP)")
-    con.executemany("INSERT INTO espn_player_weekly_points VALUES (?,?,?,?,NULL,'2026-10-20 12:00:00')",
+    con.executemany("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (?,?,?,?,NULL,'2026-10-20 12:00:00')",
                     [[SEASON, dst_id(t), w, scoring.points(st)] for (t, w), st in espn[SEASON]["actual"].items()])
     con.execute("CREATE TABLE espn_projection_history (snapshot_date DATE, season INTEGER, espn_player_id BIGINT, "
                 "scoring_period INTEGER, projected_points DOUBLE, synced_at TIMESTAMP)")
@@ -384,7 +384,7 @@ def test_a_started_week_without_a_ledger_is_recorded_missed_once(ds, env):
 def finish_week_7(env, espn_actual_points: dict):
     sql(env, "UPDATE nfl_schedules SET home_score = 20, away_score = 17 WHERE season = 2026 AND week = 7")
     con = duckdb.connect(str(env.live_db))
-    con.executemany("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 7, ?, NULL, '2026-10-27 12:00:00')",
+    con.executemany("INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, actual_points, projected_points, synced_at) VALUES (2026, ?, 7, ?, NULL, '2026-10-27 12:00:00')",
                     [[dst_id(t), p] for t, p in espn_actual_points.items()])
     # a fresher ESPN snapshot Saturday (pregame for every team except the Thursday game) and one after kickoff
     con.executemany("INSERT INTO espn_projection_history VALUES ('2026-10-24', 2026, ?, 7, ?, '2026-10-24 15:00:00')",

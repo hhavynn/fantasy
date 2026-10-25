@@ -1,4 +1,5 @@
-import { TeamLink } from "@/components/TeamLink";
+import Link from "@/components/LeagueLink";
+import { decisionHref, type DecisionContext } from "@/lib/weekly-decisions";
 import styles from "./home.module.css";
 
 const TOOLS = [
@@ -12,21 +13,22 @@ const TOOLS = [
     icon: <><circle cx="8" cy="8" r="4.5" /><path d="m11.5 11.5 3.5 3.5" /></> },
 ] as const;
 
-/** Where to go next: the four workspaces most weeks start from. Copy describes the tool, never a recommendation. */
-export function ToolShortcuts() {
+/** Where to go next: the four workspaces most weeks start from, in the hub's league, team and week. Copy describes the
+ *  tool, never a recommendation. */
+export function ToolShortcuts({ ctx }: { ctx: DecisionContext }) {
   return (
     <nav aria-label="Tools" className={styles.toolsNav}>
       <p className={styles.toolsLabel}>Jump to</p>
       <ul className={styles.tools}>
         {TOOLS.map((t) => (
           <li key={t.href}>
-            <TeamLink className={styles.tool} href={t.href}>
+            <Link className={styles.tool} href={decisionHref(t.href, ctx)}>
               <span className={styles.toolIcon}>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{t.icon}</svg>
               </span>
               <span className={styles.toolTitle}>{t.title}</span>
               <span className={styles.toolText}>{t.text}</span>
-            </TeamLink>
+            </Link>
           </li>
         ))}
       </ul>

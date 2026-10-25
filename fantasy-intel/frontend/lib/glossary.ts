@@ -28,7 +28,35 @@ export const GLOSSARY = {
   "Q / D / O": "Injury designations: Questionable, Doubtful and Out. The full word appears on the badge's tooltip and in player details.",
   "Kickoff lock": "Once a player's game has kicked off, his lineup slot can no longer change for that week.",
   Bye: "A week the player's NFL team has no game. A bye is never treated as a projected zero.",
+  "Bye cluster": "A week in which two or more of the team's active, lineup-eligible players are on bye. It is listed whether or not a starting slot goes unfilled.",
+  "Slot coverage": "Whether a starting slot can be filled from the current roster in a week: covered by a player with a game and no open designation, short when nobody on the roster can fill it, or not confirmed when it depends on a player whose week is unknown.",
+  "Streaming baseline": "For a kicker or D/ST in a week: the projection of the third-best free agent at the position. It stands for what a weekly add/drop can usually still get, since other managers stream too.",
+  "Strength of schedule": "What the defenses a team or player faces in the shown weeks have allowed so far: pass defense for QB, WR and TE (the same ranking for all three) and run defense for RB. Observed results, never a projection of points.",
+  "Neutral baseline": "For one week, the pooled value of every defense that can be ranked before that week. A cell's difference is its opponent's value minus this baseline.",
+  "Neutral pass rate": "The share of an offense's plays that were dropbacks while the game was neutral: win probability between 20% and 80% with more than two minutes left in the half. A game with no neutral play has no rate, not 0%.",
+  "Game script": "How a game went for the offense, from its final margin: competitive within 8 points, leading when it won by 9 or more, trailing when it lost by 9 or more. It labels the whole game after the fact, not each play.",
+  "Shrunk estimate": "A team's own average pulled toward the league average by a fixed number of games or plays stated beside it. With few games it stays close to the league; with many it follows the team.",
+  "Plays per drive": "Run and pass plays divided by drives with at least one scrimmage play. A possession with no scrimmage play is not a drive.",
+  "Hypothetical scenario": "A game-script mix you choose. Its centre and range come from past games shaped like it; it is not a forecast or a probability for any future game.",
+  "Rank gap": "The provider's rank minus Fantasy Intel's (Ours) rank for the same player, within his position or across all positions. Positive means Ours ranks him higher. When one side has no rank, the cell names the missing side in words instead; a gap is never shown as zero for a missing rank.",
+  "Floor and ceiling": "The 10th and 90th percentile of a player's points if he plays, from Fantasy Intel's point-distribution model around next week's Ours projection: 80% of outcomes are expected between them. Shown for RB, WR and TE only, and never for the rest of the season.",
   "—": "A dash means the number is missing or not computed, never zero. A measured zero is shown as 0.",
+  "N/A": "Not applicable: the measure does not describe this player's position (a quarterback's target share, a kicker's snap share). It is not a zero and not missing data.",
+  "Best projected": "The player with the highest stored projection for the week among those who can fill the chosen slot, from the projection source the page shows. Players within half a point of the top are tied. It is a projection, not a start/sit verdict or a consensus.",
+  "Start pick": "The player you mark to start in the shortlist. It is your call and is kept only in the page link; nothing is sent to your league.",
 } as const;
 
 export type GlossaryTerm = keyof typeof GLOSSARY;
+
+/**
+ * Definitions that change for a league whose provider publishes no projections (Sleeper): there every projection is
+ * Fantasy Intel's own. Elsewhere this is GLOSSARY unchanged.
+ */
+const NO_PROVIDER_PROJECTIONS: Partial<Record<GlossaryTerm, string>> = {
+  "Projected points": "A forecast of fantasy points in your league's scoring, from Fantasy Intel's own model: this league's provider publishes no projections.",
+  Ours: "Fantasy Intel's independent projection model. It is experimental; this league's provider publishes no projections, so every projection here is Ours.",
+};
+
+export function glossaryText(term: GlossaryTerm, providerProjections = true): string {
+  return (!providerProjections && NO_PROVIDER_PROJECTIONS[term]) || GLOSSARY[term];
+}
