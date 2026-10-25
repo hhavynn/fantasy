@@ -29,6 +29,9 @@ test("a lineup question gets Start/Sit's own answer and opens Start/Sit", async 
   await expect(main(page)).toContainText("Projected gain");
   await expect(main(page)).toContainText("5 pts");
   await expect(main(page).getByRole("link", { name: "Open Start/Sit" })).toHaveAttribute("href", "/start-sit");
+  // the picker shows the team the answer is for, the owner's default team, though the URL names none (Codex P2 on #354)
+  const picker = main(page).getByRole("combobox", { name: "Analyzing" });
+  await expect(picker.locator("option:checked")).toHaveText(/^Team 2/);
   // the question stays in the field, so it can be edited and asked again
   await expect(page.getByRole("searchbox", { name: "Question" })).toHaveValue("Who should I start this week?");
   await checks(page);

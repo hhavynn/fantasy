@@ -12,7 +12,7 @@ import { withLeague } from "@/lib/league-scope";
 import { currentLeague } from "@/lib/league-scope.server";
 import { ALL_NAV_PAGES } from "@/lib/navigation";
 import { signalsOf, type ProvenancePayload } from "@/lib/signal-provenance";
-import { readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
+import { readTeamSelection, selectedTeamId, withTeamId, type TeamsPayload } from "@/lib/team-perspective";
 import styles from "./ask.module.css";
 
 export const metadata = { title: "Ask" };
@@ -59,7 +59,13 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
   const team = selectedTeamId(sel);
   const action = withLeague(PATH, (await currentLeague())?.id);
   // Without a question the backend's empty answer carries the supported question shapes, so they live in one place.
-  const res = tooLong ? null : await api<AskCard>(withTeamId(askPath(q), sel));
+  // The picker shows the team the answer is for: the URL's, else the default (saved or owner's) team, which a link
+  // never writes into the URL.
+  const [res, teams] = await Promise.all([
+    tooLong ? Promise.resolve(null) : api<AskCard>(withTeamId(askPath(q), sel)),
+    api<TeamsPayload>("/api/teams"),
+  ]);
+  const inView = team ?? (teams.ok ? teams.data.default_team_id ?? null : null);
   const card = res?.ok && isCard(res.data) ? res.data : null;
   const answer = card?.status === "answered" ? card.answer : null;
 
@@ -69,7 +75,7 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
         eyebrow={EYEBROW}
         title={TITLE}
         meta="Questions this league's data can answer exactly. Anything else is declined, never guessed."
-        actions={<TeamPerspective path={PATH} sp={sp} current={team} reset={[]} />}
+        actions={<TeamPerspective path={PATH} sp={sp} current={inView} reset={[]} />}
         provenance={answer && card?.provenance ? <ProvenanceBadge signals={signalsOf(card.provenance as ProvenancePayload)} /> : undefined}
       />
 
