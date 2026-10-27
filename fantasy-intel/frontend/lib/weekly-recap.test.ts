@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  backendPath, joinNames, parseRecapQuery, pointsText, recapHref, recordText, scoreBars, sideResult, tradeLines, weekLabel,
+  backendPath, joinNames, parseRecapQuery, pointsText, recapCopyText, recapHref, recordText, scoreBars, sideResult, tradeLines, weekLabel,
   type WrMatchup,
 } from "./weekly-recap.ts";
 
@@ -85,4 +85,39 @@ test("the command palette finds the recap page by name", async () => {
   const { NAV_GROUPS } = await import("./navigation.ts");
   const { pageItems, rankItems } = await import("./palette.ts");
   assert.equal(rankItems("recap", pageItems(NAV_GROUPS))[0]?.href, "/weekly-recap");
+});
+
+test("name-free recap export includes only finalized aggregates, preserves missingness, and omits identities", () => {
+  const recap = {
+    season: 2026, selected_week: 7, scoring_periods: [7],
+    matchups: [game({home_team: {...team(1,120),name:"PRIVATE_OWNER_TOKEN"}})],
+    awards: {
+      highest_score: {award_name:"Highest",description:"",winners:[{...team(1,120),name:"PRIVATE_OWNER_TOKEN"}],is_tied:false},
+      biggest_blowout: {award_name:"Margin",description:"",winners:[{margin:20,score_summary:"SECRET_ROSTER"}],is_tied:false},
+    },
+    notes: {pending_matchups: 2},
+    league_name:"PRIVATE_LEAGUE_TOKEN", league_id: 1234567,
+  } as unknown as Parameters<typeof recapCopyText>[0];
+  const shared = recapCopyText(recap);
+  assert.match(shared,/Week 7/);
+  assert.match(shared,/1 finalized matchup/);
+  assert.match(shared,/2 matchups not yet final/);
+  assert.match(shared,/120\.00 points/);
+  assert.match(shared,/20\.00 points/);
+  assert.match(shared,/Snapshot time unavailable/);
+  for (const secret of ["PRIVATE_OWNER_TOKEN","PRIVATE_LEAGUE_TOKEN","SECRET_ROSTER","1234567"]) {
+    assert.ok(!shared.includes(secret), `must not copy ${secret}`);
+  }
+  const missing = recapCopyText({
+    ...recap,
+    awards: {
+      ...recap.awards!,
+      highest_score: {...recap.awards!.highest_score,winners:[]},
+      biggest_blowout: {...recap.awards!.biggest_blowout,winners:[]},
+    },
+  });
+  assert.match(missing,/Highest finalized team score: — points/);
+  assert.match(missing,/Largest finalized margin: — points/);
+  assert.doesNotMatch(missing,/0\.00 points/);
+  assert.match(recapCopyText({...recap, selected_week:null, awards:null}),/No finalized matchup period available/);
 });
