@@ -39,9 +39,6 @@ type Plan = {
 export async function StashPanel({ horizon, teamId, sp }: {
   horizon: StashHorizon; teamId: number | null; sp: SearchParams;
 }) {
-  const qs = new URLSearchParams({ horizon: String(horizon) });
-  if (teamId !== null) qs.set("team_id", String(teamId));
-  const res = await api<Plan>(`/api/my-team/stash?${qs}`);
   const choices = (
     <nav className={styles.horizons} aria-label="Stash planning horizon">
       {STASH_HORIZONS.map((weeks) => (
@@ -53,16 +50,28 @@ export async function StashPanel({ horizon, teamId, sp }: {
       ))}
     </nav>
   );
+  // The waiver response is the authority on the analyzed roster. Do not trigger a separate default-team 404.
+  if (teamId === null) {
+    return (
+      <Section title="Future-week stashes" subtitle="Separate from this week&apos;s pickups">
+        {choices}
+        <p>Pick a team above to see a roster-specific stash plan.</p>
+      </Section>
+    );
+  }
+  const qs = new URLSearchParams({ horizon: String(horizon), team_id: String(teamId) });
+  const res = await api<Plan>(`/api/my-team/stash?${qs}`);
   if (!res.ok) {
     return (
-      <Section title="Future-week stashes" subtitle="Separate from this week's pickups" actions={choices}>
+      <Section title="Future-week stashes" subtitle="Separate from this week&apos;s pickups">
+        {choices}
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </Section>
     );
   }
   const p = res.data;
   if (p.contract !== "stash-plan/v1") {
-    return <Section title="Future-week stashes" actions={choices}><p>The stash analysis format is unavailable. Refresh the league snapshot.</p></Section>;
+    return <Section title="Future-week stashes">{choices}<p>The stash analysis format is unavailable. Refresh the league snapshot.</p></Section>;
   }
   const noProjection = p.counts.excluded_unprojected ?? 0;
   const unevaluated = p.counts.not_evaluated_cap ?? 0;
@@ -70,10 +79,10 @@ export async function StashPanel({ horizon, teamId, sp }: {
     <Section
       title="Future-week stashes"
       subtitle={`For ${p.team?.name ?? "the selected roster"} · ${horizon} later weeks, plus the current week · ${p.projection_source} projections`}
-      actions={choices}
       footnote="Projected changes in optimal starting-lineup points, not a guarantee of acquisition or future injury. Verify waiver status and roster rules before acting."
     >
       <div className={styles.body}>
+        {choices}
         <div className={styles.meta}>
           <ProvenanceBadge signals={signalsOf(p.provenance)} />
           <span>Compared {p.counts.considered ?? "—"} eligible candidates · evaluated {p.counts.evaluated ?? "—"}</span>
