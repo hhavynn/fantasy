@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ALL_NAV_PAGES } from "./navigation.ts";
 import {
-  isTeamScoped, isTeamScopedView, isUnknownTeam, navTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
+  isTeamScoped, isTeamScopedView, isUnknownTeam, navTeam, needsDefaultTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
   TEAM_SCOPED_PATHS, withTeam, withTeamId,
 } from "./team-perspective.ts";
+
+test("a missing default team gets a picker without surfacing an operator hint", () => {
+  assert.equal(needsDefaultTeam({ok:false,status:404,error:"Your team was not identified. Set ESPN_MY_TEAM_ID or pass team_id."}),true);
+  assert.equal(needsDefaultTeam({ok:false,status:422,error:"No team is marked as yours in this league."}),true);
+  assert.equal(needsDefaultTeam({ok:false,status:404,error:"League not found"}),false);
+  assert.equal(needsDefaultTeam({ok:false,status:404,error:"Team 99 not found in this league."}),false);
+  assert.equal(needsDefaultTeam({ok:true}),false);
+});
 
 test("no team in the URL keeps the owner's default", () => {
   assert.deepEqual(readTeamSelection({}), { kind: "default" });

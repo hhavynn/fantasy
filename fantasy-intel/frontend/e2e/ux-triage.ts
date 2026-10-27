@@ -41,13 +41,4 @@ export const CONTENT_TRIAGE: ContentTriageEntry[] = [
       + "settings to edit.",
     owner: "n/a (by design)",
   },
-  {
-    route: /^\/l\/:league(\/matchup)?(\?|$)/,
-    text: /ESPN_MY_TEAM_ID/,
-    reason: "With no saved team, a league's Overview (\"...or set ESPN_MY_TEAM_ID in .env and re-sync\") and a Sleeper "
-      + "league's Matchup (\"Set ESPN_MY_TEAM_ID or pass team_id\") show the single-league operator hint, an "
-      + "environment variable named after ESPN, to readers who can only pick a team. The Matchup line is the backend's "
-      + "TeamNotFound detail (backend/app/analytics/matchup.py), printed by the page.",
-    owner: "#326 (app/page.tsx; the Matchup copy is backend/app/analytics/matchup.py TeamNotFound)",
-  },
 ];

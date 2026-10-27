@@ -133,6 +133,11 @@ export function teamOptionLabel(t: { name: string; is_owner_default?: boolean; i
   return (t.is_owner_default ?? t.is_mine) ? `${t.name} (default)` : t.name;
 }
 
+/** Only a missing default owner team deserves the picker; never replace an unauthorized league or arbitrary 404. */
+export function needsDefaultTeam(res: {ok:boolean; status?:number|null; error?:string|null}): boolean {
+  return !res.ok && (res.status === 404 || res.status === 422) && /No team is marked as yours|Your team was not identified/i.test(res.error ?? "");
+}
+
 /** Whether an API failure is the backend refusing the requested team (unknown, stale or deleted id). */
 export function isUnknownTeam(res: { ok: boolean; status?: number; error?: string | null }, sel: TeamSelection): boolean {
   return !res.ok && sel.kind !== "default" && res.status === 404 && /team/i.test(res.error ?? "");
