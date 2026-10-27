@@ -14,6 +14,7 @@ import { Missing, PartialMark, num } from "@/lib/format";
 import { needPartialReason } from "@/lib/waivers";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { currentLeague } from "@/lib/league-scope.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { ordinal } from "@/lib/matchup";
 import { withSource } from "@/lib/projection-source";
@@ -49,7 +50,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   }
   // Each section has its own source; one failing endpoint degrades only its own section. The decision hub's three
   // sources start now but are not awaited here: the hub streams in behind the header, stat strip and roster.
-  const [projection, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const [projection, profile, leagueScope] = await Promise.all([getProjectionSource(), getLeagueProfile(), currentLeague()]);
   const provider = providerName(profile.provider);
   // Every section is computed for the selected team (`?team=`); without one, the owner's team as before.
   const matchup = api<Matchup>(withTeamId(withSource("/api/matchup", projection), sel));
@@ -112,7 +113,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 
-      {!me && (profile.provider === "espn" ? (
+      {!me && (!leagueScope && profile.provider === "espn" ? (
         <Notice tone="caution">
           No default team is set (it wasn&apos;t identified from SWID). Pick a team above to analyze it, or set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.
         </Notice>

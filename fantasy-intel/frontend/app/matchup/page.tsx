@@ -1,7 +1,7 @@
 import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
-import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { ChooseTeam, TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { ProjectionNotice } from "@/components/ProjectionNotice";
 import {
   EmptyState, Glossary, Method, Notice, PageHeader, ProvenanceBadge, Tabs,
@@ -9,6 +9,7 @@ import {
 import { api } from "@/lib/api";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { currentLeague } from "@/lib/league-scope.server";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { EMPTY_RANGES } from "@/lib/projection-ranges";
@@ -18,7 +19,7 @@ import {
 } from "@/lib/matchup";
 import { signalsOf } from "@/lib/signal-provenance";
 import type { Matchup } from "@/lib/matchup-types";
-import { isUnknownTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
+import { isUnknownTeam, needsDefaultTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
 import { Bench } from "./Bench";
 import { Lineups, SoloLineup } from "./Lineups";
 import { Scoreboard } from "./Scoreboard";
@@ -72,6 +73,13 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, source), sel));
 
   if (!res.ok) {
+    if (needsDefaultTeam(res) && await currentLeague()) {
+      return (
+        <Shell title="Matchup">
+          <ChooseTeam path="/matchup" sp={sp} what="this week's matchup" />
+        </Shell>
+      );
+    }
     if (isUnknownTeam(res, sel)) {
       return (
         <Shell title="Matchup">

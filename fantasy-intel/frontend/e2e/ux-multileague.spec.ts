@@ -233,8 +233,13 @@ for (const width of [320, 1440]) {
       // with no team in view the Overview asks for one and shows no hub: nothing answers for a fallback team (#165)
       await open(page, `/l/${manifest().leagues.espn_partial}`);
       await expect(page.locator("main")).toContainText("No default team is set");
+      await expect(page.locator("main")).not.toContainText("ESPN_MY_TEAM_ID");
       await expect(page.locator("main").getByText(/^Next step ·/)).toHaveCount(0);
       await expect(page.locator("main").getByRole("heading", { name: "Before kickoff" })).toHaveCount(0);
+      await open(page, `/l/${manifest().leagues.espn_partial}/matchup`);
+      await expect(page.locator("main")).toContainText("Pick a team");
+      await expect(page.locator("main").getByLabel("Analyzing")).toBeVisible();
+      await expect(page.locator("main")).not.toContainText(/ESPN_MY_TEAM_ID|team_id/);
       // nor does Start/Sit: it asks for a team instead of showing the first team's lineup (#348)
       await open(page, `/l/${manifest().leagues.espn_partial}/start-sit`);
       await expect(page.locator("main")).toContainText("Pick a team above to see its lineup against the best projected one");
