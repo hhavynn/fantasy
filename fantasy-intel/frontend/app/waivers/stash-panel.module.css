@@ -1,0 +1,20 @@
+.body { display: grid; gap: 14px; min-width: 0; }
+.horizons { display: flex; flex-wrap: wrap; gap: 6px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+.cards { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; margin: 0; padding: 0; }
+.card { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--line); background: var(--surface-raised); border-radius: var(--radius); }
+.player { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.player h3 { margin: 0; font-size: 15px; }
+.player span { color: var(--ink-muted); font-size: 12px; }
+.gains { display: flex; flex-direction: column; gap: 2px; font-variant-numeric: tabular-nums; }
+.gains strong { font-family: var(--font-display); font-size: 24px; }
+.gains strong span { font: 500 12px var(--font-sans); color: var(--ink-muted); }
+.gains > span, .detail { color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+.reason { margin: 0; line-height: 19px; font-size: 13px; overflow-wrap: anywhere; }
+.card button { align-self: start; }
+.contingency { border-top: 1px solid var(--line); padding-top: 12px; }
+.contingency h3 { margin: 0 0 4px; font-size: 15px; }
+.contingency p { color: var(--ink-muted); font-size: 13px; }
+.contingency ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; line-height: 20px; }
+.body details > summary { color: var(--accent); cursor: pointer; }
+.body details > p, .body details li { font-size: 13px; line-height: 19px; }

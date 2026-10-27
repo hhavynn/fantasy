@@ -23,6 +23,8 @@ import { addDropHref, readAddDrop } from "@/lib/add-drop";
 import { AddDropPanel, AddDropSkeleton } from "./AddDropPanel";
 import adStyles from "./add-drop.module.css";
 import { TopClaims } from "./TopClaims";
+import { StashPanel } from "./StashPanel";
+import { readStashHorizon } from "@/lib/stash-horizon";
 import { WaiverTable } from "./WaiverTable";
 import type { WaiverRow, WaiversResponse } from "./types";
 import styles from "./waivers.module.css";
@@ -169,6 +171,10 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         id: player.espn_player_id, name: player.full_name, position: player.position, team: player.pro_team,
       }))} team={perspective?.team_id ?? null} teamName={perspective?.name ?? null} provider={pv}
         leagueName={league?.name ?? null} />
+
+      <Suspense fallback={<Section title="Future-week stashes">Checking roster-specific future weeks…</Section>}>
+        <StashPanel horizon={readStashHorizon(sp.stashHorizon)} teamId={selectedTeamId(sel)} sp={sp} />
+      </Suspense>
 
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
