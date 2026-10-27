@@ -63,6 +63,9 @@ league or NFL data not synced) the section says so.
 
 - No injury, role-change or acceptance probability anywhere.
 - No waiver guarantee: a player on waivers needs a claim, and FAAB bids are the claim planner's job.
-- No backtest yet: the plan is a data-qualified v1 overview. An as-of backtest of stash signals on held-out weekly
-  outcomes is the next step (#218 plan item 5).
-- No page yet: the UI is a later PR, coordinated with the Waivers page owners.
+- A research-only as-of backtest harness exists (`analytics/stash_backtest.py`, `scripts/stash_backtest_research.py`,
+  `docs/research/stash_backtest.md`); it does not establish real-world predictive lift until held-out outcomes have
+  been verified. The UI makes no success-rate or injury-probability claim.
+- The Waivers page now includes a league-scoped, read-only **Future-week stashes** section with 2/4/6-week URL controls,
+  a separate immediate-add distinction, drop assumptions, coverage counts and if-then scenario evidence. It makes no
+  provider transaction or prediction that a starter will be injured.

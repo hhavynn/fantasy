@@ -6,6 +6,9 @@ import type { TradeResultV3 } from "@/lib/trade-types";
 import type { ScenarioSelection } from "@/lib/trade-scenarios";
 import { ScenarioSave } from "./ScenarioSave";
 import { TradeResultView } from "./TradeResult";
+import { TradeExport } from "./TradeExport";
+import { tradeCopyText } from "@/lib/trade-export";
+import { projectionName } from "@/lib/labels";
 import styles from "./builder.module.css";
 
 /**
@@ -21,6 +24,7 @@ export async function EvaluatedTrade({ result, selection }: {
   if (!r.ok) return <BackendProblem error={r.error} kind={r.kind} status={r.status} />;
   return (
     <>
+      <TradeExport text={tradeCopyText(r.data, projectionName(r.data.projection_source))} />
       {selection && <ScenarioSave selection={selection} />}
       <TradeResultView r={r.data} provider={profile.provider} />
     </>

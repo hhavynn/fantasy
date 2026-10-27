@@ -1,3 +1,9 @@
+/** Keep Sleeper teams without abbreviations from rendering an empty or "null" suffix. */
+export function startSitTeamLabel(name: string, abbrev: string | null | undefined): string {
+  const code = abbrev?.trim();
+  return code ? `${name} (${code})` : name;
+}
+
 export function formatGain(gain: number | null | undefined): string {
   if (gain === null || gain === undefined) return "—";
   if (gain > 0) return `+${gain.toFixed(1)} pts`;

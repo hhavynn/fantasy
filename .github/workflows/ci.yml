@@ -381,6 +381,17 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
         run: npm run e2e:visual
 
+      # #167 acceptance needs reviewable screenshots even when every onboarding check passes. These are synthetic
+      # fixture pages; the spec masks password fields and writes only viewport PNGs to its own test-result folders.
+      - name: Upload onboarding acceptance screenshots
+        if: ${{ !cancelled() && matrix.suite == 'multileague' && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: onboarding-acceptance
+          path: fantasy-intel/frontend/test-results-multileague/onboarding-*/*.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload Playwright traces and report
         if: failure()
         uses: actions/upload-artifact@v4
