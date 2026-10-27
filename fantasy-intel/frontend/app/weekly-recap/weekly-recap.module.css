@@ -38,7 +38,7 @@
 .inputs > summary { color: var(--accent); cursor: pointer; width: max-content; min-height: 24px; }
 .inputs ul { margin: 4px 0 0; padding-left: 16px; font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; white-space: normal; max-width: 60ch; }
 
-// Export is local to the authorized reader; never display action controls on printed pages.
+/* Export is local to the authorized reader; never display action controls on printed pages. */
 .exportActions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .exportActions button { min-height: 36px; font-size: 13px; padding: 5px 10px; }
 .exportMessage { font-size: 12px; color: var(--ink-muted); }
