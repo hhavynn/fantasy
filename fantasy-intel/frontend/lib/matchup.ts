@@ -101,10 +101,11 @@ export function switcherWeeks(available: readonly number[], viewing: number): nu
   return [...new Set([...available, viewing])].sort((a, b) => a - b);
 }
 
+/** The scores are read from a stored provider snapshot; "in progress" never proves a live feed. */
 export function statusLabel(status: MatchupStatus): string {
   switch (status) {
     case "upcoming": return "Not started";
-    case "in_progress": return "In progress";
+    case "in_progress": return "In progress at last sync";
     case "final": return "Final";
     default: return "Status unknown";
   }
