@@ -805,6 +805,6 @@ def test_fx17_dual_position_diagnostic_does_not_claim_primary_position_rank_fide
     assert rank["status"] == "partial"
     assert "dual_position_rankings" in codes(rank)
     assert "primary position" in rank["reason"]
-    lineup = tool(out, "lineup")
+    lineup = tool(out, "start_sit")
     assert "dual_position_rankings" not in codes(lineup["feature"])
     assert "espn_player_id" not in str(out) and "full_name" not in str(out)
