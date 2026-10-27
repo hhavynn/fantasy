@@ -173,7 +173,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         leagueName={league?.name ?? null} />
 
       <Suspense fallback={<Section title="Future-week stashes">Checking roster-specific future weeks…</Section>}>
-        <StashPanel horizon={readStashHorizon(sp.stashHorizon)} teamId={selectedTeamId(sel)} sp={sp} />
+        <StashPanel horizon={readStashHorizon(sp.stashHorizon)} teamId={perspective?.team_id ?? null} sp={sp} />
       </Suspense>
 
       <div className={styles.filters}>
