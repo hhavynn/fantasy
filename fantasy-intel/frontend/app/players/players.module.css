@@ -68,6 +68,7 @@
 .reasons { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); }
 .reasons li { margin: 2px 0; }
 .note { margin: 12px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.note a { text-decoration: underline; text-underline-offset: 2px; }
 .noteTight { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
 /* a link inside a sentence is underlined, never told apart by colour alone (axe link-in-text-block) */
 .textLink { text-decoration: underline; text-underline-offset: 2px; }

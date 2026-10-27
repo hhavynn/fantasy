@@ -31,22 +31,6 @@ export const A11Y_TRIAGE: TriageEntry[] = [
       + "the input's hit area to the row (app/trades/builder.module.css .check) and drop this entry.",
     owner: "#322 (app/trades/builder.module.css)",
   },
-  {
-    rule: "heading-order",
-    route: /^(\/l\/:league)?\/matchup(\?|$)/,
-    target: /teamName/,
-    reason: "The scoreboard's team names are h3 directly under the page h1 (no h2 between). Fix: make them h2, or "
-      + "give the scoreboard a section heading.",
-    owner: "#323 (app/matchup/Scoreboard.tsx)",
-  },
-  {
-    rule: "link-in-text-block",
-    route: /^(\/l\/:league)?\/players(\?|$)/,
-    target: /note > a/,
-    reason: "The links in the profile's note lines are told apart from the text by colour only. Fix: underline "
-      + "links in .note (app/players/players.module.css).",
-    owner: "#324 (app/players/players.module.css)",
-  },
 ];
 
 export type ContentTriageEntry = {
@@ -65,13 +49,6 @@ export const CONTENT_TRIAGE: ContentTriageEntry[] = [
     reason: "Intended: with multi-league off, /leagues is the deployment owner's setup note and names the .env "
       + "settings to edit.",
     owner: "n/a (by design)",
-  },
-  {
-    route: /^\/l\/:league\/start-sit(\?|$)/,
-    text: /\(null\)/,
-    reason: "A Sleeper team has no abbreviation, and the page header prints it as \"Sleeper Alpha (null)\". Fix: omit the "
-      + "parenthesis when the abbreviation is missing.",
-    owner: "#325 (app/start-sit/page.tsx)",
   },
   {
     route: /^\/l\/:league(\/matchup)?(\?|$)/,

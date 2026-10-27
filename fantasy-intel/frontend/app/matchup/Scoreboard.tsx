@@ -10,7 +10,7 @@ function Team({ side, h, status, mine, projBy }: { side: TeamSide; h: Headline; 
   const projected = h.basis === "actual" && side.projected_points !== null ? side.projected_points : null;
   return (
     <div className={`${styles.team} ${mine ? "" : styles.opp}`}>
-      <h3 className={styles.teamName}><Link href={`/managers/${side.team_id}`}>{side.name}</Link></h3>
+      <h2 className={styles.teamName}><Link href={`/managers/${side.team_id}`}>{side.name}</Link></h2>
       <p className={styles.teamMeta} title="Season record to date, not as of the week shown">
         {recordText(side.record)}{side.standing ? ` · ${ordinal(side.standing)} in standings` : ""}
       </p>

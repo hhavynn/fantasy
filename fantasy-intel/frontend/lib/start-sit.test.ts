@@ -2,8 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, emptyStartingSlots, actionabilityBadge, slotChange,
-  NO_PROJECTIONS, noProjections, projectedTotal, projectionsMeta, strengthBadge,
+  NO_PROJECTIONS, noProjections, projectedTotal, projectionsMeta, strengthBadge, startSitTeamLabel,
 } from "./start-sit-helpers.ts";
+
+test("start-sit team label omits unavailable abbreviations without dropping known ones", () => {
+  assert.equal(startSitTeamLabel("Sleeper Alpha", null), "Sleeper Alpha");
+  assert.equal(startSitTeamLabel("Sleeper Alpha", undefined), "Sleeper Alpha");
+  assert.equal(startSitTeamLabel("Sleeper Alpha", ""), "Sleeper Alpha");
+  assert.equal(startSitTeamLabel("Sleeper Alpha", "   "), "Sleeper Alpha");
+  assert.equal(startSitTeamLabel("Team One", "T1"), "Team One (T1)");
+});
 
 test("formatGain formats positive, zero, and missing gains", () => {
   assert.equal(formatGain(4.2), "+4.2 pts");
