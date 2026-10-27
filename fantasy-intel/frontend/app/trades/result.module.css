@@ -75,3 +75,9 @@
 
 /* Data sources and age of the verdict (ProvenanceBadge). */
 .provenance { margin-top: 8px; }
+
+/* Local copy/print controls: hide actions from printed evaluation. */
+.exportActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.exportActions button { min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.exportMessage { font-size: 12px; color: var(--ink-muted); }
+@media print { .exportActions { display: none; } }
