@@ -78,7 +78,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
     if (needsDefaultTeam(res) && sel.kind === "default" && await currentLeague()) {
       return (
         <Shell title="Matchup">
-          <ChooseTeam path="/matchup" sp={sp} what="this week\'s matchup" />
+          <ChooseTeam path="/matchup" sp={sp} what="this week's matchup" />
         </Shell>
       );
     }
