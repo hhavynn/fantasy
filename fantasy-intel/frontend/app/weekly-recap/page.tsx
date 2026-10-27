@@ -12,12 +12,13 @@ import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import {
-  backendPath, joinNames, MOVE_TYPE_LABEL, parseRecapQuery, pointsText, recapHref, recordText, scoreBars, sideResult,
+  backendPath, joinNames, MOVE_TYPE_LABEL, parseRecapQuery, pointsText, recapCopyText, recapHref, recordText, scoreBars, sideResult,
   STATUS_LABEL, tradeLines, weekLabel,
   type RecapQuery, type WeeklyRecap, type WrAward, type WrGame, type WrMatchup, type WrMove, type WrPlayer,
   type WrTeamScore,
 } from "@/lib/weekly-recap";
 import { DecisionFeedbackSection, DecisionFeedbackSkeleton } from "./DecisionFeedback";
+import { RecapExport } from "./RecapExport";
 import styles from "./weekly-recap.module.css";
 
 export const metadata = { title: "Weekly recap" };
@@ -75,6 +76,7 @@ function Body({ d, q, L, feedback }: { d: WeeklyRecap; q: RecapQuery; L: L; feed
       <PageHeader
         eyebrow="League"
         title={`${label} recap`}
+        actions={<RecapExport text={recapCopyText(d)} />}
         meta={<>
           {d.league_name} {d.season} · <b>{d.matchups.length}</b> final {plural(d.matchups.length, "matchup")}
           {pending > 0 && <> · {pending} not final yet</>}

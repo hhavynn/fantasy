@@ -218,3 +218,22 @@ export function scoreBars(matchups: readonly WrMatchup[], highlight: ReadonlySet
     .sort((a, b) => (b.points ?? -Infinity) - (a.points ?? -Infinity) || a.name.localeCompare(b.name))
     .map((t) => ({ label: t.name, value: t.points, tone: highlight.has(t.team_id) ? "default" : "muted" }));
 }
+
+// A deliberately name-free local clipboard summary: never copy league IDs, owner names, team names,
+// player details, provider credentials or an authenticated URL. Export is user-initiated, not a public link.
+export function recapCopyText(d: Pick<WeeklyRecap, "season" | "selected_week" | "scoring_periods" | "matchups" | "awards" | "notes">): string {
+  if (d.selected_week === null || !d.awards) {
+    return `Fantasy Intel weekly recap · ${d.season}\nNo finalized matchup period available.`;
+  }
+  const pending = d.notes.pending_matchups ?? 0;
+  const high = d.awards.highest_score.winners[0]?.points ?? null;
+  const margin = d.awards.biggest_blowout.winners[0]?.margin ?? null;
+  return [
+    `Fantasy Intel · ${weekLabel(d.scoring_periods, d.selected_week)} · ${d.season}`,
+    `${d.matchups.length} finalized ${d.matchups.length === 1 ? "matchup" : "matchups"}`,
+    ...(pending > 0 ? [`${pending} ${pending === 1 ? "matchup" : "matchups"} not yet final (excluded)`] : []),
+    `Highest finalized team score: ${pointsText(high)} points`,
+    `Largest finalized margin: ${pointsText(margin)} points`,
+    "Provider-synced final results, not live. Snapshot time unavailable in this report.",
+  ].join("\n");
+}
