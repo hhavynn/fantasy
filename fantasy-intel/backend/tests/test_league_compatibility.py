@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import compat_fixtures as cf
-from app.analytics.league_compatibility import CONTRACT, DIMENSIONS, TOOLS, build_compatibility, load_facts
+from app.analytics.league_compatibility import CONTRACT, DIMENSIONS, TOOLS, active_dual_position_count, build_compatibility, load_facts
 from app.analytics.league_rules import ENGINE_CODES, STATUSES, UNSUPPORTED, build_league_rules
 from app.analytics.legacy_league import latest_league
 from app.analytics.lineup import FLEX_ELIGIBILITY, assign_lineup
@@ -768,3 +768,41 @@ def test_v2_league_compatibility_is_league_scoped(pg, served, client, e2e, tmp_p
     assert r.status_code == 200 and r.json()["contract"] == CONTRACT
     assert r.headers["cache-control"] == "private, no-store"
     assert private.league_id not in r.text
+
+
+def test_dual_position_count_needs_provider_base_position_evidence_not_flex_or_ir():
+    def row(pid, position, eligible, slot_id=2):
+        return {"espn_player_id": pid, "known_id": pid, "position": position, "eligible_slots": eligible,
+                "lineup_slot_id": slot_id, "lineup_slot": "RB", "is_starter": slot_id != 20}
+    rows = [
+        row(100, "WR", [4, 2, 23]),  # second base position RB; flex id 23 by itself would not count
+        row(100, "WR", [4, 2, 23]),  # duplicate snapshot is counted once
+        row(101, "RB", [2, 23, 20]),  # flex and bench slots are not a second position
+        row(102, "RB", [2, 4], 21),  # player is held on IR; not active
+        row(103, "WR", "malformed JSON"),
+        row(104, "WR", None),
+        {**row(105, "RB", [2, 4]), "known_id": None},
+    ]
+    assert active_dual_position_count(rows) == 1
+    assert active_dual_position_count([]) == 0
+
+
+def test_fx17_dual_position_diagnostic_does_not_claim_primary_position_rank_fidelity(league):
+    con = league("M2")
+    pid = con.execute("""
+        SELECT DISTINCT l.espn_player_id
+        FROM lineup_snapshots l JOIN fantasy_players p USING (espn_player_id)
+        WHERE p.position = 'WR' AND l.is_starter = true AND l.scoring_period = 3
+        LIMIT 1
+    """).fetchone()[0]
+    con.execute("UPDATE fantasy_players SET eligible_slots = ? WHERE espn_player_id = ?",
+                [json.dumps([4, 2, 23]), pid])
+    out = diagnostic(con)
+    assert out["active_dual_position_players"] >= 1
+    rank = tool(out, "rankings")["feature"]
+    assert rank["status"] == "partial"
+    assert "dual_position_rankings" in codes(rank)
+    assert "primary position" in rank["reason"]
+    lineup = tool(out, "lineup")
+    assert "dual_position_rankings" not in codes(lineup["feature"])
+    assert "espn_player_id" not in str(out) and "full_name" not in str(out)
