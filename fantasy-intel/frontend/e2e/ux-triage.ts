@@ -23,15 +23,6 @@ export type TriageEntry = {
 
 export const A11Y_TRIAGE: TriageEntry[] = [
   {
-    rule: "target-size",
-    route: /^(\/l\/:league)?\/trades(\?|$)/,
-    target: /^#_R_\w+_-/,
-    reason: "The trade builder's 18px player checkboxes sit inside a full-row <label> (44px tall on phones), so the "
-      + "row is the real target; axe measures the bare input, and only when a neighbour lands within 24px. Fix: size "
-      + "the input's hit area to the row (app/trades/builder.module.css .check) and drop this entry.",
-    owner: "#322 (app/trades/builder.module.css)",
-  },
-  {
     rule: "heading-order",
     route: /^(\/l\/:league)?\/matchup(\?|$)/,
     target: /teamName/,

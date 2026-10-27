@@ -65,6 +65,20 @@ for (const route of CORE) {
   });
 }
 
+test("trade builder checkboxes expose 24px targets while keeping 18px indicators", async ({ page }) => {
+  await open(page, "/trades");
+  const targets = await page.getByRole("checkbox").evaluateAll((boxes) => boxes.map((box) => {
+    const rect = box.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, indicator: getComputedStyle(box, "::before").width };
+  }));
+  expect(targets.length, "trade builder has selectable players").toBeGreaterThan(0);
+  for (const target of targets) {
+    expect(target.width, "checkbox hit target width").toBeGreaterThanOrEqual(24);
+    expect(target.height, "checkbox hit target height").toBeGreaterThanOrEqual(24);
+    expect(target.indicator, "visual checkbox width").toBe("18px");
+  }
+});
+
 // The CORE runs above see the wide desktop with the workspace rail open (its default); this is the other state.
 test("the collapsed workspace rail meets the quality bar on a wide desktop", async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) < 1200, "the rail is the wide desktop layout");
