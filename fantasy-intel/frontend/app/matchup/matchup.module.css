@@ -97,3 +97,10 @@
 .notes { margin: 4px 0 0; padding-left: 16px; }
 .notes li + li { margin-top: 4px; }
 .weekNav { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Authorized, user-initiated local copy/print controls beside the existing team/week actions. */
+.headerActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.exportActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.exportActions button { min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.exportMessage { color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+@media print { .exportActions { display: none; } }
