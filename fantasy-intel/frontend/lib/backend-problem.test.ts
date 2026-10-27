@@ -6,9 +6,39 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { backendProblemCopy, type ProblemInput } from "./backend-problem.ts";
+import { api } from "./api.ts";
+import { isFirstSync } from "./api-errors.ts";
+import { computeSyncSummary } from "./sync-status.ts";
 
 const HOST = "http://10.20.30.40:8000";
 const LEAKS = /uvicorn|sync_espn|sync_nfl|scripts\/|cd backend|10\.20\.30\.40|https?:|MotherDuck|r2:|snapshots\/|Traceback|\.env/;
+
+test("a no-snapshot 409 reaches the page and pill as no data, without claiming a job is running (#333)", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    // league_scope._authorize returns the same detail for no job, queued, running and failed first syncs.
+    for (const state of ["no_data", "first_sync_queued", "first_sync_running", "first_sync_failed"]) {
+      globalThis.fetch = (async () => new Response(JSON.stringify({ detail: "First sync in progress." }), {
+        status: 409, headers: { "X-FI-Sync-State": state },
+      })) as typeof fetch;
+      const res = await api("/v2/leagues/lg_SyntheticBlankLeague/api/status");
+      assert.equal(res.ok, false);
+      if (res.ok) continue;
+      for (const local of [true, false, undefined]) {
+        const copy = backendProblemCopy({ ...res, local });
+        assert.equal(copy.variant, "first-sync");
+        assert.ok("title" in copy && /no data yet/i.test(String(copy.title)));
+        assert.doesNotMatch(JSON.stringify(copy), /still syncing|within a few minutes|409|First sync in progress/);
+        assert.doesNotMatch(JSON.stringify(copy), LEAKS);
+      }
+      const pill = computeSyncSummary(null, undefined, "espn", false, isFirstSync(res.status, res.error));
+      assert.equal(pill.text, "No league data yet");
+      assert.notEqual(pill.state, "offline");
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
 
 const FAILURES: ProblemInput[] = [
   { kind: "offline", error: `Cannot reach the backend at ${HOST}. Start it with: cd backend && uv run uvicorn app.main:app --reload` },
