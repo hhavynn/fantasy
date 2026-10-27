@@ -77,9 +77,9 @@ export function BackendProblemView(props: ProblemInput) {
   if (copy.variant === "first-sync") {
     // A league whose first sync has not published yet (the API's 409): a normal step of adding a league, not an error.
     return (
-      <Notice tone="info" title="This league is still syncing for the first time">
-        <p>Its pages fill in once the first sync finishes, usually within a few minutes of adding it.</p>
-        <p><Link href="/leagues" prefetch={false}>See its progress on Leagues</Link>, where the steps update by themselves.</p>
+      <Notice tone="info" title={copy.title}>
+        <p>{copy.detail}</p>
+        <p><Link href="/leagues" prefetch={false}>Check sync status on Leagues</Link>, where you can refresh to start or retry a sync.</p>
       </Notice>
     );
   }

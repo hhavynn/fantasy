@@ -16,7 +16,7 @@ export type ProblemBlock =
 
 export type ProblemCopy =
   | { variant: "first-run" }
-  | { variant: "first-sync" }
+  | { variant: "first-sync"; title: string; detail: string }
   | { variant: "notice"; title: string; blocks: ProblemBlock[] };
 
 export type ProblemInput = { error: string; kind?: ApiErrorKind; status?: number; local?: boolean };
@@ -29,7 +29,10 @@ export function backendProblemCopy({ error, kind = "unknown", status, local = fa
   // The first-run guide is operator setup (.env, cookie settings, sync commands): a local run only. A hosted backend
   // without a database is a 503 like any other for visitors. The first-sync notice is fixed visitor copy.
   if (local && kind === "http" && isFirstRun(error)) return { variant: "first-run" };
-  if (isFirstSync(status, error)) return { variant: "first-sync" };
+  // The 409 means no published snapshot, even when no job exists or a first sync has failed.
+  // Do not promise that a sync is running or estimate when it will finish.
+  if (isFirstSync(status, error)) return { variant: "first-sync", title: "No data yet",
+    detail: "This league is connected, but its first sync has not published any data. Its pages fill in once that sync finishes." };
   return local ? localCopy(error, kind, status) : visitorCopy(error, kind, status);
 }
 

@@ -134,16 +134,29 @@ for (const width of [320, 1440]) {
       expect(errors, "console errors").toEqual([]);
     });
 
-    test(`a never-synced league renders its pages without breaking the layout (${width}px)`, async ({ page, context }) => {
+    test(`a never-synced league explains its first sync instead of showing an error (${width}px)`, async ({ page, context }) => {
+      test.slow();
       await signIn(context);
       const errors = collectErrors(page);
+      await useTheme(page, "light");
       for (const p of ["", "/start-sit", "/waivers"]) {
         await open(page, `/l/${manifest().leagues.espn_blank}${p}`);
-        await expect(page.locator("h1"), "exactly one h1").toHaveCount(1);
-        await expectNoSidewaysScroll(page);
-        await expectAppBarFits(page);
-        await expectAccessible(page);
+        const main = page.locator("main");
+        await expect(main).toContainText("No data yet");
+        await expect(main).toContainText("This league is connected");
+        await expect(main).not.toContainText(/409|First sync in progress|still syncing|within a few minutes|This could not be loaded/);
+        await expect(main.getByRole("alert")).toHaveCount(0);
+        await expect(main.getByRole("link", { name: "Check sync status on Leagues" })).toHaveAttribute("href", "/leagues");
+        await expect(page.getByText("Backend offline")).toHaveCount(0);
+        await expect(page.getByText("No league data yet").first()).toBeAttached();
+        await expect(page.locator("body")).not.toContainText(/Private Fixture League|Echo RB/);
+        await expectStructure(page);
+        await expectNoBrokenValues(page);
+        await bothThemes(page, true);
       }
+      await page.locator("main").getByRole("link", { name: "Check sync status on Leagues" }).click();
+      await expect(page).toHaveURL(/\/leagues$/);
+      await expect(page.locator("main")).toContainText("Blank Sync League");
       expect(errors, "console errors").toEqual([]);
     });
   });
@@ -266,17 +279,6 @@ for (const width of [320, 1440]) {
     });
   });
 }
-
-// A connected league with no data yet answers 409 "first sync in progress": the page explains the first sync and the
-// header's sync state says so, never an error box or "Backend offline" (PRODUCT.md: first run is never an error box).
-test("a never-synced league explains its first sync instead of showing an error", async ({ page, context }) => {
-  await signIn(context);
-  await open(page, `/l/${manifest().leagues.espn_blank}`);
-  await expect(page.locator("main")).not.toContainText(/The backend returned an error/);
-  await expect(page.locator("main")).toContainText("still syncing for the first time");
-  await expect(page.getByText("Backend offline")).toHaveCount(0);
-  await expect(page.getByText("No league data yet").first()).toBeAttached();
-});
 
 test("league switching works from the keyboard and re-renders the header for the new league", async ({ page, context }) => {
   await signIn(context);
