@@ -797,8 +797,10 @@ def test_fx17_dual_position_diagnostic_does_not_claim_primary_position_rank_fide
     """).fetchone()[0]
     con.execute("UPDATE fantasy_players SET eligible_slots = ? WHERE espn_player_id = ?",
                 [json.dumps([4, 2, 23]), pid])
-    out = diagnostic(con)
-    assert out["active_dual_position_players"] >= 1
+    lg = latest_league(con)
+    facts = load_facts(con, lg)
+    assert facts["active_dual_position_players"] >= 1
+    out = build_compatibility(lg, facts)
     rank = tool(out, "rankings")["feature"]
     assert rank["status"] == "partial"
     assert "dual_position_rankings" in codes(rank)
