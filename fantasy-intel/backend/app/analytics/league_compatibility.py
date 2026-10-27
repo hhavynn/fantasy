@@ -474,7 +474,6 @@ def build_compatibility(lg: dict, facts: dict) -> dict:
         },
         "tools": [L.tool(code) for code in TOOLS],
         "unmapped_count": len(rules["unmapped"]),
-        "active_dual_position_players": facts.get("active_dual_position_players") or 0,
         "note": "Each tool is judged on four separate dimensions; a connected league is not automatically supported "
                 "by every tool. Statuses restate what the engines do with this league's synced data.",
     }
