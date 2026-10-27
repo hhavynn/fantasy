@@ -22,6 +22,8 @@ import { isUnknownTeam, readTeamSelection, withTeamId } from "@/lib/team-perspec
 import { Bench } from "./Bench";
 import { Lineups, SoloLineup } from "./Lineups";
 import { Scoreboard } from "./Scoreboard";
+import { MatchupExport } from "./MatchupExport";
+import { matchupCopyText } from "@/lib/matchup-export";
 import styles from "./matchup.module.css";
 
 export const metadata = { title: "Matchup" };
@@ -123,6 +125,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
         ].filter(Boolean).join(" · ")}
         provenance={<ProvenanceBadge signals={signalsOf(m.provenance)} />}
         actions={
+          <div className={styles.headerActions}>
           <TeamPerspective path="/matchup" sp={sp} current={m.me.team_id}>
             <div className={styles.weekNav}>
               {prev ? <Link className="chip" href={matchupHref({ week: prev, ...keep })}>← Week {prev}</Link> : null}
@@ -130,6 +133,8 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
               {next ? <Link className="chip" href={matchupHref({ week: next, ...keep })}>Week {next} →</Link> : null}
             </div>
           </TeamPerspective>
+          <MatchupExport text={matchupCopyText(m, projBy)} />
+          </div>
         }
       >
         <Tabs
