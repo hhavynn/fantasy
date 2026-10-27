@@ -29,7 +29,7 @@ from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
 from .league_rules import HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED, build_league_rules
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, is_flex, separable, slot_positions
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, is_flex, parse_eligible_slots, separable, slot_positions
 from .reserve_slots import is_reserved
 
 CONTRACT = "league-compatibility/v1"
@@ -94,6 +94,18 @@ def _plural(n: int, word: str) -> str:
 
 # ---- facts from the league file ---------------------------------------------------------------------------------------
 
+def active_dual_position_count(rows: list[dict]) -> int:
+    """Unique rostered, non-reserve players with provider evidence for a second base position.
+
+    Eligible flex/bench/IR slot IDs alone are NOT dual-position evidence. No IDs or names leave this function.
+    """
+    return len({
+        r["espn_player_id"] for r in rows
+        if r.get("known_id") is not None and not is_reserved(r)
+        and parse_eligible_slots(r.get("eligible_slots"), r.get("position")) is not None
+    })
+
+
 def load_facts(con, lg: dict) -> dict:
     """The few league-file facts the diagnostic needs beyond the `leagues` row (one league per file)."""
     from . import projection_source as ps
@@ -105,7 +117,7 @@ def load_facts(con, lg: dict) -> dict:
     teams = fetch_dicts(con, "SELECT team_id FROM fantasy_teams WHERE league_id = ? AND season = ?", [league_id, season])
     rows = fetch_dicts(con, """
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter,
-               fp.espn_player_id AS known_id, fp.position, fp.pro_team
+               fp.espn_player_id AS known_id, fp.position, fp.pro_team, fp.eligible_slots
         FROM lineup_snapshots l LEFT JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?""", [league_id, season, week]) if week else []
     settings = lg.get("settings_raw")
@@ -147,6 +159,7 @@ def load_facts(con, lg: dict) -> dict:
                                           and r["lineup_slot"] and r["lineup_slot"] not in fillable),
         "teams_with_roster": len({r["team_id"] for r in rows}),
         "players_missing": sum(1 for r in rows if r["known_id"] is None),
+        "active_dual_position_players": active_dual_position_count(rows),
         "projection_source": shown, "independent": independent, "ours_rescored": skill_runs_rescored(con, lg),
         "coverage": coverage, "free_agents_projected": fa_projected,
     }
@@ -369,6 +382,18 @@ class _League:
                                    "(expected points, full PPR) as a percentile within each position, not by this "
                                    "league's scoring.", missing_input="usage values in this league's scoring",
                                    action="Compare the projected points shown beside each claim.", value=refs or None))
+        # Dual eligibility is supported by lineup assignment, but position leaderboards still classify by
+        # primary position. This finding is emitted only when current synced rosters contain provider evidence.
+        dual = self.facts.get("active_dual_position_players") or 0
+        if dual and code == "rankings":
+            feature.append(finding(
+                "dual_position_rankings", PARTIAL,
+                f"{_plural(dual, 'active rostered player')} may start at a provider-listed second position, "
+                "but player ranks and position filters use their primary position only.",
+                missing_input="dual-position-aware player ranks",
+                action="Use the lineup or trade evaluator for their roster fit, not the primary-position rank alone.",
+                value=dual,
+            ))
         # feature
         if kind == "lineup" and self.unfilled:
             n = self.facts.get("starters_in_unfilled_slots") or 0
@@ -449,6 +474,7 @@ def build_compatibility(lg: dict, facts: dict) -> dict:
         },
         "tools": [L.tool(code) for code in TOOLS],
         "unmapped_count": len(rules["unmapped"]),
+        "active_dual_position_players": facts.get("active_dual_position_players") or 0,
         "note": "Each tool is judged on four separate dimensions; a connected league is not automatically supported "
                 "by every tool. Statuses restate what the engines do with this league's synced data.",
     }
