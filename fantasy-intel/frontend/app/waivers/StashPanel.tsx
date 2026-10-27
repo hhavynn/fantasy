@@ -107,9 +107,9 @@ export async function StashPanel({ horizon, teamId, sp }: {
         {p.drop && (
           <p className={styles.detail}>Simulated drop: <strong>{p.drop.name ?? "Unnamed roster player"}</strong> · projected horizon cost {stashGain(p.drop.horizon_cost)}. This is a scenario, not a suggested transaction.</p>
         )}
-        {p.drop_basis === "roster_count_unverified" && <Notice tone="caution" title="Roster capacity unverified">An open roster slot cannot be assumed. The analysis simulates a drop; confirm your provider's limits.</Notice>}
+        {p.drop_basis === "roster_count_unverified" && <Notice tone="caution" title="Roster capacity unverified">An open roster slot cannot be assumed. The analysis simulates a drop; confirm your provider&apos;s limits.</Notice>}
         {p.drop_notes?.length > 0 && <details><summary>Drop and roster limits</summary><ul>{p.drop_notes.map((n,i)=><li key={i}>{n}</li>)}</ul></details>}
-        {(p.pick_up_now?.length ?? 0) > 0 && <p className={styles.detail}>{p.pick_up_now.length} possible current-week {p.pick_up_now.length === 1 ? "add" : "adds"} excluded from the stash list. Use the immediate claims above for this week's moves.</p>}
+        {(p.pick_up_now?.length ?? 0) > 0 && <p className={styles.detail}>{p.pick_up_now.length} possible current-week {p.pick_up_now.length === 1 ? "add" : "adds"} excluded from the stash list. Use the immediate claims above for this week&apos;s moves.</p>}
         {p.contingencies?.available && p.contingencies.items.length > 0 && (
           <div className={styles.contingency}>
             <h3>Conditional opportunities</h3>
