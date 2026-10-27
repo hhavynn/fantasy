@@ -168,18 +168,23 @@ def main() -> int:
         su.execute("UPDATE fi.league_snapshot_history SET committed_at = %s WHERE league_id = %s",
                    ["2026-10-14T12:00:00Z", leagues["espn_stale"]])
         su.commit()
+    from e2e_onboarding import install, seed
+    onboarding = seed(db, session_cookie, auth_url, (leagues["espn_private"], leagues["espn_stale"]))
     (out / "manifest.json").write_text(json.dumps({"leagues": leagues, "cookie": session_cookie(auth_url, VIEWER),
-                                                    "auth_url": auth_url}, indent=1))
+                                                    "auth_url": auth_url, "onboarding": onboarding}, indent=1))
 
     os.environ.update({
         "MULTILEAGUE_ENABLED": "1", "SUPABASE_URL": auth_url, "SUPABASE_DB_URL": db.dsn_for("fi_api"),
         "LEAGUE_FILES_DIR": str(objects), "SLEEPER_SOURCE": "live", "ESPN_SEASON": "2026", "NFL_SEASON": "2026",
         "FANTASY_DB_PATH": str(espn_db), "FANTASY_API_KEY": "", "MOTHERDUCK_DATABASE": "", "ESPN_MY_TEAM_ID": "",
         "CLASSIC_SITE_ENABLED": "0",
+        "MULTILEAGUE_CONNECT_ENABLED": "1",
     })
+    from app.main import app
+    install(app)
     import uvicorn
     try:
-        uvicorn.run("app.main:app", host="127.0.0.1", port=api_port, log_level="warning")
+        uvicorn.run(app, host="127.0.0.1", port=api_port, log_level="warning")
     finally:
         cluster.stop()
     return 0

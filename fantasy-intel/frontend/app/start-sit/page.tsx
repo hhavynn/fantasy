@@ -32,6 +32,7 @@ import {
   lockStatusBadge,
   slotChange,
   startSitVerdict,
+  startSitTeamLabel,
   strengthBadge,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
@@ -137,7 +138,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       <PageHeader
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
-        meta={`${team.name} (${team.abbrev}) · ${projectionsMeta(d.projection_source, noProj)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        meta={`${startSitTeamLabel(team.name, team.abbrev)} · ${projectionsMeta(d.projection_source, noProj)} · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
         provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
