@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  availableViews, benchRows, chooseView, hasDesignation, lineupRows, lineupTotal, headline, leader, margin, matchupHref, ordinal, pairSlots, parseWeekParam, share, sumAll, switcherWeeks,
+  availableViews, benchRows, chooseView, hasDesignation, lineupRows, lineupTotal, headline, leader, margin, matchupHref, ordinal, pairSlots, parseWeekParam, share, statusLabel, sumAll, switcherWeeks,
 } from "./matchup.ts";
 import type { LineupSlot, Matchup, SetPlayer, TeamSide } from "./matchup-types.ts";
 
@@ -177,4 +177,12 @@ test("lineupTotal: backend total for projected (known-only when incomplete); a s
   const unknown = side({ actual_lineup: [setP({ projected_points: null }), setP({ player_id: 2 })] });
   assert.deepEqual(lineupTotal(unknown, "set", lineupRows(unknown, "set", "upcoming")), { value: null, incomplete: true });
   assert.deepEqual(lineupTotal(side(), "set", null), { value: null, incomplete: false });
+});
+
+test("matchup status labels do not imply that stored scores are live", () => {
+  assert.equal(statusLabel("in_progress"), "In progress at last sync");
+  assert.equal(statusLabel("final"), "Final");
+  assert.equal(statusLabel("upcoming"), "Not started");
+  assert.equal(statusLabel("unknown"), "Status unknown");
+  assert.doesNotMatch(statusLabel("in_progress"), /live|real.time|now/i);
 });
