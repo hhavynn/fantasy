@@ -91,7 +91,7 @@ Do this before a release, about 15 minutes, on a phone-sized window (390px) and 
 
 **League switching**
 - [ ] The league switcher lists recent leagues and changes the header, data and saved team, in both directions, with mouse and keyboard.
-- [ ] A signed-out visitor never sees a private league. A never-synced league shows first-sync guidance, not an error (known defect below).
+- [ ] A signed-out visitor never sees a private league. A never-synced league shows first-sync guidance rather than a backend error (the current multi-league browser test covers this).
 - [ ] A Sleeper league shows no ESPN wording or ESPN-only controls.
 
 ## Gate findings and disposition
