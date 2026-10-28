@@ -94,15 +94,16 @@ Do this before a release, about 15 minutes, on a phone-sized window (390px) and 
 - [ ] A signed-out visitor never sees a private league. A never-synced league shows first-sync guidance, not an error (known defect below).
 - [ ] A Sleeper league shows no ESPN wording or ESPN-only controls.
 
-## Known defects found by the gates
+## Gate findings and disposition
 
-These are open; the triage file or a `test.fixme` names each one, and each triage entry's owner is its issue:
-- #322: the trade builder's player checkboxes are 18px inputs (axe `target-size`).
-- #323: Matchup scoreboard team names are `h3` with no `h2` above them (axe `heading-order`).
-- #324: the links in the player profile's note lines are told apart by colour only (axe `link-in-text-block`).
-- #325: a Sleeper team with no abbreviation prints "(null)" in the Start/Sit header.
-- #326: with no saved team, a league's Overview and Matchup show the operator hint `ESPN_MY_TEAM_ID`. The Matchup line
-  is the backend's `TeamNotFound` detail (`backend/app/analytics/matchup.py`).
+The following historical findings were fixed and merged in PRs [#357](https://github.com/hhavynn/fantasy/pull/357), [#358](https://github.com/hhavynn/fantasy/pull/358), and [#359](https://github.com/hhavynn/fantasy/pull/359); the corresponding UX triage exemptions were removed:
+- #322: trade-builder checkbox targets enlarged while retaining the compact visual indicator.
+- #323: Matchup scoreboard heading hierarchy corrected.
+- #324: player-profile prose links distinguished without relying on colour.
+- #325: Sleeper missing abbreviations no longer display `(null)`.
+- #326: missing-default-team multi-league Overview and Matchup display appropriate team-selection guidance.
+
+**Still pending explicit acceptance:**
 - A connected league that has never synced shows "The backend returned an error (409)" and a "Backend offline" pill. The `test.fixme` in `ux-multileague.spec.ts` covers it.
 
 ## Team Value regression lane (#202)
