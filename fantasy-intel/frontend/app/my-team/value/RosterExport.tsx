@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LocalReportShare } from "@/components/LocalReportShare";
 import styles from "./value.module.css";
 
 /** Share via local clipboard only; never upload, store or create a public report URL. */
@@ -20,6 +21,7 @@ export function RosterExport({ text }: { text: string }) {
       <button type="button" className={styles.exportButton} onClick={() => void copy()}>
         Copy name-free roster summary
       </button>
+      <LocalReportShare text={text} />
       <span className={styles.exportStatus} role="status" aria-live="polite">{message}</span>
     </>
   );
