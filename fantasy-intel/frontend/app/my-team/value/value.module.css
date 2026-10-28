@@ -64,5 +64,11 @@
 .utilityFigures dd { margin: 2px 0 0; font-size: 16px; }
 .utilityPath { white-space: normal; min-width: 150px; }
 
-/* Prose links must be distinct from surrounding text without relying on color alone (axe link-in-text-block). */
+/* Roster summary is name-free clipboard text; no public URL or background upload. */
+.exportActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.exportButton { min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.exportStatus { font-size: 12px; color: var(--ink-muted); }
+@media print { .exportActions { display: none; } }
+
+/* Prose links must be visually distinguished without relying on color alone (axe link-in-text-block). */
 .proseLinks p a, .proseLinks li a { text-decoration: underline; text-underline-offset: 2px; }

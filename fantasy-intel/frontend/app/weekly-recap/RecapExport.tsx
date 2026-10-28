@@ -18,7 +18,8 @@ export function RecapExport({ text }: { text: string }) {
   return (
     <div className={styles.exportActions}>
       <button type="button" onClick={() => void copy()}>Copy name-free summary</button>
-      <button type="button" onClick={() => window.print()}>Print report</button>
+      <button type="button" onClick={() => window.print()}>Print full report (includes names)</button>
+      <p className={styles.printDisclosure}>Printing this page includes team and player names. Use the name-free copy option when sharing.</p>
       <span className={styles.exportMessage} role="status" aria-live="polite">{message}</span>
     </div>
   );

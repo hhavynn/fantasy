@@ -66,6 +66,27 @@ for (const route of CORE) {
   });
 }
 
+
+test("print actions disclose full-page private content separately from name-free copying", async ({ page }) => {
+  const cases = [
+    { path: "/weekly-recap", copy: "Copy name-free summary", print: "Print full report (includes names)" },
+    { path: "/matchup", copy: "Copy name-free summary", print: "Print full report (includes names)" },
+    { path: "/trades?ta=2&tb=1&a=206&a=307&b=202",
+      copy: "Copy name-free trade summary", print: "Print full evaluation (includes names)" },
+  ];
+  for (const item of cases) {
+    await test.step(item.path, async () => {
+      await open(page, item.path);
+      await expect(page.getByRole("button", { name: item.copy, exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: item.print, exact: true })).toBeVisible();
+      await expect(page.locator("main")).toContainText(
+        "Printing this page includes team and player names. Use the name-free copy option when sharing.");
+      await expectNoSidewaysScroll(page);
+      await expectAccessible(page);
+    });
+  }
+});
+
 test("trade builder checkboxes expose 24px targets while keeping 18px indicators", async ({ page }) => {
   await open(page, "/trades");
   const targets = await page.getByRole("checkbox").evaluateAll((boxes) => boxes.map((box) => {
