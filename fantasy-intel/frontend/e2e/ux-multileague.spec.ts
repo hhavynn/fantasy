@@ -182,6 +182,27 @@ for (const width of [320, 1440]) {
       await useTheme(page, "light");
       await open(page, `/l/${manifest().leagues.espn_private}/no-such-page`, 404);
       await expect(page.locator("main h1")).toHaveText("Page not found");
+      // Navigation-only owner research must not be advertised to ordinary members on a 404 page.
+      const allPages = page.getByRole("navigation", { name: "All pages" });
+      await expect(allPages).toBeVisible();
+      await expect(allPages.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
+      await expect(allPages.locator('a[href$="/projection-performance"]')).toHaveCount(0);
+      await expect(allPages.getByRole("link", { name: "Rankings" })).toBeVisible();
+      await expectStructure(page);
+      await expectNoBrokenValues(page);
+      await bothThemes(page, true);
+      expect(errors, "console errors").toEqual([]);
+    });
+
+    test(`public Sleeper 404 never advertises owner-only research (${width}px)`, async ({ page }) => {
+      const errors = collectErrors(page, { documentMayBe404: true });
+      await useTheme(page, "light");
+      await open(page, `/l/${manifest().leagues.sleeper}/no-such-page`, 404);
+      await expect(page.locator("main h1")).toHaveText("Page not found");
+      const allPages = page.getByRole("navigation", { name: "All pages" });
+      await expect(allPages).toBeVisible();
+      await expect(allPages.locator('a[href$="/projection-performance"]')).toHaveCount(0);
+      await expect(allPages.getByRole("link", { name: "Waivers" })).toBeVisible();
       await expectStructure(page);
       await expectNoBrokenValues(page);
       await bothThemes(page, true);
