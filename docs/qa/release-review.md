@@ -14,7 +14,7 @@ All of it runs in the parallel E2E jobs in `.github/workflows/ci.yml`. The UX ga
 
 The existing route smoke tests (`routes.spec.ts`, `sleeper.spec.ts`, `multileague.spec.ts`) still cover every page in the nav at 1440 and 375.
 
-**Core destinations.** Overview, Start/Sit, Matchup, Waivers, Trade analyzer, Trade result, Rankings, Player profile, the League pages (Weekly recap, Playoff race, a manager) and Leagues (connect). On the multi-league site the gates also cover the connections list, the settings page of a never-synced league, and the pages of a stale league and a blank one.
+**Core destinations.** Overview, Start/Sit, Matchup, **Team value** (including selected-roster data and its availability), Waivers, Trade analyzer, Trade result, Rankings, Player profile, the League pages (Weekly recap, Playoff race, a manager) and Leagues (connect). On the multi-league site the gates also cover the connections list, the settings page of a never-synced league, and the pages of a stale league and a blank one.
 
 **Checks for each page.** The shared helpers are in `e2e/ux.ts`.
 - Structure: exactly one `h1`, and it is inside `main`. Exactly one banner and one main landmark. The section navigation is visible and has at least five group links. No backend error box or route error box.
@@ -91,16 +91,20 @@ Do this before a release, about 15 minutes, on a phone-sized window (390px) and 
 
 **League switching**
 - [ ] The league switcher lists recent leagues and changes the header, data and saved team, in both directions, with mouse and keyboard.
-- [ ] A signed-out visitor never sees a private league. A never-synced league shows first-sync guidance, not an error (known defect below).
+- [ ] A signed-out visitor never sees a private league. A never-synced league shows first-sync guidance rather than a backend error (the current multi-league browser test covers this).
 - [ ] A Sleeper league shows no ESPN wording or ESPN-only controls.
 
-## Known defects found by the gates
+## Gate findings and disposition
 
-These are open; the triage file or a `test.fixme` names each one, and each triage entry's owner is its issue:
-- #322: the trade builder's player checkboxes are 18px inputs (axe `target-size`).
-- #323: Matchup scoreboard team names are `h3` with no `h2` above them (axe `heading-order`).
-- #324: the links in the player profile's note lines are told apart by colour only (axe `link-in-text-block`).
-- #325: a Sleeper team with no abbreviation prints "(null)" in the Start/Sit header.
-- #326: with no saved team, a league's Overview and Matchup show the operator hint `ESPN_MY_TEAM_ID`. The Matchup line
-  is the backend's `TeamNotFound` detail (`backend/app/analytics/matchup.py`).
-- A connected league that has never synced shows "The backend returned an error (409)" and a "Backend offline" pill. The `test.fixme` in `ux-multileague.spec.ts` covers it.
+The following historical findings were fixed and merged in PRs [#357](https://github.com/hhavynn/fantasy/pull/357), [#358](https://github.com/hhavynn/fantasy/pull/358), and [#359](https://github.com/hhavynn/fantasy/pull/359); the corresponding UX triage exemptions were removed:
+- #322: trade-builder checkbox targets enlarged while retaining the compact visual indicator.
+- #323: Matchup scoreboard heading hierarchy corrected.
+- #324: player-profile prose links distinguished without relying on colour.
+- #325: Sleeper missing abbreviations no longer display `(null)`.
+- #326: missing-default-team multi-league Overview and Matchup display appropriate team-selection guidance.
+
+**Never-synced league:** The active multi-league Playwright test now requires first-sync guidance ("No data yet"), a sync-status link, and no misleading 409/offline error. If that journey regresses, the test blocks CI; there is no longer a `test.fixme` for it.
+
+## Team Value regression lane (#202)
+
+The route matrix now includes `/my-team/value` at 320/390/768/1440 for the fixture ESPN manager and 320/390/1440 (authorized private ESPN) plus 320/1440 (Sleeper). The existing shared assertions catch a missing main heading, a backend failure instead of the configured authorized/choose-team state, horizontal scroll, inaccessible controls, broken/missing-data display, and JS errors in both themes. These are existing free CI jobs; no screenshot baseline is automatically regenerated. This does not itself certify every possible team/league rule or a public share endpoint.
