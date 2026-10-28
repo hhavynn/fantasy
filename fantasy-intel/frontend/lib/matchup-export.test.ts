@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchupCopyText } from "./matchup-export.ts";
+import { matchupCopyText, matchupProjectionBasis } from "./matchup-export.ts";
 import type { Matchup, TeamSide } from "./matchup-types.ts";
 
 const side = (over: Partial<TeamSide> = {}): TeamSide => ({
@@ -48,4 +48,27 @@ test("bye week and partial projections avoid fabricated opponent totals", () => 
   const t=matchupCopyText(match({opponent:null,me:side({known_points:87.5})}),"ESPN");
   assert.match(t,/Opponent: No opponent scheduled/);
   assert.match(t,/87\.5 known projected points only \(incomplete\)/);
+});
+
+test("the copied projection basis is the source the backend served, not the league's default", () => {
+  const espn = { source: "espn" as const, available: true, reason: null, run: null, model_status: null, counts: null };
+  const ours = { ...espn, source: "independent" as const };
+  const oursNotReady = { ...ours, available: false, reason: "No independent projection run is stored, so ESPN projections are shown." };
+  // an ESPN league with the switch on Ours is shown Fantasy Intel's model: the copy must not say ESPN
+  assert.match(matchupProjectionBasis(ours, true), /^Fantasy Intel/);
+  assert.doesNotMatch(matchupProjectionBasis(ours, true), /^ESPN/);
+  assert.equal(matchupProjectionBasis(oursNotReady, true), "ESPN");
+  assert.equal(matchupProjectionBasis(espn, true), "ESPN");
+  assert.equal(matchupProjectionBasis(undefined, true), "ESPN");
+  // Sleeper: no ESPN fallback exists
+  assert.equal(matchupProjectionBasis(ours, false), "Fantasy Intel");
+  assert.match(matchupProjectionBasis(oursNotReady, false), /none available/);
+  assert.doesNotMatch(matchupProjectionBasis(oursNotReady, false), /ESPN/);
+});
+
+test("in-progress actuals are a partial total at the last sync, never a final or live score", () => {
+  const t = matchupCopyText(match({ status: "in_progress", me: side({ actual_points: 61.2 }), opponent: side({ actual_points: 48 }) }), "ESPN");
+  assert.match(t, /My side: 61\.2 actual points so far at last sync/);
+  assert.match(t, /Opponent: 48\.0 actual points so far at last sync/);
+  assert.doesNotMatch(matchupCopyText(match(), "ESPN"), /so far/);
 });

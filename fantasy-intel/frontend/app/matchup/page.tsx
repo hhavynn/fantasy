@@ -19,12 +19,12 @@ import {
 } from "@/lib/matchup";
 import { signalsOf } from "@/lib/signal-provenance";
 import type { Matchup } from "@/lib/matchup-types";
-import { isUnknownTeam, needsDefaultTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
+import { isTeamNotFound, isUnknownTeam, needsDefaultTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
 import { Bench } from "./Bench";
 import { Lineups, SoloLineup } from "./Lineups";
 import { Scoreboard } from "./Scoreboard";
 import { MatchupExport } from "./MatchupExport";
-import { matchupCopyText } from "@/lib/matchup-export";
+import { matchupCopyText, matchupProjectionBasis } from "@/lib/matchup-export";
 import styles from "./matchup.module.css";
 
 export const metadata = { title: "Matchup" };
@@ -89,7 +89,9 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
         </Shell>
       );
     }
-    if (res.kind === "http" && (res.status === 422 || res.status === 404)) {
+    // A 404 that is not about a team ("League not found.": a private league this visitor may not see, or no such
+    // league) is not "No such team": it keeps its own wording below, and its link would only lead back here.
+    if (res.kind === "http" && (res.status === 422 || isTeamNotFound(res))) {
       return (
         <Shell title="Matchup">
           <Notice tone="caution" title={res.status === 404 ? "No such team" : "That week is outside the season"}>
@@ -141,7 +143,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
               {next ? <Link className="chip" href={matchupHref({ week: next, ...keep })}>Week {next} →</Link> : null}
             </div>
           </TeamPerspective>
-          <MatchupExport text={matchupCopyText(m, projBy)} />
+          <MatchupExport text={matchupCopyText(m, matchupProjectionBasis(m.projection_source, profile.providerProjections))} />
           </div>
         }
       >
