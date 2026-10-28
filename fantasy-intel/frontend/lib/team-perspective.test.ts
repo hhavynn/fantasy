@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ALL_NAV_PAGES } from "./navigation.ts";
 import {
-  isTeamScoped, isTeamScopedView, isUnknownTeam, navTeam, needsDefaultTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
+  isTeamNotFound, isTeamScoped, isTeamScopedView, isUnknownTeam, navTeam, needsDefaultTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
   TEAM_SCOPED_PATHS, withTeam, withTeamId,
 } from "./team-perspective.ts";
 
@@ -145,4 +145,16 @@ test("shortlist links carry the team; the rail's URL keeps the shortlist and dro
   assert.equal(navTeam("/compare", null, "4", scoped), null);
   assert.equal(navTeam("/compare", "1", "4", scoped), "1");
   assert.equal(navTeam("/compare", null, "4", isTeamScopedView("/compare", new URLSearchParams("a=1&b=2"))), "4");
+});
+
+test("a league the visitor may not see is never read as a missing team", () => {
+  // /v2 answers a non-member's request for a private league (and an unknown league) with this 404
+  const hidden = { ok: false, status: 404, error: "League not found." };
+  assert.equal(isTeamNotFound(hidden), false);
+  assert.equal(isUnknownTeam(hidden, { kind: "team", id: 3 }), false);
+  assert.equal(isUnknownTeam(hidden, { kind: "default" }), false);
+  assert.equal(isTeamNotFound({ ok: false, status: 404, error: "Team 99 not found in this league." }), true);
+  assert.equal(isTeamNotFound({ ok: false, status: 404, error: "Your team was not identified. Set ESPN_MY_TEAM_ID or pass team_id." }), true);
+  assert.equal(isTeamNotFound({ ok: false, status: 503, error: "Team data unavailable" }), false);
+  assert.equal(isTeamNotFound({ ok: true, status: 404, error: "team" }), false);
 });

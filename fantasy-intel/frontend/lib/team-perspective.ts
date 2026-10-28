@@ -138,9 +138,17 @@ export function needsDefaultTeam(res: {ok:boolean; status?:number|null; error?:s
   return !res.ok && (res.status === 404 || res.status === 422) && /No team is marked as yours|Your team was not identified/i.test(res.error ?? "");
 }
 
+/**
+ * A 404 about a team (an unknown team id, or no team identified as yours), as opposed to a league the visitor may not
+ * see: /v2 answers "League not found." for a private league to a non-member, and that must never read as a team problem.
+ */
+export function isTeamNotFound(res: { ok: boolean; status?: number; error?: string | null }): boolean {
+  return !res.ok && res.status === 404 && /team/i.test(res.error ?? "");
+}
+
 /** Whether an API failure is the backend refusing the requested team (unknown, stale or deleted id). */
 export function isUnknownTeam(res: { ok: boolean; status?: number; error?: string | null }, sel: TeamSelection): boolean {
-  return !res.ok && sel.kind !== "default" && res.status === 404 && /team/i.test(res.error ?? "");
+  return sel.kind !== "default" && isTeamNotFound(res);
 }
 
 /**
