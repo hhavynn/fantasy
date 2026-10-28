@@ -9,6 +9,8 @@ import { adjustments, effectivePool, parseAssets, parsePool, utilityQuery, type 
 import { parseSort, type SortState } from "@/lib/sort";
 import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
+import { rosterCopyText } from "@/lib/roster-export";
+import { RosterExport } from "./RosterExport";
 import {
   BenchSection, MARGINAL_SORT_KEYS, MarginalTable, RaceContext, SlotGaps, SlotStrength, Summary, TopContributors,
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
@@ -78,7 +80,10 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
         title="My team value"
         meta={`${d.team.name}${d.team.is_mine ? " (default team)" : ""} · ${PHASE_TEXT[phase]}${weeks.length ? ` · weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : ""}`}
         actions={
-          <TeamPerspective path={PATH} sp={sp} current={d.team.team_id} />
+          <div className={styles.exportActions}>
+            <TeamPerspective path={PATH} sp={sp} current={d.team.team_id} />
+            <RosterExport text={rosterCopyText(d, phase)} />
+          </div>
         }
       >
         <div className={styles.subhead}>
