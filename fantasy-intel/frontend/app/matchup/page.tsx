@@ -9,13 +9,12 @@ import {
 import { api } from "@/lib/api";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
-import { currentLeague } from "@/lib/league-scope.server";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { EMPTY_RANGES } from "@/lib/projection-ranges";
 import { getRanges } from "@/lib/projection-ranges.server";
 import {
-  availableViews, chooseView, matchupHref, parseWeekParam, statusLabel, switcherWeeks, type LineupView,
+  availableViews, chooseView, matchupHref, parseWeekParam, projectionsBy, statusLabel, switcherWeeks, type LineupView,
 } from "@/lib/matchup";
 import { signalsOf } from "@/lib/signal-provenance";
 import type { Matchup } from "@/lib/matchup-types";
@@ -68,14 +67,14 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   const qs = new URLSearchParams();
   if (wk.kind === "ok") qs.set("week", String(wk.week));
   const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
-  // The league's provider (where lineups are set and schedules come from) and whose projections the page shows by
-  // default: ESPN's, or Fantasy Intel's own where the provider publishes none (Sleeper).
+  // The league's provider: where lineups are set and schedules come from.
   const provider = providerName(profile.provider);
-  const projBy = profile.providerProjections ? "ESPN" : "Fantasy Intel";
   const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, source), sel));
 
   if (!res.ok) {
-    if (needsDefaultTeam(res) && sel.kind === "default" && await currentLeague()) {
+    // No team is marked as the visitor's: offer the picker, on a league page and on the classic site alike (the
+    // "No such team" notice below would link to this same default matchup and fail again).
+    if (needsDefaultTeam(res) && sel.kind === "default") {
       return (
         <Shell title="Matchup">
           <ChooseTeam path="/matchup" sp={sp} what="this week's matchup" />
@@ -109,6 +108,8 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   }
 
   const m = res.data;
+  // Whose projections these numbers are (the served source, so Ours on an ESPN league says Fantasy Intel).
+  const projBy = projectionsBy(m.projection_source, profile.providerProjections);
   const opp = m.opponent;
   const view = chooseView(sp.lineup, m);
   const views = availableViews(m);
@@ -189,7 +190,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
       {!opp ? <SoloLineup m={m} ranges={ranges} provider={provider} projBy={projBy} /> : null}
       {opp && !view ? (
         <EmptyState title="No lineups for this week yet">
-          {profile.providerProjections
+          {projBy === "ESPN"
             ? <>ESPN has no projections or set lineups stored for week {m.week}. They appear after the next sync.</>
             : <>No projections or set lineups are stored for week {m.week}. They appear after the next sync.</>}
         </EmptyState>
@@ -200,7 +201,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
       <Glossary terms={["Projected points", "Lineup points", "Bye", "Q / D / O", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How this page works">
         <p>
-          <b>Projected lineups.</b> {profile.providerProjections ? <>ESPN&apos;s weekly projections, unmodified,</> : <>Fantasy Intel&apos;s own weekly projections,</>} run through the same optimal-lineup solver used across the site: for each
+          <b>Projected lineups.</b> {projBy === "ESPN" ? <>ESPN&apos;s weekly projections, unmodified,</> : <>Fantasy Intel&apos;s own weekly projections,</>} run through the same optimal-lineup solver used across the site: for each
           team, the best legal lineup (including FLEX) from rostered players who are not on IR or verified NFL-ineligible. It is the best lineup the
           roster could field, not necessarily the one the manager has set. Projections are kept only for weeks that have not been played.
         </p>
