@@ -72,7 +72,7 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
   const currentTab = withParams(PATH, sp, { phase: phase === "all" ? null : phase });
 
   return (
-    <div className="stack">
+    <div className={`stack ${styles.proseLinks}`}>
       <PageHeader
         eyebrow="My team"
         title="My team value"
