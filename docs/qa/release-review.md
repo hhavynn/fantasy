@@ -16,8 +16,6 @@ The existing route smoke tests (`routes.spec.ts`, `sleeper.spec.ts`, `multileagu
 
 **Core destinations.** Overview, Start/Sit, Matchup, Waivers, Trade analyzer, Trade result, Rankings, Player profile, the League pages (Weekly recap, Playoff race, a manager) and Leagues (connect). On the multi-league site the gates also cover the connections list, the settings page of a never-synced league, and the pages of a stale league and a blank one.
 
-**Mutation sentinels.** `e2e/ux-sentinels.spec.ts` intentionally creates a synthetic 320px page with horizontal overflow and a second with raw `NaN` / `undefined` values. Each must be **rejected** by the exact shared gate helper before the test restores valid content and sees it pass. These tests detect an accidentally weakened check without adding fixture data or relying on a reviewed screenshot baseline.
-
 **Checks for each page.** The shared helpers are in `e2e/ux.ts`.
 - Structure: exactly one `h1`, and it is inside `main`. Exactly one banner and one main landmark. The section navigation is visible and has at least five group links. No backend error box or route error box.
 - Decision first: the `h1` comes before any table, chart or method disclosure. On decision pages (Start/Sit, Waivers, Trade result) the Verdict comes before them too. On desktop, the Start/Sit and Waivers verdicts start in the first screenful.
