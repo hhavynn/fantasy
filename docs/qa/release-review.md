@@ -103,8 +103,7 @@ The following historical findings were fixed and merged in PRs [#357](https://gi
 - #325: Sleeper missing abbreviations no longer display `(null)`.
 - #326: missing-default-team multi-league Overview and Matchup display appropriate team-selection guidance.
 
-**Still pending explicit acceptance:**
-- A connected league that has never synced shows "The backend returned an error (409)" and a "Backend offline" pill. The `test.fixme` in `ux-multileague.spec.ts` covers it.
+**Never-synced league:** The active multi-league Playwright test now requires first-sync guidance ("No data yet"), a sync-status link, and no misleading 409/offline error. If that journey regresses, the test blocks CI; there is no longer a `test.fixme` for it.
 
 ## Team Value regression lane (#202)
 
