@@ -18,7 +18,8 @@ export function TradeExport({ text }: { text: string }) {
   return (
     <div className={styles.exportActions}>
       <button type="button" onClick={() => void copy()}>Copy name-free trade summary</button>
-      <button type="button" onClick={() => window.print()}>Print evaluation</button>
+      <button type="button" onClick={() => window.print()}>Print full evaluation (includes names)</button>
+      <p className={styles.printDisclosure}>Printing this page includes team and player names. Use the name-free copy option when sharing.</p>
       <span className={styles.exportMessage} role="status" aria-live="polite">{message}</span>
     </div>
   );

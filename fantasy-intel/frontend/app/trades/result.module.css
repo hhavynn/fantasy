@@ -81,3 +81,7 @@
 .exportActions button { min-height: 44px; padding: 8px 12px; font-size: 13px; }
 .exportMessage { font-size: 12px; color: var(--ink-muted); }
 @media print { .exportActions { display: none; } }
+
+/* A full-page browser print is NOT redacted like the clipboard text. */
+.printDisclosure { flex-basis: 100%; margin: 0; max-width: 65ch; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+@media print { .printDisclosure { display: none; } }

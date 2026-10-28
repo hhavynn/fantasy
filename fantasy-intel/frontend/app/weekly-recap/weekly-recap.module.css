@@ -45,3 +45,7 @@
 @media print {
   .exportActions { display: none; }
 }
+
+/* A full-page browser print is NOT redacted like the clipboard text. */
+.printDisclosure { flex-basis: 100%; margin: 0; max-width: 65ch; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+@media print { .printDisclosure { display: none; } }
