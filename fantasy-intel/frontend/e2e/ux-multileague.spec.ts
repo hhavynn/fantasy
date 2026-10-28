@@ -30,6 +30,7 @@ const CORE = [
   { name: "Overview", path: "/" },
   { name: "Start/Sit", path: "/start-sit", verdict: true },
   { name: "Matchup", path: "/matchup" },
+  { name: "Team value", path: "/my-team/value" },
   { name: "Waivers", path: "/waivers", verdict: true },
   { name: "Trades", path: "/trades" },
   { name: "Rankings", path: "/rankings" },

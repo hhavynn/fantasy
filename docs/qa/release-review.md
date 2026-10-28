@@ -14,7 +14,7 @@ All of it runs in the parallel E2E jobs in `.github/workflows/ci.yml`. The UX ga
 
 The existing route smoke tests (`routes.spec.ts`, `sleeper.spec.ts`, `multileague.spec.ts`) still cover every page in the nav at 1440 and 375.
 
-**Core destinations.** Overview, Start/Sit, Matchup, Waivers, Trade analyzer, Trade result, Rankings, Player profile, the League pages (Weekly recap, Playoff race, a manager) and Leagues (connect). On the multi-league site the gates also cover the connections list, the settings page of a never-synced league, and the pages of a stale league and a blank one.
+**Core destinations.** Overview, Start/Sit, Matchup, **Team value** (including selected-roster data and its availability), Waivers, Trade analyzer, Trade result, Rankings, Player profile, the League pages (Weekly recap, Playoff race, a manager) and Leagues (connect). On the multi-league site the gates also cover the connections list, the settings page of a never-synced league, and the pages of a stale league and a blank one.
 
 **Checks for each page.** The shared helpers are in `e2e/ux.ts`.
 - Structure: exactly one `h1`, and it is inside `main`. Exactly one banner and one main landmark. The section navigation is visible and has at least five group links. No backend error box or route error box.
@@ -104,3 +104,7 @@ These are open; the triage file or a `test.fixme` names each one, and each triag
 - #326: with no saved team, a league's Overview and Matchup show the operator hint `ESPN_MY_TEAM_ID`. The Matchup line
   is the backend's `TeamNotFound` detail (`backend/app/analytics/matchup.py`).
 - A connected league that has never synced shows "The backend returned an error (409)" and a "Backend offline" pill. The `test.fixme` in `ux-multileague.spec.ts` covers it.
+
+## Team Value regression lane (#202)
+
+The route matrix now includes `/my-team/value` at 320/390/768/1440 for the fixture ESPN manager and 320/390/1440 (authorized private ESPN) plus 320/1440 (Sleeper). The existing shared assertions catch a missing main heading, a backend failure instead of the configured authorized/choose-team state, horizontal scroll, inaccessible controls, broken/missing-data display, and JS errors in both themes. These are existing free CI jobs; no screenshot baseline is automatically regenerated. This does not itself certify every possible team/league rule or a public share endpoint.

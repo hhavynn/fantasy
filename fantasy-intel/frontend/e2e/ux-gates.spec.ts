@@ -16,6 +16,7 @@ const CORE: Core[] = [
   { name: "Overview", path: "/" },
   { name: "Start/Sit", path: "/start-sit", verdict: true, aboveFold: true },
   { name: "Matchup", path: "/matchup" },
+  { name: "Team value", path: "/my-team/value" },
   { name: "Waivers", path: "/waivers", verdict: true, aboveFold: true },
   { name: "Trade analyzer", path: "/trades" },
   { name: "Trade result", path: "/trades?ta=2&tb=1&a=206&a=307&b=202", verdict: true },
