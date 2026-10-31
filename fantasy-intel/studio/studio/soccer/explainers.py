@@ -7,6 +7,7 @@ Every pitch figure is an anonymous dot: no kits, crests or real players.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..numbers import int_words
@@ -107,5 +108,5 @@ EXPLAINERS: dict[str, dict[str, Any]] = {
 
 def for_text(text: str) -> str | None:
     """The explainer a trend's text is about, by its topic words."""
-    low = text.lower()
-    return next((k for k, e in EXPLAINERS.items() if any(t in low for t in e["topics"])), None)
+    return next((k for k, e in EXPLAINERS.items()
+                 if any(re.search(rf"\b{re.escape(t)}\b", text, re.I) for t in e["topics"])), None)

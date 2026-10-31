@@ -287,6 +287,24 @@ def test_enrich_is_point_in_time(tmp_path):
     assert by["Arsenal last 2 league games"] == "D-W"
 
 
+def test_player_totals_are_point_in_time_too(tmp_path):
+    path, idx = stats_db(tmp_path)
+    out = SoccerEnricher(path, idx, NOW.replace(month=10, day=20)).enrich(["fpl:1"], [])
+    assert out["stats"] == []
+
+
+def test_a_blank_or_html_csv_keeps_stored_results(tmp_path):
+    path = tmp_path / "soccer.duckdb"
+    now = NOW.replace(month=10, day=30)
+    sync(path, fetcher_for_stats(RESULTS), now, SoccerIndex(PLAYERS))
+    for body in ("", "<html>maintenance</html>"):
+        counts, errors = sync(path, fetcher_for_stats(body), now, SoccerIndex(PLAYERS))
+        assert "Premier League" not in counts and any("Premier League" in e for e in errors)
+    con = duckdb.connect(str(path), read_only=True)
+    assert con.execute("SELECT count(*) FROM matches WHERE league = 'Premier League'").fetchone()[0] == 3
+    con.close()
+
+
 def test_enrich_without_stats_reports_no_coverage(tmp_path):
     out = SoccerEnricher(tmp_path / "missing.duckdb", SoccerIndex(), NOW).enrich([], ["arsenal"])
     assert out["analytic_coverage"] == 0.0 and out["stats"] == []
