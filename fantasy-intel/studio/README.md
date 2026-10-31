@@ -124,6 +124,15 @@ package licenses, private-only upload metadata, and pipeline integrity (no stale
 Results with evidence: `qc.json`. Rights and reproducibility record: `provenance.json` (git commit,
 model checkpoints with licenses and sha256, tool versions, data snapshot hash, every prompt, file hashes).
 
+## Upload bundles
+
+After QC passes, `make-episode` writes `upload/` beside each Short: `tiktok/`, `reels/` and `shorts/`, each with its
+own `video.mp4`, 1080x1920 `cover.png`, paste-ready `caption.txt` and `post.json`, plus a tick list in
+`upload/README.md` with every app's AI disclosure step. AirDrop a folder to your phone or work from a desktop. The
+week's Shorts are listed in posting order in `episodes/<season>-wNN-short/UPLOAD.md`. The styled render goes in when
+it passed its own QC, otherwise `final.mp4`; a variant gets no bundle. `uv run export-bundles --week 7` rebuilds the
+week from passed QC. Caption and hashtag limits are in `config.toml` `[export]`. No code path publishes.
+
 Read the script and watch the video before publishing: the local model still occasionally writes a
 sentence the data does not support, and every upload is a human decision.
 

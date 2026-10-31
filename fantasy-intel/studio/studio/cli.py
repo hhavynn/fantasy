@@ -26,7 +26,7 @@ from pathlib import Path
 
 from . import editorial, shows
 from .core import Config, Episode, read_json, sha256_file, write_json
-from .stages import (assemble, charts, facts, flame, metadata, provenance, qc, render_motion, review, script,
+from .stages import (assemble, charts, export, facts, flame, metadata, provenance, qc, render_motion, review, script,
                      snapshot, story, thumbnail, tts)
 
 LONG = [("snapshot", snapshot), ("facts", facts), ("script", script), ("tts", tts), ("charts", charts),
@@ -172,6 +172,7 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             presenter.present(ep, presenter_mode)
         if passed:
             editorial_media(ep, cfg)
+            export.bundle(ep)
         results.append((ep, story, passed, styled))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed, styled in results:
@@ -187,6 +188,7 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
     styled_failed = [ep.id for ep, _, _, st in results if st and not st[1]]
     if styled_failed:
         print(f"styled render QC failed (original final.mp4 unaffected): {styled_failed}")
+    export.week_list(cfg, season, week)
     print(f"\n{len(results) - len(failed)}/{len(results)} Shorts passed QC. Index: {week_ep.path('review.md')}")
     return 1 if failed else 0
 
@@ -251,6 +253,8 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
         results.append((ep, c, finish(ep)))
         if results[-1][2]:
             editorial_media(ep, cfg)
+            export.bundle(ep)
+    export.week_list(cfg, season, week)
     failed = [ep.id for ep, _, ok in results if not ok]
     for ep, c, ok in results:
         print(f"{c['kind']}: {c['name']}: QC {'passed' if ok else 'FAILED'}. {ep.path('final.mp4')}")
