@@ -172,7 +172,9 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             presenter.present(ep, presenter_mode)
         if passed:
             editorial_media(ep, cfg)
-            export.bundle(ep)
+            export.bundle(ep, styled[0] if styled and styled[1] else "original")
+        else:
+            export.discard(ep)
         results.append((ep, story, passed, styled))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed, styled in results:
@@ -253,7 +255,9 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
         results.append((ep, c, finish(ep)))
         if results[-1][2]:
             editorial_media(ep, cfg)
-            export.bundle(ep)
+            export.bundle(ep, "original")
+        else:
+            export.discard(ep)
     export.week_list(cfg, season, week)
     failed = [ep.id for ep, _, ok in results if not ok]
     for ep, c, ok in results:

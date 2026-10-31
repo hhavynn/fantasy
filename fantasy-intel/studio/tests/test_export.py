@@ -164,6 +164,23 @@ def test_a_styled_render_that_failed_qc_falls_back_to_final(short):
     assert read_json(short.path("upload/manifest.json"))["source"] == "final.mp4"
 
 
+def test_the_style_this_run_rendered_wins_over_the_config(short):
+    short.cfg.raw["graphics"] = {"style": "premium"}
+    styled = short.path("styles/premium/final.mp4")
+    video(styled, seconds=2)
+    write_json(short.path("styles/premium/qc.json"), {"passed": True, "files": {"final.mp4": sha256_file(styled)}})
+    export.run(short, style="original")
+    assert read_json(short.path("upload/manifest.json"))["source"] == "final.mp4"
+
+
+def test_an_explicit_style_is_bundled_when_the_config_says_otherwise(short):
+    styled = short.path("styles/pixel/final.mp4")
+    video(styled, seconds=2)
+    write_json(short.path("styles/pixel/qc.json"), {"passed": True, "files": {"final.mp4": sha256_file(styled)}})
+    export.run(short, style="pixel")
+    assert read_json(short.path("upload/manifest.json"))["source"] == "styles/pixel/final.mp4"
+
+
 def test_a_rerun_replaces_the_bundle_cleanly(short):
     export.run(short)
     short.path("upload/tiktok/stale.txt").write_text("old")
@@ -196,9 +213,26 @@ def test_each_folder_stands_alone_for_airdrop(short):
     assert short.path("upload/shorts/title.txt").read_text().strip() == "The NFL v. Jalon Daniels, Week 6"
 
 
-def test_bundling_does_not_copy_the_video_bytes_twice(short):
+def test_a_rerender_writing_in_place_cannot_touch_an_exported_video(short):
     export.run(short)
-    assert short.path("upload/tiktok/video.mp4").stat().st_ino == short.path("final.mp4").stat().st_ino
+    before = sha256_file(short.path("upload/tiktok/video.mp4"))
+    with open(short.path("final.mp4"), "r+b") as f:           # what ffmpeg -y does to an existing file
+        f.write(b"half a new render")
+    for platform in ("tiktok", "reels", "shorts"):
+        assert sha256_file(short.path(f"upload/{platform}/video.mp4")) == before
+
+
+def test_the_week_list_drops_a_bundle_whose_source_changed_since(short):
+    export.run(short)
+    assert short.id in export.week_list(short.cfg, 2026, 7).read_text()
+    video(short.path("final.mp4"), seconds=2)
+    assert export.week_list(short.cfg, 2026, 7) is None
+
+
+def test_a_failed_rerun_discards_the_old_bundle(short):
+    export.run(short)
+    export.discard(short)
+    assert not short.path("upload").exists()
 
 
 def test_a_live_injury_status_sets_the_posting_deadline(short):

@@ -152,7 +152,8 @@ After QC passes, `make-episode` writes `upload/` beside each Short: `tiktok/`, `
 own `video.mp4`, 1080x1920 `cover.png`, paste-ready `caption.txt` and `post.json`, plus a tick list in
 `upload/README.md` with every app's AI disclosure step. AirDrop a folder to your phone or work from a desktop. The
 week's Shorts are listed in posting order in `episodes/<season>-wNN-short/UPLOAD.md`. The styled render goes in when
-it passed its own QC, otherwise `final.mp4`; a variant gets no bundle. `uv run export-bundles --week 7` rebuilds the
+it passed its own QC, otherwise `final.mp4`; a variant gets no bundle. A rerun never touches an exported video, and a
+rerun that fails QC removes the old bundle. `uv run export-bundles --week 7` rebuilds the
 week from passed QC. Caption and hashtag limits are in `config.toml` `[export]`. No code path publishes.
 
 Read the script and watch the video before publishing: the local model still occasionally writes a
