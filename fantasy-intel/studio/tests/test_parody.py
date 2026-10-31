@@ -658,10 +658,23 @@ def test_the_clip_frames_go_through_the_likeness_gate(made, monkeypatch):
     assert "manifest.json" in seen
 
 
-def test_the_queue_takes_the_hook_and_the_punch_once_each(made):
+def test_the_queue_takes_distinct_pictures_hook_first(made):
     script = read_json(made.path("script.json"))
-    assert PW.hero_keys(script, 2) == list(dict.fromkeys([script["shots"][0]["art"], script["shots"][-1]["art"]]))[:2]
+    keys = PW.hero_keys(script, 2)
+    assert len(set(keys)) == 2 and keys[0] == script["shots"][0]["art"]
     assert len(PW.hero_keys(script, 1)) == 1
+
+
+def test_the_queue_can_take_one_short(made):
+    other = made.dir.with_name("2026-w06-short-parody-other")
+    other.mkdir()
+    for rel in ("script.json", "art/manifest.json"):
+        write_json(other / rel, read_json(made.path(rel)))
+    for key in read_json(made.path("art/manifest.json")):
+        Image.new("RGB", (8, 8)).save(other / "art" / f"{key}.png")
+    both = {j["episode"] for j in PW.jobs(made.cfg, 2026, 6)}
+    one = {j["episode"] for j in PW.jobs(made.cfg, 2026, 6, slug="parody-other")}
+    assert len(both) == 2 and one == {other.name}
 
 
 def test_the_queue_skips_a_finished_clip_and_asks_for_the_measured_settings(made):

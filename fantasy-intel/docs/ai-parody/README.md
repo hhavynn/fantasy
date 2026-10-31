@@ -72,8 +72,8 @@ that is what the review is for.
 
 ## Optional: overnight Wan clips
 
-Off unless asked for. `uv run parody-wan --week 8` animates the hook and punchline stills of that week's Shorts, one
-clip at a time, and resumes after an interruption. `make-episode --week 8 --parody --hero` swaps finished clips in;
+Off unless asked for. `uv run parody-wan --week 8` animates two stills from each of that week's Shorts, hook first,
+one clip at a time, and resumes after an interruption (`--slug parody-bo-nix` for one Short). `make-episode --week 8 --parody --hero` swaps finished clips in;
 each clip then needs its own approval. A clip that fails leaves the still in place.
 
 Measured on the 48 GB M5 Pro, 2026-10-31, one scene and one seed:

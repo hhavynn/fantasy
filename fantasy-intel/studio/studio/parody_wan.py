@@ -82,17 +82,18 @@ def decode(job: dict) -> None:
 # ---------------------------------------------------------------------------------- the studio's half
 
 def hero_keys(script: dict, count: int) -> list[str]:
-    """The pictures worth a clip: the hook's and the punchline's, each once."""
-    order = [script["shots"][0]["art"], script["shots"][-1]["art"]]
-    return list(dict.fromkeys(order))[:count]
+    """The pictures worth a clip, each once: the hook's first, then the punchline's, then the rest. The hook and the
+    punchline often share a picture."""
+    shots = script["shots"]
+    return list(dict.fromkeys(s["art"] for s in [shots[0], shots[-1], *shots[1:-1]]))[:count]
 
 
-def jobs(cfg, season: int, week: int) -> list[dict]:
+def jobs(cfg, season: int, week: int, slug: str | None = None) -> list[dict]:
     from .core import read_json, sha256_file
     from .stages import parody as P
     c = cfg["parody"]
     out = []
-    for d in sorted(cfg.episodes_dir.glob(f"{season}-w{week:02d}-short-parody-*")):
+    for d in sorted(cfg.episodes_dir.glob(f"{season}-w{week:02d}-short-{slug or 'parody-*'}")):
         if not (d / "script.json").exists():
             continue
         art = read_json(d / "art/manifest.json")
@@ -128,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="parody-wan", description=__doc__.split("\n")[0])
     ap.add_argument("--week", type=int)
     ap.add_argument("--season", type=int)
+    ap.add_argument("--slug", help="one Short, e.g. parody-bo-nix")
     ap.add_argument("--denoise", help=argparse.SUPPRESS)
     ap.add_argument("--decode", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
@@ -139,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     from .core import Config
     cfg = Config.load()
-    todo = jobs(cfg, args.season or cfg.season, args.week)
+    todo = jobs(cfg, args.season or cfg.season, args.week, args.slug)
     print(f"{len(todo)} clips to make, one at a time")
     failed = 0
     for i, job in enumerate(todo, 1):
