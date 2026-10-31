@@ -21,6 +21,10 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
+# Importing `app` installs the API's fail-fast `import pandas` finder, which makes find_spec("pandas") raise. torch
+# makes that call while importing, so left in place it stops Kokoro from loading. Only the API needs the finder.
+sys.meta_path[:] = [f for f in sys.meta_path if getattr(f, "__name__", "") != "_NoPandas"]
+
 VERSION = 12
 PLAYOFF_WEEKS = [15, 16, 17]
 

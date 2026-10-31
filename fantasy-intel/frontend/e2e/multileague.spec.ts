@@ -68,6 +68,18 @@ test("a signed-out visitor never sees the private league", async ({ page }) => {
   await expect(page.locator("main")).not.toContainText("Echo RB");
 });
 
+test("a signed-out visitor's Matchup reports the private league as not found, never as a missing team", async ({ page }) => {
+  const lg = manifest().leagues.espn_private;
+  for (const query of ["", "?team=1", "?week=2"]) {
+    await page.goto(`/l/${lg}/matchup${query}`, { waitUntil: "load" });
+    const main = page.locator("main");
+    await expect(main, query).toContainText("League not found");
+    await expect(main, query).not.toContainText("No such team");
+    await expect(main.getByRole("link", { name: /default matchup/ }), query).toHaveCount(0);
+    await expect(main, query).not.toContainText("Private Fixture League");
+  }
+});
+
 test("Ask submissions, team changes and analysis links stay in the page's league", async ({ page }) => {
   const lg = manifest().leagues.espn_public;
   const errors = collectErrors(page);

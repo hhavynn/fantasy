@@ -4,7 +4,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { ProvenanceBadge, Section, Notice } from "@/components/ui";
 import { api } from "@/lib/api";
 import { signalsOf, type ProvenancePayload } from "@/lib/signal-provenance";
-import { stashGain, STASH_HORIZONS, type StashHorizon } from "@/lib/stash-horizon";
+import { stashCoverage, stashGain, stashWindowText, STASH_HORIZONS, type StashCounts, type StashHorizon } from "@/lib/stash-horizon";
 import { contingencyStatus, type StashContingencies } from "@/lib/stash-contingency";
 import { withParams } from "@/lib/waivers";
 import { SavePlayer } from "./Shortlist";
@@ -25,13 +25,13 @@ type Contingency = {
 };
 type Plan = {
   contract: string; status: string; horizon: number; now_week: number | null;
+  weeks?: number[]; later_weeks?: number[];
   team?: { name: string; team_id: number } | null;
   stashes: StashRow[]; pick_up_now: { espn_player_id: number }[];
   drop: { name: string | null; horizon_cost: number | null } | null;
   drop_basis: string | null; drop_notes: string[]; reason: string | null;
   projection_source: string; notes: string[];
-  counts: { considered?: number; evaluated?: number; excluded_unprojected?: number; excluded_position_limit?: number;
-    not_evaluated_cap?: number; unknown?: number; pick_up_now?: number; stashes?: number };
+  counts: StashCounts;
   contingencies?: StashContingencies<Contingency> | null;
   provenance?: ProvenancePayload | null;
 };
@@ -72,24 +72,20 @@ export async function StashPanel({ horizon, teamId, sp }: {
   }
   const p = res.data;
   if (p.contract !== "stash-plan/v1") {
-    return <Section title="Future-week stashes">{choices}<p>The stash analysis format is unavailable. Refresh the league snapshot.</p></Section>;
+    return <Section title="Future-week stashes">{choices}<p>This stash plan is in a format this page does not recognise, so it is not shown.</p></Section>;
   }
-  const noProjection = p.counts.excluded_unprojected ?? 0;
-  const unevaluated = p.counts.not_evaluated_cap ?? 0;
+  const coverage = stashCoverage(p.counts ?? {});
   return (
     <Section
       title="Future-week stashes"
-      subtitle={`For ${p.team?.name ?? "the selected roster"} · ${horizon} later weeks, plus the current week · ${p.projection_source} projections`}
+      subtitle={`For ${p.team?.name ?? "the selected roster"} · ${stashWindowText(p)} · ${p.projection_source} projections`}
       footnote="Projected changes in optimal starting-lineup points, not a guarantee of acquisition or future injury. Verify waiver status and roster rules before acting."
     >
       <div className={styles.body}>
         {choices}
         <div className={styles.meta}>
           <ProvenanceBadge signals={signalsOf(p.provenance)} />
-          <span>Compared {p.counts.considered ?? "—"} eligible candidates · evaluated {p.counts.evaluated ?? "—"}</span>
-          {(noProjection > 0 || unevaluated > 0 || (p.counts.unknown ?? 0) > 0) && (
-            <span>{noProjection} excluded for missing projections · {unevaluated} beyond evaluation cap · {p.counts.unknown ?? 0} unknown</span>
-          )}
+          {coverage && <span>{coverage}</span>}
         </div>
         {p.status !== "evaluated" ? (
           <Notice tone="caution" title="Stash value cannot be evaluated">{p.reason ?? "The roster or its projections are incomplete."}</Notice>
@@ -115,7 +111,7 @@ export async function StashPanel({ horizon, teamId, sp }: {
           <p className={styles.reason}>{p.reason ?? "No later-week stash adds projected lineup points over this window."}</p>
         )}
         {p.drop && (
-          <p className={styles.detail}>Simulated drop: <strong>{p.drop.name ?? "Unnamed roster player"}</strong> · projected horizon cost {stashGain(p.drop.horizon_cost)}. This is a scenario, not a suggested transaction.</p>
+          <p className={styles.detail}>Simulated drop: <strong>{p.drop.name ?? "Unnamed roster player"}</strong> · projected lineup change over the window {stashGain(p.drop.horizon_cost)}. This is a scenario, not a suggested transaction.</p>
         )}
         {p.drop_basis === "roster_count_unverified" && <Notice tone="caution" title="Roster capacity unverified">An open roster slot cannot be assumed. The analysis simulates a drop; confirm your provider&apos;s limits.</Notice>}
         {p.drop_notes?.length > 0 && <details><summary>Drop and roster limits</summary><ul>{p.drop_notes.map((n,i)=><li key={i}>{n}</li>)}</ul></details>}

@@ -60,3 +60,9 @@ class SportAdapter(Protocol):
 
     def meme_bank(self) -> dict[str, list[str]]:
         """Recognisable references per angle, e.g. {"overreaction": [...]}."""
+
+    # Optional members. Without them the engine uses the football defaults.
+    #   enrich_teams: bool -- also enrich clusters that name teams but no players
+    #   choose_formats(cluster) -> list[str] -- the video formats that fit a ranked cluster
+    #   build_idea(cluster, fmt, rotation, window, meme_bank, now) -> VideoIdea
+    #   format_labels() -> dict[str, str] -- display names for this sport's formats

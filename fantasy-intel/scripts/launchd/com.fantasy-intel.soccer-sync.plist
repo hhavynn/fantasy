@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for a per-user launchd agent that refreshes the soccer player list and stats once a day at 05:43.
+  That time sits between trend runs (:10, :30, :50), because each command opens the soccer social database.
+  A Mac that was asleep runs it on wake, so it can occasionally hit that lock: the command then fails, the
+  previous data stays, and the next day's run picks up. Each step runs even if the other fails.
+  Not installed automatically. Fill in __FANTASY_INTEL_DIR__ and __UV__ as in fantasy-intel/social/README.md, copy
+  to ~/Library/LaunchAgents/ and `launchctl load` it. Nothing is rendered or published.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.fantasy-intel.soccer-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>__UV__ run trends --sport soccer sync-entities; __UV__ run trends --sport soccer sync-stats</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__FANTASY_INTEL_DIR__/social</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>43</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/soccer-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/soccer-sync.log</string>
+</dict>
+</plist>

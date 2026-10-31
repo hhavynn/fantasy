@@ -186,6 +186,8 @@ class FootballAdapter:
                 "ProFootballTalk": "https://profootballtalk.nbcsports.com/feed/",
             },
             extra={"team_subreddits": list(TEAM_SUBREDDITS.values()),
+                   "activity_subreddits": ["fantasyfootball", "nfl", "DynastyFF"],
+                   "tiktok_creators": ["nfl"],
                    "google_news_queries": ["fantasy football", "NFL injury", "NFL trade", "waiver wire"]},
         )
 

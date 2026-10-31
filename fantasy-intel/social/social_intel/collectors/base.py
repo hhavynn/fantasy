@@ -57,6 +57,7 @@ class Collector:
     method: ClassVar[str] = ""
     interval_minutes: ClassVar[int] = 60  # default refresh cadence
     optional: ClassVar[bool] = False  # optional connectors are off unless enabled
+    sports: ClassVar[frozenset[str] | None] = None  # None = any sport
     description: ClassVar[str] = ""
 
     def collect(self, ctx: CollectContext) -> tuple[list[SocialPost], dict[str, Any]]:
@@ -105,6 +106,9 @@ def run_collectors(
         cls = REGISTRY.get(name)
         if cls is None:
             results.append(RunResult(name, "skipped", error="unknown collector"))
+            continue
+        if cls.sports is not None and config.sport not in cls.sports:
+            results.append(RunResult(name, "skipped", error=f"not a {config.sport} source"))
             continue
         collector = cls()
         ok, why = collector.available()

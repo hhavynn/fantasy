@@ -121,3 +121,19 @@ test("name-free recap export includes only finalized aggregates, preserves missi
   assert.doesNotMatch(missing,/0\.00 points/);
   assert.match(recapCopyText({...recap, selected_week:null, awards:null}),/No finalized matchup period available/);
 });
+
+test("a finalized matchup without a score is disclosed as unknown and left out of the highs, never as zero", () => {
+  const recap = {
+    season: 2026, selected_week: 7, scoring_periods: [7],
+    matchups: [game(), game({ matchup_id: 2, margin: null })],
+    awards: {
+      highest_score: { award_name: "Highest", description: "", winners: [team(1, 120)], is_tied: false },
+      biggest_blowout: { award_name: "Margin", description: "", winners: [{ margin: 20 }], is_tied: false },
+    },
+    notes: { pending_matchups: 0, missing_scores: 1 },
+  } as unknown as Parameters<typeof recapCopyText>[0];
+  const t = recapCopyText(recap);
+  assert.match(t, /2 finalized matchups/);
+  assert.match(t, /1 finalized matchup has a missing score \(unknown, not zero; excluded from the highs\)/);
+  assert.doesNotMatch(recapCopyText({ ...recap, notes: { missing_scores: 0 } }), /missing score/);
+});

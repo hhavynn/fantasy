@@ -121,3 +121,17 @@ auto_default = "premium"          # the website's look for every story it has a 
 
 [graphics.auto]
 # Per-angle overrides, e.g. fill_in = "broadcast" or comparison = "pixel". Empty: premium everywhere.
+
+[export]
+# Hand-upload bundles (stages/export.py). Limits checked 2026-10-30; change them here when an app changes them.
+[export.tiktok]
+max_caption = 2200
+max_hashtags = 5
+story_lines = 1                   # the title and one line read best; the rest is cut off behind "more"
+[export.reels]
+max_caption = 2200
+max_hashtags = 5                  # Instagram's cap since December 2025
+[export.shorts]
+max_title = 100
+max_description = 5000
+max_seconds = 180
