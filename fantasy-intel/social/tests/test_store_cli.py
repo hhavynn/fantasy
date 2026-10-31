@@ -155,3 +155,9 @@ def test_studio_subject_uses_teammate_replacement_not_named_in_posts():
     subjects, why = cli.studio_subjects({"format": "injury_ripple"}, cluster)
     assert [(p["name"], p["gsis_id"]) for p in subjects] == [("Calvin Austin III", "g3"), ("Roman Wilson", "g1")]
     assert "Calvin Austin III" in why
+
+
+def test_sport_paths_keep_nfl_and_isolate_soccer():
+    assert cli.sport_paths("nfl") == (cli.DATA / "social.duckdb", cli.STUDIO_EPISODES / "history.jsonl")
+    assert cli.sport_paths("soccer") == (cli.DATA / "soccer" / "social.duckdb",
+                                         cli.STUDIO_EPISODES / "soccer" / "history.jsonl")

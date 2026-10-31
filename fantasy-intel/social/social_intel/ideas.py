@@ -542,6 +542,8 @@ def generate(ranking: list[dict[str, Any]], adapter, top: int = 8, per_cluster: 
     now = now or utcnow()
     window = adapter.event_window(now)
     rot = HookRotation(hook_history)
+    formats_for = getattr(adapter, "choose_formats", choose_formats)
+    build = getattr(adapter, "build_idea", build_idea)
     ideas: list[VideoIdea] = []
     seen_lead: set[str] = set()
     for c in ranking:
@@ -555,6 +557,6 @@ def generate(ranking: list[dict[str, Any]], adapter, top: int = 8, per_cluster: 
         if lead in seen_lead:
             continue  # one cluster per lead player per batch: variety beats repetition
         seen_lead.add(lead)
-        for fmt in choose_formats(c)[:per_cluster]:
-            ideas.append(build_idea(c, fmt, rot, window, adapter.meme_bank(), now))
+        for fmt in formats_for(c)[:per_cluster]:
+            ideas.append(build(c, fmt, rot, window, adapter.meme_bank(), now))
     return ideas

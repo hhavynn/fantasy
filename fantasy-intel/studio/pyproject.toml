@@ -28,6 +28,7 @@ make-episode = "studio.cli:main"
 enroll-voice = "studio.voice:main"
 make-presenter = "studio.presenter:main"
 export-bundles = "studio.stages.export:main"
+make-soccer = "studio.soccer.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
