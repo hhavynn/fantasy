@@ -5,6 +5,7 @@ import { ProvenanceBadge, Section, Notice } from "@/components/ui";
 import { api } from "@/lib/api";
 import { signalsOf, type ProvenancePayload } from "@/lib/signal-provenance";
 import { stashCoverage, stashGain, stashWindowText, STASH_HORIZONS, type StashCounts, type StashHorizon } from "@/lib/stash-horizon";
+import { contingencyStatus, type StashContingencies } from "@/lib/stash-contingency";
 import { withParams } from "@/lib/waivers";
 import { SavePlayer } from "./Shortlist";
 import type { SearchParams } from "@/lib/sort";
@@ -31,7 +32,7 @@ type Plan = {
   drop_basis: string | null; drop_notes: string[]; reason: string | null;
   projection_source: string; notes: string[];
   counts: StashCounts;
-  contingencies?: { available: boolean; reason?: string; items: Contingency[]; note?: string } | null;
+  contingencies?: StashContingencies<Contingency> | null;
   provenance?: ProvenancePayload | null;
 };
 
@@ -115,10 +116,13 @@ export async function StashPanel({ horizon, teamId, sp }: {
         {p.drop_basis === "roster_count_unverified" && <Notice tone="caution" title="Roster capacity unverified">An open roster slot cannot be assumed. The analysis simulates a drop; confirm your provider&apos;s limits.</Notice>}
         {p.drop_notes?.length > 0 && <details><summary>Drop and roster limits</summary><ul>{p.drop_notes.map((n,i)=><li key={i}>{n}</li>)}</ul></details>}
         {(p.pick_up_now?.length ?? 0) > 0 && <p className={styles.detail}>{p.pick_up_now.length} possible current-week {p.pick_up_now.length === 1 ? "add" : "adds"} excluded from the stash list. Use the immediate claims above for this week&apos;s moves.</p>}
-        {p.contingencies?.available && p.contingencies.items.length > 0 && (
-          <div className={styles.contingency}>
-            <h3>Conditional opportunities</h3>
-            <p>Only if the named roster change happens. Observed samples and hypotheses are not injury probabilities or lineup-value forecasts.</p>
+        <div className={styles.contingency}>
+          <h3>Conditional opportunities</h3>
+          <p>Only if the named roster change happens. Observed samples and hypotheses are not injury probabilities or lineup-value forecasts.</p>
+          {contingencyStatus(p.contingencies) !== null && (
+            <p role="status">{contingencyStatus(p.contingencies)}</p>
+          )}
+          {p.contingencies?.available && p.contingencies.items.length > 0 && (
             <ul>
               {p.contingencies.items.slice(0, 5).map((s) => (
                 <li key={`${s.espn_player_id}-${s.if.kind}-${s.if.starter}`}>
@@ -129,9 +133,19 @@ export async function StashPanel({ horizon, teamId, sp }: {
                 </li>
               ))}
             </ul>
-            {p.contingencies.items.length > 5 && <p className={styles.detail}>Showing 5 of {p.contingencies.items.length} conditional scenarios.</p>}
-          </div>
-        )}
+          )}
+          {p.contingencies?.available && p.contingencies.items.length > 5 && (
+            <p className={styles.detail}>Showing 5 of {p.contingencies.items.length} conditional scenarios.</p>
+          )}
+          {p.contingencies?.notices?.length ? (
+            <details>
+              <summary>Evidence coverage and limits</summary>
+              <ul>{p.contingencies.notices.slice(0, 5).map((n, i) => (
+                <li key={`${n.code}-${i}`}>{n.text}</li>
+              ))}</ul>
+            </details>
+          ) : null}
+        </div>
         <details>
           <summary>How the stash plan is computed</summary>
           <p>For each eligible free agent, the existing exact lineup evaluator compares this roster across the current week and {horizon} future weeks, with and without the add and one simulated drop. A stash must add net projected points over the entire window without helping this week. Missing projections are excluded rather than filled with zero. K and D/ST belong in weekly streaming, not this multi-week plan.</p>
