@@ -95,17 +95,19 @@ def check(ep: Episode, qc: dict, meta: dict, video: Path, duration_limit: float)
         raise Blocked(f"{ep.id}: {duration:.0f}s is over the {duration_limit:.0f}s limit")
 
 
-def parts(description: str) -> tuple[list[str], str, str]:
-    """The description's story lines, AI disclosure and data credit (stages/metadata.py writes all three)."""
-    story = description.split("\n\n")[0].splitlines()
+def parts(description: str) -> tuple[list[str], list[str]]:
+    """The description's story lines, then the lines no caption may lose: any AI parody disclosure, the AI-voice
+    disclosure and the data credit (stages/metadata.py writes them all)."""
     lines = description.splitlines()
+    note = [x for x in lines if x.startswith("AI parody")]
+    story = [x for x in description.split("\n\n")[0].splitlines() if x not in note]
     disclosure = next((x for x in lines if x.startswith("Narrated with an AI voice")), None)
     credit = next((x for x in lines if x.startswith("Data: nflverse")), None)
     if not disclosure:
         raise Blocked("the description has no AI-voice disclosure")
     if not credit:
         raise Blocked("the description has no data credit")
-    return story, disclosure, credit
+    return story, [*note, disclosure, credit]
 
 
 def hashtags(meta: dict, hero: dict, limit: int) -> list[str]:
@@ -194,9 +196,8 @@ def run(ep: Episode, style: str | None = None) -> bool:
         raise Blocked(f"{ep.id}: title is {len(meta['title'])} characters")
     if len(meta["description"].encode()) > limits["shorts"]["max_description"]:
         raise Blocked(f"{ep.id}: the description is over YouTube's limit")
-    story_lines, disclosure, credit = parts(meta["description"])
+    story_lines, fixed = parts(meta["description"])
     hero = read_json(ep.path("facts.json"))["players"][0]
-    fixed = [disclosure, credit]
     tmp = ep.path("upload.tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir()

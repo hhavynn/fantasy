@@ -58,6 +58,10 @@ and adds a "Social trend context (not narrated)" section to its `review.md`. Soc
 enter the narration, so the claims/QC chain is unchanged. If the player doesn't qualify as a usage
 story that week, the studio says so and the package serves as a manual script brief.
 
+`uv run trends export --out bundle.json` also feeds the studio's AI parody show:
+`make-episode --parody --trends bundle.json` nudges its picks toward what people are talking about and skips anyone
+in real trouble. Social numbers never reach that script either.
+
 ## Sources (verified working 2026-10-17, no login)
 
 | Collector | Method | Interval | Gives |

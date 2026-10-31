@@ -146,6 +146,15 @@ package licenses, private-only upload metadata, and pipeline integrity (no stale
 Results with evidence: `qc.json`. Rights and reproducibility record: `provenance.json` (git commit,
 model checkpoints with licenses and sha256, tool versions, data snapshot hash, every prompt, file hashes).
 
+## AI parody show
+
+```bash
+uv run make-episode --week 8 --parody     # the week's worst stat lines, with locally generated pictures
+```
+
+Free and local: Z-Image-Turbo stills moved in house, with optional overnight Wan clips. No real person is ever shown,
+and a person approves every picture before QC passes. See [`../docs/ai-parody/README.md`](../docs/ai-parody/README.md).
+
 ## Upload bundles
 
 After QC passes, `make-episode` writes `upload/` beside each Short: `tiktok/`, `reels/` and `shorts/`, each with its

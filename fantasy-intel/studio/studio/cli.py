@@ -9,6 +9,7 @@
     uv run make-episode --week 6 --flame-praise --player bo-nix --treatment courtroom --storyboard
     uv run make-episode --week 6 --format short --style premium   # also render a graphic style (pixel, broadcast, paper, auto)
     uv run make-episode --week 7 --trend episodes/2026-w07-trends/<idea>.json   # a social trend's lead player
+    uv run make-episode --week 8 --parody                 # the AI parody show (local, free; no real person shown)
 
 Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run
 last; the command exits non-zero, and upload stays blocked, if any gate fails. Each episode gets a
@@ -265,6 +266,67 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
     return 1 if failed else 0
 
 
+def make_parody(cfg: Config, season: int, week: int, force: set[str], only: str | None, trends: Path | None,
+                hero: bool = False, storyboard: bool = False, frozen_snapshot: bool = False) -> int:
+    """The AI parody show (stages/parody.py): the week's worst stat lines, told with locally generated pictures of
+    everything except the player. QC holds a Short until a person approves its pictures (parody-review). --storyboard
+    stops at the pictures. --hero swaps in finished overnight Wan clips (parody-wan)."""
+    from . import parody_qc
+    from .stages import frames, parody
+    week_ep = Episode(season, week, "short", cfg, force=force)
+    week_ep.dir.mkdir(parents=True, exist_ok=True)
+    if not (frozen_snapshot and week_ep.path("snapshot.json").exists()):
+        snapshot.run(week_ep)
+    snap = read_json(week_ep.path("snapshot.json"))
+    picks = parody.pick(snap, parody.load_trends(trends), cfg["parody"]["shorts_per_week"], only)
+    if not picks:
+        print(f"no parody case{' for ' + repr(only) if only else ''} this week")
+        return 2
+    results, recent = [], []
+    for i, c in enumerate(picks):
+        slug = "parody-" + c["slug"].removeprefix("flame-")
+        ep = Episode(season, week, "short", cfg, force=force, slug=slug)
+        ep.dir.mkdir(parents=True, exist_ok=True)
+        print(f"\nshort {ep.id}: {c['name']} ({c['lead']['metric']})")
+        src, dst = week_ep.path("snapshot.json"), ep.path("snapshot.json")
+        if not dst.exists() or sha256_file(dst) != sha256_file(src):
+            shutil.copyfile(src, dst)
+        story_json = {"gsis_id": c["gsis_id"], "name": c["name"], "role": c["kind"], "team": c["team"], "slug": slug,
+                      "order": 80 + i, "format": "ai_parody", "recent_series": recent,
+                      "post_by": parody.post_by(snap, c["team"], c["week"])}
+        if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story_json:
+            write_json(ep.path("story.json"), story_json)
+        stages = [("facts", flame.facts_run), ("script", lambda e: parody.script_run(e, hero)), ("frames", frames.run)]
+        if hero:             # a still the frames stage just replaced retires its clip
+            stages.append(("script", lambda e: parody.script_run(e, hero)))
+        if not storyboard:
+            stages += [("tts", tts.run), ("render", render_motion.run), ("thumbnail", thumbnail.run),
+                       ("metadata", metadata.run)]
+        try:
+            for name, run in stages:
+                t0 = time.time()
+                run(ep)
+                ep.log(f"  [{name} {time.time() - t0:.1f}s]")
+        except flame.NotEntertaining as exc:
+            print(f"  skipped: {exc}")
+            continue
+        recent.append(read_json(ep.path("script.json"))["structure"])
+        sheet = parody_qc.sheet(ep)
+        if storyboard:
+            print(f"  pictures: {sheet}")
+            continue
+        passed = finish(ep)
+        results.append((ep, passed))
+        if passed:
+            export.bundle(ep, "original")
+        else:
+            export.discard(ep)
+            print(f"  QC held it. See {ep.path('qc.json')}. Pictures: {sheet}. To approve them: "
+                  f"uv run parody-review --week {week} --slug {slug} --approve")
+    export.week_list(cfg, season, week)
+    return 1 if any(not ok for _, ok in results) else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="make-episode", description=__doc__.split("\n")[0])
     ap.add_argument("--week", type=int, required=True, help="NFL week the episode previews (uses games before it)")
@@ -283,11 +345,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--flame-praise", action="store_true",
                     help="Shorts only: the latest game's flame (historically bad line) and praise (monster line) "
                          "Shorts instead of the usage stories; with --player, that player's strongest case")
+    ap.add_argument("--parody", action="store_true",
+                    help="the AI parody show: the week's worst stat lines with locally generated pictures, no real "
+                         "person shown; with --player, that player's case")
+    ap.add_argument("--hero", action="store_true", help="parody only: swap in finished overnight Wan clips (parody-wan)")
+    ap.add_argument("--trends", type=Path, help="parody only: a `trends export` bundle; trending names rank a little higher")
     ap.add_argument("--treatment", help="flame/praise only: force a format (roast_monologue, courtroom, comparison, "
                                        "main_character, fan_meltdown; classic = the first template)")
     ap.add_argument("--variant", help="flame/praise only: write <slug>-<variant> beside the original, out of history")
     ap.add_argument("--storyboard", action="store_true",
-                    help="flame/praise only: brief, script and storyboard.png, no narration or render")
+                    help="flame/praise: brief, script and storyboard.png; parody: script and pictures; no narration "
+                         "or render")
     ap.add_argument("--frozen-snapshot", action="store_true",
                     help="Shorts and flame/praise: reuse the week's archived snapshot.json instead of rebuilding it")
     ap.add_argument("--compare-mix", action="store_true",
@@ -314,6 +382,9 @@ def main(argv: list[str] | None = None) -> int:
         cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": args.voice}
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
+    if args.parody:
+        return make_parody(cfg, season, args.week, force, args.player, args.trends, args.hero, args.storyboard,
+                           args.frozen_snapshot)
     if args.flame_praise:
         return make_flame_praise(cfg, season, args.week, force, args.player, args.hook, args.treatment,
                                  args.storyboard, args.variant, args.compare_mix, args.frozen_snapshot)
