@@ -68,4 +68,7 @@ league or NFL data not synced) the section says so.
   been verified. The UI makes no success-rate or injury-probability claim.
 - The Waivers page now includes a league-scoped, read-only **Future-week stashes** section with 2/4/6-week URL controls,
   a separate immediate-add distinction, drop assumptions, coverage counts and if-then scenario evidence. It makes no
-  provider transaction or prediction that a starter will be injured.
+  provider transaction or prediction that a starter will be injured. The coverage line names every part of
+  `counts.considered` (evaluated exactly, missing a projection, blocked by a position limit, no possible gain, beyond
+  the per-position cap), and the window label comes from the served `later_weeks`, so a horizon cut short by the end
+  of the season says so.

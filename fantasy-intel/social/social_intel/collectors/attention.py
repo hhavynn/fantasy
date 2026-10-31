@@ -35,6 +35,7 @@ class SleeperTrendingCollector(Collector):
     method = "sleeper-trending-api"
     interval_minutes = 30
     description = "Sleeper trending adds/drops, 24 h window"
+    sports = frozenset({"nfl"})
 
     def collect(self, ctx: CollectContext) -> tuple[list[SocialPost], dict[str, Any]]:
         sleeper_to_gsis: dict[str, str] = ctx.config.extra.get("sleeper_to_gsis", {})
@@ -108,7 +109,7 @@ class WikipediaPageviewsCollector(Collector):
     min_views = 1500
 
     def collect(self, ctx: CollectContext) -> tuple[list[SocialPost], dict[str, Any]]:
-        players: list[dict] = ctx.config.extra.get("wiki_players", [])  # [{"name", "gsis_id", "title"?}]
+        players: list[dict] = ctx.config.extra.get("wiki_players", [])  # [{"name", "gsis_id" or "entity_id", "disambiguator"?}]
         cursor = ctx.new_cursor()
         titles: dict[str, str] = cursor.get("titles", {})
         end = (ctx.now - timedelta(days=1)).strftime("%Y%m%d")
@@ -116,7 +117,8 @@ class WikipediaPageviewsCollector(Collector):
         posts, misses = [], 0
         headers = {"User-Agent": BOT_UA}
         for p in players:
-            items, title = None, titles.get(p["gsis_id"])
+            id_key = "gsis_id" if "gsis_id" in p else "entity_id"
+            items, title = None, titles.get(p[id_key])
             for cand in ([title] if title else self._candidates(p)):
                 url = ("https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/"
                        f"{quote(cand, safe='')}/daily/{start}/{end}")
@@ -131,7 +133,7 @@ class WikipediaPageviewsCollector(Collector):
             if not items or not title:
                 misses += 1
                 continue
-            titles[p["gsis_id"]] = title
+            titles[p[id_key]] = title
             if len(items) < 4:
                 continue
             views = [i["views"] for i in items]
@@ -145,7 +147,7 @@ class WikipediaPageviewsCollector(Collector):
                     created_at=datetime.strptime(day, "%Y%m%d").replace(tzinfo=ctx.now.tzinfo), collected_at=ctx.now,
                     text=f"{p['name']} Wikipedia pageviews spiked to {last:,} ({ratio:.1f}x the 7-day median of {base:,.0f})",
                     community="pageviews", engagement=Engagement(views=last), collection_method=self.method,
-                    confidence=0.9, extra={"gsis_id": p["gsis_id"], "ratio": round(ratio, 2), "median": base},
+                    confidence=0.9, extra={id_key: p[id_key], "ratio": round(ratio, 2), "median": base},
                 ))
         cursor["titles"] = titles
         if not posts and misses >= len(players) and players:
@@ -158,4 +160,5 @@ class WikipediaPageviewsCollector(Collector):
         article (cheap, not rate-limited), unlike the MediaWiki query API, which 429s quickly."""
         base = p["name"].replace(" ", "_")
         role = POSITION_TITLE.get(p.get("position") or "")
-        return [t for t in (f"{base}_({role})" if role else None, f"{base}_(American_football)", base) if t]
+        suffix = p.get("disambiguator", "American_football")
+        return [t for t in (f"{base}_({role})" if role else None, f"{base}_({suffix})", base) if t]

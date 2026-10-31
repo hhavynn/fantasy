@@ -1,7 +1,7 @@
 // Pure presentation helpers for the matchup page and the Overview matchup card. They select, order and
 // compare numbers the backend already computed; nothing here is a new analytic.
 import type { Matchup, MatchupStatus, TeamSide } from "./matchup-types.ts";
-import type { ProjectionOrigin } from "./projection-source.ts";
+import { showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "./projection-source.ts";
 
 export type Basis = "actual" | "projected" | "known";
 
@@ -99,6 +99,15 @@ export function parseWeekParam(raw: string | string[] | undefined): WeekParam {
 /** The weeks a week switcher offers: the weeks with a matchup plus the one being viewed. */
 export function switcherWeeks(available: readonly number[], viewing: number): number[] {
   return [...new Set([...available, viewing])].sort((a, b) => a - b);
+}
+
+/**
+ * Whose weekly projections the page's numbers are, from what the backend served: Fantasy Intel's with the switch on
+ * Ours and a run available (ESPN keeps only the players the model cannot project), ESPN's otherwise, and always Fantasy
+ * Intel's for a provider that publishes none (Sleeper). Not the league's default, which ignores the switch.
+ */
+export function projectionsBy(detail: ProjectionSourceDetail | null | undefined, providerProjections: boolean): "ESPN" | "Fantasy Intel" {
+  return showingOurs(detail) || !providerProjections ? "Fantasy Intel" : "ESPN";
 }
 
 /** The scores are read from a stored provider snapshot; "in progress" never proves a live feed. */

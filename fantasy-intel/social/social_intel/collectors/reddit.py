@@ -116,7 +116,6 @@ class RedditActivityCollector(Collector):
     method = "arctic-shift"
     interval_minutes = 15
     description = "Arctic Shift archive: fresh comments per thread (velocity + debate text) and new posts"
-    activity_subs = ("fantasyfootball", "nfl", "DynastyFF")
     pages = 4
 
     def collect(self, ctx: CollectContext) -> tuple[list[SocialPost], dict[str, Any]]:
@@ -124,7 +123,7 @@ class RedditActivityCollector(Collector):
         by_link: dict[str, list[dict]] = defaultdict(list)
         link_meta: dict[str, dict] = {}
         spans: dict[str, tuple[float, float]] = {}
-        for sub in self.activity_subs:
+        for sub in ctx.config.extra.get("activity_subreddits", []):
             before = None
             times: list[float] = []
             for _ in range(self.pages):

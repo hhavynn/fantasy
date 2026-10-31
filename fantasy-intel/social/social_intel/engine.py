@@ -84,7 +84,7 @@ class Engine:
         for c in clusters[:enrich_top]:
             c.stance = stance([by_key[k] for k in c.post_keys], self.adapter.tag_topics, *self.adapter.direction_topics,
                              lead=(c.entities.get("players") or [None])[0])
-            if c.entities.get("players"):
+            if c.entities.get("players") or (getattr(self.adapter, "enrich_teams", False) and c.entities.get("teams")):
                 c.enrichment.update(self.adapter.enrich(c))
                 c.enrichment["status_cues"] = status_cues([by_key[k] for k in c.post_keys])
             c.score = score_cluster(c, [by_key[k] for k in c.post_keys], ctx)
