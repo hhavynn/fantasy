@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  availableViews, benchRows, chooseView, hasDesignation, lineupRows, lineupTotal, headline, leader, margin, matchupHref, ordinal, pairSlots, parseWeekParam, share, statusLabel, sumAll, switcherWeeks,
+  availableViews, benchRows, chooseView, hasDesignation, lineupRows, lineupTotal, headline, leader, margin, matchupHref, ordinal, pairSlots, parseWeekParam, projectionsBy, share, statusLabel, sumAll, switcherWeeks,
 } from "./matchup.ts";
 import type { LineupSlot, Matchup, SetPlayer, TeamSide } from "./matchup-types.ts";
 
@@ -185,4 +185,15 @@ test("matchup status labels do not imply that stored scores are live", () => {
   assert.equal(statusLabel("upcoming"), "Not started");
   assert.equal(statusLabel("unknown"), "Status unknown");
   assert.doesNotMatch(statusLabel("in_progress"), /live|real.time|now/i);
+});
+
+test("the page names the projections it shows: Fantasy Intel's when Ours is served, not the league's ESPN default", () => {
+  const espn = { source: "espn" as const, available: true, reason: null, run: null, model_status: null, counts: null };
+  const ours = { ...espn, source: "independent" as const };
+  assert.equal(projectionsBy(ours, true), "Fantasy Intel");
+  assert.equal(projectionsBy({ ...ours, available: false }, true), "ESPN");   // Ours not ready: ESPN is shown
+  assert.equal(projectionsBy(espn, true), "ESPN");
+  assert.equal(projectionsBy(undefined, true), "ESPN");
+  assert.equal(projectionsBy(ours, false), "Fantasy Intel");                 // Sleeper publishes none
+  assert.equal(projectionsBy({ ...ours, available: false }, false), "Fantasy Intel");
 });

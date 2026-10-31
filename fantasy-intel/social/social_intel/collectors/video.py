@@ -161,7 +161,7 @@ class TikTokCollector(Collector):
 
     def collect(self, ctx: CollectContext) -> tuple[list[SocialPost], dict[str, Any]]:
         posts, errors = [], []
-        for handle in ctx.config.extra.get("tiktok_creators", ["nfl"]):
+        for handle in ctx.config.extra.get("tiktok_creators", []):
             try:
                 for d in run_ytdlp(["--flat-playlist", "-j", "--playlist-end", "12",
                                     f"https://www.tiktok.com/@{handle}"]):

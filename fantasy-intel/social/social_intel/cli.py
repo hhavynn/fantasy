@@ -28,11 +28,13 @@ from typing import Any
 from social_intel import ideas as ideas_mod
 from social_intel.collectors import REGISTRY
 from social_intel.contract import CONTRACT_VERSION, iso, json_schema, utcnow
+from social_intel.core.http import Fetcher
 from social_intel.core.store import Store
 from social_intel.engine import DEFAULT_COLLECTORS, Engine
 
 FANTASY_INTEL = Path(__file__).resolve().parents[2]
 DATA = Path(os.getenv("SOCIAL_DATA_DIR") or FANTASY_INTEL / "data" / "social")
+SOCCER_STATS_DB = Path(os.getenv("SOCCER_DB_PATH") or FANTASY_INTEL / "data" / "soccer" / "soccer.duckdb")
 STUDIO_EPISODES = Path(os.getenv("STUDIO_EPISODES") or FANTASY_INTEL / "studio" / "episodes")
 
 
@@ -42,13 +44,23 @@ def make_adapter(sport: str, now: datetime | None = None):
         return FootballAdapter(entity_cache=DATA / "entities_nfl.json", now=now)
     if sport == "soccer":
         from social_intel.sports.soccer.adapter import SoccerAdapter
-        return SoccerAdapter()
+        return SoccerAdapter(entity_cache=DATA / "soccer" / "entities_soccer.json", now=now,
+                             stats_db=SOCCER_STATS_DB)
     raise SystemExit(f"unknown sport {sport!r}")
 
 
+def sport_paths(sport: str) -> tuple[Path, Path]:
+    """(database, studio history). source_state is keyed by collector, so a second sport needs its own
+    database or one sport's cursors and cooldowns would suppress the other's collection."""
+    if sport == "nfl":
+        return DATA / "social.duckdb", STUDIO_EPISODES / "history.jsonl"
+    return DATA / sport / "social.duckdb", STUDIO_EPISODES / sport / "history.jsonl"
+
+
 def make_engine(args) -> Engine:
-    store = Store(Path(args.db) if args.db else DATA / "social.duckdb")
-    return Engine(store, make_adapter(args.sport), history_path=STUDIO_EPISODES / "history.jsonl")
+    db, history = sport_paths(args.sport)
+    store = Store(Path(args.db) if args.db else db)
+    return Engine(store, make_adapter(args.sport), history_path=history)
 
 
 # ---------------------------------------------------------------- printing helpers
@@ -121,6 +133,8 @@ def print_cluster(c: dict[str, Any], related: list[dict[str, Any]]) -> None:
         if p.get("injury"):
             i = p["injury"]
             print(f"    injury: {i['report_status']} ({i.get('injury')}), practice {i.get('practice_status')} — {i['source']}")
+    for s in enr.get("stats", []):
+        print(f"  {s['label']}: {s['value']}   ({s['source']}, as of {s['as_of']})")
     for v in enr.get("verdicts", []):
         print(f"\n  Crowd vs data on {v['player']}: crowd {v['social']}, usage {v['data']} -> data {v['relation']} the take")
     if related:
@@ -130,8 +144,12 @@ def print_cluster(c: dict[str, Any], related: list[dict[str, Any]]) -> None:
             print(f"        hook: {i['hooks'][0]}")
 
 
-def print_idea(i: dict[str, Any]) -> None:
-    print(f"\n{i['working_title']}   [{ideas_mod.FORMAT_LABEL.get(i['format'], i['format'])}]")
+def format_labels(eng: Engine) -> dict[str, str]:
+    return getattr(eng.adapter, "format_labels", lambda: ideas_mod.FORMAT_LABEL)()
+
+
+def print_idea(i: dict[str, Any], labels: dict[str, str]) -> None:
+    print(f"\n{i['working_title']}   [{labels.get(i['format'], i['format'])}]")
     print(f"  id {i['idea_id']} | trend score {i['trend_score']} | research confidence {i['research_confidence']} | "
           f"{i['duration_s']} s | relevant {i['relevance_window']}" + (f" | status {i['status']}" if i.get("status") else ""))
     print("\n  Hooks (first 1-3 seconds):")
@@ -236,7 +254,7 @@ def cmd_ideas(eng: Engine, args) -> int:
     eng.store.save_ideas(dicts, fps)
     for d in dicts:
         if args.full:
-            print_idea(d)
+            print_idea(d, format_labels(eng))
         else:
             print(f"{d['idea_id']}  {d['trend_score']:>5.1f}  conf {d['research_confidence']:.2f}  "
                   f"[{d['format']}] {d['working_title']}\n            hook: {d['hooks'][0]}")
@@ -250,7 +268,7 @@ def cmd_idea(eng: Engine, args) -> int:
     if not i:
         print("no such idea")
         return 2
-    print_idea(i)
+    print_idea(i, format_labels(eng))
     return 0
 
 
@@ -297,7 +315,8 @@ def research_package(eng: Engine, idea: dict[str, Any]) -> dict[str, Any]:
         "subject_reason": why,
         # tried in order when the first player is not a usage story the studio can make this week
         "alternates": [{"slug": _slug(p["name"]), "gsis_id": p.get("gsis_id")} for p in subjects[1:]],
-        "command": (f"uv run make-episode --week {week} --trend {{package}}" if slug and week else None),
+        "command": (getattr(eng.adapter, "studio_command", None)
+                    or (f"uv run make-episode --week {week} --trend {{package}}" if slug and week else None)),
         "note": ("The studio builds the Short from its own usage data and QC; this package adds the social "
                  "context to review.md. If none of the players qualifies as a usage story this week the studio "
                  "says so, and the package serves as a manual script brief."),
@@ -314,7 +333,7 @@ def cmd_select(eng: Engine, args) -> int:
     pkg = research_package(eng, i)
     week = pkg["studio_handoff"]["week"] or 0
     season = eng.adapter.season
-    out_dir = STUDIO_EPISODES / f"{season}-w{week:02d}-trends"
+    out_dir = (eng.history_path or STUDIO_EPISODES / "history.jsonl").parent / f"{season}-w{week:02d}-trends"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{i['idea_id']}.json"
     cmd = pkg["studio_handoff"]["command"]
@@ -350,6 +369,32 @@ def cmd_export(eng: Engine, args) -> int:
     else:
         print(text)
     return 0
+
+
+def cmd_sync_entities(eng: Engine, args) -> int:
+    if not hasattr(eng.adapter, "entity_cache") or eng.sport == "nfl":
+        print("sync-entities is for soccer: NFL entities come from the analytics database")
+        return 2
+    from social_intel.sports.soccer.sync_entities import sync
+    fetcher = eng.fetcher or Fetcher(cache_dir=eng.store.path.parent / "http_cache", timeout_s=60)
+    n, errors = sync(eng.adapter.entity_cache, fetcher, utcnow())
+    for e in errors:
+        print(f"  {e}")
+    print(f"{n} players written to {eng.adapter.entity_cache}" if n else "no players found: cache left unchanged")
+    return 0 if n else 1
+
+
+def cmd_sync_stats(eng: Engine, args) -> int:
+    if eng.sport == "nfl":
+        print("sync-stats is for soccer: NFL statistics come from the analytics database")
+        return 2
+    from social_intel.sports.soccer.stats import sync
+    fetcher = eng.fetcher or Fetcher(cache_dir=eng.store.path.parent / "http_cache", timeout_s=60)
+    counts, errors = sync(eng.adapter.stats_db, fetcher, utcnow(), eng.adapter.index)
+    for e in errors:
+        print(f"  {e}")
+    print("  ".join(f"{k}: {v}" for k, v in counts.items()) or "nothing synced")
+    return 0 if counts else 1
 
 
 def cmd_run(eng: Engine, args) -> int:
@@ -388,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("export"); p.add_argument("--out"); p.add_argument("--limit", type=int, default=25)
     p.add_argument("--fixture", action="store_true", help="label the bundle as fixture data")
     sub.add_parser("schema")
+    sub.add_parser("sync-entities", help="soccer: refresh the player list from public sources")
+    sub.add_parser("sync-stats", help="soccer: refresh fixtures, results and player stats")
     p = sub.add_parser("run"); collect_args(p)
     p.add_argument("--hours", type=float, default=72); p.add_argument("--top", type=int, default=8)
     p.add_argument("--min-score", type=float, default=0)
@@ -399,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return {"collect": cmd_collect, "health": cmd_health, "rank": cmd_rank, "list": cmd_list, "show": cmd_show,
                 "ideas": cmd_ideas, "idea": cmd_idea, "select": cmd_select, "export": cmd_export,
+                "sync-entities": cmd_sync_entities, "sync-stats": cmd_sync_stats,
                 "run": cmd_run}[args.cmd](eng, args)
     finally:
         eng.store.close()

@@ -12,10 +12,12 @@ import pytest
 from conftest import NOW, make_post
 
 from social_intel import ideas as ideas_mod
-from social_intel.contract import Engagement, TrendCluster, json_schema
+from social_intel.contract import Engagement, TrendCluster, VideoIdea, json_schema
 from social_intel.core.cluster import cluster_posts
 from social_intel.core.scoring import PENALTIES, WEIGHTS, ScoringContext, post_velocity, score_cluster
 from social_intel.engine import Engine
+from social_intel.ideas import generate
+from social_intel.sports.base import EventWindow
 from social_intel.sports.football.enrich import FootballEnricher
 
 
@@ -255,3 +257,72 @@ def test_status_cues_from_reports():
           make_post("r1", "A.J. Brown returns!", platform="reddit")]
     cues = status_cues(ps)
     assert cues["return"] == 1 and cues["out"] == 1 and cues["return_links"] == ["https://example.test/news/n1"]
+
+
+# ---------------------------------------------------------------- adapter hooks
+
+class HookAdapter:
+    sport = "soccer"
+
+    def event_window(self, now):
+        return EventWindow("next matchday", None)
+
+    def meme_bank(self):
+        return {}
+
+    def choose_formats(self, c):
+        return ["explainer"]
+
+    def build_idea(self, c, fmt, rot, window, bank, now):
+        return VideoIdea(idea_id="x", cluster_id=c["cluster_id"], sport="soccer", format=fmt, working_title="t",
+                         hooks=[], why_trending="", source_links=[], key_stats=[], supporting_args=[],
+                         opposing_args=[], editorial_angle="", entities={}, duration_s=30, graphics=[], memes=[],
+                         engagement_question="", trend_score=0, research_confidence=0, relevance_window="")
+
+
+def test_generate_uses_adapter_formats_and_builder():
+    ideas = generate([{"cluster_id": "c1", "topic_id": "t1", "score": {"total": 50}}], HookAdapter(), now=NOW)
+    assert [i.format for i in ideas] == ["explainer"]
+
+
+class TeamEnrichAdapter:
+    sport = "soccer"
+    direction_topics = (set(), set())
+    calls = 0
+
+    def __init__(self, enrich_teams):
+        self.enrich_teams = enrich_teams
+
+    def annotate(self, p):
+        p.entities, p.topics = {"players": [], "teams": ["ARS"]}, []
+
+    def is_relevant(self, p):
+        return True
+
+    def tag_topics(self, text):
+        return []
+
+    def label(self, c):
+        return "Arsenal"
+
+    def topic_weights(self):
+        return {}
+
+    def entity_popularity(self):
+        return {}
+
+    def entity(self, entity_id):
+        return None
+
+    def enrich(self, c):
+        self.calls += 1
+        return {"analytic_coverage": 1.0}
+
+
+def test_team_only_cluster_is_enriched_only_when_the_adapter_asks(store):
+    posts = [make_post(k, "Arsenal transfer talk heating up tonight", author=k) for k in "abc"]
+    store.upsert_posts(posts, "soccer")
+    for flag, want in ((False, 0), (True, 1)):
+        a = TeamEnrichAdapter(flag)
+        Engine(store, a).rank(now=NOW)
+        assert (a.calls > 0) == bool(want)
