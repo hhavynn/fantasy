@@ -74,6 +74,14 @@ def test_bare_names_that_usually_mean_someone_else_do_not_match():
     assert idx.find_players("Rico Lewis started") == ["f:3"]
 
 
+def test_aliases_survive_the_entity_cache(tmp_path):
+    path = tmp_path / "entities.json"
+    players = [{"id": "fpl:9", "name": "Morgan Gibbs-White", "team": "nottingham-forest", "popularity": 0.6,
+                "aliases": ["Gibbs-White"]}]
+    SoccerIndex(players, "2026-10-30").dump(path)
+    assert SoccerIndex.load(path).find_players("Gibbs-White scored again") == ["fpl:9"]
+
+
 def test_stars_outside_the_leagues_are_known(soccer):
     assert soccer.index.find_players("CR7 and Messi again") == ["star:cristiano-ronaldo", "star:lionel-messi"]
 
@@ -110,6 +118,15 @@ def test_parody_ideas_carry_the_content_rules(soccer):
     idea = generate([c], soccer, now=NOW)[0]
     assert idea.format == "parody" and len(idea.hooks) == 3 and "parody" in idea.working_title
     assert any("no face-swaps" in n for n in idea.notes)
+
+
+def test_same_subject_twice_still_gets_three_hooks(soccer):
+    def cluster(cid, topic):
+        return {"cluster_id": cid, "topic_id": cid, "label": f"Arsenal: {topic}", "sport": "soccer", "topics": [topic],
+                "score": {"total": 60, "flags": [], "components": []}, "top_posts": [], "entities": {}}
+
+    ideas = generate([cluster("a", "award"), cluster("b", "manager")], soccer, now=NOW)
+    assert len(ideas) == 2 and all(len(i.hooks) == 3 for i in ideas)
 
 
 def test_rank_end_to_end_names_the_club(store, soccer):

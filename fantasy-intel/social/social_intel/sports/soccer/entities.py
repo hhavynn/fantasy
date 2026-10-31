@@ -61,6 +61,7 @@ class SoccerIndex:
         self.full: dict[str, list[str]] = {}
         self.single: dict[str, list[str]] = {}
         self.blocked = {normalize(n) for n in NOT_PLAYERS}
+        self.aliases: dict[str, list[str]] = {}
         for p in [*(players or []), *STARS]:
             if p["id"] in self.players or (p["id"].startswith("star:") and normalize(p["name"]) in self.full):
                 continue
@@ -73,7 +74,8 @@ class SoccerIndex:
             parts = n.split()
             if len(parts) >= 2 and e.popularity >= SURNAME_MIN_POPULARITY:
                 self.single.setdefault(parts[-1], []).append(e.entity_id)
-            for short in p.get("aliases") or []:
+            self.aliases[e.entity_id] = list(p.get("aliases") or [])
+            for short in self.aliases[e.entity_id]:
                 self.full.setdefault(normalize(short), []).append(e.entity_id)
         for nick, full in NICKNAMES.items():
             ids = self.full.get(full)
@@ -86,8 +88,8 @@ class SoccerIndex:
 
     def dump(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        rows = [{"id": e.entity_id, "name": e.name, "team": e.team, "position": e.position, "popularity": e.popularity}
-                for e in self.players.values()]
+        rows = [{"id": e.entity_id, "name": e.name, "team": e.team, "position": e.position, "popularity": e.popularity,
+                 "aliases": self.aliases[e.entity_id]} for e in self.players.values()]
         path.write_text(json.dumps({"as_of": self.as_of, "players": rows}))
 
     @classmethod
