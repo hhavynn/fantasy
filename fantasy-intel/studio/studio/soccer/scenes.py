@@ -12,6 +12,7 @@ from functools import lru_cache
 from PIL import Image, ImageDraw
 
 from .. import motion as M
+from . import toons
 
 GRASS = (20, 62, 44)
 GRASS_DARK = (15, 50, 36)
@@ -181,10 +182,13 @@ def scene_cta(img, t, dur, spec, c: Ctx):
 
 
 SCENES = {"pitch": scene_pitch, "title": scene_title, "columns": scene_columns, "stack": scene_stack,
-          "card": scene_card, "stamp": scene_stamp, "cta": scene_cta}
+          "card": scene_card, "stamp": scene_stamp, "cta": scene_cta, "toon": toons.scene_toon,
+          "split": toons.scene_split, "fact": toons.scene_fact}
 
 
 def draw(spec: dict, t: float, dur: float, c: Ctx) -> Image.Image:
     img = Image.new("RGB", (M.W, M.H), M.DARK)
     SCENES[spec["type"]](img, t, dur, spec, c)
+    if spec.get("badge"):
+        toons.badge(img, spec["badge"])
     return img
