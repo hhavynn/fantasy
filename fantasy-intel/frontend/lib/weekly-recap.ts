@@ -226,12 +226,16 @@ export function recapCopyText(d: Pick<WeeklyRecap, "season" | "selected_week" | 
     return `Fantasy Intel weekly recap · ${d.season}\nNo finalized matchup period available.`;
   }
   const pending = d.notes.pending_matchups ?? 0;
+  // A final matchup with a missing score stays in the count but not in the highs (backend `awards` skips it), so the
+  // highs are over fewer games than the count says: disclose it rather than imply every game was compared.
+  const unscored = d.notes.missing_scores ?? 0;
   const high = d.awards.highest_score.winners[0]?.points ?? null;
   const margin = d.awards.biggest_blowout.winners[0]?.margin ?? null;
   return [
     `Fantasy Intel · ${weekLabel(d.scoring_periods, d.selected_week)} · ${d.season}`,
     `${d.matchups.length} finalized ${d.matchups.length === 1 ? "matchup" : "matchups"}`,
     ...(pending > 0 ? [`${pending} ${pending === 1 ? "matchup" : "matchups"} not yet final (excluded)`] : []),
+    ...(unscored > 0 ? [`${unscored} finalized ${unscored === 1 ? "matchup has" : "matchups have"} a missing score (unknown, not zero; excluded from the highs)`] : []),
     `Highest finalized team score: ${pointsText(high)} points`,
     `Largest finalized margin: ${pointsText(margin)} points`,
     "Provider-synced final results, not live. Snapshot time unavailable in this report.",

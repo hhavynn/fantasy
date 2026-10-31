@@ -783,8 +783,20 @@ def test_dual_position_count_needs_provider_base_position_evidence_not_flex_or_i
         row(104, "WR", None),
         {**row(105, "RB", [2, 4]), "known_id": None},
     ]
-    assert active_dual_position_count(rows) == 1
-    assert active_dual_position_count([]) == 0
+    standard = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "D/ST", "K"]
+    assert active_dual_position_count(rows, standard) == 1
+    assert active_dual_position_count([], standard) == 0
+
+
+def test_dual_position_count_follows_the_slots_the_solver_could_start_him_in():
+    # A WR also listed at TE is dual only where some starting slot takes TE (lineup.dual_positions): with no TE and no
+    # flex that takes TE the solver never starts him at TE, so the rankings finding must not count him either.
+    wr_te = {"espn_player_id": 200, "known_id": 200, "position": "WR", "eligible_slots": [4, 6],
+             "lineup_slot_id": 4, "lineup_slot": "WR", "is_starter": True}
+    assert active_dual_position_count([wr_te], ["QB", "RB", "RB", "WR", "WR", "TE"]) == 1
+    assert active_dual_position_count([wr_te], ["QB", "RB", "RB", "WR", "WR", "FLEX"]) == 1
+    assert active_dual_position_count([wr_te], ["QB", "RB", "RB", "WR", "WR", "RB/WR"]) == 0
+    assert active_dual_position_count([wr_te], []) == 0
 
 
 def test_fx17_dual_position_diagnostic_does_not_claim_primary_position_rank_fidelity(league):

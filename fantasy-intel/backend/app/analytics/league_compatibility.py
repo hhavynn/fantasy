@@ -29,7 +29,7 @@ from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
 from .league_rules import HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED, build_league_rules
-from .lineup import FIXED_SLOTS, FLEX_SLOTS, is_flex, parse_eligible_slots, separable, slot_positions
+from .lineup import FIXED_SLOTS, FLEX_SLOTS, dual_positions, is_flex, lineup_slots, separable, slot_positions
 from .reserve_slots import is_reserved
 
 CONTRACT = "league-compatibility/v1"
@@ -94,15 +94,16 @@ def _plural(n: int, word: str) -> str:
 
 # ---- facts from the league file ---------------------------------------------------------------------------------------
 
-def active_dual_position_count(rows: list[dict]) -> int:
-    """Unique rostered, non-reserve players with provider evidence for a second base position.
+def active_dual_position_count(rows: list[dict], slots: list[str]) -> int:
+    """Unique rostered, non-reserve players with provider evidence for a second base position that this league's
+    starting `slots` take: the lineup solver's own test (lineup.dual_positions), so a WR/TE in a league without a TE
+    or flex slot that takes TE is not counted, exactly as the solver would never start him there.
 
     Eligible flex/bench/IR slot IDs alone are NOT dual-position evidence. No IDs or names leave this function.
     """
     return len({
         r["espn_player_id"] for r in rows
-        if r.get("known_id") is not None and not is_reserved(r)
-        and parse_eligible_slots(r.get("eligible_slots"), r.get("position")) is not None
+        if r.get("known_id") is not None and not is_reserved(r) and dual_positions(r, slots)
     })
 
 
@@ -152,6 +153,9 @@ def load_facts(con, lg: dict) -> dict:
         if r["espn_player_id"] not in rostered and r["espn_player_id"] in projected:
             fa_projected[r["position"]] = fa_projected.get(r["position"], 0) + 1
     fillable = {*FIXED_SLOTS, *FLEX_SLOTS}
+    roster_slots = lg.get("roster_slots")
+    roster_slots = json.loads(roster_slots) if isinstance(roster_slots, str) else roster_slots
+    starting = lineup_slots(roster_slots if isinstance(roster_slots, dict) else {})
     return {
         "provider": provider, "week": week, "teams": len(teams),
         # starters the engines load (in the player data) who sit in a slot no engine fills (IDP, P, HC, ...)
@@ -159,7 +163,7 @@ def load_facts(con, lg: dict) -> dict:
                                           and r["lineup_slot"] and r["lineup_slot"] not in fillable),
         "teams_with_roster": len({r["team_id"] for r in rows}),
         "players_missing": sum(1 for r in rows if r["known_id"] is None),
-        "active_dual_position_players": active_dual_position_count(rows),
+        "active_dual_position_players": active_dual_position_count(rows, starting),
         "projection_source": shown, "independent": independent, "ours_rescored": skill_runs_rescored(con, lg),
         "coverage": coverage, "free_agents_projected": fa_projected,
     }

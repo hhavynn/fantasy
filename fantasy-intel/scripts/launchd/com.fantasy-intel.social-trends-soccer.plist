@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for a per-user launchd agent that runs the soccer trend engine (`trends --sport soccer run`)
+  at :10, :30 and :50. The NFL agent keeps its own 20-minute interval, so the two can overlap; a Reddit 429
+  then falls back on the collector cooldown.
+  Not installed automatically. Fill in __FANTASY_INTEL_DIR__ and __UV__ the same way as
+  com.fantasy-intel.refresh.plist (see fantasy-intel/social/README.md), copy to ~/Library/LaunchAgents/
+  and `launchctl load` it.
+  Each collector keeps its own refresh interval and failure cooldown, so a 20-minute tick only
+  re-polls the sources that are due (Reddit/X/News ~20 min, YouTube 45 min, Wikipedia 12 h).
+  Collection only: nothing is rendered or published.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.fantasy-intel.social-trends-soccer</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>trends</string>
+    <string>--sport</string>
+    <string>soccer</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__FANTASY_INTEL_DIR__/social</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Minute</key><integer>10</integer></dict>
+    <dict><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Minute</key><integer>50</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/social-trends-soccer.log</string>
+  <key>StandardErrorPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/social-trends-soccer.log</string>
+</dict>
+</plist>

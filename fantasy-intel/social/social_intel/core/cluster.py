@@ -32,7 +32,7 @@ these those i you he she we they me him her us them my your his our their what w
 just like get got going go gonna can could would should will do does did done have has had not no yes than too very
 all any some more most much many one two three im ive dont doesnt didnt isnt arent thats theres hes shes its it's
 about after before over under up down out off into again still even also only really now week game games team
-nfl football fantasy https http www com reddit amp
+nfl football soccer fantasy https http www com reddit amp
 """.split())
 _TOKEN = re.compile(r"[a-z][a-z0-9']+")
 
