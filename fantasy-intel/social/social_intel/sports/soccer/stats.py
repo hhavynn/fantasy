@@ -66,8 +66,13 @@ def club_from_csv(index: SoccerIndex, name: str) -> str | None:
     return found[0] if found else None
 
 
-def _rows(text: str) -> list[dict[str, str]]:
-    return list(csv.DictReader(io.StringIO(text.lstrip("﻿"))))
+def _rows(text: str, *required: str) -> list[dict[str, str]]:
+    """A blank or HTML body still comes back 200, so a missing header must fail rather than erase a league."""
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    missing = set(required) - set(reader.fieldnames or [])
+    if missing:
+        raise ValueError(f"unexpected CSV, missing columns {sorted(missing)}")
+    return list(reader)
 
 
 def _day(value: str) -> date:
@@ -84,7 +89,7 @@ def _num(value: str | None) -> float | None:
 
 def parse_results(text: str, league: str, index: SoccerIndex, as_of: str) -> tuple[list[tuple], set[str]]:
     out, unknown = [], set()
-    for r in _rows(text):
+    for r in _rows(text, "Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"):
         home, away = club_from_csv(index, r["HomeTeam"]), club_from_csv(index, r["AwayTeam"])
         unknown |= {n for n, c in ((r["HomeTeam"], home), (r["AwayTeam"], away)) if not c}
         if home and away and r.get("FTHG") not in (None, ""):
@@ -95,7 +100,7 @@ def parse_results(text: str, league: str, index: SoccerIndex, as_of: str) -> tup
 
 def parse_mls(text: str, season: int, index: SoccerIndex, as_of: str) -> tuple[list[tuple], set[str]]:
     out, unknown = [], set()
-    for r in _rows(text):
+    for r in _rows(text, "League", "Season", "Date", "Home", "Away", "HG", "AG"):
         if r.get("League") != "MLS" or r.get("Season") != str(season) or r.get("HG") in (None, ""):
             continue
         home, away = club_from_csv(index, r["Home"]), club_from_csv(index, r["Away"])
@@ -108,7 +113,7 @@ def parse_mls(text: str, season: int, index: SoccerIndex, as_of: str) -> tuple[l
 
 def parse_fixtures(text: str, index: SoccerIndex, as_of: str) -> list[tuple]:
     out = []
-    for r in _rows(text):
+    for r in _rows(text, "Div", "Date", "HomeTeam", "AwayTeam"):
         league = CSV_LEAGUES.get(r.get("Div", ""))
         home, away = club_from_csv(index, r.get("HomeTeam", "")), club_from_csv(index, r.get("AwayTeam", ""))
         if league and home and away:
@@ -172,11 +177,15 @@ def sync(db_path: Path, fetcher: Fetcher, now: datetime, index: SoccerIndex | No
 
     def fpl() -> None:
         rows = parse_fpl_players(fetcher.get(FPL_URL).json(), as_of)
+        if not rows:
+            raise ValueError("no player rows")
         _replace(con, "player_seasons", "source = ?", [FPL_SOURCE], rows)
         counts["fpl_players"] = len(rows)
 
     def asa() -> None:
         rows = parse_asa_players(fetcher.get(f"{ASA}/players/xgoals", params={"season_name": now.year}).json(), as_of)
+        if not rows:
+            raise ValueError("no player rows")
         _replace(con, "player_seasons", "source = ?", [ASA_SOURCE], rows)
         counts["asa_players"] = len(rows)
 
@@ -238,8 +247,8 @@ class SoccerEnricher:
         return order.index(cid) + 1 if cid in table and len(table) == LEAGUE_SIZE.get(league) else None
 
     def _player_stats(self, con: duckdb.DuckDBPyConnection, pid: str) -> list[dict[str, Any]]:
-        row = con.execute("SELECT source, minutes, goals, assists, xg, xa, as_of FROM player_seasons WHERE player_id = ?",
-                          [pid]).fetchone()
+        row = con.execute("SELECT source, minutes, goals, assists, xg, xa, as_of FROM player_seasons "
+                          "WHERE player_id = ? AND as_of <= ?", [pid, self.now.date().isoformat()]).fetchone()
         e = self.index.players.get(pid)
         if not row or not e:
             return []
