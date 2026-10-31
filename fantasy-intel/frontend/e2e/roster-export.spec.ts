@@ -14,7 +14,7 @@ test("authorized Team Value can copy only a name-free local roster summary", asy
   const copy = page.getByRole("button", { name: "Copy name-free roster summary", exact: true });
   await expect(copy).toBeVisible();
   await copy.click();
-  await expect(page.getByRole("status")).toContainText("Name-free roster summary copied.");
+  await expect(page.getByRole("status").filter({ hasText: "Name-free roster summary copied." })).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain("Fantasy Intel · name-free roster outlook");
   expect(copied).toMatch(/Perspective: selected authorized roster/);
@@ -27,7 +27,7 @@ test("authorized Team Value can copy only a name-free local roster summary", asy
 test("the exported window follows the selected phase instead of reusing a stale summary", async ({ page }) => {
   await open(page, "/my-team/value?phase=playoff");
   await page.getByRole("button", { name: "Copy name-free roster summary", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Name-free roster summary copied.");
+  await expect(page.getByRole("status").filter({ hasText: "Name-free roster summary copied." })).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain("Window: Playoffs");
 });

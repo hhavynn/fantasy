@@ -1,5 +1,6 @@
 "use client";
 
+import { LocalReportShare } from "@/components/LocalReportShare";
 import { useNameFreeCopy } from "@/components/useNameFreeCopy";
 import styles from "./value.module.css";
 
@@ -13,6 +14,7 @@ export function RosterExport({ text }: { text: string }) {
       <button type="button" className={styles.exportButton} onClick={copy}>
         Copy name-free roster summary
       </button>
+      <LocalReportShare text={text} />
       <span className={styles.exportStatus} role="status" aria-live="polite">{message}</span>
     </>
   );
