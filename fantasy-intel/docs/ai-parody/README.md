@@ -30,7 +30,7 @@ uv run parody-review --week 8 --slug parody-bo-nix --approve
 uv run make-episode --week 8 --parody                 # QC passes, upload/ is written
 ```
 
-`--player bo-nix` makes one Short. `--trends bundle.json` (from `trends export` in `fantasy-intel/social`) lets what
+A render takes about 4 minutes a Short, most of it making three stills. `--player bo-nix` makes one Short. `--trends bundle.json` (from `trends export` in `fantasy-intel/social`) lets what
 people are talking about nudge the order; social numbers never reach the script.
 
 ## How a Short is made
@@ -76,13 +76,13 @@ Off unless asked for. `uv run parody-wan --week 8` animates two stills from each
 one clip at a time, and resumes after an interruption (`--slug parody-bo-nix` for one Short). `make-episode --week 8 --parody --hero` swaps finished clips in;
 each clip then needs its own approval. A clip that fails leaves the still in place.
 
-Measured on the 48 GB M5 Pro, 2026-10-31, one scene and one seed:
+Measured on the 48 GB M5 Pro, 2026-10-31, on a handful of scenes:
 
 | 3 s clip | Time | Result |
 |---|---|---|
-| 480x832, 20 steps (the setting used) | 9 min estimated at the 12-step speed, 15.5 min measured under memory pressure | Cleanest |
+| 480x832, 20 steps (the setting used) | 7-8 min on a good run, 15.5 min under memory pressure | Cleanest |
 | 480x832, 12 steps | 6.75 min | Painted numbers warped |
 | 384x672, 12 steps | 4.6 min | Streaky smears |
 
-Six clips (three Shorts) take about 1-1.5 hours, or 3-5 hours with three tries each. Close heavy apps first: swap was
-nearly full during the test and the 20-step run took twice as long per step.
+Six clips (three Shorts) take about 45 minutes to 1.5 hours, or 2.5-5 hours with three tries each. Close heavy apps
+first: swap was nearly full during the slow run, which took twice as long per step.

@@ -736,3 +736,26 @@ def test_a_quarterback_under_the_season_attempts_floor_has_no_short_throws_angle
     snap["tables"]["qb_week_passing"] = [r for r in rows if not (r["gsis_id"] == "QB00" and r["week"] in (1, 2))]
     p = flame.build_facts(snap, {"gsis_id": "QB00", "name": "Alpha Passer", "role": "flame"})["players"][0]
     assert "short_throws" not in [a["id"] for a in p["angles"]]
+
+
+def test_a_clip_used_in_two_beats_plays_from_the_start_in_each(tmp_path, monkeypatch):
+    from studio import media_scenes
+    made_readers = []
+
+    class Reader:
+        def __init__(self, path, start=0.0, fps=30):
+            made_readers.append(path)
+
+        def frame(self, i):
+            return Image.new("RGB", (1080, 1920))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(media_scenes, "ClipReader", Reader)
+    c = Ctx(tmp_path)
+    for start in (0.0, 12.0):
+        spec = {"type": "ai_hero", "art": "chair", "clip": "clips/chair.mp4", "stats": [], "_start": start}
+        for t in (0.0, 1.0):
+            PM.scene_ai(Image.new("RGB", (1080, 1920)), t, 3.0, spec, c)
+    assert len(made_readers) == 2

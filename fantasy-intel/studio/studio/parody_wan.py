@@ -8,8 +8,8 @@ Two halves, because Wan lives in its own environment and the studio never import
 queues the work; `--denoise` and `--decode` run in the Wan environment, each clip in fresh processes (on 48 GB the
 models don't fit beside the video decoder). Latents are saved between the two, so an interrupted night resumes.
 
-Measured on this Mac (2026-10-31): 480x832, 73 frames (3 s), 20 steps, about 9 min a clip with nothing else running
-and 15.5 min under memory pressure. Close heavy apps first.
+Measured on this Mac (2026-10-31): 480x832, 73 frames (3 s), 20 steps, 7-8 min a clip on a good run and 15.5 min under
+memory pressure. Close heavy apps first.
 """
 
 from __future__ import annotations

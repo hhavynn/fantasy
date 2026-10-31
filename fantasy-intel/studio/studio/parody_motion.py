@@ -107,9 +107,12 @@ def _stats(img: Image.Image, t: float, spec: dict, c) -> None:
 
 
 def _clip_frame(spec: dict, t: float, c) -> Image.Image:
+    """Each beat has its own reader, because one reads forward only and the same clip can open two beats."""
     from .media_scenes import ClipReader
-    reader = c.clips.setdefault(spec["art"], ClipReader(str(Path(c.episode_dir) / spec["clip"])))
-    return reader.frame(int(t * CLIP_FPS))
+    key = (spec["art"], spec.get("_start", 0.0))
+    if key not in c.clips:
+        c.clips[key] = ClipReader(str(Path(c.episode_dir) / spec["clip"]))
+    return c.clips[key].frame(int(t * CLIP_FPS))
 
 
 def scene_ai(img: Image.Image, t: float, dur: float, spec: dict, c) -> None:

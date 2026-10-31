@@ -113,7 +113,7 @@ mflux = "~/models/mflux/.venv/bin/mflux-generate-z-image-turbo"
 still_size = [832, 1472]
 still_steps = 9
 # Optional overnight Wan clips (parody_wan.py), swapped in with --hero. Off unless asked for. Measured on this Mac
-# (2026-10-31): 480x832, 73 frames (3 s), 20 steps, 9-15.5 min a clip. 12 steps warped text; 384x672 smeared.
+# (2026-10-31): 480x832, 73 frames (3 s), 20 steps, 7-15.5 min a clip. 12 steps warped text; 384x672 smeared.
 hero_clips = 2
 wan_repo = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 wan_license = "Apache-2.0"
