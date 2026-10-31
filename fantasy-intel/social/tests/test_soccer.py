@@ -10,9 +10,11 @@ import pytest
 from conftest import NOW, make_post
 
 from social_intel import cli
+from social_intel.contract import utcnow
 from social_intel.core.http import Fetcher
+from social_intel.core.store import Store
 from social_intel.engine import Engine
-from social_intel.ideas import generate
+from social_intel.ideas import HookRotation, generate
 from social_intel.sports.soccer.adapter import SoccerAdapter
 from social_intel.sports.soccer.clubs import CLUB_BY_ID, CLUBS
 from social_intel.sports.soccer.entities import SoccerIndex
@@ -142,6 +144,11 @@ def test_parody_ideas_carry_the_content_rules(soccer):
     assert any("no face-swaps" in n for n in idea.notes)
 
 
+def test_explainer_title_names_the_rule_topic_not_the_story(soccer):
+    c = {"cluster_id": "c", "topic_id": "t", "label": "Harry Kane: award", "sport": "soccer",
+         "topics": ["award", "refereeing"], "score": {"total": 60, "flags": [], "components": []}, "top_posts": []}
+    idea = soccer.build_idea(c, "explainer", HookRotation(), soccer.event_window(NOW), {}, NOW)
+    assert "refereeing" in idea.working_title and "award" not in idea.working_title
 def test_same_subject_twice_still_gets_three_hooks(soccer):
     def cluster(cid, topic):
         return {"cluster_id": cid, "topic_id": cid, "label": f"Arsenal: {topic}", "sport": "soccer", "topics": [topic],
@@ -189,6 +196,29 @@ def test_parse_wikidata_keeps_the_latest_spell_at_a_known_club():
     rows = parse_wikidata([row("Q1", "Paris Saint-Germain F.C.", "2018-01-01"), row("Q1", "Real Madrid CF", "2024-07-01"),
                            row("Q2", "Some Unknown Club", "2024-07-01")], SoccerIndex())
     assert rows == [{"id": "wd:Q1", "name": "Kylian Mbappé", "team": "real-madrid", "popularity": 1.0}]
+
+
+def test_select_writes_a_soccer_package_for_make_soccer(tmp_path, monkeypatch, soccer, capsys):
+    monkeypatch.setattr(cli, "STUDIO_EPISODES", tmp_path / "episodes")
+    monkeypatch.setattr(cli, "DATA", tmp_path / "data")
+    monkeypatch.setattr(cli, "make_adapter", lambda sport, now=None: soccer)
+    db = tmp_path / "s.duckdb"
+    store = Store(db)
+    posts = [make_post(k, f"Arsenal red card row: {k} VAR referee", author=k, community="r/soccer", likes=200)
+             for k in "abc"]
+    for p in posts:
+        p.created_at, p.collected_at = None, utcnow()
+        soccer.annotate(p)
+    store.upsert_posts(posts, "soccer")
+    store.close()
+    base = ["--sport", "soccer", "--db", str(db)]
+    assert cli.main(base + ["rank"]) == 0 and cli.main(base + ["ideas", "--full"]) == 0
+    store = Store(db)
+    idea = store.con.execute("SELECT idea_id FROM ideas WHERE sport = 'soccer' LIMIT 1").fetchone()[0]
+    store.close()
+    assert cli.main(base + ["select", idea]) == 0
+    out = capsys.readouterr().out
+    assert "make-soccer --package" in out and str(tmp_path / "episodes" / "soccer") in out
 
 
 def test_sync_command_is_soccer_only(tmp_path, capsys):

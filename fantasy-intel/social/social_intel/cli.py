@@ -315,7 +315,8 @@ def research_package(eng: Engine, idea: dict[str, Any]) -> dict[str, Any]:
         "subject_reason": why,
         # tried in order when the first player is not a usage story the studio can make this week
         "alternates": [{"slug": _slug(p["name"]), "gsis_id": p.get("gsis_id")} for p in subjects[1:]],
-        "command": (f"uv run make-episode --week {week} --trend {{package}}" if slug and week else None),
+        "command": (getattr(eng.adapter, "studio_command", None)
+                    or (f"uv run make-episode --week {week} --trend {{package}}" if slug and week else None)),
         "note": ("The studio builds the Short from its own usage data and QC; this package adds the social "
                  "context to review.md. If none of the players qualifies as a usage story this week the studio "
                  "says so, and the package serves as a manual script brief."),

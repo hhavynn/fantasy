@@ -46,7 +46,7 @@ def _subject(c: dict[str, Any]) -> str:
 def build_idea(c: dict[str, Any], fmt: str, rot: HookRotation, window, meme_bank: dict[str, list[str]],
                now: datetime) -> VideoIdea:
     who = _subject(c)
-    topic = (c.get("topics") or ["this"])[0].replace("_", " ")
+    topic = next((t for t in c.get("topics") or [] if t in EXPLAINER_TOPICS), "this").replace("_", " ")
     if fmt == "parallel_universe":
         title, angle = f"The universe where {who} went differently", "Change one real decision and follow it through."
         hooks = {"fmt": f"In another universe, {who} went the other way.",
@@ -66,8 +66,9 @@ def build_idea(c: dict[str, Any], fmt: str, rot: HookRotation, window, meme_bank
                  "ask": f"This is a parody. The {who} story isn't."}
         graphics, duration = ["cartoon scene with a visible parody label"], 35
     picks = rot.pick(hooks, 3, lead="fmt")
-    fillers = [f"{who}: {topic}, and the part nobody's drawn yet.", f"The {topic} story around {who}, in under a minute.",
-               f"{who}. {topic.capitalize()}. Here's the short version."]
+    story = (c.get("topics") or ["latest"])[0].replace("_", " ")
+    fillers = [f"{who}: {story}, and the part nobody's drawn yet.", f"The {story} story around {who}, in under a minute.",
+               f"{who}. {story.capitalize()}. Here's the short version."]
     picks += [f for f in fillers if f not in picks][: 3 - len(picks)]  # rotation is spent when a subject repeats
     links = [tp["url"] for tp in (c.get("top_posts") or []) if tp.get("url")][:6]
     enr = c.get("enrichment") or {}

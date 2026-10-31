@@ -27,6 +27,7 @@ dependencies = [
 make-episode = "studio.cli:main"
 enroll-voice = "studio.voice:main"
 make-presenter = "studio.presenter:main"
+make-soccer = "studio.soccer.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

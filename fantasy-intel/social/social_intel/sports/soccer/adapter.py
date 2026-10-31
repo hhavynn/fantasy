@@ -37,6 +37,7 @@ class SoccerAdapter:
     sport = "soccer"
     direction_topics = ({"rise"}, {"crisis"})
     enrich_teams = True
+    studio_command = "uv run make-soccer --package {package}"
     choose_formats = staticmethod(ideas.choose_formats)
     build_idea = staticmethod(ideas.build_idea)
 
