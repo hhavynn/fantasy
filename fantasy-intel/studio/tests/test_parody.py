@@ -702,14 +702,23 @@ def test_an_interrupted_night_resumes_at_the_decode(made):
 
     class R:
         returncode = 0
-    PW.run_job(made.cfg, job, run=lambda cmd, **k: calls.append(cmd[2]) or R())
+    PW.run_job(made.cfg, job, run=lambda cmd, **k: calls.append(cmd[3]) or R())
     assert calls == ["--decode"]
 
 
 def test_the_wan_worker_runs_in_its_own_environment(made):
     job = PW.jobs(made.cfg, 2026, 6)[0]
     cmd = PW.worker(made.cfg, "denoise", job)
-    assert cmd[0].endswith("wan/.venv/bin/python") and cmd[1].endswith("parody_wan.py") and cmd[2] == "--denoise"
+    assert cmd[0].endswith("wan/.venv/bin/python") and cmd[2].endswith("parody_wan.py") and cmd[3] == "--denoise"
+
+
+def test_the_wan_file_really_starts_the_way_the_worker_starts_it():
+    """studio/numbers.py would shadow the standard library if the script's folder went on the path."""
+    import subprocess
+    import sys
+    cmd = [sys.executable, *PW.worker({"parody": {"wan_python": "x"}}, "denoise", {})[1:3], "--help"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr[-400:]
 
 
 def test_the_wan_file_can_start_without_the_studio_installed():

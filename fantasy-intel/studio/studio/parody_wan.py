@@ -111,7 +111,8 @@ def jobs(cfg, season: int, week: int, slug: str | None = None) -> list[dict]:
 
 
 def worker(cfg, mode: str, job: dict) -> list[str]:
-    return [os.path.expanduser(cfg["parody"]["wan_python"]), str(Path(__file__).resolve()), f"--{mode}", json.dumps(job)]
+    """-I keeps this file's folder off the path: studio/numbers.py would shadow the standard library's."""
+    return [os.path.expanduser(cfg["parody"]["wan_python"]), "-I", str(Path(__file__).resolve()), f"--{mode}", json.dumps(job)]
 
 
 def run_job(cfg, job: dict, run=subprocess.run) -> bool:
