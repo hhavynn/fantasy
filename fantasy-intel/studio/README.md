@@ -114,6 +114,20 @@ Every number is an `fp_` claim that `facts.evaluate_claim` re-derives from the s
 narration, banned-phrase and originality gates apply unchanged. The full board, with each candidate's numbers,
 is written to `episodes/<season>-wNN-short/flame_praise.md`.
 
+## Soccer Shorts
+
+```bash
+uv run make-soccer --list                    # the explainer library
+uv run make-soccer --explainer offside       # one Short, in episodes/soccer/
+uv run make-soccer --package <trend>.json    # from `trends --sport soccer select`
+```
+
+`studio/soccer/` adds to the NFL pipeline and shares its TTS, audio mix, captions and technical QC gates. Output
+and `history.jsonl` stay under `episodes/soccer/`. Explainers are deterministic scripts in
+`studio/soccer/explainers.py`, written from the IFAB Laws of the Game, with every number a claim. Scenes are
+code-drawn: plain pitch, anonymous dots, cards and type. QC adds `content_rules` (only those scene types, so no
+photo, crest or footage can reach a frame) and `claim_sources`.
+
 ## QC and provenance
 
 `make-episode` finishes with QC gates and exits non-zero if any fails (upload is blocked):

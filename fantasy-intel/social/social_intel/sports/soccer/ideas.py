@@ -46,7 +46,7 @@ def _subject(c: dict[str, Any]) -> str:
 def build_idea(c: dict[str, Any], fmt: str, rot: HookRotation, window, meme_bank: dict[str, list[str]],
                now: datetime) -> VideoIdea:
     who = _subject(c)
-    topic = (c.get("topics") or ["this"])[0].replace("_", " ")
+    topic = next((t for t in c.get("topics") or [] if t in EXPLAINER_TOPICS), "this").replace("_", " ")
     if fmt == "parallel_universe":
         title, angle = f"The universe where {who} went differently", "Change one real decision and follow it through."
         hooks = {"fmt": f"In another universe, {who} went the other way.",
