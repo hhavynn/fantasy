@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ..core import Episode, read_json, run_stage, sha256_bytes, write_json
+from ..core import Episode, read_json, run_stage, sha256_bytes, sha256_file, sha256_path, write_json
 from ..numbers import TEAM_NAMES
 from . import flame as FL
 from . import showrunner as SR
@@ -261,8 +261,14 @@ def history(episodes_dir: Path, season: int, skip: str = "") -> list[dict]:
 
 
 def hero_beats(ep: Episode) -> dict[str, str]:
-    """The Wan clips this Short can use: picture key to clip path, for clips that exist on disk."""
-    return {p.stem: f"clips/{p.name}" for p in sorted(ep.path("clips").glob("*.mp4"))}
+    """The Wan clips this Short can use: picture key to clip path, for clips made from the still on disk now. A clip
+    of a still that was since rejected and replaced would bring the rejected picture back."""
+    out = {}
+    for clip in sorted(ep.path("clips").glob("*.mp4")):
+        side, still = clip.with_suffix(".json"), ep.path(f"art/{clip.stem}.png")
+        if side.exists() and still.exists() and read_json(side).get("still_sha256") == sha256_file(still):
+            out[clip.stem] = f"clips/{clip.name}"
+    return out
 
 
 def _script_run(ep: Episode, hero: bool) -> None:
@@ -299,9 +305,9 @@ def _script_run(ep: Episode, hero: bool) -> None:
 
 def script_run(ep: Episode, hero: bool = False) -> None:
     code = {"parody": sha256_bytes(Path(__file__).read_bytes()), "showrunner": sha256_bytes(Path(SR.__file__).read_bytes())}
-    from ..core import sha256_path
     clips = sha256_path(ep.path("clips")) if hero and ep.path("clips").exists() else None
     run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "code": code, "clips": clips,
+                                      "heroes": sorted(hero_beats(ep)) if hero else [],
                                       "history": history(ep.cfg.episodes_dir, ep.season, ep.id)},
               ["facts.json", "story.json"], ["script.json", "editorial.json", "brief.json"],
               lambda: _script_run(ep, hero))

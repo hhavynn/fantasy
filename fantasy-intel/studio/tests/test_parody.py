@@ -622,7 +622,8 @@ def fake_clip(ep, key):
     ep.path("clips").mkdir(exist_ok=True)
     ep.path(f"clips/{key}.mp4").write_bytes(b"clip")
     write_json(ep.path(f"clips/{key}.json"), {"model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers", "license": "Apache-2.0",
-                                              "prompt": "p", "seed": 1})
+                                              "prompt": "p", "seed": 1,
+                                              "still_sha256": sha256_file(ep.path(f"art/{key}.png"))})
 
 
 def test_hero_swaps_only_the_beats_with_a_finished_clip(made):
@@ -759,3 +760,66 @@ def test_a_clip_used_in_two_beats_plays_from_the_start_in_each(tmp_path, monkeyp
         for t in (0.0, 1.0):
             PM.scene_ai(Image.new("RGB", (1080, 1920)), t, 3.0, spec, c)
     assert len(made_readers) == 2
+
+
+def remake_still(ep, key):
+    PQ.reject(ep, key)
+    frames.run(ep, make=lambda t, s, o: Image.new("RGB", (832, 1472), (s % 250, 1, 2)).save(o))
+
+
+def test_a_clip_of_a_replaced_still_is_not_used_again(made):
+    key = read_json(made.path("script.json"))["shots"][1]["art"]
+    fake_clip(made, key)
+    parody.script_run(made, hero=True)
+    remake_still(made, key)
+    assert parody.hero_beats(made) == {}
+    parody.script_run(made, hero=True)
+    assert all(s["type"] == "ai_still" for s in read_json(made.path("script.json"))["shots"])
+
+
+def test_provenance_fails_a_clip_whose_still_has_changed(made):
+    key = read_json(made.path("script.json"))["shots"][1]["art"]
+    fake_clip(made, key)
+    parody.script_run(made, hero=True)
+    assert gate(made, PQ.gate_provenance).passed
+    remake_still(made, key)
+    g = gate(made, PQ.gate_provenance)
+    assert not g.passed and "changed" in " ".join(g.failures)
+
+
+def test_the_queue_remakes_a_clip_of_a_replaced_still(made):
+    key = PW.jobs(made.cfg, 2026, 6)[0]["key"]
+    fake_clip(made, key)
+    assert key not in [j["key"] for j in PW.jobs(made.cfg, 2026, 6)]
+    remake_still(made, key)
+    assert key in [j["key"] for j in PW.jobs(made.cfg, 2026, 6)]
+    assert not made.path(f"clips/{key}.mp4").exists()
+
+
+def test_saved_latents_of_a_replaced_still_are_thrown_away(made):
+    key = PW.jobs(made.cfg, 2026, 6)[0]["key"]
+    fake_clip(made, key)
+    made.path(f"clips/{key}.mp4").unlink()
+    made.path(f"clips/{key}.latents.pt").write_bytes(b"x")
+    remake_still(made, key)
+    PW.jobs(made.cfg, 2026, 6)
+    assert not made.path(f"clips/{key}.latents.pt").exists()
+
+
+def test_saved_latents_of_the_same_still_are_kept_for_the_decode(made):
+    key = PW.jobs(made.cfg, 2026, 6)[0]["key"]
+    fake_clip(made, key)
+    made.path(f"clips/{key}.mp4").unlink()
+    made.path(f"clips/{key}.latents.pt").write_bytes(b"x")
+    PW.jobs(made.cfg, 2026, 6)
+    assert made.path(f"clips/{key}.latents.pt").exists()
+
+
+@pytest.mark.parametrize("setting,value", [("still_steps", 4), ("still_size", [720, 1280]),
+                                           ("model_repo", "Wan-AI/Wan2.2-TI2V-5B-Diffusers")])
+def test_changed_generation_settings_remake_the_pictures(made, setting, value):
+    keys = sorted(read_json(made.path("art/manifest.json")))
+    made.cfg.raw["parody"] = {**made.cfg.raw["parody"], setting: value}
+    calls = []
+    frames.run(made, make=lambda t, s, o: (calls.append(o.stem), fake_still(t, s, o)))
+    assert sorted(calls) == keys

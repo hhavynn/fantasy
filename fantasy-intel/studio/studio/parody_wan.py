@@ -99,14 +99,19 @@ def jobs(cfg, season: int, week: int, slug: str | None = None) -> list[dict]:
         art = read_json(d / "art/manifest.json")
         for key in hero_keys(read_json(d / "script.json"), c["hero_clips"]):
             clip = d / "clips" / f"{key}.mp4"
+            latents, side = clip.with_suffix(".latents.pt"), clip.with_suffix(".json")
+            still_sha = sha256_file(d / f"art/{key}.png")
+            if not (side.exists() and read_json(side).get("still_sha256") == still_sha):
+                for old in (clip, latents, side):       # made from a still that has since been replaced
+                    old.unlink(missing_ok=True)
             if clip.exists():
                 continue
             out.append({"episode": d.name, "key": key, "still": str(d / f"art/{key}.png"),
-                        "still_sha256": sha256_file(d / f"art/{key}.png"), "prompt": P.prompt(key) + MOTION,
+                        "still_sha256": still_sha, "prompt": P.prompt(key) + MOTION,
                         "seed": art[key]["seed"], "size": c["wan_size"], "frames": c["wan_frames"],
                         "steps": c["wan_steps"], "model": c["wan_repo"], "license": c["wan_license"],
                         "model_path": os.path.expanduser(c["wan_model"]), "out": str(clip),
-                        "latents": str(clip.with_suffix(".latents.pt")), "sidecar": str(clip.with_suffix(".json"))})
+                        "latents": str(latents), "sidecar": str(side)})
     return out
 
 

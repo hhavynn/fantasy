@@ -149,10 +149,13 @@ def gate_provenance(ep: Episode, script: dict, facts: dict) -> Gate:
     manifest = ep.path("art/manifest.json")
     entries = read_json(manifest) if manifest.exists() else {}
     records = dict(entries)
+    failures = []
     for key, clip in clips(ep, script).items():
         side = clip.with_suffix(".json")
         records[f"clip:{key}"] = read_json(side) if side.exists() else {}
-    failures = []
+        still = ep.path(f"art/{key}.png")
+        if not still.exists() or records[f"clip:{key}"].get("still_sha256") != sha256_file(still):
+            failures.append(f"clip:{key}: its still changed after the clip was made")
     for key in stills(ep, script):
         if key not in entries:
             failures.append(f"{key}: no provenance record")

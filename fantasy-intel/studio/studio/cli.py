@@ -297,6 +297,8 @@ def make_parody(cfg: Config, season: int, week: int, force: set[str], only: str 
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story_json:
             write_json(ep.path("story.json"), story_json)
         stages = [("facts", flame.facts_run), ("script", lambda e: parody.script_run(e, hero)), ("frames", frames.run)]
+        if hero:             # a still the frames stage just replaced retires its clip
+            stages.append(("script", lambda e: parody.script_run(e, hero)))
         if not storyboard:
             stages += [("tts", tts.run), ("render", render_motion.run), ("thumbnail", thumbnail.run),
                        ("metadata", metadata.run)]

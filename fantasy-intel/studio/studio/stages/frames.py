@@ -56,8 +56,10 @@ def _run(ep: Episode, make: Callable[[str, int, Path], None]) -> None:
     for key in keys:
         text, seed = P.prompt(key), seed_for(ep, key, take.get(key, 0))
         out, mask = art / f"{key}.png", art / f"{key}.mask.png"
-        e = manifest.get(key)
-        if e and e["prompt"] == text and e["seed"] == seed and out.exists():
+        e = manifest.get(key) or {}
+        same = (e.get("prompt"), e.get("seed"), e.get("model"), e.get("steps"), e.get("size")) == (
+            text, seed, cfg["model_repo"], cfg["still_steps"], cfg["still_size"])
+        if same and out.exists():
             continue
         out.unlink(missing_ok=True)            # mflux will not overwrite: it would write <key>_1.png beside the old one
         mask.unlink(missing_ok=True)
