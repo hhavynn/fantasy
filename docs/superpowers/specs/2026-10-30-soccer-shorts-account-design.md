@@ -15,12 +15,13 @@ studio. Nothing publishes automatically: every upload stays a human decision.
 
 | Need | Source | Scope |
 |---|---|---|
-| Fixtures, tables, event window | football-data.org free plan (10 calls/min, needs a free key) | 12 competitions |
+| Fixtures, results, tables, event window, team xG | football-data.co.uk CSVs (no key) | Top five leagues; MLS results only |
 | Premier League players: minutes, form, xG, xA | FPL `bootstrap-static` | Premier League |
 | MLS players: minutes, xG, xA | American Soccer Analysis, credited | MLS |
-| Team form, team xG, shots, cards | football-data.co.uk CSVs | Leagues it publishes |
 
-La Liga, Bundesliga, Serie A and Ligue 1 carry team stats but no player xG. Understat stays out unless it
+La Liga, Bundesliga, Serie A and Ligue 1 carry team stats but no player xG. The CSVs replaced the planned
+football-data.org free plan during PR 3: they need no key and cover the same leagues, but not Champions League
+fixtures. football-data.co.uk's reuse terms were not confirmed. Understat stays out unless it
 confirms permission for this use. FBref (xG removed), FotMob (`/api/*` disallowed by robots.txt) and PitchAPI
 (no named data source) are excluded. Statz is for checking a number by hand, never a pipeline input.
 

@@ -1,8 +1,8 @@
 """Soccer sport adapter: the top five European leagues and MLS.
 
 Sources and entity recognition live here; club and player lists are in ``clubs.py`` and the cache from
-``sync_entities`` (run ``trends --sport soccer sync-entities``). Analytics are not connected yet, so
-``enrich`` reports no coverage and ideas carry only social counts.
+``sync_entities`` (run ``trends --sport soccer sync-entities``). Statistics come from ``stats.py``
+(``trends --sport soccer sync-stats``); without them ``enrich`` reports no coverage.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from social_intel.sports.base import Entity, EventWindow
 from social_intel.sports.soccer import ideas
 from social_intel.sports.soccer.clubs import CLUB_BY_ID, CLUB_SUBREDDITS, CLUBS
 from social_intel.sports.soccer.entities import SoccerIndex
+from social_intel.sports.soccer.stats import SoccerEnricher
 from social_intel.sports.soccer.topics import TOPIC_WEIGHTS, tag_topics
 
 SOCCER_SUBREDDITS = ["soccer", "PremierLeague", "football", "MLS"]
@@ -39,8 +40,10 @@ class SoccerAdapter:
     choose_formats = staticmethod(ideas.choose_formats)
     build_idea = staticmethod(ideas.build_idea)
 
-    def __init__(self, entity_cache: Path | None = None, now: datetime | None = None, index: SoccerIndex | None = None):
+    def __init__(self, entity_cache: Path | None = None, now: datetime | None = None, index: SoccerIndex | None = None,
+                 stats_db: Path | None = None):
         self.entity_cache = entity_cache
+        self.stats_db = stats_db or Path("/nonexistent/soccer.duckdb")
         self.now = now or datetime.now(timezone.utc)
         self.season = self.now.year if self.now.month >= 7 else self.now.year - 1
         self._index = index
@@ -147,12 +150,18 @@ class SoccerAdapter:
         topic = (c.topics[0] if c.topics else "chatter").replace("_", " ")
         return f"{' & '.join(names) or ', '.join(c.keywords[:3]) or 'soccer'}: {topic}"
 
+    def enricher(self, now: datetime | None = None) -> SoccerEnricher:
+        return SoccerEnricher(self.stats_db, self.index, now or self.now)
+
     def enrich(self, cluster: TrendCluster) -> dict[str, Any]:
-        return {"analytic_coverage": 0.0, "analytic_note": "soccer analytics not connected yet", "players": []}
+        return self.enricher().enrich(cluster.entities.get("players") or [], cluster.entities.get("teams") or [])
 
     # ------------------------------------------------------------------ calendar
 
     def event_window(self, now: datetime) -> EventWindow:
+        kick = self.enricher(now).next_kickoff()
+        if kick:
+            return EventWindow(f"next {kick[0]} kickoff {kick[1]:%a %b %d, %H:%M} UK", kick[1])
         days = (5 - now.weekday()) % 7 or 7
         return EventWindow("next Saturday matchday", (now + timedelta(days=days)).replace(tzinfo=timezone.utc))
 

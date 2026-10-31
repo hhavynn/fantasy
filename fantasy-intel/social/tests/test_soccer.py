@@ -2,15 +2,32 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
+import duckdb
+import httpx
 import pytest
 from conftest import NOW, make_post
 
 from social_intel import cli
+from social_intel.core.http import Fetcher
 from social_intel.engine import Engine
 from social_intel.ideas import generate
 from social_intel.sports.soccer.adapter import SoccerAdapter
 from social_intel.sports.soccer.clubs import CLUB_BY_ID, CLUBS
 from social_intel.sports.soccer.entities import SoccerIndex
+from social_intel.sports.soccer.stats import (
+    ASA_SOURCE,
+    SCHEMA,
+    SoccerEnricher,
+    csv_season,
+    parse_asa_players,
+    parse_fixtures,
+    parse_fpl_players,
+    parse_mls,
+    parse_results,
+    sync,
+)
 from social_intel.sports.soccer.sync_entities import parse_asa, parse_fpl, parse_wikidata
 
 PLAYERS = [
@@ -74,6 +91,13 @@ def test_bare_names_that_usually_mean_someone_else_do_not_match():
     assert idx.find_players("Rico Lewis started") == ["f:3"]
 
 
+def test_a_surname_that_is_also_a_first_name_needs_the_club():
+    idx = SoccerIndex([{"id": "f:1", "name": "David Raya Martin", "team": "arsenal", "popularity": 0.8},
+                       {"id": "f:2", "name": "Martin Odegaard", "team": "arsenal", "popularity": 0.8}])
+    assert idx.find_players("Martin Semmens on the deal") == []
+    assert idx.find_players("Martin Odegaard scored") == ["f:2"]
+
+
 def test_stars_outside_the_leagues_are_known(soccer):
     assert soccer.index.find_players("CR7 and Messi again") == ["star:cristiano-ronaldo", "star:lionel-messi"]
 
@@ -120,7 +144,7 @@ def test_rank_end_to_end_names_the_club(store, soccer):
     store.upsert_posts(posts, "soccer")
     rows = Engine(store, soccer).rank(now=NOW)
     assert rows and rows[0]["label"].startswith("Arsenal")
-    assert rows[0]["enrichment"]["analytic_coverage"] == 0.0
+    assert rows[0]["enrichment"]["stats"] == []
 
 
 def test_parse_fpl_maps_clubs():
@@ -155,3 +179,123 @@ def test_parse_wikidata_keeps_the_latest_spell_at_a_known_club():
 def test_sync_command_is_soccer_only(tmp_path, capsys):
     assert cli.main(["--db", str(tmp_path / "s.duckdb"), "sync-entities"]) == 2
     assert "soccer" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- statistics
+
+def test_csv_season_rolls_over_in_july():
+    assert csv_season(datetime(2026, 10, 1)) == "2627" and csv_season(datetime(2027, 3, 1)) == "2627"
+    assert csv_season(datetime(2027, 7, 1)) == "2728"
+
+
+RESULTS = """﻿Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HxG,AxG
+E0,12/10/2026,15:00,Arsenal,Man United,2,0,H,1.8,0.4
+E0,18/10/2026,15:00,Tottenham,Arsenal,1,1,D,1.0,1.5
+E0,25/10/2026,15:00,Arsenal,Nott'm Forest,0,1,A,1.2,0.9
+E0,31/12/2026,15:00,Arsenal,Mystery Town,,,,,
+"""
+
+
+def stats_db(tmp_path):
+    idx = SoccerIndex(PLAYERS)
+    rows, unknown = parse_results(RESULTS, "Premier League", idx, "2026-10-30")
+    assert len(rows) == 3 and unknown == {"Mystery Town"}
+    path = tmp_path / "soccer.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute(SCHEMA)
+    con.executemany("INSERT INTO matches VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
+    fixtures = parse_fixtures("Div,Date,Time,HomeTeam,AwayTeam\nE0,01/11/2026,16:30,Chelsea,Arsenal\n"
+                              "B1,31/10/2026,15:00,Waregem,Genk\n", idx, "2026-10-30")
+    assert len(fixtures) == 1
+    con.executemany("INSERT INTO fixtures VALUES (?,?,?,?,?,?)", fixtures)
+    con.execute("INSERT INTO player_seasons VALUES ('FPL bootstrap-static', 'fpl:1', 700, 5, 3, 4.26, 2.1, '2026-10-30')")
+    con.close()
+    return path, idx
+
+
+def test_enrich_gives_sourced_club_and_player_stats(tmp_path):
+    path, idx = stats_db(tmp_path)
+    out = SoccerEnricher(path, idx, NOW.replace(month=10, day=30)).enrich(["fpl:1"], ["arsenal"])
+    by = {s["label"]: s for s in out["stats"]}
+    assert by["Arsenal last 3 league games"]["value"] == "L-D-W"
+    assert "Arsenal Premier League position" not in by  # only 4 of 20 clubs in this fixture
+    assert by["Arsenal xG difference, last 3 league games"]["value"] == 2.2
+    assert by["Bukayo Saka xG this season"]["value"] == 4.26
+    assert all(s["source"] and s["as_of"] for s in out["stats"]) and out["analytic_coverage"] == 1.0
+
+
+def test_position_needs_the_whole_league(tmp_path):
+    path, idx = stats_db(tmp_path)
+    con = duckdb.connect(str(path))
+    others = [c.id for c in CLUBS if c.league == "Premier League" and c.id not in
+              ("arsenal", "man-utd", "tottenham", "nottingham-forest")][:16]
+    for a, b in zip(others[::2], others[1::2]):
+        con.execute("INSERT INTO matches VALUES ('t', 'Premier League', DATE '2026-10-01', ?, ?, 0, 0, NULL, NULL, 'x')", [a, b])
+    con.close()
+    out = SoccerEnricher(path, idx, NOW.replace(month=10, day=30)).enrich([], ["arsenal"])
+    assert {s["label"]: s["value"] for s in out["stats"]}["Arsenal Premier League position"] == 1
+
+
+def test_enrich_is_point_in_time(tmp_path):
+    path, idx = stats_db(tmp_path)
+    out = SoccerEnricher(path, idx, NOW.replace(month=10, day=20)).enrich([], ["arsenal"])
+    by = {s["label"]: s["value"] for s in out["stats"]}
+    assert by["Arsenal last 2 league games"] == "D-W"
+
+
+def test_enrich_without_stats_reports_no_coverage(tmp_path):
+    out = SoccerEnricher(tmp_path / "missing.duckdb", SoccerIndex(), NOW).enrich([], ["arsenal"])
+    assert out["analytic_coverage"] == 0.0 and out["stats"] == []
+
+
+def test_event_window_uses_the_next_fixture(tmp_path):
+    path, idx = stats_db(tmp_path)
+    a = SoccerAdapter(index=idx, stats_db=path, now=NOW)
+    w = a.event_window(NOW.replace(month=10, day=30))
+    assert "Premier League" in w.label and w.expires.day == 1
+
+
+def test_event_window_falls_back_without_fixtures(soccer):
+    assert soccer.event_window(NOW).label == "next Saturday matchday"
+
+
+def test_parse_mls_keeps_the_season(tmp_path):
+    text = ("Country,League,Season,Date,Time,Home,Away,HG,AG\nUSA,MLS,2025,01/03/2025,20:00,LAFC,Austin FC,1,0\n"
+            "USA,MLS,2026,29/10/2026,02:30,Vancouver Whitecaps,San Diego FC,4,1\n")
+    rows, unknown = parse_mls(text, 2026, SoccerIndex(), "2026-10-30")
+    assert not unknown and [(r[3], r[4], r[5]) for r in rows] == [("vancouver-whitecaps", "san-diego-fc", 4)]
+
+
+def test_player_parsers_use_entity_ids():
+    fpl = parse_fpl_players({"elements": [{"code": 1, "minutes": 90, "goals_scored": 1, "assists": 0,
+                                           "expected_goals": "0.74", "expected_assists": "0.10"},
+                                          {"code": 2, "minutes": 0, "goals_scored": 0, "assists": 0,
+                                           "expected_goals": "0", "expected_assists": "0"}]}, "2026-10-30")
+    assert [r[1] for r in fpl] == ["fpl:1"] and fpl[0][5] == 0.74
+    asa = parse_asa_players([{"player_id": "p", "minutes_played": 900, "goals": 2, "primary_assists": 1,
+                              "xgoals": 1.5, "xassists": 0.5}], "2026-10-30")
+    assert asa[0][1] == "asa:p" and asa[0][0] == ASA_SOURCE
+
+
+def test_sync_keeps_a_failed_sources_rows(tmp_path):
+    path = tmp_path / "soccer.duckdb"
+    good = fetcher_for_stats(RESULTS)
+    counts, errors = sync(path, good, NOW.replace(month=10, day=30), SoccerIndex(PLAYERS))
+    assert counts["Premier League"] == 3 and any("unmapped" in e for e in errors)
+    bad = fetcher_for_stats(None)
+    counts, errors = sync(path, bad, NOW.replace(month=10, day=30), SoccerIndex(PLAYERS))
+    assert "Premier League" not in counts and errors
+    con = duckdb.connect(str(path), read_only=True)
+    assert con.execute("SELECT count(*) FROM matches WHERE league = 'Premier League'").fetchone()[0] == 3
+    con.close()
+
+
+def fetcher_for_stats(body):
+    def handler(req):
+        if body is None:
+            return httpx.Response(404, text="")
+        if "/E0.csv" in str(req.url):
+            return httpx.Response(200, text=body)
+        return httpx.Response(404, text="")
+
+    return Fetcher(transport=httpx.MockTransport(handler), sleep=lambda s: None, min_interval_s=0, retries=0)
