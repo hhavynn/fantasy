@@ -187,7 +187,7 @@ for (const width of [320, 1440]) {
       await expect(allPages).toBeVisible();
       await expect(allPages.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
       await expect(allPages.locator('a[href$="/projection-performance"]')).toHaveCount(0);
-      await expect(allPages.getByRole("link", { name: "Rankings" })).toBeVisible();
+      await expect(allPages.getByRole("link", { name: "Rankings", exact: true })).toBeVisible();
       await expectStructure(page);
       await expectNoBrokenValues(page);
       await bothThemes(page, true);
