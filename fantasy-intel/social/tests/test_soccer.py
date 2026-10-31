@@ -130,6 +130,18 @@ def test_formats_follow_topics(soccer, topics, want):
     assert soccer.choose_formats({"topics": topics}) == want
 
 
+@pytest.mark.parametrize("topics,want", [
+    (["injury", "transfer"], []), (["serious", "award"], []), (["injury", "refereeing"], ["explainer"]),
+    (["award", "transfer", "serious"], ["parody", "parallel_universe"]),
+])
+def test_injury_and_serious_stories_never_get_fiction_formats(soccer, topics, want):
+    assert soccer.choose_formats({"topics": topics}) == want
+
+
+def test_serious_stories_are_tagged(soccer):
+    assert "serious" in soccer.tag_topics("Former striker has died aged 54")
+
+
 def test_parody_ideas_carry_the_content_rules(soccer):
     c = {"cluster_id": "c", "topic_id": "t", "label": "Kylian Mbappé: award", "sport": "soccer", "topics": ["award"],
          "score": {"total": 60, "flags": [], "components": []}, "top_posts": [], "entities": {"players": ["wd:Q1"]}}

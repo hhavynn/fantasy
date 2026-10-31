@@ -20,6 +20,8 @@ TOPIC_PATTERNS: dict[str, str] = {
     "manager": r"\bsacked\b|\bfired\b|\bnew manager\b|\bhead coach\b|\bmanagerial\b|\bresign(s|ed)?\b",
     "crisis": r"\bcrisis\b|\bdisaster\b|\bembarrass|\bcollapse|\bhumiliat|\bfinished\b|\bwashed\b|\bbottled?\b",
     "rise": r"\bworld class\b|\bmasterclass\b|\bbest in the world\b|\bgenerational\b|\bwonderkid\b|\bhat[- ]trick\b",
+    "serious": r"\bdied\b|\bdeath\b|\bpasses away\b|\bpassed away\b|\btragedy\b|\bracis|\babuse|\bassault|\bhospital|"
+               r"\bmental health\b|\bsuicide\b|\bcrash\b|\barrested\b|\bcharged with\b",
     "meme": r"\blmao|\blol\b|\bmeme|\bcooked\b|\bbro\b|\bgoat\b|\bcope\b|\bbanter\b|\bratio\b",
 }
 _COMPILED = {k: re.compile(v, re.I) for k, v in TOPIC_PATTERNS.items()}

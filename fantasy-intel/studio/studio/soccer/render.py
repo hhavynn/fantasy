@@ -20,6 +20,8 @@ from . import scenes as S
 
 VERSION = 1
 HASHTAGS = "#shorts #football #soccer"
+FICTION_NOTICE = ("PARODY: cartoon characters and invented events. Nothing shown here happened, and no line is a real "
+                  "quote from anyone.")
 
 
 def plan(ep: Episode) -> dict:
@@ -95,7 +97,9 @@ def _run(ep: Episode) -> None:
 def thumbnail(ep: Episode) -> None:
     script = read_json(ep.path("script.json"))
     frame = S.draw(script["shots"][0], 2.0, 3.0, S.Ctx())
-    img = frame.resize((720, 1280)).crop((0, 280, 720, 685)).resize((1280, 720))
+    fiction = script["format"] != "explainer"
+    top = 80 if fiction else 280               # keeps a parody's label inside the thumbnail
+    img = frame.resize((720, 1280)).crop((0, top, 720, top + 405)).resize((1280, 720))
     img.save(ep.path("thumbnail.png"))
 
 
@@ -104,12 +108,17 @@ def metadata(ep: Episode) -> None:
     clone = ep.cfg["shorts"].get("voice_clone")
     disclosure = AI_DISCLOSURE_CLONE if clone else AI_DISCLOSURE
     lines = [script["title_candidates"][0], "", disclosure, "Source: " + "; ".join(script["sources"]) + ".", "", HASHTAGS]
+    fiction = script["format"] != "explainer"
+    if fiction:
+        lines[1:1] = [FICTION_NOTICE, ""]
+    tag = script["explainer"] or script["format"].replace("_", " ")
     write_json(ep.path("metadata.json"), {
         "episode_id": ep.id, "title": script["title_candidates"][0], "title_candidates": script["title_candidates"],
-        "description": "\n".join(lines), "tags": ["shorts", "football", "soccer", script["explainer"], "football rules"],
+        "description": "\n".join(lines), "tags": ["shorts", "football", "soccer", tag, "football parody" if fiction else "football rules"],
         "category_id": "17", "default_language": "en", "default_audio_language": "en",
         "privacy_status": "private", "self_declared_made_for_kids": script["made_for_kids"],
-        "contains_synthetic_media": script["synthetic_voice"], "chapters": [],
+        "contains_synthetic_media": True if fiction else script["synthetic_voice"], "chapters": [],
+        "altered_content": fiction,
         "files": {"video": "final.mp4", "thumbnail": "thumbnail.png", "captions": "captions.srt"},
     })
 

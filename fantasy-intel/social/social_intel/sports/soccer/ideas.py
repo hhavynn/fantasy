@@ -23,12 +23,16 @@ PARODY_TOPICS = {"award", "rivalry", "transfer", "crisis", "title_race", "manage
 WHAT_IF_TOPICS = {"transfer", "rivalry", "title_race", "relegation"}
 EXPLAINER_TOPICS = {"rules", "refereeing", "tactics"}
 TIMELY_TOPICS = {"award", "rivalry", "manager", "crisis"}
+# Someone's injury or a real harm is never the joke. No fiction formats for these stories.
+NO_FICTION_TOPICS = {"injury", "serious"}
 CONTENT_RULES = ("Original cartoon characters only: no face-swaps, cloned voices, match footage or club crests. "
                  "Label it as parody on screen and aloud. Invented lines must be obviously absurd, never a real quote.")
 
 
 def choose_formats(c: dict[str, Any]) -> list[str]:
     topics = set(c.get("topics") or [])
+    if set((c.get("topics") or [])[:2]) & NO_FICTION_TOPICS:   # topics run most common first; one stray post isn't the story
+        return ["explainer"] if topics & EXPLAINER_TOPICS else []
     out = []
     if topics & PARODY_TOPICS:
         out.append("parody")

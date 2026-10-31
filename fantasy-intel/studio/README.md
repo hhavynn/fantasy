@@ -128,6 +128,14 @@ and `history.jsonl` stay under `episodes/soccer/`. Explainers are deterministic 
 code-drawn: plain pitch, anonymous dots, cards and type. QC adds `content_rules` (only those scene types, so no
 photo, crest or footage can reach a frame) and `claim_sources`.
 
+A selected parody or parallel-universe idea renders with labelled cartoons (`studio/soccer/toons.py`,
+`parody.py`). The cast is a closed list of fictional archetypes, so no real person is ever drawn, and the narrator
+is the channel's own voice. `parody_rules` blocks the Short unless the opening says aloud that it is invented,
+every scene carries the label, no real name appears in invented dialogue or as the speaker of an invented line,
+the story is not mainly an injury or a serious harm, and the description carries the notice and altered-content
+disclosure. The originality gate rejects a repeated template, so stock templates are one-offs. For a new event, write
+a fresh script and pass it with `--beats`: a JSON list of `[line, scene]` pairs, held to the same gates.
+
 ## QC and provenance
 
 `make-episode` finishes with QC gates and exits non-zero if any fails (upload is blocked):
