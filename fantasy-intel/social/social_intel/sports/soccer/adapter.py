@@ -41,7 +41,8 @@ class SoccerAdapter:
 
     def source_config(self) -> SourceConfig:
         return SourceConfig(sport=self.sport, subreddits=["soccer", "PremierLeague"],
-                            search_terms=["premier league", "transfer news"])
+                            search_terms=["premier league", "transfer news"],
+                            extra={"activity_subreddits": ["soccer"]})
 
     def annotate(self, post: SocialPost) -> None:
         post.entities = {}

@@ -46,9 +46,18 @@ def make_adapter(sport: str, now: datetime | None = None):
     raise SystemExit(f"unknown sport {sport!r}")
 
 
+def sport_paths(sport: str) -> tuple[Path, Path]:
+    """(database, studio history). source_state is keyed by collector, so a second sport needs its own
+    database or one sport's cursors and cooldowns would suppress the other's collection."""
+    if sport == "nfl":
+        return DATA / "social.duckdb", STUDIO_EPISODES / "history.jsonl"
+    return DATA / sport / "social.duckdb", STUDIO_EPISODES / sport / "history.jsonl"
+
+
 def make_engine(args) -> Engine:
-    store = Store(Path(args.db) if args.db else DATA / "social.duckdb")
-    return Engine(store, make_adapter(args.sport), history_path=STUDIO_EPISODES / "history.jsonl")
+    db, history = sport_paths(args.sport)
+    store = Store(Path(args.db) if args.db else db)
+    return Engine(store, make_adapter(args.sport), history_path=history)
 
 
 # ---------------------------------------------------------------- printing helpers
@@ -130,8 +139,12 @@ def print_cluster(c: dict[str, Any], related: list[dict[str, Any]]) -> None:
             print(f"        hook: {i['hooks'][0]}")
 
 
-def print_idea(i: dict[str, Any]) -> None:
-    print(f"\n{i['working_title']}   [{ideas_mod.FORMAT_LABEL.get(i['format'], i['format'])}]")
+def format_labels(eng: Engine) -> dict[str, str]:
+    return getattr(eng.adapter, "format_labels", lambda: ideas_mod.FORMAT_LABEL)()
+
+
+def print_idea(i: dict[str, Any], labels: dict[str, str]) -> None:
+    print(f"\n{i['working_title']}   [{labels.get(i['format'], i['format'])}]")
     print(f"  id {i['idea_id']} | trend score {i['trend_score']} | research confidence {i['research_confidence']} | "
           f"{i['duration_s']} s | relevant {i['relevance_window']}" + (f" | status {i['status']}" if i.get("status") else ""))
     print("\n  Hooks (first 1-3 seconds):")
@@ -236,7 +249,7 @@ def cmd_ideas(eng: Engine, args) -> int:
     eng.store.save_ideas(dicts, fps)
     for d in dicts:
         if args.full:
-            print_idea(d)
+            print_idea(d, format_labels(eng))
         else:
             print(f"{d['idea_id']}  {d['trend_score']:>5.1f}  conf {d['research_confidence']:.2f}  "
                   f"[{d['format']}] {d['working_title']}\n            hook: {d['hooks'][0]}")
@@ -250,7 +263,7 @@ def cmd_idea(eng: Engine, args) -> int:
     if not i:
         print("no such idea")
         return 2
-    print_idea(i)
+    print_idea(i, format_labels(eng))
     return 0
 
 

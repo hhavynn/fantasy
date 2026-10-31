@@ -103,6 +103,11 @@ the stub that documents what the soccer generator implements. Both share one ver
 contract (`social_intel/contract.py`, `trends schema`, `CONTRACT_VERSION = social-intel/1.0`):
 posts, clusters with score components, ideas with sourced stats. Readers must ignore unknown keys.
 
+Each sport other than NFL keeps its own database (`data/social/<sport>/social.duckdb`) and studio history
+(`episodes/<sport>/history.jsonl`), because collector cursors and cooldowns are stored per collector. NFL-only
+collectors set `sports = frozenset({"nfl"})` and report `skipped` elsewhere. An adapter can supply its own
+formats through the optional members listed in `social_intel/sports/base.py`.
+
 ## Tests
 
 ```bash
