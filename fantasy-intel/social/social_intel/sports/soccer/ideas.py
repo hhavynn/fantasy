@@ -66,6 +66,10 @@ def build_idea(c: dict[str, Any], fmt: str, rot: HookRotation, window, meme_bank
                  "ask": f"This is a parody. The {who} story isn't."}
         graphics, duration = ["cartoon scene with a visible parody label"], 35
     picks = rot.pick(hooks, 3, lead="fmt")
+    story = (c.get("topics") or ["latest"])[0].replace("_", " ")
+    fillers = [f"{who}: {story}, and the part nobody's drawn yet.", f"The {story} story around {who}, in under a minute.",
+               f"{who}. {story.capitalize()}. Here's the short version."]
+    picks += [f for f in fillers if f not in picks][: 3 - len(picks)]  # rotation is spent when a subject repeats
     links = [tp["url"] for tp in (c.get("top_posts") or []) if tp.get("url")][:6]
     enr = c.get("enrichment") or {}
     stats = [SourcedStat(s["label"], s["value"], s["source"], s.get("as_of")) for s in enr.get("stats") or []]

@@ -98,6 +98,12 @@ def test_a_surname_that_is_also_a_first_name_needs_the_club():
                        {"id": "f:2", "name": "Martin Odegaard", "team": "arsenal", "popularity": 0.8}])
     assert idx.find_players("Martin Semmens on the deal") == []
     assert idx.find_players("Martin Odegaard scored") == ["f:2"]
+def test_aliases_survive_the_entity_cache(tmp_path):
+    path = tmp_path / "entities.json"
+    players = [{"id": "fpl:9", "name": "Morgan Gibbs-White", "team": "nottingham-forest", "popularity": 0.6,
+                "aliases": ["Gibbs-White"]}]
+    SoccerIndex(players, "2026-10-30").dump(path)
+    assert SoccerIndex.load(path).find_players("Gibbs-White scored again") == ["fpl:9"]
 
 
 def test_stars_outside_the_leagues_are_known(soccer):
@@ -143,6 +149,13 @@ def test_explainer_title_names_the_rule_topic_not_the_story(soccer):
          "topics": ["award", "refereeing"], "score": {"total": 60, "flags": [], "components": []}, "top_posts": []}
     idea = soccer.build_idea(c, "explainer", HookRotation(), soccer.event_window(NOW), {}, NOW)
     assert "refereeing" in idea.working_title and "award" not in idea.working_title
+def test_same_subject_twice_still_gets_three_hooks(soccer):
+    def cluster(cid, topic):
+        return {"cluster_id": cid, "topic_id": cid, "label": f"Arsenal: {topic}", "sport": "soccer", "topics": [topic],
+                "score": {"total": 60, "flags": [], "components": []}, "top_posts": [], "entities": {}}
+
+    ideas = generate([cluster("a", "award"), cluster("b", "manager")], soccer, now=NOW)
+    assert len(ideas) == 2 and all(len(i.hooks) == 3 for i in ideas)
 
 
 def test_rank_end_to_end_names_the_club(store, soccer):
