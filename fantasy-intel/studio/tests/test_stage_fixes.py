@@ -71,3 +71,12 @@ def test_name_suffixes_are_spoken_as_words_one_token_each():
                              ("Coleman Sr. played", "Sr.", "sˈinjəɹ")]:
         out = tts.apply_pronunciations(text, lex)
         assert f"[{word}](/{phon}/)" in out and out.count("[") == 1, out
+
+
+def test_the_backends_pandas_guard_stays_out_of_the_studio():
+    """facts.py imports the backend, whose fast-fail pandas finder makes find_spec raise. torch asks find_spec about
+    optional packages while Kokoro loads, so the guard must not outlive that import here."""
+    import importlib.util
+
+    from studio.stages import facts  # noqa: F401
+    importlib.util.find_spec("pandas")
