@@ -98,8 +98,8 @@ recycled x0.6, already covered x0.45.
 ## Soccer and other repositories
 
 The engine is sport-agnostic; a sport is an adapter (`social_intel/sports/base.py`). Football lives
-in `sports/football` (NFL entities, fantasy topics, `fantasy.duckdb` enrichment); `sports/soccer` is
-the stub that documents what the soccer generator implements. Both share one versioned JSON
+in `sports/football` (NFL entities, fantasy topics, `fantasy.duckdb` enrichment); `sports/soccer`
+covers the top five European leagues and MLS. Both share one versioned JSON
 contract (`social_intel/contract.py`, `trends schema`, `CONTRACT_VERSION = social-intel/1.0`):
 posts, clusters with score components, ideas with sourced stats. Readers must ignore unknown keys.
 
@@ -107,6 +107,19 @@ Each sport other than NFL keeps its own database (`data/social/<sport>/social.du
 (`episodes/<sport>/history.jsonl`), because collector cursors and cooldowns are stored per collector. NFL-only
 collectors set `sports = frozenset({"nfl"})` and report `skipped` elsewhere. An adapter can supply its own
 formats through the optional members listed in `social_intel/sports/base.py`.
+
+Soccer setup and use:
+
+```bash
+uv run trends --sport soccer sync-entities   # players from FPL, American Soccer Analysis and Wikidata; rerun weekly
+uv run trends --sport soccer run
+uv run trends --sport soccer list
+```
+
+Its schedule is `scripts/launchd/com.fantasy-intel.social-trends-soccer.plist`, which runs at :10, :30 and :50.
+Please credit American Soccer Analysis where its data appears. Video formats are a labelled cartoon parody, a
+parallel-universe what-if and an "every X explained" explainer (`sports/soccer/ideas.py`); parody ideas carry the
+content rules from `docs/superpowers/specs/2026-10-30-soccer-shorts-account-design.md`.
 
 ## Tests
 

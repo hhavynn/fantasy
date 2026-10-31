@@ -28,6 +28,7 @@ from typing import Any
 from social_intel import ideas as ideas_mod
 from social_intel.collectors import REGISTRY
 from social_intel.contract import CONTRACT_VERSION, iso, json_schema, utcnow
+from social_intel.core.http import Fetcher
 from social_intel.core.store import Store
 from social_intel.engine import DEFAULT_COLLECTORS, Engine
 
@@ -42,7 +43,7 @@ def make_adapter(sport: str, now: datetime | None = None):
         return FootballAdapter(entity_cache=DATA / "entities_nfl.json", now=now)
     if sport == "soccer":
         from social_intel.sports.soccer.adapter import SoccerAdapter
-        return SoccerAdapter()
+        return SoccerAdapter(entity_cache=DATA / "soccer" / "entities_soccer.json", now=now)
     raise SystemExit(f"unknown sport {sport!r}")
 
 
@@ -327,7 +328,7 @@ def cmd_select(eng: Engine, args) -> int:
     pkg = research_package(eng, i)
     week = pkg["studio_handoff"]["week"] or 0
     season = eng.adapter.season
-    out_dir = STUDIO_EPISODES / f"{season}-w{week:02d}-trends"
+    out_dir = (eng.history_path or STUDIO_EPISODES / "history.jsonl").parent / f"{season}-w{week:02d}-trends"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{i['idea_id']}.json"
     cmd = pkg["studio_handoff"]["command"]
@@ -363,6 +364,19 @@ def cmd_export(eng: Engine, args) -> int:
     else:
         print(text)
     return 0
+
+
+def cmd_sync_entities(eng: Engine, args) -> int:
+    if not hasattr(eng.adapter, "entity_cache") or eng.sport == "nfl":
+        print("sync-entities is for soccer: NFL entities come from the analytics database")
+        return 2
+    from social_intel.sports.soccer.sync_entities import sync
+    fetcher = eng.fetcher or Fetcher(cache_dir=eng.store.path.parent / "http_cache", timeout_s=60)
+    n, errors = sync(eng.adapter.entity_cache, fetcher, utcnow())
+    for e in errors:
+        print(f"  {e}")
+    print(f"{n} players written to {eng.adapter.entity_cache}" if n else "no players found: cache left unchanged")
+    return 0 if n else 1
 
 
 def cmd_run(eng: Engine, args) -> int:
@@ -401,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("export"); p.add_argument("--out"); p.add_argument("--limit", type=int, default=25)
     p.add_argument("--fixture", action="store_true", help="label the bundle as fixture data")
     sub.add_parser("schema")
+    sub.add_parser("sync-entities", help="soccer: refresh the player list from public sources")
     p = sub.add_parser("run"); collect_args(p)
     p.add_argument("--hours", type=float, default=72); p.add_argument("--top", type=int, default=8)
     p.add_argument("--min-score", type=float, default=0)
@@ -412,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return {"collect": cmd_collect, "health": cmd_health, "rank": cmd_rank, "list": cmd_list, "show": cmd_show,
                 "ideas": cmd_ideas, "idea": cmd_idea, "select": cmd_select, "export": cmd_export,
+                "sync-entities": cmd_sync_entities,
                 "run": cmd_run}[args.cmd](eng, args)
     finally:
         eng.store.close()
