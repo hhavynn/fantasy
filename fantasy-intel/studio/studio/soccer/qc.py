@@ -17,6 +17,8 @@ from .toons import CAST
 
 STAGES = ("script", "tts", "render", "thumbnail", "metadata")
 ATTRIBUTION = "Source:"
+NAME_PARTICLES = {"de", "del", "der", "di", "da", "dos", "das", "do", "van", "von", "la", "le", "el", "al", "bin", "ibn",
+                  "jr", "st"}
 BLOCKED_TOPICS = {"injury", "serious"}     # an injury or a real harm is never the joke
 SPEECH = r"(?:says?|said|told|tells|admits?|admitted|claims?|claimed|insists?|insisted)"
 BANNED_SCENE_KEYS = {"photo", "image", "headshot", "footage", "crest", "logo", "video"}
@@ -54,7 +56,8 @@ def fold(text: str) -> str:
 
 
 def _names(script: dict) -> list[str]:
-    return sorted({w for name in script["real_names"] for w in re.split(r"\s+", fold(name)) if len(w) > 3})
+    return sorted({w for name in script["real_names"] for w in re.split(r"[\s-]+", fold(name))
+                   if w and w not in NAME_PARTICLES})
 
 
 def gate_parody(script: dict, meta: dict) -> Q.Gate:
@@ -76,7 +79,8 @@ def gate_parody(script: dict, meta: dict) -> Q.Gate:
             members += (shot.get(side) or {}).get("cast", [])
         failures += [f"shot {i}: {m['who']!r} is not in the cast" for m in members if m["who"] not in CAST]
         said = fold((shot.get("say") or {}).get("text", ""))
-        failures += [f"shot {i}: a real name in invented dialogue: {n}" for n in names if n in said]
+        failures += [f"shot {i}: a real name in invented dialogue: {n}" for n in names
+                     if re.search(rf"\b{re.escape(n)}\b", said)]
     for seg in script["narration_segments"]:
         for n in names:
             if re.search(rf"\b{re.escape(n)}\b(?:\W+\w+){{0,4}}\W+{SPEECH}\b|\b{SPEECH}\b(?:\W+\w+){{0,2}}\W+{re.escape(n)}\b",

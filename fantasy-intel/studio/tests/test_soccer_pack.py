@@ -195,6 +195,21 @@ def test_a_script_never_changes_the_shared_templates():
     assert all(m["who"] != "kane" for m in b["shots"][1]["cast"])
 
 
+@pytest.mark.parametrize("line", ["Son said the trophy was his.", "The trophy, said Son, was his."])
+def test_short_names_are_protected_in_narration(line):
+    p = package(label="Son Heung-min: award")
+    scene = {"type": "toon", "set": "vault", "cast": [{"who": "trophy", "x": 540}]}
+    assert not qc.gate_parody(SP.build_parody("parody", p, [[line, scene]]), meta_for({})).passed
+
+
+def test_short_names_are_protected_in_dialogue_without_substring_matches():
+    p = package(label="Son Heung-min: award")
+    scene = {"type": "toon", "set": "vault", "cast": [{"who": "trophy", "x": 540}], "say": {"who": "trophy", "text": "I AM SON"}}
+    assert not qc.gate_parody(SP.build_parody("parody", p, [["The trophy speaks.", scene]]), meta_for({})).passed
+    scene["say"]["text"] = "PERSONALLY, NO"     # contains "son" inside a word
+    assert qc.gate_parody(SP.build_parody("parody", p, [["The trophy speaks.", scene]]), meta_for({})).passed
+
+
 def test_every_real_name_in_the_story_is_protected():
     p = package(label="Harry Kane & Kylian Mbappé: award")
     p["cluster"]["entity_names"] = {"x": "Lamine Yamal"}
