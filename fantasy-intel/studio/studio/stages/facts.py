@@ -21,6 +21,10 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
+# Importing the backend installs its fast-fail pandas finder (app/__init__.py), which makes find_spec("pandas") raise.
+# The studio doesn't need that speed-up, and torch asks find_spec about optional packages while Kokoro loads.
+sys.meta_path[:] = [f for f in sys.meta_path if getattr(f, "__name__", "") != "_NoPandas"]
+
 VERSION = 12
 PLAYOFF_WEEKS = [15, 16, 17]
 
