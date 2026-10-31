@@ -41,7 +41,7 @@ def _run(ep: Episode) -> None:
     else:
         kicker = stat = label = None
 
-    shot = headshots.for_player(ep.cfg, p) if ep.fmt == "short" else None
+    shot = headshots.for_player(ep.cfg, p, script.get("structure")) if ep.fmt == "short" else None
     text_w = (800 if shot else SIZE[0]) - 128
     c = V.Canvas(SIZE)
     c.rect((0, 0, 18, SIZE[1]), fill=color, radius=0)

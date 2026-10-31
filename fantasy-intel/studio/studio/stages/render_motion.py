@@ -118,6 +118,8 @@ class Ctx:
         self.tokens: list[dict] = []
         self.headshot = None
         self.headshots_on = False
+        self.episode_dir = None          # the AI parody show's pictures live in the episode (parody_motion.py)
+        self.clips: dict = {}
 
     def art(self, width: int):
         """The player's picture: his headshot (when enabled and available) or the jersey graphic."""
@@ -474,8 +476,9 @@ def plan(ep: Episode, work=None) -> dict:
     p = facts["players"][0]
     accent = FPS.ACCENT[story] if story in FPS.ACCENT else M.GOLD if story in ("fill_in", "mystery", "opportunity") else (M.DOWN if p["role"] == "faller" else M.UP)
     ctx = Ctx(facts, claims, accent, story)
-    ctx.headshot = headshots.for_player(ep.cfg, p)
-    ctx.headshots_on = headshots.enabled(ep.cfg)
+    ctx.headshot = headshots.for_player(ep.cfg, p, script["structure"])
+    ctx.headshots_on = headshots.enabled(ep.cfg) and ctx.headshot is not None
+    ctx.episode_dir = ep.dir
 
     scenes, cues, voice, offset, events = [], [], [], 0.0, []
     sr = None
@@ -593,6 +596,8 @@ def _run(ep: Episode) -> None:
             frame.paste(layer, (0, M.CAPTION_Y - 165), layer)
         proc.stdin.write(frame.tobytes())
     proc.stdin.close()
+    for reader in ctx.clips.values():
+        reader.close()
     if proc.wait():
         raise RuntimeError(f"ffmpeg failed: {proc.stderr.read().decode()[-1500:]}")
 
@@ -608,15 +613,17 @@ def _run(ep: Episode) -> None:
 
 
 def run(ep: Episode) -> None:
-    shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
+    structure = read_json(ep.path("script.json"))["structure"]
+    shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0], structure)
     from pathlib import Path
     from ..core import sha256_file
-    from .. import edit_kit as EK, edit_scenes as ES, series_audio as SA, series_scenes as SS, sfx_palette as SP
-    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP, EK, ES)}
+    from .. import edit_kit as EK, edit_scenes as ES, parody_motion as PM, series_audio as SA, series_scenes as SS, sfx_palette as SP
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP, EK, ES, PM)}
     if SP.REGISTRY_PATH.exists():          # the meme sounds' trims, hit points and levels
         code["sfx_registry"] = sha256_file(SP.REGISTRY_PATH)
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
                                       "code": code,
                                       "headshot": shot and shot["sha256"]},
-              ["script.json", "facts.json", "audio", "story.json"], ["final.mp4", "captions.srt", "captions.json"],
+              ["script.json", "facts.json", "audio", "story.json", *[d for d in ("art", "clips") if ep.path(d).exists()]],
+              ["final.mp4", "captions.srt", "captions.json"],
               lambda: _run(ep))

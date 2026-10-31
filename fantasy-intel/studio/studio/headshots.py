@@ -49,13 +49,16 @@ def fetch(espn_id) -> Path | None:
     return path
 
 
-def for_player(cfg, player: dict) -> Path | None:
+def for_player(cfg, player: dict, structure: dict | None = None) -> Path | None:
+    """None for the AI parody show, which never shows a real person, whatever the switch says."""
+    if (structure or {}).get("series") == "ai_parody":
+        return None
     return fetch(player.get("espn_id")) if enabled(cfg) else None
 
 
-def record(cfg, player: dict) -> dict | None:
+def record(cfg, player: dict, structure: dict | None = None) -> dict | None:
     """Provenance entry for the headshot a video used (None when it used none)."""
-    path = for_player(cfg, player)
+    path = for_player(cfg, player, structure)
     if path is None:
         return None
     return {"player": player["name"], "espn_id": player.get("espn_id"),
