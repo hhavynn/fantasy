@@ -8,7 +8,8 @@ import httpx
 import pytest
 from conftest import NOW, fixture_json, fixture_text
 
-from social_intel.collectors import REGISTRY
+from social_intel.collectors import REGISTRY, video
+from social_intel.collectors.attention import SleeperTrendingCollector, WikipediaPageviewsCollector
 from social_intel.collectors.base import CollectContext, Collector, SourceConfig, register, run_collectors
 from social_intel.collectors.bluesky import bsky_post
 from social_intel.collectors.news import parse_rss
@@ -49,9 +50,9 @@ def test_arctic_activity_counts_fresh_comments_per_thread():
     f = fetcher_for({"https://arctic-shift.photon-reddit.com/api/comments": (200, json.dumps(comments)),
                      "https://arctic-shift.photon-reddit.com/api/posts": (200, json.dumps(posts_))})
     col = RedditActivityCollector()
-    col.activity_subs = ("fantasyfootball",)
     col.pages = 1
-    posts, cur = col.collect(CollectContext(f, SourceConfig("nfl"), {}, now))
+    cfg = SourceConfig("nfl", extra={"activity_subreddits": ["fantasyfootball"]})
+    posts, cur = col.collect(CollectContext(f, cfg, {}, now))
     active = [p for p in posts if p.extra.get("fresh_comments")]
     assert active, "every commented thread becomes a post with a measured comment rate"
     assert sum(p.extra["fresh_comments"] for p in active) == len(comments["data"])
@@ -188,3 +189,59 @@ def test_every_registered_collector_declares_metadata():
         if name.startswith("_test"):
             continue
         assert cls.platform != "unknown" and cls.interval_minutes > 0 and cls.description
+
+
+# ---------------------------------------------------------------- no NFL defaults in another sport
+
+def test_nfl_only_collector_is_skipped_for_soccer(store):
+    @register
+    class NflOnly(Collector):
+        name = "_test_nfl_only"
+        sports = frozenset({"nfl"})
+
+        def collect(self, ctx):
+            return [], {}
+
+    f = fetcher_for({})
+    assert run_collectors(store, f, SourceConfig("soccer"), ["_test_nfl_only"], now=NOW)[0].status == "skipped"
+    assert run_collectors(store, f, SourceConfig("nfl"), ["_test_nfl_only"], now=NOW)[0].status == "ok"
+
+
+def test_sleeper_is_nfl_only():
+    assert SleeperTrendingCollector.sports == frozenset({"nfl"})
+
+
+def test_activity_reads_only_configured_subreddits():
+    asked = []
+
+    def handler(req):
+        asked.append(req.url.params.get("subreddit"))
+        return httpx.Response(200, text='{"data": []}')
+
+    f = Fetcher(transport=httpx.MockTransport(handler), sleep=lambda s: None, min_interval_s=0)
+    cfg = SourceConfig("soccer", extra={"activity_subreddits": ["soccer"]})
+    RedditActivityCollector().collect(CollectContext(f, cfg, {}, NOW))
+    assert set(asked) == {"soccer"}
+    asked.clear()
+    assert RedditActivityCollector().collect(CollectContext(f, SourceConfig("soccer"), {}, NOW))[0] == []
+    assert asked == []
+
+
+def test_tiktok_has_no_default_creator(monkeypatch):
+    calls = []
+    monkeypatch.setattr(video, "run_ytdlp", lambda args: calls.append(args) or [])
+    video.TikTokCollector().collect(CollectContext(fetcher_for({}), SourceConfig("soccer"), {}, NOW))
+    assert calls == []
+
+
+def test_football_config_keeps_its_nfl_sources(adapter):
+    extra = adapter.source_config().extra
+    assert extra["activity_subreddits"] == ["fantasyfootball", "nfl", "DynastyFF"]
+    assert extra["tiktok_creators"] == ["nfl"]
+
+
+def test_wikipedia_titles_are_configurable():
+    nfl = WikipediaPageviewsCollector._candidates({"name": "Josh Allen", "position": "QB"})
+    assert nfl == ["Josh_Allen_(quarterback)", "Josh_Allen_(American_football)", "Josh_Allen"]
+    soccer = WikipediaPageviewsCollector._candidates({"name": "Harry Kane", "disambiguator": "footballer"})
+    assert soccer == ["Harry_Kane_(footballer)", "Harry_Kane"]

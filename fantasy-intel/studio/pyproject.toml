@@ -30,6 +30,7 @@ make-presenter = "studio.presenter:main"
 export-bundles = "studio.stages.export:main"
 parody-review = "studio.parody_qc:main"
 parody-wan = "studio.parody_wan:main"
+make-soccer = "studio.soccer.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

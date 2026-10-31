@@ -417,7 +417,7 @@ def gate_licenses(cfg, installed: set[str]) -> Gate:
     return _gate("licenses", failures, allowed_models=ALLOWED_MODELS, voice_clone=clone or None)
 
 
-def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
+def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long", attribution: str = "nflverse") -> Gate:
     failures = []
     if meta["privacy_status"] != "private":
         failures.append(f"privacy_status is {meta['privacy_status']!r}, must be 'private'")
@@ -427,7 +427,7 @@ def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
         failures.append("contains_synthetic_media must be true (AI voice)")
     if "Narrated with an AI voice" not in meta["description"]:
         failures.append("description lacks the AI-voice disclosure")
-    if "nflverse" not in meta["description"]:
+    if attribution not in meta["description"]:
         failures.append("description lacks the data attribution")
     if not 0 < len(meta["title"]) <= 100 or "<" in meta["title"] or ">" in meta["title"]:
         failures.append(f"title invalid for YouTube: {meta['title']!r}")
@@ -476,11 +476,11 @@ STAGES_BY_FORMAT = {"long": ("facts", "script", "tts", "charts", "assemble", "th
                     "short": ("facts", "script", "tts", "render", "thumbnail", "metadata")}
 
 
-def gate_integrity(ep: Episode) -> Gate:
+def gate_integrity(ep: Episode, stages: tuple[str, ...] | None = None) -> Gate:
     """Each stage's recorded inputs equal the files on disk now: no stale audio, stills or video."""
     failures = []
     extra = ("frames",) if ep.path(".stages/frames.json").exists() else ()      # the AI parody show's pictures
-    for name in STAGES_BY_FORMAT[ep.fmt] + extra:
+    for name in stages or STAGES_BY_FORMAT[ep.fmt] + extra:
         path = ep.path(f".stages/{name}.json")
         if not path.exists():
             failures.append(f"{name}: no stage record")

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -68,9 +67,10 @@ def _style(ep: Episode) -> str:
     return style
 
 
-def source(ep: Episode) -> tuple[str, Path]:
-    """The render to post: the styled one when it passed its own QC, otherwise final.mp4."""
-    style = _style(ep)
+def source(ep: Episode, style: str | None = None) -> tuple[str, Path]:
+    """The render to post: `style` (what this run rendered; the config's choice when None) when it passed its own
+    QC, otherwise final.mp4."""
+    style = style or _style(ep)
     styled, styled_qc = ep.path(f"styles/{style}/final.mp4"), ep.path(f"styles/{style}/qc.json")
     if style != "original" and styled.exists() and styled_qc.exists():
         rec = read_json(styled_qc)
@@ -132,11 +132,10 @@ def caption(title: str, story: list[str], fixed: list[str], tags: list[str], lim
         keep.pop()
 
 
-def _link(src: Path, dst: Path) -> None:
-    """A hard link where the disk allows it, so a bundle does not store the video three more times."""
-    try:
-        os.link(src, dst)
-    except OSError:
+def _copy(src: Path, dst: Path) -> None:
+    """An independent file. A re-render writes final.mp4 in place, so a hard link would rewrite an exported video too.
+    An APFS clone (cp -c) is just as cheap on disk until one side changes; elsewhere it is a plain copy."""
+    if subprocess.run(["cp", "-c", str(src), str(dst)], capture_output=True).returncode:
         shutil.copy2(src, dst)
 
 
@@ -177,13 +176,13 @@ def readme(ep: Episode, meta: dict, deadline: str | None) -> str:
 def _write(ep: Episode, tmp: Path, platform: str, video: Path, cover: Path, text: str, record: dict) -> None:
     d = tmp / platform
     d.mkdir(parents=True)
-    _link(video, d / "video.mp4")
-    _link(cover, d / "cover.png")
+    _copy(video, d / "video.mp4")
+    _copy(cover, d / "cover.png")
     (d / "caption.txt").write_text(text + "\n")
     write_json(d / "post.json", record)
 
 
-def run(ep: Episode) -> bool:
+def run(ep: Episode, style: str | None = None) -> bool:
     """Write the bundle, replacing any earlier one. False for a variant (an experiment, never posted)."""
     story = read_json(ep.path("story.json"))
     if story.get("variant_of"):
@@ -191,7 +190,7 @@ def run(ep: Episode) -> bool:
         return False
     limits = ep.cfg["export"]
     qc, meta = read_json(ep.path("qc.json")), read_json(ep.path("metadata.json"))
-    rel, video = source(ep)
+    rel, video = source(ep, style)
     check(ep, qc, meta, video, limits["shorts"]["max_seconds"])
     if not 0 < len(meta["title"]) <= limits["shorts"]["max_title"]:
         raise Blocked(f"{ep.id}: title is {len(meta['title'])} characters")
@@ -232,11 +231,19 @@ def run(ep: Episode) -> bool:
     return True
 
 
+def _current(cfg: Config, manifest: dict) -> bool:
+    """Is the bundled video still the episode's render? A rerun that stopped part way leaves an old bundle behind."""
+    video = cfg.episodes_dir / manifest["episode_id"] / manifest["source"]
+    return video.exists() and sha256_file(video) == manifest["sha256"]
+
+
 def week_list(cfg: Config, season: int, week: int) -> Path | None:
     """UPLOAD.md: every bundled Short of the week in posting order, with one tick per app."""
     prefix = f"{season}-w{week:02d}-short"
-    bundles = [read_json(p) for p in cfg.episodes_dir.glob(f"{prefix}-*/upload/manifest.json")]
+    out = cfg.episodes_dir / prefix / "UPLOAD.md"
+    bundles = [m for m in map(read_json, cfg.episodes_dir.glob(f"{prefix}-*/upload/manifest.json")) if _current(cfg, m)]
     if not bundles:
+        out.unlink(missing_ok=True)
         return None
     bundles.sort(key=lambda m: (m["order"], m["episode_id"]))
     lines = [f"# Week {week} uploads", "", "Post in this order. Each Short's `upload/README.md` has the steps.", ""]
@@ -244,16 +251,20 @@ def week_list(cfg: Config, season: int, week: int) -> Path | None:
         lines += [f"## {m['title']}", "", f"`{m['episode_id']}/upload/`"
                   + (f", post by {m['post_by']}" if m.get("post_by") else ""), ""]
         lines += [f"- [ ] {APP[p]}" for p in m["platforms"]] + [""]
-    out = cfg.episodes_dir / prefix / "UPLOAD.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines))
     return out
 
 
-def bundle(ep: Episode) -> bool:
+def discard(ep: Episode) -> None:
+    """A rerun that failed QC: the old bundle no longer describes this Short."""
+    shutil.rmtree(ep.path("upload"), ignore_errors=True)
+
+
+def bundle(ep: Episode, style: str | None = None) -> bool:
     """The make-episode step: a bundle that cannot be written is reported, never a crash after a good render."""
     try:
-        return run(ep)
+        return run(ep, style)
     except Blocked as exc:
         ep.log(f"  upload: no bundle, {exc}")
         return False
