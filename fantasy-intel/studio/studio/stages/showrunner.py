@@ -79,6 +79,14 @@ FORMATS = {
                      "opening": "fake_calm", "joke": "escalation", "ending": "scream_cut",
                      "humor": "absurd", "exaggeration": "very_high",
                      "pacing": {"hook_s": 2.0, "payoff_s": 3.5, "gap_s": 0.5}},
+    # Its own show (stages/parody.py), never chosen for a flame or a praise here: `kinds` is empty on purpose, because
+    # it uses generated pictures. It sits here so the series gates, length and pacing read it like any other format.
+    "ai_parody": {"kinds": (), "style": "ai_parody", "mood": "court", "length": (13, 21), "speed": 1.22,
+                  "parody": True, "show": True,
+                  "note": "AI parody: the video is AI-generated and fictional. The stats are real.",
+                  "opening": "joke_first", "joke": "literal_visual_gag", "ending": "literal_visual_gag",
+                  "humor": "deadpan", "exaggeration": "high",
+                  "pacing": {"hook_s": 3.0, "payoff_s": 4.0, "gap_s": 0.6}},
 }
 # Editorial fit of a format to an angle (0 = cannot tell it). A heuristic, not a prediction of views.
 FIT = {
@@ -168,7 +176,8 @@ def angles(book, snap: dict, p: dict) -> list[dict]:
         weeks = [r["week"] for r in rows if r["attempts"]]
         adot = FL._row(snap, "qb", gid, week)["passing_air_yards"] / att
         league = FL.evaluate(snap, {"kind": "fp_league_rate", "rate": "adot", "position": "QB", "through": week})
-        if adot <= SHORT_RATIO * league:
+        season_att = sum(r["attempts"] for r in rows)
+        if adot <= SHORT_RATIO * league and season_att >= FL.CONSTANTS["season_min_attempts"]:   # the angle ranks his season
             src = lambda k, **kw: {"kind": k, "rate": "adot", "position": "QB", "through": week, **kw}
             a = {"id": "short_throws", "broad": True, "flavor": "distance",
                  "x": add(f"air yards per attempt, week {week}", "dec1", {"kind": "fp_rate", "rate": "adot",
@@ -859,6 +868,8 @@ def thumbnail(p: dict, claims: dict, structure: dict) -> tuple[str, str, str]:
     a = next(x for x in p["angles"] if x["id"] == structure["story_angle"])
     last = p["name"].split()[-1].upper()
     fam = structure["format_family"]
+    if fam == "ai_parody":
+        return "AI PARODY", f"{d(p['box']['passing_yards'])} YARDS", p["name"].upper()
     if a["id"] == "short_throws":
         return ("AIRPLANE MODE" if fam == "roast_monologue" else "THE NFL v. " + last if fam == "courtroom"
                 else "SHORTEST THROWS IN THE NFL"), f"{d(a['x'])} YDS", "NFL AVERAGE: " + d(a["league"])
@@ -886,7 +897,8 @@ def description(p: dict, claims: dict, structure: dict) -> list[str]:
              f"Final: {d(g['points'])}-{d(g['opp_points'])} ({d(g['result'])}).",
              "Every stat is from nflverse game data; the jokes are jokes."]
     if FORMATS[structure["format_family"]].get("parody"):
-        lines.append("Parody: no real court, ruling or statement is depicted.")
+        lines.append(FORMATS[structure["format_family"]].get("note",
+                                                             "Parody: no real court, ruling or statement is depicted."))
     return lines
 
 

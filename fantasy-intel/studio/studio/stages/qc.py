@@ -28,7 +28,8 @@ from .script import BANNED, DIGIT, NUMBER_WORDS, PLACEHOLDER, fill
 VERSION = 1
 
 # Model weights may only come from these repos, under these licenses (plan: license audit).
-ALLOWED_MODELS = {"unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF": "Apache-2.0", "hexgrad/Kokoro-82M": "Apache-2.0"}
+ALLOWED_MODELS = {"unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF": "Apache-2.0", "hexgrad/Kokoro-82M": "Apache-2.0",
+                  "Tongyi-MAI/Z-Image-Turbo": "Apache-2.0", "Wan-AI/Wan2.2-TI2V-5B-Diffusers": "Apache-2.0"}
 # Never in a monetized pipeline: non-commercial weights (F5-TTS, XTTS/Coqui, AudioCraft/MusicGen) or code
 # (Wav2Lip). Matched against installed distribution names.
 BANNED_PACKAGES = {"f5-tts", "tts", "coqui-tts", "coqui-tts-trainer", "audiocraft", "musicgen", "wav2lip", "xtts"}
@@ -265,6 +266,8 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
         theirs = _shingles(e["narration"][:-1])     # the fixed CTA line is boilerplate
         jac = len(mine & theirs) / len(mine | theirs) if mine | theirs else 0.0
         overlap = len(set(players) & set(e["players"])) / len(players) if players else 0.0
+        if ((e.get("structure") or {}).get("series") == "ai_parody") != ((structure or {}).get("series") == "ai_parody"):
+            overlap = 0.0            # the parody of a game and that game's flame are different shows
         scores.append({"episode_id": e["episode_id"], "jaccard_5gram": round(jac, 3), "player_overlap": round(overlap, 2)})
         if jac > SIMILARITY_MAX:
             failures.append(f"narration {jac:.0%} similar to {e['episode_id']} (max {SIMILARITY_MAX:.0%})")
@@ -309,7 +312,8 @@ def gate_series(script: dict, brief_path: Path, history: list[dict]) -> Gate:
             failures.append(f"script format {st.get('format_family')} is not the brief's {brief['format']}")
     fam = st.get("format_family")
     if fam in FORMATS and FORMATS[fam].get("parody"):
-        unlabeled = [s.get("id", s["type"]) for s in script["shots"] if not s["type"].startswith(("court_", "cx_"))]   # both draw the PARODY badge
+        unlabeled = [s.get("id", s["type"]) for s in script["shots"]
+                     if not s["type"].startswith(("court_", "cx_", "ai_"))]   # all three draw a PARODY badge
         if unlabeled:
             failures.append(f"parody format with scenes that do not carry the parody label: {unlabeled}")
     last = script["narration_segments"][-1]["text_display"]
@@ -318,7 +322,7 @@ def gate_series(script: dict, brief_path: Path, history: list[dict]) -> Gate:
     prior = [e["structure"] for e in history if (e.get("structure") or {}).get("series") == st.get("series")
              and e["episode_id"] != script["episode_id"]]
     run = [x.get("format_family") for x in prior[-SERIES_FORMAT_RUN_MAX:]]
-    if len(run) == SERIES_FORMAT_RUN_MAX and all(f == fam for f in run):
+    if len(run) == SERIES_FORMAT_RUN_MAX and all(f == fam for f in run) and not FORMATS.get(fam, {}).get("show"):
         failures.append(f"format {fam} would be the third series video in a row")
     return _gate("series", failures, format=fam, ending=st.get("ending"), visual=st.get("visual_style"))
 
@@ -400,6 +404,11 @@ def gate_licenses(cfg, installed: set[str]) -> Gate:
         failures += [f"{section}: banned model reference {w!r}" for w in BANNED_MODEL_WORDS if w in blob]
     if cfg["tts"].get("engine") != "kokoro":
         failures.append("tts engine is not Kokoro")
+    parody = (cfg.raw.get("parody") or {}) if hasattr(cfg, "raw") else {}
+    for repo, lic in ((parody.get("model_repo"), parody.get("model_license")),
+                      (parody.get("wan_repo"), parody.get("wan_license"))):
+        if repo and ALLOWED_MODELS.get(repo) != lic:
+            failures.append(f"parody: model {repo!r} ({lic}) is not on the commercial allowlist")
     clone = (cfg.raw.get("shorts") or {}).get("voice_clone") if hasattr(cfg, "raw") else None
     if clone:
         # A cloned voice is only ever the channel owner's own, with a declaration on file.
@@ -470,7 +479,8 @@ STAGES_BY_FORMAT = {"long": ("facts", "script", "tts", "charts", "assemble", "th
 def gate_integrity(ep: Episode) -> Gate:
     """Each stage's recorded inputs equal the files on disk now: no stale audio, stills or video."""
     failures = []
-    for name in STAGES_BY_FORMAT[ep.fmt]:
+    extra = ("frames",) if ep.path(".stages/frames.json").exists() else ()      # the AI parody show's pictures
+    for name in STAGES_BY_FORMAT[ep.fmt] + extra:
         path = ep.path(f".stages/{name}.json")
         if not path.exists():
             failures.append(f"{name}: no stage record")
@@ -500,6 +510,11 @@ def run_gates(ep: Episode) -> list[Gate]:
     variant_of = read_json(ep.path("story.json")).get("variant_of") if ep.fmt == "short" else None
     if variant_of:                                               # an A/B hook variant is meant to match its story
         history = [e for e in history if e["episode_id"] != variant_of]
+    if script["structure"].get("series") == "ai_parody":
+        from .. import parody_qc
+        parody_gates = parody_qc.gates(ep, script, facts)
+    else:
+        parody_gates = []
     return [
         gate_claims(snapshot, facts, script),
         gate_narration(script),
@@ -515,6 +530,7 @@ def run_gates(ep: Episode) -> list[Gate]:
         *([gate_series(script, ep.path("brief.json"), history), gate_pacing(ep, script, history)]
           if script["structure"].get("series") else []),
         *([gate_creative(ep, script, history)] if ep.fmt == "short" and script["structure"].get("family") else []),
+        *parody_gates,
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         *([gate_description(snapshot, facts, script["structure"], read_json(ep.path("metadata.json")))]

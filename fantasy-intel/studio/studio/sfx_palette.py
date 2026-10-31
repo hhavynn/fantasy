@@ -420,6 +420,7 @@ FORMAT_SFX = {
                    "music_stop"),
     "main_character": ("undertaker", "anime_wow", "heavenly", "shocked", "rizz", "crowd_cheer", "music_stop"),
     "fan_meltdown": ("anime_wow", "shocked", "mlg_airhorn", "yippee", "vine_boom", "crowd_cheer", "music_stop"),
+    "ai_parody": ("bruh", "crickets", "fahhh", "metal_pipe", "sad_trombone", "vine_boom", "music_stop"),
 }
 
 

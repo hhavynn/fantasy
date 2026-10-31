@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import motion as M
 from . import edit_scenes as ES
+from . import parody_motion as PM
 from . import series_scenes as SS
 from .format_scenes import PAPER, PAPER_INK, brand, stamp
 from .stages import flame as FL
@@ -381,10 +382,11 @@ SCENES = {"fp_hook": (None, scene_fp_hook), "fp_strip": (None, scene_fp_strip), 
           "fp_receipt": (None, scene_fp_receipt)}
 SCENES.update({k: (None, fn) for k, fn in SS.SCENES.items()})
 SCENES.update({k: (None, fn) for k, fn in ES.SCENES.items()})   # edit-style scenes draw their own backdrop
+SCENES.update({k: (None, fn) for k, fn in PM.SCENES.items()})   # so does the AI parody show (parody_motion.py)
 
 
 def backdrop_for(scene: dict) -> str:
-    if scene["type"] in ES.SCENES:
+    if scene["type"] in ES.SCENES or scene["type"] in PM.SCENES:
         return "none"
     style = scene.get("style")
     if style in SS.STYLES:
@@ -410,7 +412,7 @@ def punches(scene: dict, c, dur: float) -> list[float]:
 
 def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, float]]:
     kind = scene["type"]
-    if kind in SS.SCENES or kind in ES.SCENES:
+    if kind in SS.SCENES or kind in ES.SCENES or kind in PM.SCENES:
         return SS.sounds(scene, start, dur, c)
     ev = []
     if kind == "fp_hook":

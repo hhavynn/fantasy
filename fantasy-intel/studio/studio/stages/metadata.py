@@ -62,7 +62,8 @@ def _run(ep: Episode) -> None:
         attribution = (ATTRIBUTION if not series else
                        "Data: nflverse (CC BY 4.0): game stats, play-by-play and schedules, through the game shown.")
         lines = [*description_lines(hero, claims, script["structure"]), "", disclosure, attribution, "",
-                 "#shorts #nfl #football" if series else "#shorts #fantasyfootball #nfl"]
+                 ("#shorts #nfl #football #aiparody" if series == "ai_parody" else "#shorts #nfl #football")
+                 if series else "#shorts #fantasyfootball #nfl"]
     elif short:
         lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
                  f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
@@ -110,6 +111,8 @@ def _run(ep: Episode) -> None:
         meta["contains_soundboard_audio"] = sorted(
             {c["sfx"] for seg in script["narration_segments"] for c in seg["scene"].get("cues", [])
              if c.get("sfx") and PALETTE.get(c["sfx"], {}).get("registry")})
+    if script["structure"].get("series") == "ai_parody":
+        meta["ai_parody"] = True
     if short:
         # What varies between Shorts, recorded so analytics can compare one variable at a time later.
         meta["experiment"] = {**script["structure"], "duration_s": round(sum(durations.values()), 1),
