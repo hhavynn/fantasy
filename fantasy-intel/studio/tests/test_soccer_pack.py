@@ -54,6 +54,7 @@ def test_content_gate_blocks_anything_but_drawn_scenes(bad):
 def test_trend_text_picks_an_explainer():
     assert for_text("Another VAR row at Anfield") == "var" and for_text("Offside again!") == "offside"
     assert for_text("A quiet transfer window") is None
+    assert for_text("Álvaro Morata and various other transfer news") is None
     assert pick({"idea": {"working_title": "Every part of the refereeing row explained"},
                  "cluster": {"topics": ["refereeing"], "top_posts": [{"text": "Red card for the keeper"}]}}) == "cards"
 
