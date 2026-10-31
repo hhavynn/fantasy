@@ -112,12 +112,14 @@ Soccer setup and use:
 
 ```bash
 uv run trends --sport soccer sync-entities   # players from FPL, American Soccer Analysis and Wikidata; rerun weekly
+uv run trends --sport soccer sync-stats      # fixtures, results and player stats into ../data/soccer/soccer.duckdb
 uv run trends --sport soccer run
 uv run trends --sport soccer list
 ```
 
 Its schedule is `scripts/launchd/com.fantasy-intel.social-trends-soccer.plist`, which runs at :10, :30 and :50.
-Please credit American Soccer Analysis where its data appears. Video formats are a labelled cartoon parody, a
+Please credit American Soccer Analysis where its data appears. La Liga, Bundesliga, Serie A and Ligue 1 have team
+stats but no player stats; Champions League fixtures are not covered. Override the database with `SOCCER_DB_PATH`. Video formats are a labelled cartoon parody, a
 parallel-universe what-if and an "every X explained" explainer (`sports/soccer/ideas.py`); parody ideas carry the
 content rules from `docs/superpowers/specs/2026-10-30-soccer-shorts-account-design.md`.
 

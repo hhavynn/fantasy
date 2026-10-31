@@ -34,6 +34,7 @@ from social_intel.engine import DEFAULT_COLLECTORS, Engine
 
 FANTASY_INTEL = Path(__file__).resolve().parents[2]
 DATA = Path(os.getenv("SOCIAL_DATA_DIR") or FANTASY_INTEL / "data" / "social")
+SOCCER_STATS_DB = Path(os.getenv("SOCCER_DB_PATH") or FANTASY_INTEL / "data" / "soccer" / "soccer.duckdb")
 STUDIO_EPISODES = Path(os.getenv("STUDIO_EPISODES") or FANTASY_INTEL / "studio" / "episodes")
 
 
@@ -43,7 +44,8 @@ def make_adapter(sport: str, now: datetime | None = None):
         return FootballAdapter(entity_cache=DATA / "entities_nfl.json", now=now)
     if sport == "soccer":
         from social_intel.sports.soccer.adapter import SoccerAdapter
-        return SoccerAdapter(entity_cache=DATA / "soccer" / "entities_soccer.json", now=now)
+        return SoccerAdapter(entity_cache=DATA / "soccer" / "entities_soccer.json", now=now,
+                             stats_db=SOCCER_STATS_DB)
     raise SystemExit(f"unknown sport {sport!r}")
 
 
@@ -131,6 +133,8 @@ def print_cluster(c: dict[str, Any], related: list[dict[str, Any]]) -> None:
         if p.get("injury"):
             i = p["injury"]
             print(f"    injury: {i['report_status']} ({i.get('injury')}), practice {i.get('practice_status')} — {i['source']}")
+    for s in enr.get("stats", []):
+        print(f"  {s['label']}: {s['value']}   ({s['source']}, as of {s['as_of']})")
     for v in enr.get("verdicts", []):
         print(f"\n  Crowd vs data on {v['player']}: crowd {v['social']}, usage {v['data']} -> data {v['relation']} the take")
     if related:
@@ -379,6 +383,19 @@ def cmd_sync_entities(eng: Engine, args) -> int:
     return 0 if n else 1
 
 
+def cmd_sync_stats(eng: Engine, args) -> int:
+    if eng.sport == "nfl":
+        print("sync-stats is for soccer: NFL statistics come from the analytics database")
+        return 2
+    from social_intel.sports.soccer.stats import sync
+    fetcher = eng.fetcher or Fetcher(cache_dir=eng.store.path.parent / "http_cache", timeout_s=60)
+    counts, errors = sync(eng.adapter.stats_db, fetcher, utcnow(), eng.adapter.index)
+    for e in errors:
+        print(f"  {e}")
+    print("  ".join(f"{k}: {v}" for k, v in counts.items()) or "nothing synced")
+    return 0 if counts else 1
+
+
 def cmd_run(eng: Engine, args) -> int:
     print("collect:")
     cmd_collect(eng, args)
@@ -416,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fixture", action="store_true", help="label the bundle as fixture data")
     sub.add_parser("schema")
     sub.add_parser("sync-entities", help="soccer: refresh the player list from public sources")
+    sub.add_parser("sync-stats", help="soccer: refresh fixtures, results and player stats")
     p = sub.add_parser("run"); collect_args(p)
     p.add_argument("--hours", type=float, default=72); p.add_argument("--top", type=int, default=8)
     p.add_argument("--min-score", type=float, default=0)
@@ -427,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return {"collect": cmd_collect, "health": cmd_health, "rank": cmd_rank, "list": cmd_list, "show": cmd_show,
                 "ideas": cmd_ideas, "idea": cmd_idea, "select": cmd_select, "export": cmd_export,
-                "sync-entities": cmd_sync_entities,
+                "sync-entities": cmd_sync_entities, "sync-stats": cmd_sync_stats,
                 "run": cmd_run}[args.cmd](eng, args)
     finally:
         eng.store.close()

@@ -61,6 +61,7 @@ class SoccerIndex:
         self.full: dict[str, list[str]] = {}
         self.single: dict[str, list[str]] = {}
         self.blocked = {normalize(n) for n in NOT_PLAYERS}
+        self.first_names: set[str] = set()
         self.aliases: dict[str, list[str]] = {}
         for p in [*(players or []), *STARS]:
             if p["id"] in self.players or (p["id"].startswith("star:") and normalize(p["name"]) in self.full):
@@ -72,6 +73,7 @@ class SoccerIndex:
                 continue
             self.full.setdefault(n, []).append(e.entity_id)
             parts = n.split()
+            self.first_names.add(parts[0])
             if len(parts) >= 2 and e.popularity >= SURNAME_MIN_POPULARITY:
                 self.single.setdefault(parts[-1], []).append(e.entity_id)
             self.aliases[e.entity_id] = list(p.get("aliases") or [])
@@ -152,7 +154,7 @@ class SoccerIndex:
             pick = self._pick(self.full.get(t, []), clubs)
             if not pick:
                 cands = self.single.get(t, [])
-                if t in COMMON_NAMES:
+                if t in COMMON_NAMES or t in self.first_names:  # "Martin" is Raya Martin and Martin Odegaard
                     cands = [c for c in cands if self.players[c].team in clubs]
                 pick = self._pick(cands, clubs, strict=True)
             if pick:

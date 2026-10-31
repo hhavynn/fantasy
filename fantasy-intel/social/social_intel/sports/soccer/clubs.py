@@ -68,6 +68,9 @@ CLUBS: tuple[Club, ...] = (
     Club("real-madrid", "Real Madrid", LL, ("real madrid", "los blancos", "madridistas"), ("madrid",), "realmadrid"),
     Club("real-sociedad", "Real Sociedad", LL, ("real sociedad", "la real")),
     Club("sevilla", "Sevilla", LL, ("sevilla",)),
+    Club("deportivo", "Deportivo La Coruna", LL, ("deportivo la coruna", "la coruna")),
+    Club("malaga", "Malaga", LL, ("malaga cf", "malaga")),
+    Club("racing-santander", "Racing Santander", LL, ("racing santander", "santander")),
     Club("valencia", "Valencia", LL, ("valencia cf",), ("valencia",)),
     Club("villarreal", "Villarreal", LL, ("villarreal", "yellow submarine")),
 
@@ -89,6 +92,9 @@ CLUBS: tuple[Club, ...] = (
     Club("union-berlin", "Union Berlin", BL, ("union berlin",)),
     Club("bremen", "Werder Bremen", BL, ("werder bremen", "bremen")),
     Club("wolfsburg", "Wolfsburg", BL, ("wolfsburg",)),
+    Club("elversberg", "Elversberg", BL, ("elversberg",)),
+    Club("paderborn", "Paderborn", BL, ("paderborn",)),
+    Club("schalke", "Schalke 04", BL, ("schalke 04", "schalke")),
 
     Club("atalanta", "Atalanta", SA, ("atalanta",)),
     Club("bologna", "Bologna", SA, ("bologna fc",), ("bologna",)),
@@ -111,6 +117,9 @@ CLUBS: tuple[Club, ...] = (
     Club("torino", "Torino", SA, ("torino fc", "torino")),
     Club("udinese", "Udinese", SA, ("udinese",)),
     Club("verona", "Hellas Verona", SA, ("hellas verona",), ("verona",)),
+    Club("frosinone", "Frosinone", SA, ("frosinone",)),
+    Club("monza", "Monza", SA, ("monza",)),
+    Club("venezia", "Venezia", SA, ("venezia",)),
 
     Club("angers", "Angers", L1, ("angers",)),
     Club("auxerre", "Auxerre", L1, ("auxerre",)),
@@ -130,6 +139,8 @@ CLUBS: tuple[Club, ...] = (
     Club("rennes", "Rennes", L1, ("stade rennais", "rennes")),
     Club("strasbourg", "Strasbourg", L1, ("strasbourg",)),
     Club("toulouse", "Toulouse", L1, ("toulouse",)),
+    Club("le-mans", "Le Mans", L1, ("le mans fc", "le mans")),
+    Club("troyes", "Troyes", L1, ("troyes",)),
 
     Club("atlanta-united", "Atlanta United", MLS, ("atlanta united",)),
     Club("austin-fc", "Austin FC", MLS, ("austin fc",)),
