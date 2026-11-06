@@ -15,10 +15,12 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence
 
 import duckdb
-import pyarrow as pa
+
+if TYPE_CHECKING:   # pyarrow is a sync-script dependency, not a hosted one (see _rows_to_arrow)
+    import pyarrow as pa
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -183,7 +185,8 @@ def table_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
     ).fetchall()]
 
 
-def _rows_to_arrow(con: duckdb.DuckDBPyConnection, table: str, rows: Sequence[dict]) -> pa.Table:
+def _rows_to_arrow(con: duckdb.DuckDBPyConnection, table: str, rows: Sequence[dict]) -> "pa.Table":
+    import pyarrow as pa   # imported here, not at module load: the hosted API never writes rows and ships without it
     cols = table_columns(con, table)
     unknown = set().union(*(r.keys() for r in rows)) - set(cols)
     if unknown:

@@ -87,10 +87,12 @@ def test_local_data_version_follows_file_writes(api_db, monkeypatch):
 
 
 # Every GET route, with path parameters filled in, in a fresh interpreter where the sync-only
-# packages cannot be imported. A route that reaches polars/nflreadpy/espn_api fails with a 500.
+# packages cannot be imported. A route that reaches polars/nflreadpy/espn_api/pyarrow fails with a 500.
+# pyarrow is ~165 MB on Linux: on Vercel the runtime packages and the league-file cache share the 500 MB /tmp, so a
+# hosted pyarrow left too little room for a league's file pair and every league page answered 503.
 _PROBE = r"""
 import json, sys
-for name in ("polars", "nflreadpy", "espn_api"):
+for name in ("polars", "nflreadpy", "espn_api", "pyarrow"):
     sys.modules[name] = None
 from fastapi.testclient import TestClient
 from app.main import app
@@ -113,6 +115,17 @@ def test_api_runs_without_sync_only_packages(api_db):
     assert len(statuses) > 20
     assert statuses["/api/overview"] == 200
     assert not [p for p, s in statuses.items() if s == 500], statuses
+
+
+def test_pyarrow_is_a_sync_dependency_not_a_hosted_one():
+    """Vercel installs the runtime dependencies into the same 500 MB /tmp as the league-file cache (350 MB bound).
+    Only the sync scripts write rows through pyarrow, so the hosted install leaves it out."""
+    import tomllib
+    project = tomllib.loads((BACKEND / "pyproject.toml").read_text())
+    runtime = [d.lower() for d in project["project"]["dependencies"]]
+    assert not [d for d in runtime if d.startswith("pyarrow")], runtime
+    sync = [d.lower() for d in project["dependency-groups"]["sync"]]
+    assert [d for d in sync if d.startswith("pyarrow")], sync
 
 
 def test_hosted_mode_reads_motherduck_through_one_shared_connection(api_db, monkeypatch):

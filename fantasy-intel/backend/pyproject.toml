@@ -10,7 +10,6 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "duckdb>=1.2",
-    "pyarrow>=15",
     "python-dotenv>=1.0",
     "numpy>=2.4.6",
     "requests>=2.31",
@@ -21,7 +20,9 @@ dependencies = [
 ]
 
 [dependency-groups]
-sync = ["espn-api>=1.0.1", "nflreadpy>=0.1.5", "polars>=1.0"]
+# pyarrow (~165 MB on Linux) is here, not above: Vercel installs the runtime packages into the same 500 MB /tmp that
+# holds the league-file cache, and only the sync scripts write rows through it (db/connection.py).
+sync = ["espn-api>=1.0.1", "nflreadpy>=0.1.5", "polars>=1.0", "pyarrow>=15"]
 # Offline research only (scripts/hgb_research.py). Never imported by the API; Vercel's
 # `uv sync --no-dev` skips it, and tests/test_hgb_research.py asserts the API never loads sklearn.
 research = ["scikit-learn>=1.5"]
