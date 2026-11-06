@@ -448,7 +448,6 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
-    { name = "pyarrow" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -461,6 +460,7 @@ dev = [
     { name = "httpx" },
     { name = "nflreadpy" },
     { name = "polars" },
+    { name = "pyarrow" },
     { name = "pytest" },
     { name = "scikit-learn" },
 ]
@@ -471,6 +471,7 @@ sync = [
     { name = "espn-api" },
     { name = "nflreadpy" },
     { name = "polars" },
+    { name = "pyarrow" },
 ]
 
 [package.metadata]
@@ -481,7 +482,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
-    { name = "pyarrow", specifier = ">=15" },
     { name = "pyjwt", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "requests", specifier = ">=2.31" },
@@ -494,6 +494,7 @@ dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "nflreadpy", specifier = ">=0.1.5" },
     { name = "polars", specifier = ">=1.0" },
+    { name = "pyarrow", specifier = ">=15" },
     { name = "pytest", specifier = ">=8" },
     { name = "scikit-learn", specifier = ">=1.5" },
 ]
@@ -502,6 +503,7 @@ sync = [
     { name = "espn-api", specifier = ">=1.0.1" },
     { name = "nflreadpy", specifier = ">=0.1.5" },
     { name = "polars", specifier = ">=1.0" },
+    { name = "pyarrow", specifier = ">=15" },
 ]
 
 [[package]]
